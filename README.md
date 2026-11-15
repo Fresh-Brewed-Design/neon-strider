@@ -36,7 +36,8 @@ tried.
   breaks, as indoor walks with your shoes, a themed title and description, and optional muting
   from your feed. Optional daily rollup uploads a day's walks as one activity after your shift
   ends.
-- **Belt maintenance reminder.** Every 3 months or 100 miles (Jogwell's interval, editable),
+- **Belt maintenance reminder.** Every 200 km or 3 months, editable (the sticker on
+  the deck says 200 km / 125 miles; Jogwell's manual says 100 miles),
   or every so many belt hours if you prefer. It stays on the HUD until you mark the belt
   serviced. **System → Maintenance** also shows a lifetime odometer (distance, belt hours,
   since when), which you can pin to the HUD as ODO.

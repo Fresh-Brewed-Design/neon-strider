@@ -64,7 +64,6 @@ itself; `send()` toasts rejections as a backstop, the HUD uses `useHudSend` + `<
     status text in `status.ts`. While the belt is still, Rust may collapse the panel to a strip
     (`HudStrip.tsx`) or hide it (`hud.idle_mode`, decided in `snapshot/stasis.rs` as
     `snapshot.hud_view`); cards and toasts always show
-- **Units**: `src/units.ts` holds shared unit constants (kilometres per mile).
 - **Shared**: `src/widgets/registry.ts` defines every stat once for the HUD and dashboard.
 - **Live state**: Rust owns it. Every window reads one `AppSnapshot` via `src/state/useAppState.ts`
   (`useAppState`/`useAppSnapshot` in components, `getAppSnapshot`/`subscribeAppSnapshot` in services)
@@ -147,7 +146,8 @@ The neon/cyberpunk theme is part of the product, including text the app writes e
 (`DECK_CYCLES`, `DISPLACEMENT`, `ALTITUDE_BIAS`, `METABOLIC_BURN`, `LOCOMOTION_INC`,
 `DAILY_TOTAL`, `NEURAL_FLUIDITY`) and the `NEON STRIDER // ...` style; keep explanations in
 plain sentence-case English so they stay readable. Units: the user's stats are metric (km,
-km/h, kg); a manufacturer's spec stays in its own unit (the Jogwell belt reminder is miles).
+km/h, kg); a manufacturer's spec is quoted in its own unit. The belt reminder is km: the
+sticker on the deck gives 200 km (125 miles), which is the default.
 
 ## Conventions
 
