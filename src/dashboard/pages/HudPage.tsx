@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
-import { dispatch, type HudAnchor, type HudMonitor, type HudWidget } from "../../ipc";
+import { dispatch, type HudAnchor, type HudIdleMode, type HudMonitor, type HudWidget } from "../../ipc";
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { useAppSnapshot } from "../../state/useAppState";
@@ -120,6 +120,44 @@ function MonitorPicker({ monitors, selected }: { monitors: HudMonitor[]; selecte
   );
 }
 
+const IDLE_MODES: { mode: HudIdleMode; label: string }[] = [
+  { mode: "full", label: "Show everything" },
+  { mode: "strip", label: "Shrink to a strip" },
+  { mode: "hidden", label: "Hide" },
+];
+
+/** "When the belt is still": the whole panel, a strip, or nothing until the belt moves. */
+function IdleModePicker({ mode }: { mode: HudIdleMode }) {
+  const set = useAction();
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label>When the belt is still</Label>
+      <div className="flex flex-col gap-1" role="radiogroup" aria-label="When the belt is still">
+        {IDLE_MODES.map((m) => (
+          <button
+            key={m.mode}
+            type="button"
+            role="radio"
+            aria-checked={m.mode === mode}
+            disabled={set.pending}
+            onClick={() => void set.run(() => dispatch({ type: "hud_set_idle_mode", mode: m.mode }))}
+            className={cx(
+              "w-full rounded border px-2 py-1.5 text-left font-mono text-[11px] transition-colors",
+              m.mode === mode
+                ? "border-neon-cyan bg-neon-cyan/15 text-neon-cyan"
+                : "border-white/15 text-white/70 hover:border-neon-cyan/50",
+            )}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+      <ActionStatus pending={set.pending} error={set.error} />
+      <Hint>Cards that need an answer still show. Hide comes back when the belt moves.</Hint>
+    </div>
+  );
+}
+
 export function HudPage() {
   const s = useAppSnapshot();
   if (!s) return <Waiting />;
@@ -200,6 +238,7 @@ export function HudPage() {
           <CornerPicker anchor={anchor} custom={s.hud.custom !== null} />
           <PlacementRow anchor={anchor} custom={s.hud.custom !== null} />
           <MonitorPicker monitors={s.hud_monitors} selected={monitor} />
+          <IdleModePicker mode={s.hud.idle_mode} />
           <Hint>
             Clicks pass through the HUD except on its panel. Speed and tilt pop-ups are hidden while those values are
             on the panel.
