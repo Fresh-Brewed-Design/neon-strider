@@ -31,15 +31,21 @@ These are the variants of `protocol::Control`.
 - `0x03` (`Stop`): Stop
 
 ## Status Byte (Byte 2 of 0x51)
-Known values: `0` stopped, `1`/`3` running, `2`/`10` paused, `4` starting.
+Known values: `0` stopped, `1`/`3` running, `2`/`10` paused, `4` starting,
+`6` asleep (screen off, treated as stopped).
 Anything else is unknown: the engine keeps treating it as stopped (nothing
 starts or ends a session on a guess), but the raw value is kept and the app
 shows "Treadmill state unknown (code N)".
 
 ## Capturing the standby state
-Open question: with its screen off the deck stays connected, but we don't yet
-know whether it sends a status byte of its own, keeps sending `0`, or stops
-sending frames. To find out:
+Answered for the Jogwell Ares 11 Elite: when it goes to sleep (screen off) the
+deck stays connected, keeps sending status frames, and reports byte `6`. The
+log showed `deck status byte 6 (UNKNOWN), was 0` about 14 minutes after a stop,
+and `deck status byte 6 (UNKNOWN), was none` on connecting to a sleeping deck.
+It never appears during a walk. `status_from_byte` now maps `6` to stopped, so
+the app no longer reports an unknown state while the deck sleeps.
+
+Another deck may use a different byte. To check what yours sends:
 
 1. Let the deck's screen turn off while Neon Strider is connected.
 2. Press Engage. After about 8 s the app says the treadmill didn't respond.
@@ -53,5 +59,5 @@ sending frames. To find out:
    - `Engage: no answer from the deck in 8 s`: the status, unknown code and
      time since the last frame when Engage gave up.
 
-If the screen-off state turns out to have its own byte, add it to
+If a deck's screen-off state has a byte other than `6`, add it to
 `status_from_byte` in `protocol.rs`.

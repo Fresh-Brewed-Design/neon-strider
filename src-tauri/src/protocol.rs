@@ -135,6 +135,9 @@ fn status_from_byte(b: u8) -> Option<MachineStatus> {
         2 | 10 => Some(MachineStatus::Paused),
         4 => Some(MachineStatus::Starting),
         0 => Some(MachineStatus::Stopped),
+        // Deck asleep, screen off: seen about 14 minutes after a stop and on
+        // connecting to a sleeping deck, never during a walk.
+        6 => Some(MachineStatus::Stopped),
         _ => None,
     }
 }
@@ -217,6 +220,7 @@ mod tests {
             (2, MachineStatus::Paused),
             (10, MachineStatus::Paused),
             (4, MachineStatus::Starting),
+            (6, MachineStatus::Stopped),
         ] {
             let t = parse_status(&[0x02, 0x51, b, 0x00, 0x03]).unwrap();
             assert_eq!((t.status, t.status_known, t.status_code), (s, true, b));
