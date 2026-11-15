@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
+import { useTreadmillStore } from "../../store/treadmillStore";
 import { readPref, writePref } from "../localPrefs";
 import { Label, NeonButton } from "../ui";
 import { CommandCycler } from "./CommandCycler";
@@ -34,14 +35,21 @@ export function DiagnosticsSection() {
   const runRaw = raw.run;
   const sendRaw = useCallback(
     (data: number[]) => {
-      if (Date.now() > armedUntil.current) {
-        const ok = window.confirm(
-          "Send raw commands to the treadmill for the next 5 minutes? Stop the belt and step off first.",
-        );
-        if (!ok) return;
-        armedUntil.current = Date.now() + RAW_ARMED_MS;
-      }
-      void runRaw(() => invoke("send_bluetooth_command", { data }));
+      const fire = () => void runRaw(() => invoke("send_bluetooth_command", { data }));
+      if (Date.now() <= armedUntil.current) return fire();
+      // Auto-step keeps calling while the dialog is open: those sends are
+      // dropped, so confirming sends only the command that asked.
+      const store = useTreadmillStore.getState();
+      if (store.pendingConfirmation) return;
+      store.confirm({
+        title: "Send raw commands",
+        message:
+          "Send raw commands to the treadmill for the next 5 minutes? Unknown commands can make it do unexpected things. Stop the belt and step off first.",
+        onConfirm: () => {
+          armedUntil.current = Date.now() + RAW_ARMED_MS;
+          fire();
+        },
+      });
     },
     [runRaw],
   );
