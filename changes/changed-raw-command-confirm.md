@@ -1,0 +1,1 @@
+- Sending raw commands from System -> Diagnostics now asks in the app's own confirm box instead of a plain Windows dialog.

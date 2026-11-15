@@ -143,6 +143,25 @@ pub fn control_packet(control: Control, speed: u8, incline: u8) -> Vec<u8> {
     serialize_command(&body)
 }
 
+/// The longest body the diagnostics command cycler may send: with the header,
+/// checksum and tail it still fits one 20-byte BLE write.
+pub const RAW_BODY_MAX: usize = 17;
+
+/// Frame a body from the command cycler (`53 01 00 ...`, no header) as
+/// `HEADER, body..., checksum, TAIL`.
+pub fn raw_packet(body: &[u8]) -> Result<Vec<u8>, String> {
+    if body.is_empty() || body.len() > RAW_BODY_MAX {
+        return Err(format!(
+            "A raw command needs 1 to {RAW_BODY_MAX} bytes, not {}.",
+            body.len()
+        ));
+    }
+    let mut framed = Vec::with_capacity(body.len() + 1);
+    framed.push(HEADER);
+    framed.extend_from_slice(body);
+    Ok(serialize_command(&framed))
+}
+
 /// The framed status request.
 pub fn status_request() -> Vec<u8> {
     serialize_command(&[HEADER, CMD_STATUS])
@@ -329,6 +348,32 @@ mod tests {
         // The checksum skips the header.
         assert_eq!(calculate_checksum(&[0xFF, 0x01, 0x02]), 0x03);
         assert_eq!(calculate_checksum(&[0x02]), 0);
+    }
+
+    /// The cycler's raw bodies frame exactly like the app's own packets.
+    #[test]
+    fn raw_bodies_are_framed() {
+        let body = |code: u8| {
+            let mut v = vec![0x53, code];
+            v.extend_from_slice(&[0u8; 10]);
+            v
+        };
+        assert_eq!(
+            raw_packet(&body(0x01)),
+            Ok(control_packet(Control::Ready, 0, 0))
+        );
+        assert_eq!(
+            raw_packet(&body(0x09)),
+            Ok(control_packet(Control::Start, 0, 0))
+        );
+        assert_eq!(
+            raw_packet(&body(0x03)),
+            Ok(control_packet(Control::Stop, 0, 0))
+        );
+        assert_eq!(raw_packet(&[0x51]), Ok(vec![0x02, 0x51, 0x51, 0x03]));
+        assert!(raw_packet(&[]).is_err());
+        assert!(raw_packet(&[0; RAW_BODY_MAX + 1]).is_err());
+        assert_eq!(raw_packet(&[0; RAW_BODY_MAX]).map(|p| p.len()), Ok(20));
     }
 
     #[test]

@@ -2,27 +2,33 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Play, Square } from "lucide-react";
 import { GhostButton, Label, NeonButton } from "../ui";
 import { cx } from "../util";
+import { ActionStatus } from "../../components/ActionStatus";
 import { INPUT_CLASS } from "./fields";
-
-const hex = (n: number) => n.toString(16).padStart(2, "0").toUpperCase();
-const command = (byte: number) => [0x02, 0x53, 0x0c, byte];
+import { DEFAULT_TEMPLATE, fillTemplate, frameBody, hex, parseTemplate } from "./rawFrame";
 
 /**
- * Protocol discovery tool: sends `02 53 0C XX` for a range of XX, one step at a
- * time or on a timer, so you can watch what the treadmill does. Sends real
- * bytes to the connected machine.
+ * Protocol discovery tool: fills the `XX` slot of a body template with each
+ * byte in a range, one step at a time or on a timer, so you can watch what the
+ * treadmill does. Rust frames and sends it; the readout shows the full frame.
+ *
+ * `onSend` resolves true once the body went out (after any confirm), false if
+ * nothing was sent; auto-step stops then.
  */
-export function CommandCycler({ onSend }: { onSend: (cmd: number[]) => void }) {
+export function CommandCycler({ onSend }: { onSend: (body: number[]) => Promise<boolean> }) {
+  const [templateText, setTemplateText] = useState(DEFAULT_TEMPLATE);
   const [startByte, setStartByte] = useState(0x00);
   const [endByte, setEndByte] = useState(0x20);
   const [currentByte, setCurrentByte] = useState(0x00);
   const [delay, setDelay] = useState(2000);
   const [isRunning, setIsRunning] = useState(false);
 
-  // The auto-step effect below must not re-run (and re-send) when the parent re-renders.
-  const send = useRef(onSend);
+  const parsed = parseTemplate(templateText);
+  const template = "template" in parsed ? parsed.template : null;
+
+  // The auto-step loop reads the latest values without restarting.
+  const latest = useRef({ onSend, template, currentByte, startByte, endByte, delay });
   useEffect(() => {
-    send.current = onSend;
+    latest.current = { onSend, template, currentByte, startByte, endByte, delay };
   });
 
   const stepNext = useCallback(() => {
@@ -33,26 +39,75 @@ export function CommandCycler({ onSend }: { onSend: (cmd: number[]) => void }) {
     setCurrentByte((prev) => (prev <= startByte ? endByte : prev - 1));
   }, [endByte, startByte]);
 
+  // Send the current byte, wait one full delay, step, repeat. The wait starts
+  // only once the send is done, so a confirm dialog doesn't let bytes pile up.
   useEffect(() => {
     if (!isRunning) return;
-    const timer = window.setInterval(stepNext, delay);
-    return () => clearInterval(timer);
-  }, [isRunning, delay, stepNext]);
+    let stopped = false;
+    let timer: number | undefined;
+    const tick = async (byte: number) => {
+      const { onSend: sendNow, template: t } = latest.current;
+      const sent = t !== null && (await sendNow(fillTemplate(t, byte)));
+      if (stopped) return;
+      if (!sent) return setIsRunning(false);
+      timer = window.setTimeout(() => {
+        const { startByte: first, endByte: last } = latest.current;
+        const next = byte >= last ? first : byte + 1;
+        setCurrentByte(next);
+        void tick(next);
+      }, latest.current.delay);
+    };
+    void tick(latest.current.currentByte);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [isRunning]);
 
-  // While auto-stepping, every new byte (and the moment it starts) is sent.
-  useEffect(() => {
-    if (isRunning) send.current(command(currentByte));
-  }, [currentByte, isRunning]);
+  const frame = template && frameBody(fillTemplate(template, currentByte));
+  const slot = template ? template.indexOf(null) + 1 : -1;
 
   return (
     <div className="flex flex-col gap-3">
+      <label className="block">
+        <Label>Body (hex, XX cycles)</Label>
+        <input
+          type="text"
+          value={templateText}
+          spellCheck={false}
+          aria-invalid={!template}
+          onChange={(e) => {
+            setIsRunning(false);
+            setTemplateText(e.target.value);
+          }}
+          className={cx(INPUT_CLASS, "mt-1 block w-full uppercase")}
+        />
+        <ActionStatus error={"error" in parsed ? parsed.error : null} className="mt-1" />
+      </label>
+
       <div className="flex items-center justify-between gap-3">
-        <div className="font-digital text-2xl tracking-[0.2em] text-neon-magenta">02 53 0C {hex(currentByte)}</div>
-        <div className="flex items-center gap-1">
+        <div className="min-w-0 font-digital text-sm tracking-[0.12em] text-neon-magenta/60" aria-label="Frame to send">
+          {frame
+            ? frame.map((b, i) => (
+                <span key={i} className={cx("mr-1.5 inline-block", i === slot && "text-neon-magenta")}>
+                  {hex(b)}
+                </span>
+              ))
+            : "--"}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
           <GhostButton aria-label="Previous byte" onClick={() => { setIsRunning(false); stepPrev(); }}>
             <ChevronLeft size={16} />
           </GhostButton>
-          <NeonButton tone="magenta" className="px-3 py-1.5" onClick={() => { setIsRunning(false); onSend(command(currentByte)); }}>
+          <NeonButton
+            tone="magenta"
+            className="px-3 py-1.5"
+            disabled={!template}
+            onClick={() => {
+              setIsRunning(false);
+              if (template) void onSend(fillTemplate(template, currentByte));
+            }}
+          >
             Send once
           </NeonButton>
           <GhostButton aria-label="Next byte" onClick={() => { setIsRunning(false); stepNext(); }}>
@@ -91,6 +146,7 @@ export function CommandCycler({ onSend }: { onSend: (cmd: number[]) => void }) {
         </label>
         <NeonButton
           tone="magenta"
+          disabled={!template && !isRunning}
           onClick={() => setIsRunning(!isRunning)}
           className={cx("ml-auto flex items-center gap-2 px-4 py-2", isRunning && "animate-pulse")}
         >

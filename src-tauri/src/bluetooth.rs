@@ -687,9 +687,10 @@ pub async fn sync_orchestrator_config(
     Ok(())
 }
 
-/// Write raw bytes to the deck (the diagnostics page).
+/// Frame a raw body from the diagnostics command cycler and write it to the deck.
 #[tauri::command]
-pub async fn send_bluetooth_command(data: Vec<u8>) -> Result<(), String> {
+pub async fn send_bluetooth_command(body: Vec<u8>) -> Result<(), String> {
+    let data = crate::protocol::raw_packet(&body)?;
     log::debug!("Raw command from diagnostics: {:02X?}", data);
     let peripheral = CONNECTED_PERIPHERAL.lock().await.clone();
     if let Some(peripheral) = peripheral {

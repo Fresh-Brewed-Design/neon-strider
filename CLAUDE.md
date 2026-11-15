@@ -174,6 +174,9 @@ sticker on the deck gives 200 km (125 miles), which is the default.
 - The Rust version is pinned in `rust-toolchain.toml`; bump it there and in the workflows together, and fix any new clippy lints in the same PR.
 - Packet decoding and speed/calibration scaling belong in **Rust**, not JS.
 - UI text is never smaller than 11px.
+- No native dialogs (`alert`, `confirm`, `prompt`, or OS message boxes): confirmations use the
+  store's `confirm` (`ConfirmDialog`) and results show under the control via `<ActionStatus>`;
+  eslint enforces it.
 - Prefer precise types; the repo passes `eslint` with no `no-explicit-any` and no lint
   suppressions.
 - For Zustand effects that only *call* actions, read them via `useTreadmillStore.getState()`
