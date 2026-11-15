@@ -99,6 +99,7 @@ fn deck_snapshot(state: &OrchestratorState, max_incline_level: u8) -> DeckSnapsh
     DeckSnapshot {
         status: state.last_status,
         unknown_status_code: state.unknown_status_code,
+        standby: state.deck_standby,
         speed_kmh: state.to_physical_speed(state.hardware_speed),
         raw_speed_kmh: state.hardware_speed,
         target_speed_kmh: target_speed,

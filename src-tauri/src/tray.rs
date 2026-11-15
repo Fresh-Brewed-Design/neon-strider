@@ -116,6 +116,7 @@ pub fn tooltip(v: &TrayView) -> String {
             parts.push(format!("{:.1} km/h", v.speed_kmh));
         }
         MachineStatus::Paused => parts.push("paused".to_string()),
+        MachineStatus::Stopping => parts.push("spinning down".to_string()),
         MachineStatus::Stopped => parts.push("idle".to_string()),
     }
     if v.status != MachineStatus::Stopped {
@@ -355,6 +356,12 @@ mod tests {
             ..walking()
         };
         assert_eq!(paused.state(), TrayState::Idle);
+        let stopping = TrayView {
+            status: MachineStatus::Stopping,
+            ..walking()
+        };
+        assert_eq!(stopping.state(), TrayState::Idle);
+        assert!(tooltip(&stopping).contains("spinning down"));
         let stopped = TrayView {
             status: MachineStatus::Stopped,
             ..walking()

@@ -97,7 +97,7 @@ export function Controls({ snapshot }: { snapshot: AppSnapshot }) {
         <button
           type="button"
           className="hud-btn hud-btn-stop accent-magenta"
-          disabled={!connection.connected || deck.status === "Stopped"}
+          disabled={!connection.connected || deck.status === "Stopped" || deck.status === "Stopping"}
           onClick={() => send({ type: "stop" })}
         >
           DUMP

@@ -38,6 +38,7 @@ export const snapshot: AppSnapshot = {
   deck: {
     status: "Running",
     unknown_status_code: null,
+    standby: false,
     speed_kmh: 3.2,
     raw_speed_kmh: 3.6,
     target_speed_kmh: 3.5,
@@ -384,10 +385,28 @@ if (engageTimeout) {
   snapshot.active_program = null;
   Object.assign(snapshot.connection, startFailed(Date.now() - 2000));
 }
+// ?status=countdown: the deck's 3-2-1 before the belt moves. ?status=stopping: the
+// belt winding down after Dump (Engage is refused until it stops). ?status=standby:
+// the deck is off or asleep (Engage is refused at once).
 const statusFlag = params.get("status");
-if (statusFlag !== null) {
+const START_SPINNING_DOWN = "Belt is still stopping. Press Engage once it stops.";
+const START_STANDBY = "Treadmill is off or asleep. Switch it on, then press Engage.";
+if (statusFlag === "countdown") {
+  Object.assign(snapshot.deck, { status: "Starting", speed_kmh: 0, raw_speed_kmh: 0 });
+} else if (statusFlag === "stopping") {
+  Object.assign(snapshot.deck, { status: "Stopping", speed_kmh: 0.5, raw_speed_kmh: 0.5, target_speed_kmh: 0 });
+  snapshot.active_program = null;
+} else if (statusFlag === "standby") {
+  Object.assign(snapshot.deck, { status: "Stopped", standby: true, speed_kmh: 0, raw_speed_kmh: 0 });
+  snapshot.active_program = null;
+} else if (statusFlag !== null) {
   snapshot.deck.status = "Stopped";
   snapshot.deck.unknown_status_code = Number(statusFlag) || 7;
+}
+/** ?status=stopping: Engage while the belt spins down is refused at once. */
+function refuseWhileStopping() {
+  const message = statusFlag === "standby" ? START_STANDBY : START_SPINNING_DOWN;
+  snapshot.connection.start_result = { ok: false, message, at_ms: Date.now() };
 }
 
 // ?walkaway=warning: the idle warning counting down (STAY cancels it, reaching 0
@@ -680,6 +699,7 @@ const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) =>
     Object.assign(snapshot.deck, moving ? { status: "Paused", speed_kmh: 0 } : { status: "Running", speed_kmh: snapshot.deck.target_speed_kmh });
   },
   ...(engageTimeout ? { start: engageWithTimeout, toggle_start: engageWithTimeout } : {}),
+  ...(statusFlag === "stopping" || statusFlag === "standby" ? { start: refuseWhileStopping, toggle_start: refuseWhileStopping } : {}),
   connect_now: () => {
     Object.assign(snapshot.connection, { link: { state: "connecting", attempt: 1, of: 3 }, connecting: true });
     later(1500, () =>

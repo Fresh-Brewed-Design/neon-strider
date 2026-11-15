@@ -235,6 +235,9 @@ pub struct OrchestratorState {
     pub start_sent_at: Option<Instant>,
     /// The raw 0x51 status byte when it is not one we know; None when known.
     pub unknown_status_code: Option<u8>,
+    /// The deck reports standby (`protocol::STATUS_STANDBY`): off or asleep.
+    /// It refuses every start, so none is sent (see `start_refusal`).
+    pub deck_standby: bool,
     /// The belt never starts by itself after a restart, reconnect or update:
     /// set for each new connection, this holds off the automatic start and
     /// resume until the deck is seen moving on this connection or the user asks
@@ -315,6 +318,7 @@ impl Default for OrchestratorState {
             start_blocked: false,
             start_sent_at: None,
             unknown_status_code: None,
+            deck_standby: false,
             hold_auto_start: true,
             engage_speed: None,
             programs: Vec::new(),
@@ -1123,7 +1127,9 @@ impl OrchestratorState {
     /// After a program ended on a still belt, it starts at the speed from
     /// before the program (`engage_speed`), at the incline shown.
     fn do_start(&mut self, now: Instant) {
-        self.arm_start_watch(now);
+        if !self.arm_start_watch(now) {
+            return;
+        }
         let current = self.manual_intent.unwrap_or(ControlIntent {
             speed: 0.0,
             incline: 0,
@@ -1189,6 +1195,7 @@ impl OrchestratorState {
         self.start_blocked = false;
         self.start_sent_at = None;
         self.unknown_status_code = None;
+        self.deck_standby = false;
         self.last_handshake_tx = None;
         // Nothing starts the belt on this connection until it is seen moving
         // or the user asks; a start half-sent before the drop is void too.
@@ -1245,13 +1252,45 @@ impl OrchestratorState {
     }
 
     /// An explicit start (Engage, a program run): watch for the deck to answer.
-    pub(crate) fn arm_start_watch(&mut self, now: Instant) {
+    /// False when the deck can't take a start now (see [`Self::start_refusal`]):
+    /// nothing is sent, the user is told at once, and, as after an unanswered
+    /// Engage, nothing starts the belt later by itself (`start_blocked`).
+    pub(crate) fn arm_start_watch(&mut self, now: Instant) -> bool {
+        if let Some(why) = self.start_refusal() {
+            self.refuse_start(why);
+            return false;
+        }
         self.start_blocked = false;
         self.hold_auto_start = false;
         if !self.last_status.is_moving() {
             self.start_requested_at = Some(now);
             crate::link::start_requested();
         }
+        true
+    }
+
+    /// Why the deck can't take a start right now, if it can't: it is in
+    /// standby (off or asleep; it refuses every start and the app can't wake
+    /// it), or winding the belt down after a stop (it refuses anything but
+    /// polls until it has stopped).
+    pub(crate) fn start_refusal(&self) -> Option<&'static str> {
+        if self.deck_standby {
+            Some(crate::link::START_STANDBY)
+        } else if self.last_status == MachineStatus::Stopping {
+            Some(crate::link::START_SPINNING_DOWN)
+        } else {
+            None
+        }
+    }
+
+    /// Send no start, say why at once, and, as after an unanswered Engage,
+    /// start nothing later by itself (`start_blocked`) until the user asks again.
+    fn refuse_start(&mut self, why: &str) {
+        log::info!("Start refused: {}", why);
+        self.start_requested_at = None;
+        self.start_blocked = true;
+        self.handshake_step = HandshakeStep::Idle;
+        crate::link::start_refused(why);
     }
 
     /// Follow up on an Engage: clear the watch once the deck reports Starting or
@@ -1517,6 +1556,17 @@ impl ProtocolEngine {
         let deck_start_pending = state.watch_for_deck_start(now);
         state.adopt_physical_start(now);
 
+        // The deck is winding the belt down after a stop: it refuses anything
+        // but polls until it reports the belt still, so nothing else is sent
+        // (a start or pause asked for now is dropped, not kept for later).
+        if state.last_status == MachineStatus::Stopping {
+            if let Some(control) = state.pending_control.take() {
+                log::info!("Belt spinning down: {:?} not sent", control);
+            }
+            state.handshake_step = HandshakeStep::Idle;
+            return Self::poll_packet(state, now);
+        }
+
         if let Some(control) = state.pending_control.take() {
             if state.command_gap_passed(now) {
                 return Some(Packet::control(PacketKind::AtomicAction, control));
@@ -1543,10 +1593,12 @@ impl ProtocolEngine {
             return;
         }
         let started = *self.stop_started.get_or_insert(now);
+        // Stopping: the deck took the stop and winds the belt down itself;
+        // another stop would only be refused.
         let at_rest = state.hardware_speed < STILL_KMH
             || matches!(
                 state.last_status,
-                MachineStatus::Stopped | MachineStatus::Paused
+                MachineStatus::Stopped | MachineStatus::Paused | MachineStatus::Stopping
             );
         let timed_out = now.duration_since(started) >= STOP_TIMEOUT;
         if at_rest || timed_out {
@@ -1599,6 +1651,11 @@ impl ProtocolEngine {
     /// twice when the handshake is pausing a running belt.
     fn handshake_packet(state: &mut OrchestratorState, now: Instant) -> Option<Packet> {
         if !state.may_drive() {
+            return None;
+        }
+        // Standby refuses every start; nothing is kept for when it wakes.
+        if state.deck_standby && state.handshake_step != HandshakeStep::Idle {
+            state.handshake_step = HandshakeStep::Idle;
             return None;
         }
         let waited = |gap: Duration| {
@@ -1654,7 +1711,12 @@ impl ProtocolEngine {
                     && !state.start_blocked
                     && !state.hold_auto_start =>
             {
-                state.handshake_step = HandshakeStep::Priming;
+                // A speed set by hand on a deck in standby: it would only
+                // refuse the start, so say so instead.
+                match state.start_refusal() {
+                    Some(why) => state.refuse_start(why),
+                    None => state.handshake_step = HandshakeStep::Priming,
+                }
             }
             MachineStatus::Paused
                 if target_speed > self.last_physical_speed + STILL_KMH
@@ -1671,6 +1733,10 @@ impl ProtocolEngine {
                 self.last_physical_speed = 0.0;
                 log::info!("Triggering Pause (Source: {})", source);
             }
+            // The deck's countdown after a start or resume: it is already
+            // starting, and refuses another Ready/Start or a target until it
+            // runs. Stopping: nothing but polls (see `determine_next_packet`).
+            MachineStatus::Starting | MachineStatus::Stopping => {}
             status if status.is_moving() && has_target && state.command_gap_passed(now) => {
                 let (h_speed, h_inc) = calculate_hardware_bytes(
                     target_speed,
@@ -2721,5 +2787,416 @@ mod tests {
                 "{status:?}: {sent:?}"
             );
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Replays of a traffic recording (Jogwell Ares 11 Elite, 2026-11-15)
+    // -----------------------------------------------------------------------
+
+    /// A full 0x51 frame as the deck sends it (17 bytes, counters filled in).
+    fn deck_frame(status: u8, speed: u8, time_s: u16) -> Vec<u8> {
+        let [lo, hi] = time_s.to_le_bytes();
+        let mut f = vec![
+            0x02, 0x51, status, speed, 0x00, lo, hi, 0x0b, 0x00, 0x0f, 0x00, 0x2d, 0x00, 0x00, 0x00,
+        ];
+        f.push(f.iter().skip(1).fold(0, |a, b| a ^ b));
+        f.push(0x03);
+        f
+    }
+
+    /// The short countdown frame `02 51 02 <n>`.
+    fn countdown_frame(n: u8) -> Vec<u8> {
+        vec![0x02, 0x51, 0x02, n, 0x51 ^ 0x02 ^ n, 0x03]
+    }
+
+    const IDLE_FRAME: [u8; 5] = [0x02, 0x51, 0x00, 0x51, 0x03];
+    /// Standby, as recorded after a power-off held on the remote.
+    const STANDBY_FRAME: [u8; 6] = [0x02, 0x51, 0x06, 0x02, 0x55, 0x03];
+
+    enum Ev {
+        /// A status frame arrives (and keeps arriving every 600 ms until the next).
+        Rx(Vec<u8>),
+        Press(DeckAction),
+    }
+
+    /// The real engine fed a recorded sequence: frames go through
+    /// `bluetooth::apply_telemetry`, the session opens and closes as
+    /// `manage_session_lifecycle` does, and every packet sent is kept.
+    struct Replay {
+        engine: ProtocolEngine,
+        state: OrchestratorState,
+        t0: Instant,
+        sent: Vec<(u64, Packet)>,
+        sessions_started: u32,
+        /// The duration each finalised session was saved with.
+        finalised: Vec<i64>,
+    }
+
+    impl Replay {
+        fn new() -> Self {
+            let mut state = reported();
+            // The user's own Engage releases the hold; a deck seen moving too.
+            state.hold_auto_start = false;
+            Self {
+                engine: synced(),
+                state,
+                t0: Instant::now(),
+                sent: vec![],
+                sessions_started: 0,
+                finalised: vec![],
+            }
+        }
+
+        fn rx(&mut self, bytes: &[u8]) {
+            let t = protocol::parse_status(bytes).expect("a status frame");
+            crate::bluetooth::apply_telemetry(&mut self.state, &t);
+            self.state.update_physics();
+            if self.state.should_start_session() {
+                self.sessions_started += 1;
+                self.state.start_session(self.sessions_started as i64);
+            }
+            if self.state.should_stop_session() {
+                self.finalised.push(self.state.session.duration_seconds);
+                self.state.stop_session();
+            }
+        }
+
+        /// Run `events` (ms from now, in order) until `until_ms`, ticking the
+        /// engine every 50 ms and repeating the latest frame every 600 ms as
+        /// the deck answers polls.
+        fn play(&mut self, events: Vec<(u64, Ev)>, until_ms: u64) {
+            let mut events = events.into_iter().peekable();
+            let mut last_frame: Option<(u64, Vec<u8>)> = None;
+            let mut ms = 0;
+            while ms <= until_ms {
+                let now = self.t0 + Duration::from_millis(ms);
+                self.state.set_test_now(now);
+                while let Some((_, ev)) = events.next_if(|(at, _)| *at <= ms) {
+                    match ev {
+                        Ev::Rx(bytes) => {
+                            self.rx(&bytes);
+                            last_frame = Some((ms, bytes));
+                        }
+                        Ev::Press(action) => self.state.trigger_action(action),
+                    }
+                }
+                if let Some((at, bytes)) = last_frame.clone() {
+                    if ms > at && (ms - at) % 600 == 0 {
+                        self.rx(&bytes);
+                    }
+                }
+                if let Some(packet) = self.engine.determine_next_packet(&mut self.state, now) {
+                    self.state.last_cmd_time = now;
+                    self.sent.push((ms, packet));
+                }
+                ms += 50;
+            }
+            self.t0 += Duration::from_millis(until_ms + 50);
+        }
+
+        fn count(&self, kind: PacketKind) -> usize {
+            self.sent.iter().filter(|(_, p)| p.kind == kind).count()
+        }
+
+        fn controls(&self, control: Control) -> usize {
+            let bytes = protocol::control_packet(control, 0, 0);
+            self.sent.iter().filter(|(_, p)| p.bytes == bytes).count()
+        }
+
+        /// Everything sent but status polls.
+        fn commands(&self) -> Vec<PacketKind> {
+            self.sent
+                .iter()
+                .map(|(_, p)| p.kind)
+                .filter(|k| *k != PacketKind::PollStatus)
+                .collect()
+        }
+    }
+
+    /// Engage on an idle deck as recorded: READY, the deck counts down 3-2-1
+    /// in status 2, then runs (3) at its own 0.6 km/h.
+    fn engage_events() -> Vec<(u64, Ev)> {
+        vec![
+            (0, Ev::Rx(IDLE_FRAME.to_vec())),
+            (300, Ev::Press(DeckAction::ToggleStart)),
+            (660, Ev::Rx(countdown_frame(3))),
+            (1620, Ev::Rx(countdown_frame(2))),
+            (2585, Ev::Rx(countdown_frame(1))),
+            (4140, Ev::Rx(deck_frame(3, 0x06, 0))),
+        ]
+    }
+
+    /// Running frames, one a second, from `from_s` to `to_s` of deck time.
+    fn walking(at_ms: u64, from_s: u16, to_s: u16) -> Vec<(u64, Ev)> {
+        (from_s..=to_s)
+            .map(|s| {
+                (
+                    at_ms + (s - from_s) as u64 * 1000,
+                    Ev::Rx(deck_frame(3, 0x0b, s)),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn engage_sends_one_ready_and_one_start_through_the_countdown() {
+        let mut r = Replay::new();
+        r.play(engage_events(), 6000);
+        assert_eq!(r.count(PacketKind::HandshakeReady), 1, "{:?}", r.commands());
+        assert_eq!(r.count(PacketKind::HandshakeStart), 1, "{:?}", r.commands());
+        assert!(
+            r.state.start_requested_at.is_none(),
+            "the countdown answered"
+        );
+        assert!(!r.state.start_blocked);
+        // Nothing but polls during the countdown; the target once running.
+        let first_running_ms = 4140;
+        assert!(r
+            .sent
+            .iter()
+            .filter(|(_, p)| p.kind == PacketKind::ControlSet)
+            .all(|(t, _)| *t >= first_running_ms));
+        assert_eq!(r.state.last_status, MachineStatus::Running);
+        assert_eq!(r.sessions_started, 1);
+    }
+
+    #[test]
+    fn a_deck_that_never_counts_down_still_gets_the_engage_retries_and_timeout() {
+        let mut r = Replay::new();
+        r.play(
+            vec![
+                (0, Ev::Rx(IDLE_FRAME.to_vec())),
+                (300, Ev::Press(DeckAction::ToggleStart)),
+            ],
+            9000,
+        );
+        assert!(
+            r.count(PacketKind::HandshakeReady) > 1,
+            "{:?}",
+            r.commands()
+        );
+        assert!(r.state.start_blocked, "gave up after 8 s");
+        let late = r.sent.iter().filter(|(t, p)| {
+            *t > 8_400
+                && matches!(
+                    p.kind,
+                    PacketKind::HandshakeReady | PacketKind::HandshakeStart
+                )
+        });
+        assert_eq!(late.count(), 0);
+    }
+
+    #[test]
+    fn dump_sends_one_stop_and_no_pause_while_the_deck_winds_down() {
+        let mut r = Replay::new();
+        r.play(engage_events(), 4500);
+        r.play(walking(0, 1, 30), 30_000);
+        assert_eq!(r.sessions_started, 1);
+        r.sent.clear();
+        // As recorded: stop, the belt winds down in 4, the workout ends (1)
+        // about 1.3 s after it is still, and 0 three seconds later.
+        r.play(
+            vec![
+                (0, Ev::Rx(deck_frame(3, 0x0b, 36))),
+                (100, Ev::Press(DeckAction::Stop)),
+                (520, Ev::Rx(deck_frame(4, 0x08, 36))),
+                (1120, Ev::Rx(deck_frame(4, 0x05, 36))),
+                (1840, Ev::Rx(deck_frame(4, 0x01, 36))),
+                (2680, Ev::Rx(deck_frame(4, 0x00, 36))),
+                (4000, Ev::Rx(deck_frame(1, 0x00, 36))),
+                (7120, Ev::Rx(IDLE_FRAME.to_vec())),
+            ],
+            10_000,
+        );
+        assert_eq!(r.controls(Control::Stop), 1, "{:?}", r.commands());
+        assert_eq!(r.commands(), vec![PacketKind::AtomicAction]);
+        assert_eq!(r.controls(Control::Pause), 0);
+        // Saved once, when the deck said the workout ended, with its time.
+        assert_eq!(r.finalised, vec![36]);
+        assert_eq!(r.sessions_started, 1);
+        assert!(!r.state.stop_requested);
+        assert_eq!(r.state.last_status, MachineStatus::Stopped);
+    }
+
+    /// Status 1 (workout ended) is not a running belt: no session opens, no
+    /// key counting for Neural flow, and no pause is triggered.
+    #[test]
+    fn a_workout_ended_frame_is_a_still_belt() {
+        let mut r = Replay::new();
+        r.state.focus_stability_enabled = true;
+        r.play(vec![(0, Ev::Rx(deck_frame(1, 0x00, 36)))], 3_000);
+        assert!(!r.state.neural_monitor_wanted());
+        assert_eq!(r.sessions_started, 0);
+        assert_eq!(r.commands(), Vec::<PacketKind>::new());
+    }
+
+    #[test]
+    fn nothing_is_sent_while_the_belt_spins_down_even_on_a_press() {
+        let mut r = Replay::new();
+        r.play(engage_events(), 4500);
+        r.play(walking(0, 1, 5), 5_000);
+        r.sent.clear();
+        r.play(
+            vec![
+                (100, Ev::Press(DeckAction::Stop)),
+                (520, Ev::Rx(deck_frame(4, 0x08, 6))),
+                (700, Ev::Press(DeckAction::Stop)),
+                (900, Ev::Press(DeckAction::Pause)),
+                (1000, Ev::Press(DeckAction::ToggleStart)),
+                (1120, Ev::Rx(deck_frame(4, 0x05, 6))),
+                (2000, Ev::Rx(deck_frame(1, 0x00, 6))),
+                (5000, Ev::Rx(IDLE_FRAME.to_vec())),
+            ],
+            9_000,
+        );
+        assert_eq!(r.commands(), vec![PacketKind::AtomicAction], "{:?}", r.sent);
+        // The Engage was refused (and said so), not kept for later: the deck
+        // reaching 0 doesn't start the belt.
+        assert!(r.state.start_requested_at.is_none());
+        assert!(r.state.start_blocked);
+        assert_eq!(r.state.last_status, MachineStatus::Stopped);
+    }
+
+    #[test]
+    fn pause_then_resume_through_the_countdown() {
+        let mut r = Replay::new();
+        r.play(engage_events(), 4500);
+        r.play(walking(0, 1, 30), 30_000);
+        r.sent.clear();
+        r.play(
+            vec![
+                (0, Ev::Rx(deck_frame(3, 0x0b, 31))),
+                (100, Ev::Press(DeckAction::ToggleStart)),
+                (520, Ev::Rx(deck_frame(10, 0x08, 31))),
+                (1120, Ev::Rx(deck_frame(10, 0x05, 31))),
+                (1720, Ev::Rx(deck_frame(10, 0x02, 31))),
+                (2500, Ev::Rx(deck_frame(10, 0x00, 31))),
+            ],
+            5_000,
+        );
+        assert_eq!(r.controls(Control::Pause), 1, "{:?}", r.commands());
+        assert_eq!(r.commands(), vec![PacketKind::AtomicAction]);
+        r.sent.clear();
+        // Resume as recorded: READY, the countdown (2), then running (3).
+        r.play(
+            vec![
+                (0, Ev::Press(DeckAction::ToggleStart)),
+                (360, Ev::Rx(countdown_frame(3))),
+                (1560, Ev::Rx(countdown_frame(2))),
+                (2280, Ev::Rx(countdown_frame(1))),
+                (3480, Ev::Rx(deck_frame(3, 0x0b, 31))),
+            ],
+            6_000,
+        );
+        assert_eq!(r.count(PacketKind::HandshakeReady), 1, "{:?}", r.commands());
+        assert_eq!(r.count(PacketKind::HandshakeStart), 1, "{:?}", r.commands());
+        assert_eq!(r.sessions_started, 1, "a resume continues the session");
+        assert!(r.finalised.is_empty());
+    }
+
+    #[test]
+    fn a_pause_that_ends_on_the_deck_saves_the_session_once_and_sends_nothing() {
+        let mut r = Replay::new();
+        r.play(engage_events(), 4500);
+        r.play(walking(0, 1, 20), 20_000);
+        r.play(
+            vec![
+                (0, Ev::Press(DeckAction::Pause)),
+                (400, Ev::Rx(deck_frame(10, 0x05, 21))),
+                (1500, Ev::Rx(deck_frame(10, 0x00, 21))),
+            ],
+            3_000,
+        );
+        r.sent.clear();
+        // The deck's own pause timeout (or a stop at the treadmill): 10, 1, 0.
+        r.play(
+            vec![
+                (0, Ev::Rx(deck_frame(1, 0x00, 21))),
+                (3000, Ev::Rx(IDLE_FRAME.to_vec())),
+            ],
+            8_000,
+        );
+        assert_eq!(r.commands(), Vec::<PacketKind>::new());
+        assert_eq!(r.finalised, vec![21]);
+        assert_eq!(r.sessions_started, 1);
+    }
+
+    /// Everything that starts the belt, pressed on a deck in standby: no
+    /// start goes out, the refusal is at once, and the deck waking (6, then 0)
+    /// starts nothing by itself.
+    #[test]
+    fn a_start_on_a_deck_in_standby_sends_nothing_and_says_so() {
+        let presses: [fn(&mut OrchestratorState); 4] = [
+            |s| s.trigger_action(DeckAction::ToggleStart),
+            |s| s.trigger_action(DeckAction::Start),
+            |s| s.set_intent(Some(3.0), None, true),
+            |s| {
+                s.programs = vec![Program {
+                    id: 1,
+                    name: "Walk".into(),
+                    steps: vec![crate::programs::ProgramStep {
+                        duration_minutes: Some(10.0),
+                        speed_kmh: 3.0,
+                        incline_pct: 0.0,
+                    }],
+                    repeat_every_minutes: None,
+                }];
+                let now = s.now();
+                s.run_program(1, now).unwrap();
+            },
+        ];
+        for (i, press) in presses.into_iter().enumerate() {
+            let mut r = Replay::new();
+            r.state.hold_auto_start = true;
+            r.play(vec![(0, Ev::Rx(STANDBY_FRAME.to_vec()))], 1_000);
+            assert!(r.state.deck_standby);
+            press(&mut r.state);
+            // Refused before any packet: nothing waits for an answer.
+            assert!(r.state.start_requested_at.is_none(), "press {i}");
+            assert_eq!(r.state.start_refusal(), Some(crate::link::START_STANDBY));
+            r.play(vec![], 9_000);
+            assert!(r.state.start_blocked, "press {i}");
+            // The deck wakes: still nothing starts the belt.
+            r.play(
+                vec![
+                    (0, Ev::Rx(IDLE_FRAME.to_vec())),
+                    (6_000, Ev::Rx(IDLE_FRAME.to_vec())),
+                ],
+                12_000,
+            );
+            assert!(!r.state.deck_standby);
+            assert_eq!(r.commands(), Vec::<PacketKind>::new(), "press {i}");
+            // Engage again, now it is awake: a real start.
+            r.state.trigger_action(DeckAction::Start);
+            r.play(vec![], 1_000);
+            assert!(
+                r.commands().contains(&PacketKind::HandshakeReady),
+                "press {i}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_start_at_the_treadmill_counts_down_and_opens_one_session() {
+        let mut r = Replay::new();
+        r.state.hold_auto_start = true;
+        r.play(
+            vec![
+                (0, Ev::Rx(IDLE_FRAME.to_vec())),
+                (1000, Ev::Rx(countdown_frame(3))),
+                (2000, Ev::Rx(countdown_frame(2))),
+                (3000, Ev::Rx(countdown_frame(1))),
+                (4000, Ev::Rx(deck_frame(3, 0x06, 0))),
+            ],
+            6_000,
+        );
+        // The app sends no start of its own (the deck's speed may be echoed
+        // back as the target once it runs).
+        assert!(!r.commands().iter().any(|k| matches!(
+            k,
+            PacketKind::HandshakeReady | PacketKind::HandshakeStart | PacketKind::HandshakePause
+        )));
+        assert!(!r.state.hold_auto_start, "seen moving");
+        assert_eq!(r.sessions_started, 1);
     }
 }
