@@ -1316,12 +1316,19 @@ impl OrchestratorState {
         let was = self.neural.target_kmh();
         if self.neural.tick(&cfg, &tick) {
             self.neural_changed_at = Some(now);
+            let kind = match self.neural.last_change_kind() {
+                Some(crate::neural::ChangeKind::Recover) => "recovery",
+                Some(crate::neural::ChangeKind::Floor) => "floor moved",
+                _ => "slowing",
+            };
             log::info!(
-                "Neural flow: {:.2} -> {:.2} km/h (base {:.2}, {:.0} keys/min)",
+                "Neural flow {}: {:.2} -> {:.2} km/h (base {:.2}, {:.0} keys/min, typing level {:.0} keys/min)",
+                kind,
                 was,
                 self.neural.target_kmh(),
                 self.neural.base_kmh(),
-                self.neural.keys_per_min()
+                self.neural.keys_per_min(),
+                self.neural.level_kpm()
             );
         }
     }

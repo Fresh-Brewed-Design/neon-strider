@@ -1,0 +1,1 @@
+- Neural flow now brings the belt back up when you type less, even if you still type a few keys now and then: it starts within about 20 s and reaches full speed about a minute after you stop, instead of waiting for 45 s of near silence.

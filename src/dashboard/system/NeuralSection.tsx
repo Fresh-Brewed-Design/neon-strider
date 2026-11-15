@@ -82,7 +82,7 @@ export function NeuralSection() {
         tone="green"
         checked={enabled}
         onChange={(v) => updateSettings({ focusStabilityEnabled: v })}
-        description="Works on any walk, set by hand or by a program. It starts after about 10 s of steady typing and waits for about 45 s of quiet before speeding back up, a little at a time. A speed you set yourself becomes the new starting point."
+        description="Works on any walk, set by hand or by a program. It starts after about 10 s of steady typing. When you type less, it speeds back up within about 20 s, all the way once you are typing only now and then, and back to full speed about a minute after you stop. A speed you set yourself becomes the new starting point."
       />
       {enabled && (
         <>
