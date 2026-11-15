@@ -593,7 +593,7 @@ function setMaintenance(patch: Partial<MaintenanceSnapshot>) {
   m.due = frac >= 1;
 }
 // ?due: well past the distance interval.
-if (params.has("due")) setMaintenance({ last_service_ms: Date.now() - 95 * 86_400_000, distance_since_km: 168.2, hours_since: 52.6 });
+if (params.has("due")) setMaintenance({ last_service_ms: Date.now() - 95 * 86_400_000, distance_since_km: 212.4, hours_since: 52.6 });
 resolveSeatedPrograms();
 
 /** A few weeks of fake walks for the History page. */
