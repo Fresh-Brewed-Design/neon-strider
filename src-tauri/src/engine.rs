@@ -25,7 +25,7 @@ use std::time::{Duration, Instant};
 const PAUSE_SAVE_AFTER: Duration = Duration::from_secs(300);
 
 /// Below this a speed means "belt still" (km/h, physical or hardware).
-const STILL_KMH: f32 = 0.05;
+pub(crate) const STILL_KMH: f32 = 0.05;
 /// A stopped deck is only auto-started for a target above this.
 const AUTO_START_MIN_KMH: f32 = 0.1;
 /// Manual input wins over a running program for this long.

@@ -10,7 +10,7 @@
 //! `Instant` so it can be unit-tested without Tauri or a treadmill.
 
 use crate::bluetooth::ORCHESTRATOR;
-use crate::engine::OrchestratorState;
+use crate::engine::{OrchestratorState, STILL_KMH};
 use crate::persistence;
 use crate::protocol::{ControlIntent, MachineStatus};
 use serde::{Deserialize, Serialize};
@@ -1002,6 +1002,12 @@ impl OrchestratorState {
         if !self.program_walking() {
             return false;
         }
+        // Taking the speed down to zero by hand is a pause, not a step edited
+        // to 0 km/h: the step keeps its own speed, so Engage (GO) resumes it.
+        // A step target of zero would pause the belt again right after Engage.
+        if speed.is_some_and(|s| s < STILL_KMH) && self.pause_by_zero_speed(incline) {
+            return true;
+        }
         let Some(run) = self.program.as_mut() else {
             return false;
         };
@@ -1014,6 +1020,29 @@ impl OrchestratorState {
         let run = run.clone();
         self.set_program_intent_from(&run);
         true
+    }
+
+    /// The hand set the walking step's speed to zero: pause the program and
+    /// put the step's own speed back as its target. False when the step is
+    /// itself a 0 km/h step (nothing to resume to) or no program is walking.
+    fn pause_by_zero_speed(&mut self, incline: Option<u8>) -> bool {
+        let Some(run) = self.program.as_ref() else {
+            return false;
+        };
+        let Some(step) = run.program.steps.get(run.step_index) else {
+            return false;
+        };
+        if step.speed_kmh < STILL_KMH {
+            return false;
+        }
+        let step_speed = step.speed_kmh;
+        if let Some(run) = self.program.as_mut() {
+            run.target.speed = step_speed;
+            if let Some(i) = incline {
+                run.target.incline = i;
+            }
+        }
+        self.pause_program(Instant::now()).is_ok()
     }
 
     pub fn active_program(&self) -> Option<ActiveProgram> {
@@ -2628,6 +2657,28 @@ mod tests {
     /// Was `pin_a_resting_run_saved_over_ten_minutes_ago_is_dropped`: a run
     /// that holds the belt still now keeps for hours; a walking one still for
     /// ten minutes.
+    #[test]
+    fn speed_taken_to_zero_by_hand_pauses_the_program_and_engage_resumes_it() {
+        let t0 = Instant::now();
+        let mut s = state();
+        moving(&mut s, BEFORE.speed, BEFORE.incline);
+        s.run_program(1, t0).unwrap();
+        let step_speed = s.program_intent.map(|i| i.speed).unwrap();
+        assert!(step_speed > 1.0);
+
+        assert!(s.adjust_program_target(Some(0.0), None));
+        let a = s.active_program().unwrap();
+        assert!(a.paused, "zero by hand pauses the program");
+        assert_eq!(s.program.as_ref().unwrap().target.speed, step_speed);
+
+        s.trigger_action(crate::engine::DeckAction::Start);
+        let a = s.active_program().unwrap();
+        assert!(!a.paused, "Engage is GO");
+        assert_eq!(s.program_intent.map(|i| i.speed), Some(step_speed));
+        // Nothing left that would pause the belt again once the lockout ends.
+        assert!(s.resolve_target().0 >= step_speed - 0.01);
+    }
+
     #[test]
     fn a_still_run_keeps_for_hours_and_a_walking_one_for_minutes() {
         let t0 = Instant::now();
