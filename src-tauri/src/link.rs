@@ -215,6 +215,11 @@ const START_NO_RESPONSE: &str =
 /// winds the belt down after a stop: it refuses starts until the belt is still.
 pub const START_SPINNING_DOWN: &str = "Belt is still stopping. Press Engage once it stops.";
 
+/// Shown under Engage (and in the HUD) for a start asked for while the deck
+/// is in standby: it refuses every start, and the app can't wake it. It can't
+/// tell a screen timeout from a power-off, hence "off or asleep".
+pub const START_STANDBY: &str = "Treadmill is off or asleep. Switch it on, then press Engage.";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StartCheck {
     Waiting,

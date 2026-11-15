@@ -156,6 +156,8 @@ pub struct DeckSnapshot {
     /// The deck sent a status byte we don't recognise (status then reads
     /// Stopped). Shown as "Treadmill state unknown (code N)".
     pub unknown_status_code: Option<u8>,
+    /// The deck reports standby (off or asleep): it refuses starts.
+    pub standby: bool,
     /// Calibrated belt speed.
     pub speed_kmh: f32,
     /// What the deck itself reports.

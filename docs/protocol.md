@@ -52,6 +52,13 @@ the Start sent after it is refused. While counting down (`2`) or stopping (`4`)
 it refuses a second READY, Start, Stop or Pause, so the app sends nothing but
 polls then.
 
+A refused control packet is answered with the nack `02 53 53 03`. Accepted ones
+are echoed (`02 53 03 50 03` for a Stop, `02 53 02 <speed> <incline> ...` for a
+target). In standby (`6`) the deck nacks every READY and Start: the app can't
+wake it, so Engage (or GO, a program, a speed set by hand) sends nothing and
+says the treadmill is off or asleep at once. Once it wakes (`6` to `0`) nothing
+starts by itself; the user presses Engage again.
+
 Anything else is unknown: the engine keeps treating it as stopped (nothing
 starts or ends a session on a guess), but the raw value is kept and the app
 shows "Treadmill state unknown (code N)".

@@ -297,6 +297,7 @@ impl ToastTracker {
 pub(crate) fn apply_telemetry(state: &mut OrchestratorState, t: &Telemetry) {
     state.last_status = t.status;
     state.unknown_status_code = (!t.status_known).then_some(t.status_code);
+    state.deck_standby = t.status_code == protocol::STATUS_STANDBY;
     state.hardware_speed = t.speed_kmh;
     state.hardware_incline = t.incline;
     state.hardware_time = t.time_sec;

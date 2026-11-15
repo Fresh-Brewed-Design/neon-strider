@@ -29,6 +29,10 @@ describe("linkLabel", () => {
     });
   });
 
+  it("says the deck is off while it is in standby", () => {
+    expect(linkLabel(snap({ deck: { status: "Stopped", standby: true } }))).toEqual({ text: "DECK OFF", tone: "warn" });
+  });
+
   it("shows the link problem when offline", () => {
     const offline = snap({ connection: { connected: false, link: { state: "idle" } } });
     expect(linkLabel(offline)).toEqual({ text: "LINK DOWN", tone: "down" });

@@ -8,6 +8,10 @@ export type DeckSnapshot = { status: MachineStatus,
  */
 unknown_status_code: number | null, 
 /**
+ * The deck reports standby (off or asleep): it refuses starts.
+ */
+standby: boolean, 
+/**
  * Calibrated belt speed.
  */
 speed_kmh: number, 

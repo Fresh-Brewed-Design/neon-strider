@@ -14,6 +14,8 @@ export function linkLabel(s: AppSnapshot): { text: string; tone: LinkTone } {
     // A status byte we don't know (screen off?): don't claim STANDBY.
     return { text: `STATE ?${s.deck.unknown_status_code}`, tone: "warn" };
   }
+  // Standby: off or asleep, and it refuses starts.
+  if (s.deck.standby) return { text: "DECK OFF", tone: "warn" };
   switch (s.deck.status) {
     case "Running":
       return { text: "RUNNING", tone: "live" };

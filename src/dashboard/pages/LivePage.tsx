@@ -45,6 +45,8 @@ function headerNotice(s: AppSnapshot): ReactNode {
       title: "The treadmill sent a status this app doesn't know yet. The log records it.",
       text: `Treadmill state unknown (code ${s.deck.unknown_status_code})`,
     };
+  } else if (s.connection.connected && s.deck.standby) {
+    notice = { label: "DECK OFF", title: "Off or asleep. It can't be started from here.", text: "Treadmill is off or asleep" };
   } else {
     return null;
   }

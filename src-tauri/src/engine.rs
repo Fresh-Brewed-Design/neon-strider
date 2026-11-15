@@ -235,6 +235,9 @@ pub struct OrchestratorState {
     pub start_sent_at: Option<Instant>,
     /// The raw 0x51 status byte when it is not one we know; None when known.
     pub unknown_status_code: Option<u8>,
+    /// The deck reports standby (`protocol::STATUS_STANDBY`): off or asleep.
+    /// It refuses every start, so none is sent (see `start_refusal`).
+    pub deck_standby: bool,
     /// The belt never starts by itself after a restart, reconnect or update:
     /// set for each new connection, this holds off the automatic start and
     /// resume until the deck is seen moving on this connection or the user asks
@@ -315,6 +318,7 @@ impl Default for OrchestratorState {
             start_blocked: false,
             start_sent_at: None,
             unknown_status_code: None,
+            deck_standby: false,
             hold_auto_start: true,
             engage_speed: None,
             programs: Vec::new(),
@@ -1191,6 +1195,7 @@ impl OrchestratorState {
         self.start_blocked = false;
         self.start_sent_at = None;
         self.unknown_status_code = None;
+        self.deck_standby = false;
         self.last_handshake_tx = None;
         // Nothing starts the belt on this connection until it is seen moving
         // or the user asks; a start half-sent before the drop is void too.
@@ -1252,11 +1257,7 @@ impl OrchestratorState {
     /// Engage, nothing starts the belt later by itself (`start_blocked`).
     pub(crate) fn arm_start_watch(&mut self, now: Instant) -> bool {
         if let Some(why) = self.start_refusal() {
-            log::info!("Start refused: {}", why);
-            self.start_requested_at = None;
-            self.start_blocked = true;
-            self.handshake_step = HandshakeStep::Idle;
-            crate::link::start_refused(why);
+            self.refuse_start(why);
             return false;
         }
         self.start_blocked = false;
@@ -1268,11 +1269,28 @@ impl OrchestratorState {
         true
     }
 
-    /// Why the deck can't take a start right now, if it can't: it is winding
-    /// the belt down after a stop (it refuses anything but polls until it has
-    /// stopped).
-    fn start_refusal(&self) -> Option<&'static str> {
-        (self.last_status == MachineStatus::Stopping).then_some(crate::link::START_SPINNING_DOWN)
+    /// Why the deck can't take a start right now, if it can't: it is in
+    /// standby (off or asleep; it refuses every start and the app can't wake
+    /// it), or winding the belt down after a stop (it refuses anything but
+    /// polls until it has stopped).
+    pub(crate) fn start_refusal(&self) -> Option<&'static str> {
+        if self.deck_standby {
+            Some(crate::link::START_STANDBY)
+        } else if self.last_status == MachineStatus::Stopping {
+            Some(crate::link::START_SPINNING_DOWN)
+        } else {
+            None
+        }
+    }
+
+    /// Send no start, say why at once, and, as after an unanswered Engage,
+    /// start nothing later by itself (`start_blocked`) until the user asks again.
+    fn refuse_start(&mut self, why: &str) {
+        log::info!("Start refused: {}", why);
+        self.start_requested_at = None;
+        self.start_blocked = true;
+        self.handshake_step = HandshakeStep::Idle;
+        crate::link::start_refused(why);
     }
 
     /// Follow up on an Engage: clear the watch once the deck reports Starting or
@@ -1635,6 +1653,11 @@ impl ProtocolEngine {
         if !state.may_drive() {
             return None;
         }
+        // Standby refuses every start; nothing is kept for when it wakes.
+        if state.deck_standby && state.handshake_step != HandshakeStep::Idle {
+            state.handshake_step = HandshakeStep::Idle;
+            return None;
+        }
         let waited = |gap: Duration| {
             state
                 .last_handshake_tx
@@ -1688,7 +1711,12 @@ impl ProtocolEngine {
                     && !state.start_blocked
                     && !state.hold_auto_start =>
             {
-                state.handshake_step = HandshakeStep::Priming;
+                // A speed set by hand on a deck in standby: it would only
+                // refuse the start, so say so instead.
+                match state.start_refusal() {
+                    Some(why) => state.refuse_start(why),
+                    None => state.handshake_step = HandshakeStep::Priming,
+                }
             }
             MachineStatus::Paused
                 if target_speed > self.last_physical_speed + STILL_KMH
@@ -2782,6 +2810,8 @@ mod tests {
     }
 
     const IDLE_FRAME: [u8; 5] = [0x02, 0x51, 0x00, 0x51, 0x03];
+    /// Standby, as recorded after a power-off held on the remote.
+    const STANDBY_FRAME: [u8; 6] = [0x02, 0x51, 0x06, 0x02, 0x55, 0x03];
 
     enum Ev {
         /// A status frame arrives (and keeps arriving every 600 ms until the next).
@@ -3089,6 +3119,61 @@ mod tests {
         assert_eq!(r.commands(), Vec::<PacketKind>::new());
         assert_eq!(r.finalised, vec![21]);
         assert_eq!(r.sessions_started, 1);
+    }
+
+    /// Everything that starts the belt, pressed on a deck in standby: no
+    /// start goes out, the refusal is at once, and the deck waking (6, then 0)
+    /// starts nothing by itself.
+    #[test]
+    fn a_start_on_a_deck_in_standby_sends_nothing_and_says_so() {
+        let presses: [fn(&mut OrchestratorState); 4] = [
+            |s| s.trigger_action(DeckAction::ToggleStart),
+            |s| s.trigger_action(DeckAction::Start),
+            |s| s.set_intent(Some(3.0), None, true),
+            |s| {
+                s.programs = vec![Program {
+                    id: 1,
+                    name: "Walk".into(),
+                    steps: vec![crate::programs::ProgramStep {
+                        duration_minutes: Some(10.0),
+                        speed_kmh: 3.0,
+                        incline_pct: 0.0,
+                    }],
+                    repeat_every_minutes: None,
+                }];
+                let now = s.now();
+                s.run_program(1, now).unwrap();
+            },
+        ];
+        for (i, press) in presses.into_iter().enumerate() {
+            let mut r = Replay::new();
+            r.state.hold_auto_start = true;
+            r.play(vec![(0, Ev::Rx(STANDBY_FRAME.to_vec()))], 1_000);
+            assert!(r.state.deck_standby);
+            press(&mut r.state);
+            // Refused before any packet: nothing waits for an answer.
+            assert!(r.state.start_requested_at.is_none(), "press {i}");
+            assert_eq!(r.state.start_refusal(), Some(crate::link::START_STANDBY));
+            r.play(vec![], 9_000);
+            assert!(r.state.start_blocked, "press {i}");
+            // The deck wakes: still nothing starts the belt.
+            r.play(
+                vec![
+                    (0, Ev::Rx(IDLE_FRAME.to_vec())),
+                    (6_000, Ev::Rx(IDLE_FRAME.to_vec())),
+                ],
+                12_000,
+            );
+            assert!(!r.state.deck_standby);
+            assert_eq!(r.commands(), Vec::<PacketKind>::new(), "press {i}");
+            // Engage again, now it is awake: a real start.
+            r.state.trigger_action(DeckAction::Start);
+            r.play(vec![], 1_000);
+            assert!(
+                r.commands().contains(&PacketKind::HandshakeReady),
+                "press {i}"
+            );
+        }
     }
 
     #[test]
