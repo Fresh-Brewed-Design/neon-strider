@@ -29,6 +29,20 @@ The scheduled improvement task picks from here first. Remove an item when its PR
   (e.g. "walked on 9 of the last 10 desk days"). A day off the PC doesn't count and doesn't break
   anything. No records, bests or celebration: it's a walking pad, and the habit is what matters.
 
+- Minify the HUD while the belt is running: a control on the HUD (and a shortcut) that
+  collapses it to the strip at any time, not only while the belt is still. The running strip
+  shows what matters at a glance (speed, time or distance, the program step if one runs) and
+  keeps pause/stop within reach. It stays minified until expanded again; cards that need an
+  answer still show.
+
+- Research-based programs and alerts: an investigation first, then changes. The seeded
+  programs (Post-meal, Workday, Focus) and the desk defaults (the sit-too-long alert's 60
+  minutes, its snooze, the walk-away timings) are meant to be best practice from current
+  research. Check each against the literature (post-meal walking and glucose, breaking up
+  sitting time, walking pace and cognitive work, how long and how often), correct any that
+  don't hold up, and add programs the research supports. Write the findings with sources in
+  `docs/research.md`; keep the in-app text to one short sentence per program.
+
 ## Unscheduled
 
 The scheduled improvement task does not pick from here.
