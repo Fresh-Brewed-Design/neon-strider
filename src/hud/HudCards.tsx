@@ -5,7 +5,6 @@ import type { AppSnapshot } from "../ipc";
 import { formatDuration } from "../format";
 import { formatChange } from "../dashboard/history/weekly";
 import { describePlan } from "../dashboard/programs/format";
-import { KM_PER_MI } from "../units";
 import { HudNote } from "./HudNote";
 import { SmallButton } from "./SmallButton";
 import { useHudSend } from "./useHudSend";
@@ -24,9 +23,7 @@ export function MaintenanceCard({ snapshot }: { snapshot: AppSnapshot }) {
   }, [arming]);
 
   const m = snapshot.maintenance;
-  // Jogwell's distance interval is in miles, so that basis shows miles; belt hours are just hours.
-  const usage =
-    m.basis === "hours" ? `${m.hours_since.toFixed(1)} H` : `${Math.round(m.distance_since_km / KM_PER_MI)} MI`;
+  const usage = m.basis === "hours" ? `${m.hours_since.toFixed(1)} H` : `${Math.round(m.distance_since_km)} KM`;
   return (
     <div className="hud-toast hud-maint accent-magenta" role="alert">
       <div className="hud-toast-body">

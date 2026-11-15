@@ -3,7 +3,8 @@
 //! The belt needs lubricating or servicing every so often. We track distance
 //! walked (or, optionally, belt running hours) and time since the last service
 //! and call it due when either interval is reached, whichever comes first. The
-//! manufacturer's figure is 3 months or 100 miles. Distances are stored and sent
+//! default is 200 km or 3 months: the sticker on the deck says 200 km (125
+//! miles); Jogwell's manual says 100 miles. Distances are stored and sent
 //! in km; the UI converts. Which of distance and hours counts is a setting
 //! (`MaintenanceBasis`); the other is still reported but never makes it due.
 //!
@@ -27,8 +28,11 @@ const KEY_INTERVAL_DAYS: &str = "maintenance_interval_days";
 const KEY_BASIS: &str = "maintenance_basis";
 const KEY_INTERVAL_HOURS: &str = "maintenance_interval_hours";
 
-/// 100 miles.
-const DEFAULT_INTERVAL_KM: f32 = 160.934;
+/// The deck sticker's "125M/200K".
+const DEFAULT_INTERVAL_KM: f32 = 200.0;
+/// The old default, Jogwell's manual's 100 miles. A saved value this
+/// close to it was never chosen, so it loads as the current default.
+const OLD_DEFAULT_INTERVAL_KM: f32 = 160.934;
 const DEFAULT_INTERVAL_DAYS: u32 = 90;
 const MIN_INTERVAL_KM: f32 = 50.0;
 const MAX_INTERVAL_KM: f32 = 5000.0;
@@ -57,7 +61,7 @@ pub fn is_maintenance_key(key: &str) -> bool {
 #[serde(rename_all = "snake_case")]
 #[ts(export, export_to = "../../src/ipc/bindings/")]
 pub enum MaintenanceBasis {
-    /// Distance walked (Jogwell's 100 miles) and days.
+    /// Distance walked (the deck sticker's 200 km) and days.
     #[default]
     Distance,
     /// Belt running hours and days.
@@ -182,7 +186,11 @@ pub fn config_from_raw(
     (
         Config {
             last_service_ms: stored.unwrap_or(now_ms),
-            interval_km: persistence::setting_in(interval_km, km, DEFAULT_INTERVAL_KM),
+            interval_km: interval_km_or_default(persistence::setting_in(
+                interval_km,
+                km,
+                DEFAULT_INTERVAL_KM,
+            )),
             interval_days: persistence::setting_in(
                 interval_days,
                 0..=MAX_INTERVAL_DAYS,
@@ -193,6 +201,16 @@ pub fn config_from_raw(
         },
         first_run,
     )
+}
+
+/// The old 100-mile default becomes the current one; any other value is kept.
+/// 100 miles typed by hand looks the same and moves too.
+fn interval_km_or_default(km: f32) -> f32 {
+    if (km - OLD_DEFAULT_INTERVAL_KM).abs() < 0.01 {
+        DEFAULT_INTERVAL_KM
+    } else {
+        km
+    }
 }
 
 /// km 50 to 5000, days 0 to 730 (0 = no time limit).
@@ -467,11 +485,29 @@ mod tests {
     }
 
     #[test]
-    fn default_interval_is_one_hundred_miles() {
-        assert!((DEFAULT_INTERVAL_KM - 100.0 * 1.609_344).abs() < 0.01);
+    fn default_interval_is_200_km() {
+        assert_eq!(DEFAULT_INTERVAL_KM, 200.0);
         let c = cfg(DEFAULT_INTERVAL_KM, DEFAULT_INTERVAL_DAYS);
-        assert!(!dist(&c, 160_000.0, 0.0, T0).due);
-        assert!(dist(&c, 161_000.0, 0.0, T0).due);
+        assert!(!dist(&c, 199_900.0, 0.0, T0).due);
+        assert!(dist(&c, 200_000.0, 0.0, T0).due);
+    }
+
+    #[test]
+    fn old_default_interval_moves_and_custom_ones_stay() {
+        let load = |raw: &str| {
+            let (c, _) = config_from_raw(Some(&T0.to_string()), Some(raw), None, None, None, T0);
+            c.interval_km
+        };
+        // The old 100-mile default as saved, and 100 miles typed by hand (f32 maths).
+        assert_eq!(load("160.934"), DEFAULT_INTERVAL_KM);
+        assert_eq!(
+            load(&(100.0_f32 * 1.609_344).to_string()),
+            DEFAULT_INTERVAL_KM
+        );
+        // Anything else is kept exactly.
+        assert_eq!(load("150"), 150.0);
+        assert_eq!(load("160.9"), 160.9);
+        assert_eq!(load("201.168"), 201.168);
     }
 
     #[test]
@@ -480,7 +516,7 @@ mod tests {
         let (c, first) = config_from_raw(None, None, None, None, None, now);
         assert!(first);
         assert_eq!(c.last_service_ms, now);
-        assert_eq!(c.interval_km, 160.934);
+        assert_eq!(c.interval_km, DEFAULT_INTERVAL_KM);
         assert_eq!(c.interval_days, 90);
         assert_eq!(c.basis, MaintenanceBasis::Distance);
         assert_eq!(c.interval_hours, 50.0);

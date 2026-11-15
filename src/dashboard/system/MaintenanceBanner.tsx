@@ -1,6 +1,5 @@
 import { Wrench } from "lucide-react";
 import { useAppSnapshot } from "../../state/useAppState";
-import { KM_PER_MI } from "../../units";
 import { GhostButton } from "../ui";
 import { confirmServiced } from "./maintenance";
 
@@ -16,7 +15,7 @@ export function MaintenanceBanner() {
     >
       <Wrench size={14} className="shrink-0 text-neon-magenta" aria-hidden />
       <span className="min-w-0 flex-1 font-mono text-[11px] font-bold uppercase tracking-[0.08em] text-neon-magenta">
-        Belt service due · {Math.round(m.distance_since_km / KM_PER_MI)} mi · {m.days_since} days
+        Belt service due · {Math.round(m.distance_since_km)} km · {m.days_since} days
       </span>
       <GhostButton className="shrink-0 text-neon-magenta hover:text-white" onClick={confirmServiced}>
         Mark serviced
