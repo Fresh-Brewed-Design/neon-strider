@@ -1,0 +1,1 @@
+- The command cycler in System -> Diagnostics now sends proper treadmill frames (with checksum), lets you pick which byte cycles, shows the exact bytes it will send, and no longer double-sends when auto-step starts.

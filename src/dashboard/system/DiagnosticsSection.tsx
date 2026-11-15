@@ -34,22 +34,26 @@ export function DiagnosticsSection() {
 
   const runRaw = raw.run;
   const sendRaw = useCallback(
-    (data: number[]) => {
-      const fire = () => void runRaw(() => invoke("send_bluetooth_command", { data }));
-      if (Date.now() <= armedUntil.current) return fire();
-      // Auto-step keeps calling while the dialog is open: those sends are
-      // dropped, so confirming sends only the command that asked.
+    (body: number[]): Promise<boolean> => {
+      const fire = () => {
+        void runRaw(() => invoke("send_bluetooth_command", { body }));
+        return true;
+      };
+      if (Date.now() <= armedUntil.current) return Promise.resolve(fire());
+      // Only one confirm at a time; a send asked for while it is open is dropped.
       const store = useTreadmillStore.getState();
-      if (store.pendingConfirmation) return;
-      store.confirm({
-        title: "Send raw commands",
-        message:
-          "Send raw commands to the treadmill for the next 5 minutes? Unknown commands can make it do unexpected things. Stop the belt and step off first.",
-        onConfirm: () => {
-          armedUntil.current = Date.now() + RAW_ARMED_MS;
-          fire();
-        },
-      });
+      if (store.pendingConfirmation) return Promise.resolve(false);
+      return new Promise((resolve) =>
+        store.confirm({
+          title: "Send raw commands",
+          message: "Raw commands can start the belt. Step off first. Armed for 5 minutes.",
+          onConfirm: () => {
+            armedUntil.current = Date.now() + RAW_ARMED_MS;
+            resolve(fire());
+          },
+          onCancel: () => resolve(false),
+        }),
+      );
     },
     [runRaw],
   );
@@ -88,8 +92,7 @@ export function DiagnosticsSection() {
             <div>
               <Label className="mb-1 block">Command cycler</Label>
               <p className="mb-3 font-mono text-[11px] leading-relaxed text-white/50">
-                Sends raw bytes to the connected treadmill. Unknown commands can make it do unexpected things, so stop
-                the belt and step off first.
+                Can start the belt. Step off the treadmill first.
               </p>
               <CommandCycler onSend={sendRaw} />
               <ActionStatus error={raw.error && `Could not send: ${raw.error}`} className="mt-2" />
