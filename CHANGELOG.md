@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.2 (2026-11-15)
+
+### Changed
+
+- Updated the Rust libraries the app is built on to their newest compatible versions.
+- This fixes 12 of 14 known security advisories in those libraries (OpenSSL, bytes, time and an XML parser). Two remain, in the HTTP library's h2 and in the bundled SQLite, until those libraries get a larger upgrade.
+
 ## 1.3.1 (2026-11-15)
 
 ### Fixed
