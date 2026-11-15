@@ -2,7 +2,7 @@
 //! list of displays. Rust owns both; the config is persisted to the same
 //! settings keys the dashboard reads and writes.
 
-use super::{maintenance, HudAnchor, HudConfig, HudMonitor, HudWidget};
+use super::{maintenance, HudAnchor, HudConfig, HudIdleMode, HudMonitor, HudWidget};
 use crate::persistence::{self, KEY_IS_PINNED, KEY_PINNED_ELEMENTS};
 use crate::placement::{self, MonitorGeom};
 use std::sync::{Mutex, MutexGuard};
@@ -15,6 +15,8 @@ const KEY_HUD_MONITOR: &str = "hud_monitor";
 /// `placement::HudCustom` as JSON while the HUD sits where it was dragged;
 /// `null` at its corner anchor.
 const KEY_HUD_POSITION: &str = "hud_position";
+/// `HudIdleMode` as a JSON string (`"full"`, `"strip"`, `"hidden"`).
+const KEY_HUD_IDLE_MODE: &str = "hud_idle_mode";
 /// Longest display name accepted from a window.
 const MAX_MONITOR_NAME: usize = 200;
 
@@ -25,6 +27,7 @@ static HUD: Mutex<HudConfig> = Mutex::new(HudConfig {
     dashboard_pinned: false,
     monitor_rect: None,
     custom: None,
+    idle_mode: HudIdleMode::Full,
 });
 
 static MONITORS: Mutex<Vec<MonitorGeom>> = Mutex::new(Vec::new());
@@ -73,6 +76,14 @@ pub(super) fn widgets_to_json(widgets: &[HudWidget]) -> String {
 pub(super) fn parse_anchor(raw: &str) -> HudAnchor {
     serde_json::from_str(raw)
         .or_else(|_| serde_json::from_str(&format!("\"{}\"", raw.trim_matches('"'))))
+        .unwrap_or_default()
+}
+
+/// The stored idle mode: JSON-quoted or bare; anything else is `Full`, so a
+/// missing or garbled value leaves the HUD as it always was.
+pub(super) fn parse_idle_mode(raw: &str) -> HudIdleMode {
+    serde_json::from_str(raw)
+        .or_else(|_| serde_json::from_str(&format!("\"{}\"", raw.trim().trim_matches('"'))))
         .unwrap_or_default()
 }
 
@@ -126,6 +137,9 @@ pub(super) fn load(app: &AppHandle) {
         dashboard_pinned: read(KEY_IS_PINNED).is_some_and(|s| s.trim_matches('"') == "true"),
         monitor_rect,
         custom: read(KEY_HUD_POSITION).and_then(|s| placement::parse_hud_custom(&s)),
+        idle_mode: read(KEY_HUD_IDLE_MODE)
+            .map(|s| parse_idle_mode(&s))
+            .unwrap_or_default(),
     };
     *hud_lock() = config;
 }
@@ -143,6 +157,10 @@ fn persist(app: &AppHandle, cfg: &HudConfig) {
         (
             KEY_HUD_POSITION,
             serde_json::to_string(&cfg.custom).unwrap_or_else(|_| "null".to_string()),
+        ),
+        (
+            KEY_HUD_IDLE_MODE,
+            serde_json::to_string(&cfg.idle_mode).unwrap_or_default(),
         ),
     ];
     for (key, value) in writes {
@@ -198,6 +216,7 @@ pub fn on_setting_written(app: &AppHandle, key: &str) {
         KEY_HUD_ANCHOR,
         KEY_HUD_MONITOR,
         KEY_HUD_POSITION,
+        KEY_HUD_IDLE_MODE,
     ];
     if !hud_keys.contains(&key) {
         return;
@@ -362,6 +381,26 @@ mod tests {
             vec![Steps, Timer, Daily]
         );
         assert!(dedup_widgets([]).is_empty());
+    }
+
+    #[test]
+    fn idle_mode_round_trips_and_falls_back_to_full() {
+        assert_eq!(HudConfig::default().idle_mode, HudIdleMode::Full);
+        for mode in [HudIdleMode::Full, HudIdleMode::Strip, HudIdleMode::Hidden] {
+            let stored = serde_json::to_string(&mode).unwrap();
+            assert_eq!(parse_idle_mode(&stored), mode);
+        }
+        assert_eq!(
+            serde_json::to_string(&HudIdleMode::Hidden).unwrap(),
+            "\"hidden\""
+        );
+        assert_eq!(parse_idle_mode("strip"), HudIdleMode::Strip);
+        assert_eq!(parse_idle_mode(" \"hidden\" "), HudIdleMode::Hidden);
+        assert_eq!(parse_idle_mode(""), HudIdleMode::Full);
+        assert_eq!(parse_idle_mode("null"), HudIdleMode::Full);
+        assert_eq!(parse_idle_mode("\"STRIP\""), HudIdleMode::Full);
+        assert_eq!(parse_idle_mode("{\"mode\":1}"), HudIdleMode::Full);
+        assert_eq!(parse_idle_mode("garbage"), HudIdleMode::Full);
     }
 
     #[test]

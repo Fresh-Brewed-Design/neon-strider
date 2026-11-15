@@ -3,7 +3,8 @@
 
 use super::{
     build_snapshot, calls, daily_base, hud, maintenance, odometer, refresh_daily_base, seated,
-    tray, walkaway, weekly, AppSnapshot, ConnectionSnapshot, SnapshotParts, EVENT_APP_STATE,
+    stasis, tray, walkaway, weekly, AppSnapshot, ConnectionSnapshot, SnapshotParts,
+    EVENT_APP_STATE,
 };
 use crate::bluetooth::{self, ORCHESTRATOR};
 use crate::programs::{self, SavedRun};
@@ -81,6 +82,9 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     let now_ms = crate::util::now_ms_u64();
     snapshot.walkaway = walkaway::snapshot(now_ms);
     snapshot.update = crate::update::snapshot(now_ms);
+    // Recomputed every tick, so the end of the grace after a stop reaches the
+    // HUD with the next on-change emit (within a tick).
+    snapshot.hud_view = stasis::view(&snapshot, Instant::now());
     snapshot
 }
 

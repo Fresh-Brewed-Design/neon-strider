@@ -220,6 +220,53 @@ body,
   color: var(--accent);
 }
 
+/* ---- Strip (stasis) ------------------------------------------------- */
+
+/* The panel collapsed while the belt is still: the header, then one row with
+   today's total, expand and Engage. Fits the 300px column with RE-JACK and
+   WAKING… too: the total shrinks first, the buttons never do. */
+.hud-strip {
+  padding: 7px 12px 9px;
+}
+
+.hud-strip-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hud-strip-total {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.hud-strip-total .hud-value { color: var(--accent); }
+
+.hud-btn.hud-btn-expand {
+  flex-shrink: 0;
+  width: 32px;
+  height: 30px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0;
+}
+
+.hud-strip .hud-btn-main {
+  flex: 0 0 auto;
+  height: 30px;
+  min-width: 96px;
+  padding: 0 10px;
+}
+
+.hud-strip .hud-note { margin-top: 6px; }
+
 /* ---- Stats ---------------------------------------------------------- */
 
 .hud-stats {

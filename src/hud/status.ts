@@ -1,5 +1,5 @@
 import type { AppSnapshot, ConnectionSnapshot } from "../ipc";
-import { linkState, linkView } from "../state/linkStatus";
+import { isMoving, linkState, linkView } from "../state/linkStatus";
 
 export type LinkTone = "live" | "idle" | "down" | "warn";
 
@@ -65,3 +65,15 @@ export function relinkView(c: ConnectionSnapshot, pending: boolean): RelinkView 
 
 /** Which link state a pending click is waiting to leave (the countdown ticking doesn't count). */
 export const relinkKey = (c: ConnectionSnapshot) => `${c.connected}:${linkState(c).state}`;
+
+/** The main button's word, the same on the panel and the strip. */
+export function engageLabel(snapshot: AppSnapshot): string {
+  const { deck, connection } = snapshot;
+  const moving = isMoving(deck);
+  if (moving) return "STASIS";
+  if (connection.start_pending) return "WAKING…";
+  // On a paused program the main button is its GO (Rust resumes the program).
+  const a = snapshot.active_program;
+  if (a?.phase === "walking" && a.paused) return "GO";
+  return deck.status === "Paused" ? "RE-JACK" : "ENGAGE";
+}
