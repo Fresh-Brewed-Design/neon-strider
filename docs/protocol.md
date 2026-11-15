@@ -31,8 +31,27 @@ These are the variants of `protocol::Control`.
 - `0x03` (`Stop`): Stop
 
 ## Status Byte (Byte 2 of 0x51)
-Known values: `0` stopped, `1`/`3` running, `2`/`10` paused, `4` starting,
-`6` asleep (screen off, treated as stopped).
+From traffic recordings of the Jogwell Ares 11 Elite (`MachineStatus` in brackets):
+
+| Byte | Meaning | Engine |
+|------|---------|--------|
+| `0` | Stopped, idle. Short frame `02 51 00 51 03`. | Stopped |
+| `1` | Workout ended: belt still, totals still shown, for about 3 s, then `0`. Seen after a stop and when a pause ends. | Stopped (the session is saved here) |
+| `2` | Countdown after a start or resume. Short frames `02 51 02 <n>`, n = 3, 2, 1, about a second apart, then `3`. | Starting |
+| `3` | Running. | Running |
+| `4` | Stopping: the belt winds down after a stop (speed falling to 0), then `1`. | Stopping |
+| `6` | Standby: screen off, or switched off with the remote. Frame `02 51 06 02`. The deck stays connected and keeps answering polls. | Stopped |
+| `10` | Paused. The belt winds down in this status too (speed falling to 0). | Paused |
+
+Recorded sequences: Engage `0, 2, 2, 2, 3`; pause `3, 10`; resume `10, 2, 2, 2, 3`;
+stop `3, 4, 4, 4, 4, 1, 0`; a pause that ends (the deck's timeout or a stop at the
+treadmill) `10, 1, 0`.
+
+The deck answers READY (`02 53 01`) with `02 53 01 03` and starts its countdown;
+the Start sent after it is refused. While counting down (`2`) or stopping (`4`)
+it refuses a second READY, Start, Stop or Pause, so the app sends nothing but
+polls then.
+
 Anything else is unknown: the engine keeps treating it as stopped (nothing
 starts or ends a session on a guess), but the raw value is kept and the app
 shows "Treadmill state unknown (code N)".
