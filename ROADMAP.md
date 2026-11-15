@@ -1,36 +1,12 @@
 # Roadmap
 
-## 1.0 (released 2026-11-13)
-
-Everything in [CHANGELOG.md](CHANGELOG.md). Tested on the treadmill (Jogwell Ares 11 Elite).
-
-## 1.1
-
-1. **Fixes from real use of 1.0**: always first.
-2. **Weekly summary**: on the first walk of the week, a HUD card with last week's distance,
-   time and active days compared with the week before; also at the top of History.
-3. **Strava upgrades**
-   - Uploads marked as indoor treadmill walks, with the mileage added to the Strava shoes you
-     pick.
-   - Mute treadmill walks from followers' feeds (default: all of them; optional threshold).
-   - Title and description templates, themed by default: `NEON STRIDER // 3.21 KM UPLINK`,
-     description in the dashboard codenames.
-   - Skip a walk Strava already has from another app or watch (same start time).
-4. **Desk features**
-   - Sit-too-long nudge: a HUD card after 60 minutes of PC use without walking (any time of
-     day), with one-tap program buttons (the useful half of scheduled programs, which can't
-     work because the treadmill powers itself off).
-   - Slow down on calls: while the microphone is in use, ease the belt to a quiet speed
-     (default 2.0 km/h), then restore it.
-   - Lifetime odometer: total km and belt hours since tracking began, with the option to
-     base the maintenance reminder on hours.
-
 ## Next (small, ready to build)
 
 The scheduled improvement task picks from here first. Remove an item when its PR merges.
 
+## Unscheduled
 
-## Later (not scheduled)
+The scheduled improvement task does not pick from here.
 
 - Daily goal and streaks.
 - Bluetooth heart-rate strap: HUD, history and Strava.
