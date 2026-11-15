@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.1 (2026-11-15)
+
+### Fixed
+
+- Lowering the speed to zero during a program now pauses the program, so RE-JACK resumes the step. Before, the belt started and stopped again a few seconds later.
+
 ## 1.2.0 (2026-11-15)
 
 ### New
