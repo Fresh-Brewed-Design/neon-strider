@@ -46,6 +46,16 @@ OS-specific code belongs only in `src-tauri/src/platform/`; everywhere else call
 - Errors appear next to the control that caused them, visible without scrolling
   (`useAction` with `<ActionStatus>`; the HUD uses `useHudSend` with `<HudNote>`).
 
+## Screenshots in UI pull requests
+
+A PR that changes what the dashboard or HUD looks like shows it in its description: a
+screenshot of each changed screen or state, with a "before" beside it when something existing
+changed. Capture them from the mocked previews (`scripts/screenshots.py` shows how; dashboard at
+760x600, HUD cropped to its panel), so they contain no personal data. Drag the images into the
+PR description on GitHub, or push them to the `pr-screenshots` branch under `pr-<number>/` and
+link them; don't commit them to the PR's own branch. The README images in `docs/img/` are
+regenerated only when the screens they show changed.
+
 ## Release notes
 
 Each PR adds one file `changes/<new|changed|fixed>-<slug>.md` containing `- ` bullet lines
