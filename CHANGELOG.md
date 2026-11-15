@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.0 (2026-11-15)
+
+### New
+
+- **Record treadmill traffic** (System, Diagnostics, TRAFFIC_TAP): saves every command sent to the treadmill and everything it sends back, with timestamps, to a file in the log folder. It only listens, is off each time the app starts, and stops by itself after 4 hours or 20 MB. These recordings will drive a treadmill simulator for testing.
+
 ## 1.3.2 (2026-11-15)
 
 ### Changed
