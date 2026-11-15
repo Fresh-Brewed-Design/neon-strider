@@ -867,10 +867,10 @@ pub fn local_midnight_ms(now: chrono::DateTime<chrono::Local>) -> i64 {
         .unwrap_or_else(|| now.timestamp_millis() - 24 * 60 * 60 * 1000)
 }
 
-/// Sum of distance_meters for sessions started since local midnight, optionally
-/// skipping one session (the live one, whose distance the snapshot adds itself).
-pub fn daily_distance_m(app: &tauri::AppHandle, exclude_id: Option<i64>) -> f64 {
-    let since = local_midnight_ms(chrono::Local::now());
+/// Sum of distance_meters for sessions started at or after `since` (local
+/// midnight, from `local_midnight_ms`), optionally skipping one session (the
+/// live one, whose distance the snapshot adds itself).
+pub fn daily_distance_m(app: &tauri::AppHandle, since: i64, exclude_id: Option<i64>) -> f64 {
     let sum = with_conn(app, |conn| {
         conn.query_row(
             "SELECT COALESCE(SUM(distance_meters), 0.0) FROM sessions
