@@ -63,13 +63,15 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     };
     let hud = hud::hud_config();
     let hud_monitors = hud::monitors(&hud);
+    let (daily_base_m, live_counts_today) = daily_base();
     let mut snapshot = build_snapshot(
         &state,
         SnapshotParts {
             connection,
             hud,
             hud_monitors,
-            daily_base_m: daily_base(),
+            daily_base_m,
+            live_counts_today,
             max_incline_level: state.max_incline,
             strava: strava::snapshot(),
             maintenance: maintenance::snapshot(live_m, live_s),
