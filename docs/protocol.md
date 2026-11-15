@@ -61,3 +61,36 @@ Another deck may use a different byte. To check what yours sends:
 
 If a deck's screen-off state has a byte other than `6`, add it to
 `status_from_byte` in `protocol.rs`.
+
+## Traffic recordings
+System, Diagnostics, Show diagnostics, **TRAFFIC_TAP: Record treadmill traffic**
+writes every packet sent to the treadmill and every notification it sends
+back (`src-tauri/src/traffic.rs`). Recordings go in
+`%LOCALAPPDATA%\com.freshbreweddesign.neonstrider\logs\traffic\`, one file per
+recording named after the local start time
+(`traffic-2026-11-15_09-30-12.jsonl`). The switch is off at every start, and a
+recording stops by itself after 4 hours or 20 MB (a walk makes about 2 MB an
+hour: the status poll runs every 600 ms).
+
+The file is JSON Lines (format 1), one object per line, `type` first:
+
+```
+{"type":"header","format":1,"app_version":"1.3.2","started_ms":1763195412000,"started_local":"2026-11-15T09:30:12+01:00"}
+{"type":"tx","t_ms":600,"at_ms":1763195412600,"kind":"POLL_STATUS","hex":"02515103"}
+{"type":"rx","t_ms":655,"at_ms":1763195412655,"uuid":"0000fff1-0000-1000-8000-00805f9b34fb","hex":"0251031e000c0100400005003a000003"}
+{"type":"end","t_ms":3600000,"at_ms":1763199012000,"reason":"stopped","packets":11873}
+```
+
+- `t_ms`: milliseconds since the recording started (monotonic, for timings);
+  `at_ms`: wall clock, epoch ms.
+- `tx`: a packet written to the treadmill, logged once the write succeeded
+  (failed writes are not in the file). `kind` is the engine's `PacketKind`
+  label (`POLL_STATUS`, `CONTROL_SET`, `HANDSHAKE_START`, ...) or `RAW` for
+  the command cycler. Polls are included.
+- `rx`: every notification, whatever its characteristic (`uuid`), including
+  frames the app could not decode.
+- `hex`: the raw bytes, lowercase, no separators.
+- `end`: `reason` is `stopped` (switched off), `duration_limit` or
+  `size_limit`. A file without it ends where the app quit.
+
+`traffic::TrafficLine` (serde) reads and writes these lines.
