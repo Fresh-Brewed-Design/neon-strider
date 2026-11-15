@@ -1,2 +1,2 @@
 - Updated the Rust libraries the app is built on to their newest compatible versions.
-- This fixes 12 known security advisories in the libraries bundled with the app (including OpenSSL, bytes, time and an XML parser); two minor ones remain until the HTTP and database libraries get a larger upgrade.
+- This fixes 12 of 14 known security advisories in those libraries (OpenSSL, bytes, time and an XML parser). Two remain, in the HTTP library's h2 and in the bundled SQLite, until those libraries get a larger upgrade.
