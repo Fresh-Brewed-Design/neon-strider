@@ -15,8 +15,15 @@
 //!   presses with no gap over 8 s), so a short burst never slows the belt.
 //! - The depth follows a wide, linear band of typing rates per sensitivity,
 //!   down to the floor (a % of the base speed).
-//! - Recovery starts only after 45 s with little typing, then ramps up in
-//!   small steps, so a thinking pause never speeds the belt straight back up.
+//! - Recovery follows the same curve, fed by a slower typing level (the higher
+//!   of the rates over the last 30 s and the last 8 s): when that level asks
+//!   for less slowdown than the belt has, with some headroom, for 10 s in a
+//!   row, the belt steps back up towards it. Below the start rate that means
+//!   all the way. A few stray keys hardly move the level, so they never block
+//!   it; a thinking pause in steady typing is over (and the 8 s rate back up)
+//!   before the 10 s are, so it never speeds the belt up. From the floor it
+//!   takes at most three changes, so full speed is back about a minute after
+//!   typing stops.
 //! - Targets sit on the treadmill's own speed steps, change at most once every
 //!   15 s, never go below the floor or the treadmill's minimum, never above the
 //!   base, and never change while the belt is stopped, paused or spinning up.
@@ -160,25 +167,47 @@ impl Default for Config {
 // Tuning
 // ---------------------------------------------------------------------------
 
-/// Rolling window for the keys-per-minute score.
+/// Rolling window for the keys-per-minute score (what slowing follows).
 const WINDOW_MS: u64 = 20_000;
-/// Short window that decides "little typing" for recovery.
-const QUIET_WINDOW_MS: u64 = 10_000;
+/// The typing level recovery follows is the higher of the rate over this long
+/// window (falls slowly when typing drops, barely moved by a few keys) ...
+const LEVEL_WINDOW_MS: u64 = 30_000;
+/// ... and over this short one (climbs back within seconds once typing
+/// resumes, so a pause doesn't linger in the level).
+const QUICK_WINDOW_MS: u64 = 8_000;
 /// Typing must span this long (no gap over STREAK_GAP_MS) before slowing.
 const SLOW_AFTER_MS: u64 = 10_000;
 /// A gap this long ends a typing streak.
 const STREAK_GAP_MS: u64 = 8_000;
-/// Little typing for this long before the belt starts to recover.
-const RECOVER_AFTER_MS: u64 = 45_000;
+/// The typing level must ask for less slowdown for this long in a row before
+/// the belt starts to recover. Longer than a thinking pause plus the time the
+/// short window takes to fill again: an 8 s pause keeps the level low for
+/// about 8.5 s at the headroom below.
+const RECOVER_AFTER_MS: u64 = 10_000;
+/// Recovery reads the curve at this multiple of the typing level, so the level
+/// has to fall about a fifth below the rate that set the current depth: keeps
+/// steady typing near a boundary from hunting between two speeds.
+const RECOVER_HEADROOM: f32 = 1.25;
+/// From the floor, full speed is back in at most this many changes.
+const RECOVER_CHANGES_FROM_FLOOR: u32 = 3;
 /// At most one speed change in this long.
 const MIN_CHANGE_GAP_MS: u64 = 15_000;
 /// After a speed set by hand: no slowing for this long.
 const HAND_HOLD_MS: u64 = 30_000;
 /// Key presses counted per second at most (a held key auto-repeats ~30/s).
 const MAX_KEYS_PER_TICK: u32 = 12;
-/// Speed steps per change: down, and back up.
+/// Speed steps per change: down, and back up (at least).
 const SLOW_STEPS_PER_CHANGE: u32 = 2;
 const RECOVER_STEPS_PER_CHANGE: u32 = 2;
+
+/// Why the target last changed (for the log).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChangeKind {
+    Slow,
+    Recover,
+    /// The floor or the treadmill minimum moved up.
+    Floor,
+}
 /// Slow only once the depth asks for this many steps more than now: keeps a
 /// rate hovering at a boundary from toggling a step.
 const SLOW_MARGIN_STEPS: f32 = 0.3;
@@ -208,7 +237,8 @@ pub struct NeuralFlow {
     window: VecDeque<(u64, u32)>,
     streak_start: Option<u64>,
     last_key: Option<u64>,
-    quiet_since: Option<u64>,
+    /// Since when the typing level has asked for less slowdown than now.
+    recover_since: Option<u64>,
     hold_until: Option<u64>,
     last_change: Option<u64>,
     /// The base the current slowdown is measured from.
@@ -221,12 +251,25 @@ pub struct NeuralFlow {
     /// began. The belt runs at the lower of this and the quiet speed.
     quiet_cap: Option<f32>,
     keys_per_min: f32,
+    /// The slower typing level recovery follows, keys per minute.
+    level_kpm: f32,
+    last_kind: Option<ChangeKind>,
     initialized: bool,
 }
 
 impl NeuralFlow {
     pub fn keys_per_min(&self) -> f32 {
         self.keys_per_min
+    }
+
+    /// The typing level recovery follows (keys per minute).
+    pub fn level_kpm(&self) -> f32 {
+        self.level_kpm
+    }
+
+    /// Why the target last changed.
+    pub fn last_change_kind(&self) -> Option<ChangeKind> {
+        self.last_kind
     }
 
     /// The base the slowdown is measured from.
@@ -314,6 +357,8 @@ impl NeuralFlow {
         // Not running: hold everything as it is, so nothing moves the belt and
         // a changed target can't trigger the engine's auto-resume.
         if !t.running {
+            // Frozen: the recover clock starts over once it runs again.
+            self.recover_since = None;
             if t.base_kmh <= 0.0 {
                 // Stopped (intents cleared) or a program on HOLD: start over.
                 let epoch = t.hand_epoch;
@@ -341,21 +386,23 @@ impl NeuralFlow {
         let keys = t.keys.min(MAX_KEYS_PER_TICK);
         self.window.push_back((t.now_ms, keys));
         while let Some(&(at, _)) = self.window.front() {
-            if t.now_ms.saturating_sub(at) >= WINDOW_MS {
+            if t.now_ms.saturating_sub(at) >= LEVEL_WINDOW_MS {
                 self.window.pop_front();
             } else {
                 break;
             }
         }
-        let total: u32 = self.window.iter().map(|&(_, k)| k).sum();
-        self.keys_per_min = total as f32 * 60_000.0 / WINDOW_MS as f32;
-        let recent: u32 = self
-            .window
-            .iter()
-            .filter(|&&(at, _)| t.now_ms.saturating_sub(at) < QUIET_WINDOW_MS)
-            .map(|&(_, k)| k)
-            .sum();
-        let recent_kpm = recent as f32 * 60_000.0 / QUIET_WINDOW_MS as f32;
+        let kpm_over = |w: u64| {
+            let n: u32 = self
+                .window
+                .iter()
+                .filter(|&&(at, _)| t.now_ms.saturating_sub(at) < w)
+                .map(|&(_, k)| k)
+                .sum();
+            n as f32 * 60_000.0 / w as f32
+        };
+        self.keys_per_min = kpm_over(WINDOW_MS);
+        self.level_kpm = kpm_over(LEVEL_WINDOW_MS).max(kpm_over(QUICK_WINDOW_MS));
 
         // Typing streak.
         if keys > 0 {
@@ -373,14 +420,6 @@ impl NeuralFlow {
             self.streak_start = None;
         }
 
-        // Little typing.
-        let (start_kpm, _) = cfg.sensitivity.band();
-        if recent_kpm < start_kpm / 2.0 {
-            self.quiet_since.get_or_insert(t.now_ms);
-        } else {
-            self.quiet_since = None;
-        }
-
         // A speed set by hand is the new base: start over and hold off.
         if t.hand_epoch != self.hand_epoch {
             // The user's own change, not ours.
@@ -391,6 +430,7 @@ impl NeuralFlow {
         // Quiet mode on a call wins: never slow on top of it, never speed past
         // what the belt was doing when the call began.
         if t.quiet {
+            self.recover_since = None;
             if self.quiet_cap.is_none() {
                 self.quiet_cap = Some(before.max(0.0));
             }
@@ -425,6 +465,7 @@ impl NeuralFlow {
             if self.steps_down > 0 {
                 self.last_change = Some(t.now_ms);
             }
+            self.recover_since = None;
             return false;
         }
 
@@ -434,7 +475,17 @@ impl NeuralFlow {
             // The floor or the treadmill minimum moved up.
             self.steps_down = max;
             self.last_change = Some(t.now_ms);
+            self.last_kind = Some(ChangeKind::Floor);
             return true;
+        }
+
+        // Recovery: the depth the typing level asks for, with headroom, and
+        // since when it has asked for less than the belt has now.
+        let recover_to = self.recover_steps(cfg, base, max, step);
+        if recover_to < self.steps_down {
+            self.recover_since.get_or_insert(t.now_ms);
+        } else {
+            self.recover_since = None;
         }
 
         let held = self.hold_until.is_some_and(|h| t.now_ms < h);
@@ -463,25 +514,42 @@ impl NeuralFlow {
         {
             self.steps_down = (self.steps_down + SLOW_STEPS_PER_CHANGE).min(desired);
             self.last_change = Some(t.now_ms);
+            self.last_kind = Some(ChangeKind::Slow);
+            self.recover_since = None;
             return true;
         }
 
-        let quiet_long = self
-            .quiet_since
-            .is_some_and(|q| t.now_ms.saturating_sub(q) >= RECOVER_AFTER_MS);
-        if quiet_long && self.steps_down > 0 {
-            self.steps_down = self.steps_down.saturating_sub(RECOVER_STEPS_PER_CHANGE);
+        let recover_due = self
+            .recover_since
+            .is_some_and(|r| t.now_ms.saturating_sub(r) >= RECOVER_AFTER_MS);
+        if recover_due && recover_to < self.steps_down {
+            let per_change = RECOVER_STEPS_PER_CHANGE.max(max.div_ceil(RECOVER_CHANGES_FROM_FLOOR));
+            self.steps_down = self.steps_down.saturating_sub(per_change).max(recover_to);
             self.last_change = Some(t.now_ms);
+            self.last_kind = Some(ChangeKind::Recover);
             return true;
         }
         false
+    }
+
+    /// The depth (in steps below base) recovery heads for: the curve read at
+    /// the typing level plus headroom, and none at all below the start rate.
+    fn recover_steps(&self, cfg: &Config, base: f32, max: u32, step: f32) -> u32 {
+        let (start, _) = cfg.sensitivity.band();
+        if self.level_kpm.is_nan() || self.level_kpm < start {
+            return 0;
+        }
+        let depth = depth_for_kpm(cfg.sensitivity, self.level_kpm * RECOVER_HEADROOM)
+            * (1.0 - cfg.floor_pct / 100.0);
+        ((base * depth / step + 1e-4).floor().max(0.0) as u32).min(max)
     }
 
     fn hand_reset(&mut self, t: &Tick) {
         self.window.clear();
         self.streak_start = None;
         self.last_key = None;
-        self.quiet_since = None;
+        self.recover_since = None;
+        self.level_kpm = 0.0;
         self.quiet_cap = None;
         self.steps_down = 0;
         self.keys_per_min = 0.0;
@@ -657,7 +725,7 @@ mod tests {
     }
 
     #[test]
-    fn about_sixty_seconds_idle_restores_gradually() {
+    fn idle_restores_gradually_and_logs_it_as_recovery() {
         let mut n = NeuralFlow::default();
         run(&mut n, &cfg(), 0, 90, 3.0, steady(250), none);
         let slowed = n.target_kmh();
@@ -665,22 +733,188 @@ mod tests {
             close(slowed, 2.4),
             "reached the floor at intense typing: {slowed}"
         );
-        // Idle: nothing for the first 45 s.
-        let early = run(&mut n, &cfg(), 90, 135, 3.0, |_| 0, none);
+        assert_eq!(n.last_change_kind(), Some(ChangeKind::Slow));
+        // Idle: nothing for the first 10 s (a thinking pause).
+        let early = run(&mut n, &cfg(), 90, 100, 3.0, |_| 0, none);
         assert!(early.is_empty(), "{early:?}");
-        let fx = run(&mut n, &cfg(), 135, 240, 3.0, |_| 0, none);
-        let first = fx.first().expect("recovers").0;
-        assert!(
-            first <= 90 + 60,
-            "first recovery step at {}s after stopping",
-            first - 90
-        );
+        let fx = run(&mut n, &cfg(), 100, 240, 3.0, |_| 0, none);
+        assert_eq!(n.last_change_kind(), Some(ChangeKind::Recover));
         // In steps, upwards, ending at the base.
         assert!(fx.len() >= 2, "{fx:?}");
         assert!(fx.windows(2).all(|w| w[1].1 > w[0].1));
         assert!(fx[0].1 < 3.0);
         assert!(close(n.target_kmh(), 3.0));
         assert!(!n.active());
+    }
+
+    #[test]
+    fn a_few_stray_keys_do_not_block_recovery() {
+        let c = Config {
+            floor_pct: 90.0,
+            ..cfg()
+        };
+        let mut n = NeuralFlow::default();
+        run(&mut n, &c, 0, 90, 4.0, steady(250), none);
+        // A shortcut or a short search now and then: 5 keys in one second.
+        let fx = run(
+            &mut n,
+            &c,
+            90,
+            200,
+            4.0,
+            |s| if s.is_multiple_of(7) { 5 } else { 0 },
+            none,
+        );
+        assert!(fx.first().is_some_and(|f| f.0 - 90 <= 25), "{fx:?}");
+        assert!(close(n.target_kmh(), 4.0), "{fx:?}");
+    }
+
+    /// Light, intermittent typing: a burst of 2 to 4 keys every 10 s.
+    fn light(s: u64) -> u32 {
+        if s.is_multiple_of(10) {
+            [3, 2, 4][((s / 10) % 3) as usize]
+        } else {
+            0
+        }
+    }
+
+    #[test]
+    fn light_typing_after_a_slowdown_pins_the_report() {
+        let c = Config {
+            floor_pct: 90.0,
+            ..cfg()
+        };
+        let mut n = NeuralFlow::default();
+        run(&mut n, &c, 0, 90, 4.0, steady(250), none);
+        assert!(
+            close(n.target_kmh(), 3.6),
+            "at the floor: {}",
+            n.target_kmh()
+        );
+        // Under the old rule (45 s with under half the start rate in every
+        // 10 s) this never recovered at all.
+        let fx = run(&mut n, &c, 90, 270, 4.0, light, none);
+        let first = fx.first().expect("recovers").0;
+        assert!(first <= 90 + 25, "first step {}s after", first - 90);
+        assert!(fx.windows(2).all(|w| w[1].1 > w[0].1), "only up: {fx:?}");
+        let full = fx.last().unwrap();
+        assert!(close(full.1, 4.0), "{fx:?}");
+        assert!(full.0 <= 90 + 75, "full speed {}s after", full.0 - 90);
+    }
+
+    #[test]
+    fn typing_stopping_restores_within_a_minute() {
+        // Replaces the old "nothing for 45 s of idle" rule.
+        for (floor, base) in [(90.0, 4.0), (80.0, 3.0), (50.0, 5.0), (95.0, 6.0)] {
+            let c = Config {
+                floor_pct: floor,
+                ..cfg()
+            };
+            let mut n = NeuralFlow::default();
+            // Long enough to reach the floor even at 50% (13 changes).
+            run(&mut n, &c, 0, 240, base, steady(250), none);
+            let slowed = n.target_kmh();
+            assert!(slowed < base, "{floor}%: {slowed}");
+            let fx = run(&mut n, &c, 240, 420, base, |_| 0, none);
+            let first = fx.first().expect("recovers").0 - 240;
+            // Not at once (a pause), but well before the old 45 s.
+            assert!(
+                (10..=25).contains(&first),
+                "{floor}%: first step at {first}s"
+            );
+            assert!(fx.windows(2).all(|w| w[1].1 > w[0].1), "{fx:?}");
+            let last = fx.last().unwrap();
+            assert!(close(last.1, base), "{floor}%: {fx:?}");
+            assert!(
+                last.0 - 240 <= 60,
+                "{floor}%: full speed at {}s",
+                last.0 - 240
+            );
+            assert!(!n.active());
+        }
+    }
+
+    type KeyPattern = Box<dyn Fn(u64) -> u32>;
+
+    /// Typing at `per_s` keys a second in 15 s stretches, with thinking pauses
+    /// of 5 to 8 s between them.
+    fn with_pauses(per_s: u32) -> impl Fn(u64) -> u32 {
+        move |s| {
+            let mut t = 0;
+            let mut i = 0;
+            loop {
+                let pause = 5 + (i % 4);
+                if s < t + 15 {
+                    return per_s;
+                }
+                if s < t + 15 + pause {
+                    return 0;
+                }
+                t += 15 + pause;
+                i += 1;
+            }
+        }
+    }
+
+    #[test]
+    fn steady_typing_with_pauses_never_recovers_or_hunts() {
+        for (floor, base) in [(90.0, 4.0), (80.0, 3.0), (50.0, 5.0)] {
+            let c = Config {
+                floor_pct: floor,
+                ..cfg()
+            };
+            let mut patterns: Vec<(String, KeyPattern)> = vec![];
+            for per_s in 1..=5 {
+                patterns.push((
+                    format!("{per_s}/s with pauses"),
+                    Box::new(with_pauses(per_s)),
+                ));
+            }
+            for kpm in (40..=300).step_by(10) {
+                patterns.push((format!("steady {kpm}"), Box::new(steady(kpm))));
+            }
+            patterns.push(("bursty".into(), Box::new(bursty)));
+            for (name, keys) in &patterns {
+                let mut n = NeuralFlow::default();
+                let fx = run(&mut n, &c, 0, 300, base, keys, none);
+                let mut prev = base;
+                for &(s, v) in &fx {
+                    assert!(v < prev, "{floor}% {name}: up at {s}s: {fx:?}");
+                    prev = v;
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn typing_less_recovers_part_way_and_stays() {
+        let c = Config {
+            floor_pct: 90.0,
+            ..cfg()
+        };
+        // From the rate where Medium reaches the floor (190), and from well
+        // past it: typing above 190 slows no further but has to leave the
+        // 30 s level first, so it starts a few seconds later.
+        for (intense, starts_within) in [(200, 25), (250, 30)] {
+            let mut n = NeuralFlow::default();
+            run(&mut n, &c, 0, 90, 6.0, steady(intense), none);
+            assert!(close(n.target_kmh(), 5.4), "{}", n.target_kmh());
+            // Down to a moderate 90 kpm, still above the start rate (30).
+            let fx = run(&mut n, &c, 90, 390, 6.0, steady(90), none);
+            assert!(!fx.is_empty());
+            assert!(fx.windows(2).all(|w| w[1].1 > w[0].1), "only up: {fx:?}");
+            assert!(
+                fx.first().unwrap().0 - 90 <= starts_within,
+                "{intense}: {fx:?}"
+            );
+            // Settles within a minute and stays there for the remaining minutes.
+            assert!(fx.last().unwrap().0 - 90 <= 60, "{fx:?}");
+            let v = n.target_kmh();
+            assert!(v > 5.4 + 1e-3 && v < 6.0 - 1e-3, "part-way: {v}");
+            // Within one step of what the curve gives for 90 kpm.
+            let curve = 6.0 - 6.0 * 0.1 * depth_for_kpm(NeuralSensitivity::Medium, 90.0);
+            assert!((v - curve).abs() <= 0.1 + 1e-3, "{v} vs curve {curve}");
+        }
     }
 
     #[test]
