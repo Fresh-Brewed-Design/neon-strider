@@ -1,0 +1,2 @@
+- Updated the Rust libraries the app is built on to their newest compatible versions.
+- This fixes 12 known security advisories in the libraries bundled with the app (including OpenSSL, bytes, time and an XML parser); two minor ones remain until the HTTP and database libraries get a larger upgrade.
