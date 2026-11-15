@@ -5,6 +5,7 @@ import type { ConnectionSnapshot } from "./ConnectionSnapshot";
 import type { DeckSnapshot } from "./DeckSnapshot";
 import type { HudConfig } from "./HudConfig";
 import type { HudMonitor } from "./HudMonitor";
+import type { HudView } from "./HudView";
 import type { MaintenanceSnapshot } from "./MaintenanceSnapshot";
 import type { NeuralSnapshot } from "./NeuralSnapshot";
 import type { OdometerSnapshot } from "./OdometerSnapshot";
@@ -17,6 +18,11 @@ import type { WalkAwaySnapshot } from "./WalkAwaySnapshot";
 import type { WeeklySummary } from "./WeeklySummary";
 
 export type AppSnapshot = { connection: ConnectionSnapshot, deck: DeckSnapshot, session: SessionSnapshot, programs: Array<Program>, active_program: ActiveProgram | null, neural: NeuralSnapshot, hud: HudConfig, 
+/**
+ * How the HUD panel shows right now: in full, as a strip or not at all
+ * (`hud.idle_mode` while the belt is still; see `snapshot/stasis.rs`).
+ */
+hud_view: HudView, 
 /**
  * Displays the HUD can be placed on. Refreshed every few seconds, not per tick.
  */

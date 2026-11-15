@@ -23,6 +23,9 @@ pub struct AppSnapshot {
     pub active_program: Option<ActiveProgram>,
     pub neural: NeuralSnapshot,
     pub hud: HudConfig,
+    /// How the HUD panel shows right now: in full, as a strip or not at all
+    /// (`hud.idle_mode` while the belt is still; see `snapshot/stasis.rs`).
+    pub hud_view: HudView,
     /// Displays the HUD can be placed on. Refreshed every few seconds, not per tick.
     pub hud_monitors: Vec<HudMonitor>,
     pub strava: StravaSnapshot,
@@ -222,6 +225,33 @@ pub struct HudConfig {
     /// Dragged by its logo to a spot that is not a corner: `anchor` is then
     /// only what Reset goes back to. `None` = the `anchor` corner.
     pub custom: Option<placement::HudCustom>,
+    /// What the panel does while the belt is still (paused, stopped or offline).
+    pub idle_mode: HudIdleMode,
+}
+
+/// The HUD setting "When the belt is still".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, ts_rs::TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
+pub enum HudIdleMode {
+    /// The whole panel, as when the belt moves.
+    #[default]
+    Full,
+    /// One small strip: link state, today's total, expand and Engage.
+    Strip,
+    /// No panel until the belt moves again (cards and toasts still show).
+    Hidden,
+}
+
+/// How the HUD panel shows right now. Cards and toasts are not affected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, ts_rs::TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
+pub enum HudView {
+    #[default]
+    Full,
+    Strip,
+    Hidden,
 }
 
 impl HudConfig {
@@ -381,6 +411,12 @@ pub enum Command {
     DashboardSetPinned {
         pinned: bool,
     },
+    /// What the HUD panel does while the belt is still.
+    HudSetIdleMode {
+        mode: HudIdleMode,
+    },
+    /// Show the whole panel until the belt next moves (the strip's expand button).
+    HudExpand,
     StravaSetCredentials {
         client_id: String,
         client_secret: String,
@@ -552,6 +588,21 @@ mod tests {
         let c: Command =
             serde_json::from_str(r#"{"type":"hud_set_monitor","monitor":null}"#).unwrap();
         assert_eq!(c, Command::HudSetMonitor { monitor: None });
+
+        let c: Command =
+            serde_json::from_str(r#"{"type":"hud_set_idle_mode","mode":"strip"}"#).unwrap();
+        assert_eq!(
+            c,
+            Command::HudSetIdleMode {
+                mode: HudIdleMode::Strip
+            }
+        );
+        let c: Command = serde_json::from_str(r#"{"type":"hud_expand"}"#).unwrap();
+        assert_eq!(c, Command::HudExpand);
+        assert!(
+            serde_json::from_str::<Command>(r#"{"type":"hud_set_idle_mode","mode":"tiny"}"#)
+                .is_err()
+        );
 
         let c: Command = serde_json::from_str(
             r#"{"type":"program_save","program":{"id":0,"name":"A","steps":[{"duration_minutes":null,"speed_kmh":2.5,"incline_pct":5}],"repeat_every_minutes":null}}"#,

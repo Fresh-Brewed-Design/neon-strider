@@ -1,7 +1,7 @@
 //! What each `Command` does. `snapshot::dispatch` is the IPC entry point.
 
 use super::{
-    calls, desk, hud, hud_drag, maintenance, seated, walkaway, weekly, Command, HudConfig,
+    calls, desk, hud, hud_drag, maintenance, seated, stasis, walkaway, weekly, Command, HudConfig,
     HudWidget,
 };
 use crate::bluetooth::{self, ORCHESTRATOR};
@@ -127,6 +127,11 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         Command::HudResetPosition => set_hud(&app, |cfg| cfg.custom = None),
         Command::DashboardSetPinned { pinned } => {
             set_hud(&app, |cfg| cfg.dashboard_pinned = pinned)
+        }
+        Command::HudSetIdleMode { mode } => set_hud(&app, |cfg| cfg.idle_mode = mode),
+        Command::HudExpand => {
+            stasis::expand();
+            Ok(())
         }
 
         Command::StravaSetCredentials {

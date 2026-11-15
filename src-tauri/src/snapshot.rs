@@ -6,6 +6,7 @@
 //!
 //! - `types`: the snapshot and command types (exported to TypeScript)
 //! - `hud`: the HUD config and the display list
+//! - `stasis`: whether the HUD panel shows in full, as a strip or not at all
 //! - `commands`: what each command does
 //! - `emitter`: collecting the snapshot and pushing it to the windows
 //!
@@ -36,6 +37,7 @@ pub mod weekly;
 mod commands;
 mod emitter;
 mod hud;
+mod stasis;
 mod types;
 
 pub use calls::CallsSnapshot;
@@ -152,8 +154,8 @@ fn neural_snapshot(state: &OrchestratorState) -> NeuralSnapshot {
 }
 
 /// Build a snapshot from state. Pure (no Tauri, no locks, no I/O) so it can be
-/// unit-tested. `walkaway` and `update` are left at their defaults: they depend
-/// on the clock, so the emitter fills them in.
+/// unit-tested. `walkaway`, `update` and `hud_view` are left at their defaults:
+/// they depend on the clock, so the emitter fills them in.
 pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSnapshot {
     AppSnapshot {
         connection: parts.connection,
@@ -163,6 +165,7 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         active_program: state.active_program(),
         neural: neural_snapshot(state),
         hud: parts.hud,
+        hud_view: HudView::Full,
         hud_monitors: parts.hud_monitors,
         strava: parts.strava,
         maintenance: parts.maintenance,
