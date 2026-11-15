@@ -16,11 +16,14 @@ The scheduled improvement task picks from here first. Remove an item when its PR
   3. A "simulated treadmill" choice in dev builds, so the whole app (HUD and dashboard) runs
      with no hardware and behaviour changes can be checked end to end. Never in release builds.
 
+- Desk-day consistency: show how many of the recent days the PC was used were also walked on
+  (e.g. "walked on 9 of the last 10 desk days"). A day off the PC doesn't count and doesn't break
+  anything. No records, bests or celebration: it's a walking pad, and the habit is what matters.
+
 ## Unscheduled
 
 The scheduled improvement task does not pick from here.
 
-- Daily goal and streaks.
 - Bluetooth heart-rate strap: HUD, history and Strava.
 - Program import/export.
 - Standard FTMS treadmills (non-FitShow).
