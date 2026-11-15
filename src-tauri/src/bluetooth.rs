@@ -294,7 +294,7 @@ impl ToastTracker {
 }
 
 /// Take a decoded frame into the orchestrator.
-fn apply_telemetry(state: &mut OrchestratorState, t: &Telemetry) {
+pub(crate) fn apply_telemetry(state: &mut OrchestratorState, t: &Telemetry) {
     state.last_status = t.status;
     state.unknown_status_code = (!t.status_known).then_some(t.status_code);
     state.hardware_speed = t.speed_kmh;
@@ -339,10 +339,9 @@ async fn listen_for_status(
             .is_some_and(|at| at.elapsed() < NEURAL_RAMP_QUIET);
         let changes = toasts.on_frame(&t, neural_easing);
         if let Some(status) = changes.status {
-            let name = format!("{:?}", status).to_uppercase();
             crate::hud::toast(
                 &app,
-                serde_json::json!({ "type": "STATUS", "message": format!("STATUS: {}", name), "isActionable": true }),
+                serde_json::json!({ "type": "STATUS", "message": format!("STATUS: {}", status.toast_label()), "isActionable": true }),
             );
         }
         if changes.speed {

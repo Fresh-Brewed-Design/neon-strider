@@ -67,7 +67,7 @@ export function Transport({ s }: { s: AppSnapshot }) {
         <NeonButton
           tone="magenta"
           className="h-10 w-32"
-          disabled={deck.status === "Stopped" || control.pending}
+          disabled={deck.status === "Stopped" || deck.status === "Stopping" || control.pending}
           onClick={() => void control.run(() => dispatch({ type: "stop" }))}
           title="Stop the belt and end the session"
         >

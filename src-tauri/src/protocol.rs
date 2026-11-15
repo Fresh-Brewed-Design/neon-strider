@@ -65,17 +65,38 @@ pub enum Control {
 #[ts(export, export_to = "../../src/ipc/bindings/")]
 pub enum MachineStatus {
     Stopped = 0,
+    /// The deck's 3-2-1 countdown after a start or resume: the belt is about
+    /// to move.
     Starting = 1,
     Running = 2,
     Paused = 3,
+    /// The deck took a stop and is winding the belt down to 0. It answers
+    /// anything but a status poll with a nack, so nothing else is sent.
+    Stopping = 4,
 }
 
 impl MachineStatus {
-    /// The belt is turning or about to: Running or Starting.
+    /// The belt is turning or about to: Running or Starting. Not Stopping: the
+    /// belt is on its way down, and nothing (a session, a GO) begins there.
     pub fn is_moving(self) -> bool {
         matches!(self, MachineStatus::Running | MachineStatus::Starting)
     }
+
+    /// The word after `STATUS:` in the HUD toast for this state.
+    pub fn toast_label(self) -> &'static str {
+        match self {
+            MachineStatus::Stopped => "STOPPED",
+            MachineStatus::Starting => "COUNTDOWN",
+            MachineStatus::Running => "RUNNING",
+            MachineStatus::Paused => "PAUSED",
+            MachineStatus::Stopping => "SPINNING DOWN",
+        }
+    }
 }
+
+/// Status byte for standby (screen off, or switched off on the remote): the
+/// deck stays connected and answers polls, but refuses every start.
+pub const STATUS_STANDBY: u8 = 6;
 
 /// One decoded 0x51 status frame from the deck. Speed, distance and calories are
 /// the deck's own raw values, before calibration.
@@ -127,17 +148,25 @@ pub fn status_request() -> Vec<u8> {
     serialize_command(&[HEADER, CMD_STATUS])
 }
 
-/// The status byte values we have seen and understood. Anything else is
-/// unknown (see docs/protocol.md, "Capturing the standby state").
+/// The status byte values we have seen and understood, from traffic
+/// recordings of the Jogwell Ares 11 Elite. Anything else is unknown (see
+/// docs/protocol.md, "Status Byte").
 fn status_from_byte(b: u8) -> Option<MachineStatus> {
     match b {
-        1 | 3 => Some(MachineStatus::Running),
-        2 | 10 => Some(MachineStatus::Paused),
-        4 => Some(MachineStatus::Starting),
         0 => Some(MachineStatus::Stopped),
-        // Deck asleep, screen off: seen about 14 minutes after a stop and on
-        // connecting to a sleeping deck, never during a walk.
-        6 => Some(MachineStatus::Stopped),
+        // The workout just ended (after a stop, or when a pause ends): belt
+        // still, totals still shown for about 3 s, then 0. The session ends
+        // here, with the deck's totals still in the frame.
+        1 => Some(MachineStatus::Stopped),
+        // The 3-2-1 countdown after a start or a resume (`02 51 02 <n>`).
+        2 => Some(MachineStatus::Starting),
+        3 => Some(MachineStatus::Running),
+        // After a stop: the belt winds down to 0, then 1.
+        4 => Some(MachineStatus::Stopping),
+        // Standby (screen off, or off on the remote): seen about 14 minutes
+        // after a stop and on connecting to a sleeping deck, never during a walk.
+        STATUS_STANDBY => Some(MachineStatus::Stopped),
+        10 => Some(MachineStatus::Paused),
         _ => None,
     }
 }
@@ -187,10 +216,10 @@ mod tests {
 
     #[test]
     fn test_telemetry_parsing_le() {
-        // Status 1 (Running), speed 30 (3.0 km/h), incline 5, time 120 s,
+        // Status 3 (Running), speed 30 (3.0 km/h), incline 5, time 120 s,
         // distance 150 m, calories 4.5, steps 1000.
         let bytes = vec![
-            0x02, 0x51, 0x01, 30, 5, 0x78, 0x00, // Time (index 5, 6)
+            0x02, 0x51, 0x03, 30, 5, 0x78, 0x00, // Time (index 5, 6)
             0x96, 0x00, // Distance (index 7, 8)
             0x2D, 0x00, // Calories (index 9, 10)
             0xE8, 0x03, // Steps (index 11, 12)
@@ -215,12 +244,12 @@ mod tests {
         assert!(!t.status_known);
         for (b, s) in [
             (0, MachineStatus::Stopped),
-            (1, MachineStatus::Running),
+            (1, MachineStatus::Stopped),
+            (2, MachineStatus::Starting),
             (3, MachineStatus::Running),
-            (2, MachineStatus::Paused),
-            (10, MachineStatus::Paused),
-            (4, MachineStatus::Starting),
+            (4, MachineStatus::Stopping),
             (6, MachineStatus::Stopped),
+            (10, MachineStatus::Paused),
         ] {
             let t = parse_status(&[0x02, 0x51, b, 0x00, 0x03]).unwrap();
             assert_eq!((t.status, t.status_known, t.status_code), (s, true, b));
@@ -249,11 +278,11 @@ mod tests {
 
     #[test]
     fn short_or_foreign_frames() {
-        assert!(parse_status(&[0x02, 0x51, 0x01, 0x00]).is_none());
-        assert!(parse_status(&[0x01, 0x51, 0x01, 0x00, 0x03]).is_none());
-        assert!(parse_status(&[0x02, 0x53, 0x01, 0x00, 0x03]).is_none());
+        assert!(parse_status(&[0x02, 0x51, 0x03, 0x00]).is_none());
+        assert!(parse_status(&[0x01, 0x51, 0x03, 0x00, 0x03]).is_none());
+        assert!(parse_status(&[0x02, 0x53, 0x03, 0x00, 0x03]).is_none());
         // Status only: the counters read as zero.
-        let t = parse_status(&[0x02, 0x51, 0x01, 30, 5, 0x78, 0x00, 0x03]).unwrap();
+        let t = parse_status(&[0x02, 0x51, 0x03, 30, 5, 0x78, 0x00, 0x03]).unwrap();
         assert_eq!(
             (t.status, t.speed_kmh, t.incline, t.time_sec),
             (MachineStatus::Running, 0.0, 0, 0)
@@ -308,5 +337,62 @@ mod tests {
         assert!(MachineStatus::Starting.is_moving());
         assert!(!MachineStatus::Paused.is_moving());
         assert!(!MachineStatus::Stopped.is_moving());
+        assert!(!MachineStatus::Stopping.is_moving());
+    }
+
+    /// Frames from a traffic recording of the Jogwell Ares 11 Elite.
+    #[test]
+    fn recorded_frames_decode() {
+        let status = |b: &[u8]| parse_status(b).map(|t| (t.status, t.status_code));
+        // Engage: the 3-2-1 countdown comes in short frames, then running.
+        for n in [3, 2, 1] {
+            let frame = [0x02, 0x51, 0x02, n, 0x51 ^ 0x02 ^ n, 0x03];
+            assert_eq!(status(&frame), Some((MachineStatus::Starting, 2)));
+        }
+        let running = [
+            0x02, 0x51, 0x03, 0x0d, 0x00, 0x05, 0x00, 0x01, 0x00, 0x01, 0x00, 0x05, 0x00, 0x00,
+            0x00, 0x5f, 0x03,
+        ];
+        assert_eq!(status(&running), Some((MachineStatus::Running, 3)));
+        // Stop: the belt winds down in status 4, the workout ends (1), then 0.
+        let winding = [
+            0x02, 0x51, 0x04, 0x08, 0x00, 0x24, 0x00, 0x0b, 0x00, 0x0f, 0x00, 0x2d, 0x00, 0x00,
+            0x00, 0x50, 0x03,
+        ];
+        let t = parse_status(&winding).unwrap();
+        assert_eq!(
+            (t.status, t.speed_kmh, t.time_sec),
+            (MachineStatus::Stopping, 0.8, 36)
+        );
+        let ended = [
+            0x02, 0x51, 0x01, 0x00, 0x00, 0x24, 0x00, 0x0b, 0x00, 0x0f, 0x00, 0x2d, 0x00, 0x00,
+            0x00, 0x5d, 0x03,
+        ];
+        let t = parse_status(&ended).unwrap();
+        assert_eq!((t.status, t.time_sec), (MachineStatus::Stopped, 36));
+        assert_eq!(
+            status(&[0x02, 0x51, 0x00, 0x51, 0x03]),
+            Some((MachineStatus::Stopped, 0))
+        );
+        // Standby, after a power-off held on the remote.
+        assert_eq!(
+            status(&[0x02, 0x51, 0x06, 0x02, 0x55, 0x03]),
+            Some((MachineStatus::Stopped, STATUS_STANDBY))
+        );
+        // A pause winds the belt down in status 10.
+        let pausing = [
+            0x02, 0x51, 0x0a, 0x08, 0x00, 0x1f, 0x00, 0x0a, 0x00, 0x0e, 0x00, 0x27, 0x00, 0x00,
+            0x00, 0x6f, 0x03,
+        ];
+        assert_eq!(status(&pausing), Some((MachineStatus::Paused, 10)));
+    }
+
+    #[test]
+    fn toast_labels() {
+        assert_eq!(MachineStatus::Stopping.toast_label(), "SPINNING DOWN");
+        assert_eq!(MachineStatus::Starting.toast_label(), "COUNTDOWN");
+        assert_eq!(MachineStatus::Running.toast_label(), "RUNNING");
+        assert_eq!(MachineStatus::Paused.toast_label(), "PAUSED");
+        assert_eq!(MachineStatus::Stopped.toast_label(), "STOPPED");
     }
 }

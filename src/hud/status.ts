@@ -21,6 +21,8 @@ export function linkLabel(s: AppSnapshot): { text: string; tone: LinkTone } {
       return { text: "SPIN-UP", tone: "live" };
     case "Paused":
       return { text: "STASIS", tone: "idle" };
+    case "Stopping":
+      return { text: "SPIN-DOWN", tone: "idle" };
     default:
       return { text: "STANDBY", tone: "idle" };
   }

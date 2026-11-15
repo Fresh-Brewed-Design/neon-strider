@@ -18,6 +18,8 @@ describe("linkLabel", () => {
     expect(linkLabel(snap({ deck: { status: "Running" } }))).toEqual({ text: "RUNNING", tone: "live" });
     expect(linkLabel(snap({ deck: { status: "Paused" } }))).toEqual({ text: "STASIS", tone: "idle" });
     expect(linkLabel(snap({ deck: { status: "Stopped" } }))).toEqual({ text: "STANDBY", tone: "idle" });
+    expect(linkLabel(snap({ deck: { status: "Starting" } }))).toEqual({ text: "SPIN-UP", tone: "live" });
+    expect(linkLabel(snap({ deck: { status: "Stopping" } }))).toEqual({ text: "SPIN-DOWN", tone: "idle" });
   });
 
   it("does not claim STANDBY for a status byte it doesn't know", () => {
