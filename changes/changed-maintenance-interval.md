@@ -1,2 +1,0 @@
-- The belt maintenance reminder is now every 200 km or 3 months, the figure on the treadmill's sticker (Jogwell's manual says 100 miles), and is shown and edited in km.
-- If you never changed the distance interval it moves to 200 km; an interval you set yourself is kept.

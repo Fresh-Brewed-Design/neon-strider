@@ -1,2 +1,0 @@
-- Dump no longer flashes "starting, running" while the belt slows down: the HUD shows SPINNING DOWN, then STOPPED.
-- Engage, Dump and the end of a workout no longer send the treadmill extra start, stop or pause commands it was refusing.

@@ -1,1 +1,0 @@
-- Engage on a treadmill that is off or asleep now says so straight away, instead of trying for 8 seconds. Switch it on, then press Engage; it never starts by itself when it wakes.

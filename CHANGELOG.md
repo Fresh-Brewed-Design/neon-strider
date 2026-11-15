@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.4.2 (2026-11-15)
+
+### Changed
+
+- Engage on a treadmill that is off or asleep now says so straight away, instead of trying for 8 seconds. Switch it on, then press Engage; it never starts by itself when it wakes.
+- The belt maintenance reminder is now every 200 km or 3 months, the figure on the treadmill's sticker (Jogwell's manual says 100 miles), and is shown and edited in km.
+- If you never changed the distance interval it moves to 200 km; an interval you set yourself is kept.
+
+### Fixed
+
+- Dump no longer flashes "starting, running" while the belt slows down: the HUD shows SPINNING DOWN, then STOPPED.
+- Engage, Dump and the end of a workout no longer send the treadmill extra start, stop or pause commands it was refusing.
+
 ## 1.4.1 (2026-11-15)
 
 ### New
