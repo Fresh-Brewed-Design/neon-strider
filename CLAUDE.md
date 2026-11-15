@@ -165,6 +165,7 @@ km/h, kg); a manufacturer's spec stays in its own unit (the Jogwell belt reminde
   speed from before waits in `engage_speed` for the next Engage or RE-JACK. Tests in
   `engine.rs` and `programs.rs` pin it.
 - After editing any Rust file, run `cargo check` in `src-tauri/`.
+- The Rust version is pinned in `rust-toolchain.toml`; bump it there and in the workflows together, and fix any new clippy lints in the same PR.
 - Packet decoding and speed/calibration scaling belong in **Rust**, not JS.
 - UI text is never smaller than 11px.
 - Prefer precise types; the repo passes `eslint` with no `no-explicit-any` and no lint
