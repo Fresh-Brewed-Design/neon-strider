@@ -25,7 +25,8 @@ jobs:
   version:
     runs-on: ubuntu-latest
     outputs:
-      tag: ${{ steps.bump.outputs.tag }}
+      # Set only once the release commit and tag are on main (see "Commit, tag and push").
+      tag: ${{ steps.push.outputs.tag }}
       notes: ${{ steps.notes.outputs.notes }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -72,6 +73,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Commit, tag and push
+        id: push
         if: steps.bump.outputs.tag != ''
         env:
           TAG: ${{ steps.bump.outputs.tag }}
@@ -82,7 +84,23 @@ jobs:
           git add -A
           git commit -m "Release $TAG"
           git tag "$TAG"
-          git push origin HEAD:main "$TAG"
+          # Atomic: the commit and the tag land together or not at all. If another PR
+          # merged since the checkout, main has moved and the push is refused; that
+          # merge's own run is queued behind this one and releases everything, so this
+          # run stops here without a tag, a build or a failure. (Before, the tag was
+          # pushed alone and left behind: v1.4.0.)
+          base=$(git rev-parse HEAD~1)
+          if git push --atomic origin HEAD:main "$TAG"; then
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          else
+            git fetch --quiet origin main
+            if [ "$(git rev-parse FETCH_HEAD)" != "$base" ]; then
+              echo "::notice::main moved during the release; the next run releases these changes."
+            else
+              echo "::error::Could not push the release commit and tag, and main has not moved."
+              exit 1
+            fi
+          fi
 
   build:
     needs: version
