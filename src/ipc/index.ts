@@ -45,6 +45,7 @@ export type { StravaResult } from "./bindings/StravaResult";
 export type { StartResult } from "./bindings/StartResult";
 export type { StravaStep } from "./bindings/StravaStep";
 export type { StravaSnapshot } from "./bindings/StravaSnapshot";
+export type { TrafficSnapshot } from "./bindings/TrafficSnapshot";
 export type { WalkAwayCard } from "./bindings/WalkAwayCard";
 export type { WalkAwayReason } from "./bindings/WalkAwayReason";
 export type { WalkAwaySnapshot } from "./bindings/WalkAwaySnapshot";

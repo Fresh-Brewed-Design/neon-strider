@@ -42,6 +42,8 @@ pub struct AppSnapshot {
     pub walkaway: WalkAwaySnapshot,
     /// Auto-update: the running version, any update on offer and its notes.
     pub update: crate::update::UpdateSnapshot,
+    /// The Diagnostics traffic recorder (off at every start).
+    pub traffic: crate::traffic::TrafficSnapshot,
 }
 
 /// Strava as the windows see it. Tokens and the client secret never appear here.
@@ -541,6 +543,13 @@ pub enum Command {
     },
     /// The "What's new" notes were read.
     UpdateWhatsNewAck,
+    /// Diagnostics: record every packet to and from the treadmill to a new
+    /// file (`on`), or stop. Sends nothing to the treadmill.
+    TrafficRecord {
+        on: bool,
+    },
+    /// Show the folder the traffic recordings are saved in.
+    TrafficOpenFolder,
 }
 
 #[cfg(test)]
@@ -793,6 +802,10 @@ mod tests {
         assert_eq!(c, Command::UpdateHudCard { open: true });
         let c: Command = serde_json::from_str(r#"{"type":"update_whats_new_ack"}"#).unwrap();
         assert_eq!(c, Command::UpdateWhatsNewAck);
+        let c: Command = serde_json::from_str(r#"{"type":"traffic_record","on":true}"#).unwrap();
+        assert_eq!(c, Command::TrafficRecord { on: true });
+        let c: Command = serde_json::from_str(r#"{"type":"traffic_open_folder"}"#).unwrap();
+        assert_eq!(c, Command::TrafficOpenFolder);
 
         assert!(serde_json::from_str::<Command>(r#"{"type":"explode"}"#).is_err());
         assert!(serde_json::from_str::<Command>(r#"{"type":"nudge_speed"}"#).is_err());

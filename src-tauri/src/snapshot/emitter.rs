@@ -84,6 +84,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     let now_ms = crate::util::now_ms_u64();
     snapshot.walkaway = walkaway::snapshot(now_ms);
     snapshot.update = crate::update::snapshot(now_ms);
+    snapshot.traffic = crate::traffic::snapshot();
     // Recomputed every tick, so the end of the grace after a stop reaches the
     // HUD with the next on-change emit (within a tick).
     snapshot.hud_view = stasis::view(&snapshot, Instant::now());

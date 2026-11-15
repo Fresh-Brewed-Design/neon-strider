@@ -41,6 +41,9 @@ going while the app is closed (a few seconds, with no HUD or shortcuts), the rec
 it as the same session, and a running program carries on at the same step, its timer counting
 the time the app was closed. Background check failures only show in System -> Updates.
 The installer is per-user NSIS; "launch at login" (`get/set_launch_at_login`) and single-instance are Rust plugins.
+`traffic.rs` is the Diagnostics traffic recorder: while switched on (`traffic_record`, off at every
+start) `bluetooth.rs` hands it every packet written and every notification received, and it appends
+them as JSON Lines to `logs/traffic/` (format in docs/protocol.md); it never sends anything.
 Neural flow (typing-aware pace) is pure logic in `neural.rs`; key-press counting is switched by Rust (`neural_monitor_wanted`, 1 Hz tick), not by a window.
 Status is visible, not silent. `link.rs` (treadmill link state, plain-English BLE errors) and
 `strava_status.rs` (Strava activity/steps, `describe()` turns Strava's JSON errors into one
@@ -110,7 +113,7 @@ cargo clippy --all-targets -- -D warnings   # in src-tauri/: lints, no warnings 
 
 Design without a treadmill: with a Vite server running, open `/hud-preview.html` or
 `/dashboard-preview.html`. Both run on a mocked backend (`src/dev/mockBackend.ts`); URL flags
-like `?idle`, `?offline`, `?noprogram`, `?toasts` (`?toasts=deck` for the deck-start GO toast), `?anchor=top_left`, `?neural=active`, `?engage=timeout`, `?status=9`, `?walkaway=warning|paused|idle`, `?custom`, `?update=available|downloading|failed|whatsnew`, `?stasis=strip|hidden` pick scenarios.
+like `?idle`, `?offline`, `?noprogram`, `?toasts` (`?toasts=deck` for the deck-start GO toast), `?anchor=top_left`, `?neural=active`, `?engage=timeout`, `?status=9`, `?walkaway=warning|paused|idle`, `?custom`, `?update=available|downloading|failed|whatsnew`, `?stasis=strip|hidden`, `?traffic=recording|saved` pick scenarios.
 `?program=ready|hold|still|resting|paused` shows a program waiting for GO after a rest, after a
 0 km/h step, or after a reconnect found the belt still; mid-rest; or paused by the user.
 

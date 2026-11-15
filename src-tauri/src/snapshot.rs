@@ -163,7 +163,7 @@ fn neural_snapshot(state: &OrchestratorState) -> NeuralSnapshot {
 }
 
 /// Build a snapshot from state. Pure (no Tauri, no locks, no I/O) so it can be
-/// unit-tested. `walkaway`, `update` and `hud_view` are left at their defaults:
+/// unit-tested. `walkaway`, `update`, `traffic` and `hud_view` are left at their defaults:
 /// they depend on the clock, so the emitter fills them in.
 pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSnapshot {
     AppSnapshot {
@@ -184,6 +184,7 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         odometer: parts.odometer,
         walkaway: WalkAwaySnapshot::default(),
         update: crate::update::UpdateSnapshot::default(),
+        traffic: crate::traffic::TrafficSnapshot::default(),
     }
 }
 
