@@ -123,7 +123,8 @@ is the largest `release:major|minor|patch` label among those PRs (no label = pat
 `release:none` PRs don't count). Never bump versions, tag, or edit CHANGELOG.md by hand: each
 PR adds a release note file `changes/<new|changed|fixed>-<slug>.md` (see `changes/README.md`),
 which the release folds into CHANGELOG.md. All work goes to `main` through PRs. CI runs on
-PRs only (Windows minutes bill at 2x).
+PRs and on `main` after each merge; the run on `main` saves the compiled Rust dependencies
+(`shared-key: ci`) and PR runs restore them, so a PR compiles only this crate.
 
 The GitHub release body is the version's CHANGELOG section (`release-version.mjs` writes it to
 a file and auto-release passes it on; a hand-pushed `v*` tag reads it from CHANGELOG.md), then
