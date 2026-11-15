@@ -969,10 +969,7 @@ impl OrchestratorState {
                 break;
             }
             let leftover = run.elapsed_s - len;
-            match self.advance(run, leftover, false, now) {
-                Some(next) => run = next,
-                None => return None,
-            }
+            run = self.advance(run, leftover, false, now)?;
         }
 
         if let (false, Some(why)) = (waiting_before, run.wait) {

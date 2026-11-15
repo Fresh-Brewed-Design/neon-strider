@@ -206,7 +206,7 @@ pub fn notes_since(releases: &[Release], installed: &str, available: &str) -> Op
     if !picked.iter().any(|(v, _)| *v == target) {
         return None;
     }
-    picked.sort_by(|a, b| b.0.cmp(&a.0));
+    picked.sort_by_key(|a| std::cmp::Reverse(a.0));
     picked.dedup_by(|a, b| a.0 == b.0);
     Some(
         picked

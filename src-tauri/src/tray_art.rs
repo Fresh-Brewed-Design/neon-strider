@@ -19,7 +19,7 @@ const SOLID: u8 = 128;
 
 /// Turn RGBA pixels greyscale and darker, keeping alpha.
 pub fn offline(rgba: &mut [u8]) {
-    for px in rgba.chunks_exact_mut(4) {
+    for px in rgba.as_chunks_mut::<4>().0 {
         let l = 0.299 * px[0] as f32 + 0.587 * px[1] as f32 + 0.114 * px[2] as f32;
         let g = (24.0 + l * 0.5).round().clamp(0.0, 255.0) as u8;
         px[0] = g;

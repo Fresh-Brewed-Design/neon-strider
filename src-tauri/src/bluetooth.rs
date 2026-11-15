@@ -432,7 +432,7 @@ async fn scan_inner() -> Result<Vec<BleDevice>, String> {
         }
     }
     // Strongest signal first.
-    found.sort_by(|a, b| b.0.cmp(&a.0));
+    found.sort_by_key(|a| std::cmp::Reverse(a.0));
     Ok(found.into_iter().map(|(_, d)| d).collect())
 }
 
