@@ -1,1 +1,0 @@
-- Neon Strider is now open source under the MIT license, with a new README. Calibration now starts empty on new installs; existing calibration points are kept.

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (1.2)
+## 1.2.0 (2026-11-15)
 
 ### New
 
@@ -36,6 +36,67 @@
   oversized input), vite 7.3.8, postcss 8.5.33, vitest and @vitest/ui 4.1.12, plus patched
   transitive packages. `npm audit --omit=dev` is clean; 7 moderate lint-only advisories remain
   in typescript-eslint's minimatch, which has no fixed 8.x release yet.
+
+### New
+
+- **Auto-update**: Neon Strider checks GitHub when it starts and once a day. System -> Updates
+  shows the new version's release notes, including every version you skipped, with Install and
+  Not now (Check now looks at once); the HUD shows `UPDATE READY // v1.3.0` once per version.
+  Install downloads and verifies the signed update, then closes, installs and reopens by
+  itself; "What's new" shows the notes once after the update.
+- Installing an update never pauses or stops the belt. The treadmill keeps going while the app
+  is closed for a few seconds (the HUD and shortcuts are unavailable then, so use the
+  treadmill's own controls if needed); after the reconnect the walk carries on as the same
+  session, and a running program carries on at the same step with its timer on time.
+- The belt never starts by itself after a restart, reconnect or update: a program that finds
+  the belt still comes back paused and waits for GO.
+- GitHub releases now carry that version's notes from the changelog.
+- The HUD's link label (RELINK, BT OFFLINE, LINK FAILED) is now a button while the treadmill is offline: click it to reconnect to your saved treadmill straight away instead of waiting for the next retry. It reads LINKING… while it works, and a failure shows right under it.
+- With no treadmill saved yet, the same label opens the dashboard on its connect dialog, so you can pick one straight from the HUD.
+
+### Changed
+
+- Neon Strider is now open source under the MIT license, with a new README. Calibration now starts empty on new installs; existing calibration points are kept.
+- A program never starts a still belt by itself. After each rest of a repeating program (and
+  after a 0 km/h step), the next walk waits for you: the HUD shows
+  `REST COMPLETE // PRESS GO` with the GO button lit, the dashboard's program card says the
+  same, and one toast marks the moment. The step timer waits too, and the program stays ready
+  until GO, SKIP or END. A belt that kept moving through the rest carries on as before.
+- Engage (and Alt + Home) on a paused program is now its GO, instead of starting the belt at
+  the slowest speed for a moment; the button reads GO. Like Engage, GO says so if the
+  treadmill doesn't answer.
+- A program waiting for GO survives the treadmill switching itself off and reconnecting.
+- SKIP during a rest still starts the next walk straight away: that press is the go-ahead.
+- A program waiting for GO, resting or paused is kept across an app restart for up to 4 hours
+  (a walking one still for 10 minutes), so one left waiting over lunch is still there.
+- The sit-too-long card stays back while a program waits for GO; the time still counts.
+- Starting the belt with the treadmill's own buttons or remote while a program is paused or
+  waiting for GO counts as GO: the program carries on with its step and sets the step's speed
+  on the moving belt, instead of the app pausing the belt again. This works after a walk-away
+  pause too (the same PC lock doesn't pause it again). During a rest it becomes a manual walk,
+  as before, now also in the first seconds of the rest.
+- When a start at the treadmill resumes a paused or waiting program, the HUD shows one toast,
+  `DECK START // WORKDAY RESUMED` (with the program's name). GO in the app and a start at the
+  treadmill during a rest stay as they were.
+
+### Fixed
+
+- When the PC's Bluetooth sees no devices at all, the app says so (turn Bluetooth off and on, or restart) instead of asking whether the treadmill is switched on.
+- Ending a paused program never moves the belt; you press Engage when ready. END on a program
+  that is paused, waiting for GO or on a 0 km/h step (and SKIP on its last step, and a program
+  that finishes or rests on a still belt) leaves the belt still; Engage or RE-JACK then starts
+  it at the speed and incline you had before the program. Ending a program while the belt is
+  moving still goes straight back to your earlier speed.
+- After a program ends on a still belt, the target speed on the HUD and the dashboard's Live
+  page shows the speed Engage will start the belt at (say 3.5) instead of 0.0. Nothing moves
+  until you press Engage; nudging the speed steps from that number and starts the belt, as
+  setting a speed does on any still belt.
+- After a program ends on a still belt, changing the tilt before you press Engage (a nudge,
+  the slider or a tilt preset) sets the tilt Engage starts at, the one the HUD shows, and
+  still moves nothing. Before, Engage went back to the tilt from before the program.
+- A pause could turn into a start if the treadmill reported it had paused between the two packets of the pause command. The app now decides pause or start once per command.
+- The System page no longer scrolls by itself while a background status (a Strava retry countdown, a failed update check) is showing.
+- A tilt calibration change (incline multiplier or offset) now applies at once: the HUD, the dashboard, programs and the walk's recorded incline use it straight away instead of after the next reconnect. The treadmill's incline doesn't move when you change it; only the percentage shown for it does.
 
 ## 1.1.0 (2026-11-13)
 

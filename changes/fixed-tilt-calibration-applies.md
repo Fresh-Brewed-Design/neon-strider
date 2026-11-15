@@ -1,1 +1,0 @@
-- A tilt calibration change (incline multiplier or offset) now applies at once: the HUD, the dashboard, programs and the walk's recorded incline use it straight away instead of after the next reconnect. The treadmill's incline doesn't move when you change it; only the percentage shown for it does.

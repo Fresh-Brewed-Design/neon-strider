@@ -1,1 +1,0 @@
-- When the PC's Bluetooth sees no devices at all, the app says so (turn Bluetooth off and on, or restart) instead of asking whether the treadmill is switched on.
