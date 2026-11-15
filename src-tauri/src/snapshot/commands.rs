@@ -226,6 +226,11 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             blocking(move || crate::update::hud_card(&app, open)).await
         }
         Command::UpdateWhatsNewAck => blocking(move || crate::update::whats_new_ack(&app)).await,
+
+        Command::TrafficRecord { on } => {
+            blocking(move || crate::traffic::set_recording(&app, on)).await
+        }
+        Command::TrafficOpenFolder => crate::traffic::open_folder(&app),
     }
 }
 

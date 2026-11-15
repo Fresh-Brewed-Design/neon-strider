@@ -37,6 +37,7 @@ pub mod strava_plan;
 pub mod strava_save;
 pub mod strava_status;
 pub mod strava_template;
+pub mod traffic;
 pub mod update;
 mod util;
 

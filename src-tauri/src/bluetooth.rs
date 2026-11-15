@@ -139,6 +139,7 @@ async fn write_packet(peripheral: &Peripheral, packet: &Packet) {
         return;
     }
     ORCHESTRATOR.lock().await.last_cmd_time = Instant::now();
+    crate::traffic::record_tx(packet.kind.label(), &packet.bytes);
     if packet.kind != PacketKind::PollStatus {
         log::debug!("SENT_{}: {:?}", packet.kind.label(), packet.bytes);
     }
@@ -309,6 +310,7 @@ async fn listen_for_status(
 ) {
     let mut toasts = ToastTracker::default();
     while let Some(data) = stream.next().await {
+        crate::traffic::record_rx(&data.uuid, &data.value);
         if !has_tag(&data.uuid, STATUS_TAG) {
             continue;
         }
@@ -696,6 +698,7 @@ pub async fn send_bluetooth_command(data: Vec<u8>) -> Result<(), String> {
                 .write(&characteristic, &data, WriteType::WithResponse)
                 .await
                 .map_err(|e| e.to_string())?;
+            crate::traffic::record_tx("RAW", &data);
             return Ok(());
         }
     }

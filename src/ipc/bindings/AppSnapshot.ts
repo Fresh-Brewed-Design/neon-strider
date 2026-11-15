@@ -13,6 +13,7 @@ import type { Program } from "./Program";
 import type { SeatedSnapshot } from "./SeatedSnapshot";
 import type { SessionSnapshot } from "./SessionSnapshot";
 import type { StravaSnapshot } from "./StravaSnapshot";
+import type { TrafficSnapshot } from "./TrafficSnapshot";
 import type { UpdateSnapshot } from "./UpdateSnapshot";
 import type { WalkAwaySnapshot } from "./WalkAwaySnapshot";
 import type { WeeklySummary } from "./WeeklySummary";
@@ -50,4 +51,8 @@ walkaway: WalkAwaySnapshot,
 /**
  * Auto-update: the running version, any update on offer and its notes.
  */
-update: UpdateSnapshot, };
+update: UpdateSnapshot, 
+/**
+ * The Diagnostics traffic recorder (off at every start).
+ */
+traffic: TrafficSnapshot, };
