@@ -267,6 +267,11 @@ pub struct OrchestratorState {
 
     /// A Pause or Stop to send as soon as the command gap allows.
     pub pending_control: Option<Control>,
+
+    /// Tests only: the simulated instant `now()` reads instead of the real
+    /// clock, so ticked time and the engine's own clock reads agree.
+    #[cfg(test)]
+    pub(crate) test_now: Option<Instant>,
 }
 
 impl Default for OrchestratorState {
@@ -320,6 +325,8 @@ impl Default for OrchestratorState {
             sorted_points: Vec::new(),
             hw_to_physical_lookup: Vec::new(),
             pending_control: None,
+            #[cfg(test)]
+            test_now: None,
         }
     }
 }
@@ -420,6 +427,23 @@ pub(crate) fn calculate_hardware_bytes(
 }
 
 impl OrchestratorState {
+    /// The engine's clock: every read of "now" that doesn't come from the
+    /// tick goes through here. The real clock, except in tests, which can set
+    /// a simulated instant (`set_test_now`).
+    pub(crate) fn now(&self) -> Instant {
+        #[cfg(test)]
+        if let Some(now) = self.test_now {
+            return now;
+        }
+        Instant::now()
+    }
+
+    /// Tests only: make `now()` return `now` from here on.
+    #[cfg(test)]
+    pub(crate) fn set_test_now(&mut self, now: Instant) {
+        self.test_now = Some(now);
+    }
+
     /// Apply the stored settings. The one way settings reach the engine: at
     /// startup, on every settings change, and on each new connection.
     ///
@@ -560,7 +584,7 @@ impl OrchestratorState {
     // -----------------------------------------------------------------------
 
     pub fn start_session(&mut self, session_id: i64) {
-        let now = Instant::now();
+        let now = self.now();
         self.session = SessionState {
             active_session_id: Some(session_id),
             last_physics_update: Some(now),
@@ -601,7 +625,7 @@ impl OrchestratorState {
         if self.session.active_session_id.is_none() {
             return false;
         }
-        let now = Instant::now();
+        let now = self.now();
         let due = self
             .session
             .last_sample_time
@@ -640,7 +664,7 @@ impl OrchestratorState {
 
     /// Advance the live session totals to now.
     pub fn update_physics(&mut self) {
-        let now = Instant::now();
+        let now = self.now();
 
         // Duration mirrors the deck's own workout timer: it holds on pause,
         // resets on stop, and is already running when we connect mid-walk. A
@@ -775,7 +799,7 @@ impl OrchestratorState {
             },
         };
 
-        let now = Instant::now();
+        let now = self.now();
         // The deck reports uncalibrated distance; scale it like live distance.
         let distance_meters = deck_distance_m * self.distance_calibration_ratio(latest.as_ref());
         // Carry the resumed session's incline average forward instead of
@@ -802,7 +826,7 @@ impl OrchestratorState {
     /// After each telemetry frame: open, sample, checkpoint and close the
     /// session as the deck's state requires.
     pub fn manage_session_lifecycle(&mut self, app: &tauri::AppHandle) {
-        let now = Instant::now();
+        let now = self.now();
 
         if self.should_start_session() {
             match persistence::db_create_session(app) {
@@ -935,7 +959,7 @@ impl OrchestratorState {
     /// passes false). While a program walks, this edits its live step target.
     pub(crate) fn set_intent(&mut self, speed: Option<f32>, incline: Option<u8>, by_hand: bool) {
         if by_hand && speed.is_some() {
-            self.note_hand_speed(Instant::now());
+            self.note_hand_speed(self.now());
         }
         if self.adjust_program_target(speed, incline) {
             return;
@@ -951,11 +975,11 @@ impl OrchestratorState {
             current.incline = i;
         }
         self.manual_intent = Some(current);
-        self.last_manual_interaction = Instant::now();
+        self.last_manual_interaction = self.now();
     }
 
     pub fn trigger_action(&mut self, action: DeckAction) {
-        let now = Instant::now();
+        let now = self.now();
         log::info!("TRIGGER ACTION: {}", action);
         match action {
             DeckAction::SpeedUp => self.nudge_manual_speed(1),
@@ -1001,7 +1025,7 @@ impl OrchestratorState {
                 speed: phys,
                 incline: cur.incline,
             });
-            self.note_hand_speed(Instant::now());
+            self.note_hand_speed(self.now());
         }
         log::debug!(
             "SPEED NUDGE dir={} hw_byte {} -> {} (status={:?})",
@@ -1010,7 +1034,7 @@ impl OrchestratorState {
             target_byte,
             self.last_status
         );
-        self.stamp_manual_interaction(Instant::now());
+        self.stamp_manual_interaction(self.now());
     }
 
     /// A physical speed that the transmit path turns back into exactly
@@ -1178,7 +1202,7 @@ impl OrchestratorState {
             run.restored = true;
         }
 
-        let now = Instant::now();
+        let now = self.now();
         let was_moving = self.last_status.is_moving();
         let recent = self
             .session
@@ -1319,7 +1343,7 @@ impl OrchestratorState {
     /// The speed and incline to send now: the base eased by Neural flow, held
     /// to at least `min_speed` while moving.
     pub fn resolve_target(&self) -> (f32, u8, TargetSource) {
-        let (speed, incline, source) = self.resolve_base(Instant::now());
+        let (speed, incline, source) = self.resolve_base(self.now());
         // A speed set by hand since Neural flow's last tick wins at once; quiet
         // mode on a call takes the lower speed and is never slowed further.
         let speed = self.neural.speed_for(
@@ -1729,7 +1753,9 @@ mod tests {
             last_status: MachineStatus::Running,
             ..Default::default()
         };
-        state.session.last_physics_update = Some(Instant::now() - Duration::from_secs(1));
+        let t0 = Instant::now();
+        state.session.last_physics_update = Some(t0);
+        state.set_test_now(t0 + Duration::from_secs(1));
         state.update_physics();
         // About one second at 3.8125 kcal/min = 0.0635 kcal.
         assert!(
@@ -1743,7 +1769,8 @@ mod tests {
             last_status: MachineStatus::Paused,
             ..Default::default()
         };
-        paused.session.last_physics_update = Some(Instant::now() - Duration::from_secs(1));
+        paused.session.last_physics_update = Some(t0);
+        paused.set_test_now(t0 + Duration::from_secs(1));
         paused.update_physics();
         assert_eq!(paused.session.calories, 0.0);
     }
@@ -2011,6 +2038,7 @@ mod tests {
         let mut out = vec![];
         for i in 0..ticks {
             let now = start + Duration::from_millis(50 * i);
+            state.set_test_now(now);
             if let Some(packet) = engine.determine_next_packet(state, now) {
                 state.last_cmd_time = now;
                 out.push(packet.kind);
@@ -2048,11 +2076,11 @@ mod tests {
         assert_eq!(state.handshake_step, HandshakeStep::Idle);
         assert!(later.contains(&PacketKind::PollStatus));
 
-        // Engage again: tried again.
+        // Engage again, 30 s in: tried again.
+        state.set_test_now(t0 + Duration::from_secs(30));
         state.trigger_action(DeckAction::Start);
         assert!(!state.start_blocked);
-        // (The watch is stamped with the real clock; align it with the test's.)
-        state.start_requested_at = Some(t0 + Duration::from_secs(30));
+        assert_eq!(state.start_requested_at, Some(t0 + Duration::from_secs(30)));
         let again = kinds(&mut engine, &mut state, t0 + Duration::from_secs(30), 40);
         assert!(again.contains(&PacketKind::HandshakeStart), "{again:?}");
     }
