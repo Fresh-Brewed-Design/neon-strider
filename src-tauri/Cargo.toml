@@ -1,0 +1,54 @@
+[package]
+name = "neon-strider"
+version = "1.2.0"
+description = "Desktop controller for FitShow Bluetooth treadmills"
+authors = ["Fresh Brewed Design"]
+license = "MIT"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "neon_strider_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+# Tray icon variants derived from icons/tray.png (build.rs).
+png = "0.18"
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-opener = "2"
+tauri-plugin-log = "2"
+log = "0.4"
+rusqlite = { version = "0.31", features = ["bundled", "backup"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+btleplug = "0.11"
+futures = "0.3"
+tokio = { version = "1", features = ["time", "sync", "macros"] }
+uuid = "1.0"
+reqwest = { version = "0.11", features = ["json", "multipart"] }
+url = "2.2"
+tiny_http = "0.12"
+chrono = "0.4"
+ts-rs = "12.0.1"
+tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
+keyring = { version = "3", features = ["windows-native"] }
+tauri-plugin-updater = "2"
+
+# Windows-only code lives in src/platform/windows.rs.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_Foundation", "Win32_System_LibraryLoader", "Win32_UI_WindowsAndMessaging", "Win32_System_Registry", "Win32_System_RemoteDesktop", "Win32_Graphics_Gdi"] }
+
+[profile.dev]
+incremental = true
+debug = 0
+
+[profile.dev.package."*"]
+opt-level = 2

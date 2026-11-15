@@ -1,0 +1,69 @@
+name: CI
+
+# PRs only: main is checked by the PR that changed it, and the release build
+# compiles it again. Windows runners bill at 2x, so skip runs that cannot
+# change the app (docs, release notes) and stop superseded runs.
+on:
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "changes/**"
+      - "LICENSE"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    # The app is Windows-only (low-level hooks, Credential Manager, WebView2).
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx eslint .
+
+      - name: Frontend tests
+        run: npx vitest run
+
+      # Before the Rust steps: the Tauri build embeds the built frontend (dist/).
+      - name: Frontend build
+        run: npx vite build
+
+      - name: Rust tests (also regenerates the TypeScript IPC bindings)
+        working-directory: src-tauri
+        run: cargo test
+
+      - name: Generated bindings are committed
+        shell: bash
+        run: git diff --exit-code -- src/ipc/bindings || (echo "Run cargo test in src-tauri and commit src/ipc/bindings." && exit 1)
+
+      - name: Formatting
+        working-directory: src-tauri
+        run: cargo fmt --check
+
+      - name: Clippy (all targets, warnings are errors)
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings

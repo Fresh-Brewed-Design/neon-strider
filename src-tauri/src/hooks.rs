@@ -1,0 +1,161 @@
+//! What the global input hooks record, and the Alt shortcuts they fire.
+//!
+//! The hooks themselves are OS code (`platform`); these are the functions they
+//! call on every key press and mouse move, so nothing here may block: atomics
+//! only, and a shortcut's work runs on a thread of its own.
+//!
+//! Only two things are kept: the time of the last input, and (while Neural
+//! flow wants it) a count of typing key presses. Never which key or button, or
+//! where the pointer was.
+
+use crate::engine::DeckAction;
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::time::Instant;
+
+/// Typing key presses since the protocol worker last took the count.
+static KEY_COUNT: AtomicUsize = AtomicUsize::new(0);
+static KEY_COUNTING: AtomicBool = AtomicBool::new(false);
+/// Epoch ms of the last keyboard or mouse input, plus one; 0 = none yet.
+/// Wall-clock time, so a sleeping PC counts as time away.
+static LAST_INPUT_MS: AtomicU64 = AtomicU64::new(0);
+
+fn epoch_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
+}
+
+/// Record that input just happened (any key down, any mouse event).
+pub(crate) fn note_input() {
+    LAST_INPUT_MS.store(epoch_ms().saturating_add(1), Ordering::Relaxed);
+}
+
+/// How long before `now_ms` (epoch ms) the last keyboard or mouse input was;
+/// `None` if there has been none since the app started.
+pub(crate) fn input_idle_ms(now_ms: u64) -> Option<u64> {
+    idle_since(LAST_INPUT_MS.load(Ordering::Relaxed), now_ms)
+}
+
+fn idle_since(stored: u64, now_ms: u64) -> Option<u64> {
+    match stored {
+        0 => None,
+        v => Some(now_ms.saturating_sub(v - 1)),
+    }
+}
+
+/// Switch key-press counting for Neural flow. Rust decides this itself (see
+/// `OrchestratorState::neural_monitor_wanted`); the hooks stay installed
+/// either way, for the shortcuts and the last-input time.
+pub(crate) fn set_key_counting(active: bool) {
+    if KEY_COUNTING.swap(active, Ordering::SeqCst) != active {
+        if !active {
+            KEY_COUNT.store(0, Ordering::SeqCst);
+        }
+        log::info!("Activity counting {}", if active { "on" } else { "off" });
+    }
+}
+
+pub(crate) fn key_counting() -> bool {
+    KEY_COUNTING.load(Ordering::Relaxed)
+}
+
+pub(crate) fn count_key() {
+    KEY_COUNT.fetch_add(1, Ordering::Relaxed);
+}
+
+/// The key presses counted since the last call, and start again from zero.
+pub(crate) fn take_key_count() -> u32 {
+    u32::try_from(KEY_COUNT.swap(0, Ordering::SeqCst)).unwrap_or(u32::MAX)
+}
+
+/// A global shortcut (Alt plus a key; see `platform` for which).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Shortcut {
+    SpeedUp,
+    SpeedDown,
+    InclineUp,
+    InclineDown,
+    /// Pause a moving belt, otherwise start it.
+    ToggleStart,
+    /// End the running program, or run the last one again.
+    ToggleProgram,
+}
+
+impl Shortcut {
+    /// The engine action, or `None` for the program toggle (not an engine action).
+    fn deck_action(self) -> Option<DeckAction> {
+        match self {
+            Shortcut::SpeedUp => Some(DeckAction::SpeedUp),
+            Shortcut::SpeedDown => Some(DeckAction::SpeedDown),
+            Shortcut::InclineUp => Some(DeckAction::InclineUp),
+            Shortcut::InclineDown => Some(DeckAction::InclineDown),
+            Shortcut::ToggleStart => Some(DeckAction::ToggleStart),
+            Shortcut::ToggleProgram => None,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self.deck_action() {
+            Some(action) => action.as_str(),
+            None => "toggle-automation",
+        }
+    }
+}
+
+/// Run a shortcut, off the hook thread. Ignored until the app has started.
+pub(crate) fn shortcut_pressed(shortcut: Shortcut) {
+    let Some(app) = crate::app_handle() else {
+        return;
+    };
+    std::thread::spawn(move || {
+        log::info!("native shortcut action: {}", shortcut.label());
+        // Shortcuts work with no window open; the HUD shows what they did.
+        crate::hud::ensure_hud_native(app);
+        tauri::async_runtime::block_on(async move {
+            let mut state = crate::bluetooth::ORCHESTRATOR.lock().await;
+            match shortcut.deck_action() {
+                Some(action) => state.trigger_action(action),
+                None => {
+                    state.toggle_program(Instant::now());
+                }
+            }
+        });
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn idle_time_is_none_until_the_first_input() {
+        assert_eq!(idle_since(0, 5_000), None);
+        // Stored as time + 1, so an input at epoch 0 is still "seen".
+        assert_eq!(idle_since(1, 5_000), Some(5_000));
+        assert_eq!(idle_since(4_001, 5_000), Some(1_000));
+        // A clock that went backwards reads as no idle time.
+        assert_eq!(idle_since(9_001, 5_000), Some(0));
+    }
+
+    #[test]
+    fn shortcuts_name_the_actions_they_run() {
+        assert_eq!(Shortcut::SpeedUp.deck_action(), Some(DeckAction::SpeedUp));
+        assert_eq!(
+            Shortcut::ToggleStart.deck_action(),
+            Some(DeckAction::ToggleStart)
+        );
+        assert_eq!(Shortcut::ToggleProgram.deck_action(), None);
+        assert_eq!(Shortcut::InclineDown.label(), "incline-down");
+        assert_eq!(Shortcut::ToggleProgram.label(), "toggle-automation");
+    }
+
+    #[test]
+    fn the_key_count_is_taken_once() {
+        // Shared statics: this is the only test that touches them.
+        let _ = take_key_count();
+        count_key();
+        count_key();
+        assert_eq!(take_key_count(), 2);
+        assert_eq!(take_key_count(), 0);
+    }
+}

@@ -1,0 +1,1 @@
+- A pause could turn into a start if the treadmill reported it had paused between the two packets of the pause command. The app now decides pause or start once per command.

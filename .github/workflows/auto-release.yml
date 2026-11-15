@@ -1,0 +1,94 @@
+name: Auto release
+
+# Every push to main (a merged PR) releases everything merged since the last v*
+# tag as ONE version. Merging several PRs in a row is safe: GitHub keeps at most
+# one waiting run, and that run covers every PR merged before it starts.
+#
+# Bump: the largest `release:major|minor|patch` label among those PRs (no label =
+# patch; `release:none` PRs don't count). Release notes come from `changes/*.md`
+# (see changes/README.md). The release commit is pushed with the workflow token,
+# which doesn't trigger workflows, so this can't loop.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.bump.outputs.tag }}
+      notes: ${{ steps.notes.outputs.notes }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: PRs merged since the last release
+        id: prs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          last=$(git tag --list 'v*' --sort=-v:refname | head -n1)
+          # No tag yet (a new repository): count from its first commit.
+          since=$(git log -1 --format=%cI "${last:-$(git rev-list --max-parents=0 HEAD | tail -n1)}")
+          gh pr list --repo "$GITHUB_REPOSITORY" --base main --state merged \
+            --search "merged:>$since" --limit 200 --json number,title,labels > prs.json
+          echo "labels=$(jq -c '[.[] | [.labels[].name]]' prs.json)" >> "$GITHUB_OUTPUT"
+          echo "titles=$(jq -c '[.[].title]' prs.json)" >> "$GITHUB_OUTPUT"
+          echo "Since $last ($since): $(jq length prs.json) merged PR(s)"
+
+      - id: bump
+        env:
+          PR_LABELS: ${{ steps.prs.outputs.labels }}
+          PR_TITLES: ${{ steps.prs.outputs.titles }}
+          # Outside the checkout, so the release commit doesn't pick it up.
+          RELEASE_NOTES_FILE: ${{ runner.temp }}/release-notes.md
+        run: node scripts/release-version.mjs
+
+      # The new version's CHANGELOG section, for the GitHub release body.
+      - name: Release notes
+        id: notes
+        if: steps.bump.outputs.tag != ''
+        run: |
+          delim="EOF_$(openssl rand -hex 8)"
+          {
+            echo "notes<<$delim"
+            cat "$RUNNER_TEMP/release-notes.md"
+            echo "$delim"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Commit, tag and push
+        if: steps.bump.outputs.tag != ''
+        env:
+          TAG: ${{ steps.bump.outputs.tag }}
+        run: |
+          rm -f prs.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Release $TAG"
+          git tag "$TAG"
+          git push origin HEAD:main "$TAG"
+
+  build:
+    needs: version
+    if: needs.version.outputs.tag != ''
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.version.outputs.tag }}
+      notes: ${{ needs.version.outputs.notes }}
+    secrets: inherit

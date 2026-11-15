@@ -1,0 +1,814 @@
+// Dev-only mocked backend shared by the HUD and dashboard previews
+// (hud-preview.html, dashboard-preview.html). Not part of the production build.
+// URL flags pick a scenario; each is described where it is applied below.
+import { emit } from "@tauri-apps/api/event";
+import { mockIPC } from "@tauri-apps/api/mocks";
+import type { ActiveProgram, AppSnapshot, Command, ConnectionSnapshot } from "../ipc";
+import type { MaintenanceSnapshot, Program, StravaSnapshot, WeeklySummary } from "../ipc";
+import type { RustConfig } from "../services/controlOrchestrator";
+
+// Same defaults as src-tauri/src/strava_template.rs.
+const DEFAULT_TITLE = "NEON STRIDER // {distance_km} KM UPLINK";
+const DEFAULT_ROLLUP_TITLE = "NEON STRIDER // DAILY UPLINK · {walks} WALKS · {distance_km} KM";
+const DEFAULT_DESCRIPTION =
+  "DECK_CYCLES {duration} · DISPLACEMENT {distance_km} km · ALTITUDE_BIAS {avg_incline}% · METABOLIC_BURN {calories} kcal\nLogged by Neon Strider";
+
+/** A rough stand-in for the Rust renderer: the real one is tested in Rust. */
+function previewTemplate(template: string, fallback: string): string {
+  const sample: Record<string, string> = {
+    distance_km: "3.42", duration: "1:02:05", avg_speed: "3.3", avg_incline: "4.5", calories: "214",
+    steps: "4980", walks: "3", date: "2026-11-13", time: "07:45",
+  };
+  const text = template.trim() === "" ? fallback : template;
+  return text.replace(/\{(\w+)\}/g, (whole, name: string) => sample[name] ?? whole);
+}
+
+export const snapshot: AppSnapshot = {
+  connection: {
+    connected: true,
+    connecting: false,
+    device_id: "preview",
+    has_saved_device: true,
+    link: { state: "connected" },
+    last_error: null,
+    start_pending: false,
+    start_result: null,
+    connect_dialog_at_ms: null,
+  },
+  deck: {
+    status: "Running",
+    unknown_status_code: null,
+    speed_kmh: 3.2,
+    raw_speed_kmh: 3.6,
+    target_speed_kmh: 3.5,
+    incline_level: 4,
+    incline_pct: 5.0,
+    incline_offset_pct: 0,
+    incline_pct_per_level: 1.25,
+    target_incline_level: 4,
+    target_incline_pct: 5.0,
+    min_speed_kmh: 0.6,
+    max_speed_kmh: 10.5,
+    max_incline_level: 15,
+    max_incline_pct: 18.75,
+  },
+  session: { active_id: 1, duration_s: 1934, distance_m: 1720, steps: 2412, calories: 103, daily_distance_m: 4310 },
+  programs: [
+    { id: 1, name: "Post-meal", steps: [{ duration_minutes: 10, speed_kmh: 4, incline_pct: 10 }], repeat_every_minutes: null },
+    { id: 2, name: "Workday", steps: [{ duration_minutes: 5, speed_kmh: 3, incline_pct: 5 }], repeat_every_minutes: 30 },
+    { id: 3, name: "Focus", steps: [{ duration_minutes: null, speed_kmh: 2.5, incline_pct: 5 }], repeat_every_minutes: null },
+  ],
+  active_program: {
+    program_id: 2,
+    name: "Workday",
+    phase: "walking",
+    step_index: 0,
+    step_count: 1,
+    seconds_remaining: 252,
+    cycle: 3,
+    paused: false,
+    wait: null,
+    speed_kmh: 3,
+    incline_pct: 5,
+  },
+  neural: {
+    enabled: true,
+    factor: 1,
+    active: false,
+    base_kmh: 3.5,
+    target_kmh: 3.5,
+    keys_per_min: 14,
+    floor_pct: 90,
+    sensitivity: "medium",
+  },
+  hud: {
+    widgets: ["VELOCITY", "INCLINE", "TIMER", "DISTANCE", "DAILY", "CONTROLS", "PROGRAMS"],
+    anchor: "bottom_right",
+    monitor: null,
+    dashboard_pinned: false,
+    custom: null,
+  },
+  hud_monitors: [
+    { name: "\\\\.\\DISPLAY1", label: "Display 1 · 1920×1080", is_primary: true, active: true, width: 1920, height: 1080 },
+    { name: "\\\\.\\DISPLAY2", label: "Display 2 · 2560×1440", is_primary: false, active: false, width: 2560, height: 1440 },
+  ],
+  strava: {
+    has_credentials: true,
+    connected: true,
+    athlete_name: "Preview Athlete",
+    auto_sync: true,
+    daily_rollup: false,
+    shift_end: "18:00",
+    syncing: false,
+    activity: { state: "idle" },
+    uploading_session_ids: [],
+    upload_errors: {},
+    saved_session_ids: [],
+    last_result: { ok: true, message: "Uploaded 1.72 km to Strava (activity 123)", at_ms: Date.now() - 3600_000, hint: "none" },
+    needs_reconnect: false,
+    gear: [
+      { id: "g1001", name: "Hoka Clifton 9", distance_km: 312.4, primary: true, retired: false },
+      { id: "g1002", name: "Brooks Ghost 15 (long name to test the select width)", distance_km: 88.1, primary: false, retired: false },
+      { id: "g1003", name: "Old Saucony", distance_km: 701.9, primary: false, retired: true },
+    ],
+    gear_id: "g1001",
+    gear_loading: false,
+    mute_mode: "all",
+    mute_under_minutes: 20,
+    title_template: DEFAULT_TITLE,
+    rollup_title_template: DEFAULT_ROLLUP_TITLE,
+    description_template: DEFAULT_DESCRIPTION,
+  },
+  maintenance: {
+    last_service_ms: Date.now() - 38 * 86_400_000,
+    distance_since_km: 100.4,
+    interval_km: 160.934,
+    basis: "distance",
+    hours_since: 31.4,
+    interval_hours: 50,
+    days_since: 38,
+    interval_days: 90,
+    due: false,
+    progress: 0.42,
+  },
+  weekly: {
+    this_week: { distance_km: 12.4, duration_s: 11_460, active_days: 3, sessions: 4, calories: 740, longest_day_km: 5.1 },
+    last_week: { distance_km: 31.6, duration_s: 29_700, active_days: 5, sessions: 9, calories: 1_890, longest_day_km: 8.2 },
+    week_before: { distance_km: 28.2, duration_s: 26_100, active_days: 4, sessions: 7, calories: 1_650, longest_day_km: 7.4 },
+    last_week_id: "2026-W45",
+    distance_change: { pct: 12, is_new: false },
+    show_card: false,
+  },
+  seated: {
+    enabled: true,
+    minutes: 60,
+    program_ids: [1, 2, 3],
+    custom_programs: false,
+    show_card: false,
+    seated_minutes: 60,
+    pending_program_id: null,
+  },
+  calls: { enabled: true, quiet_kmh: 2, mic_in_use: false, quiet_active: false },
+  odometer: { distance_km: 412.6, belt_hours: 138.2, since_ms: Date.UTC(2026, 2, 12) },
+  walkaway: { lock_enabled: true, idle_enabled: true, idle_minutes: 10, card: "none", pause_in_s: 0, reason: null },
+  update: {
+    current_version: "1.2.0",
+    status: { state: "up_to_date" },
+    offer: null,
+    dismissed: false,
+    hud_card: false,
+    notes_warning: null,
+    show_notes_at_ms: null,
+    last_checked_ms: Date.now() - 3 * 3_600_000,
+    last_result: null,
+    whats_new: null,
+  },
+};
+
+/** Send the current snapshot to every listener, as Rust's `app-state` event does. */
+function publish() {
+  void emit("app-state", structuredClone(snapshot));
+}
+
+/** Rust finishing something in the background: apply `fn` after `ms`, then publish. */
+function later(ms: number, fn: () => void) {
+  setTimeout(() => {
+    fn();
+    publish();
+  }, ms);
+}
+
+/** What Rust reports when a program starts. */
+function startProgram(p: Program): ActiveProgram {
+  const first = p.steps[0];
+  return {
+    program_id: p.id,
+    name: p.name,
+    phase: "walking",
+    step_index: 0,
+    step_count: p.steps.length,
+    seconds_remaining: first.duration_minutes != null ? first.duration_minutes * 60 : null,
+    cycle: 1,
+    paused: false,
+    wait: null,
+    speed_kmh: first.speed_kmh,
+    incline_pct: first.incline_pct,
+  };
+}
+
+const params = new URLSearchParams(location.search);
+const anchor = params.get("anchor");
+if (anchor) snapshot.hud.anchor = anchor as AppSnapshot["hud"]["anchor"];
+if (params.has("onemonitor")) snapshot.hud_monitors = snapshot.hud_monitors.slice(0, 1);
+if (params.has("idle")) snapshot.deck.status = "Stopped";
+// ?offline: no treadmill saved yet (the HUD's link label is not clickable).
+if (params.has("offline")) Object.assign(snapshot.connection, { connected: false, has_saved_device: false, link: { state: "idle" } });
+if (params.has("noprogram")) snapshot.active_program = null;
+// ?program=ready: Workday's rest is over on a still belt, and cycle 4 waits for GO
+// (REST COMPLETE // PRESS GO). ?program=hold: a walking step after a 0 km/h step waits.
+// ?program=still: the belt was found still after a reconnect. ?program=resting: mid-rest.
+// ?program=paused: paused by the user (plain GO, no wait).
+const programFlag = params.get("program");
+const PROGRAM_SCENARIOS: Record<string, Partial<ActiveProgram>> = {
+  ready: { cycle: 4, paused: true, wait: "rest_complete", seconds_remaining: 300 },
+  hold: { step_index: 1, step_count: 3, paused: true, wait: "hold_complete", seconds_remaining: 120 },
+  still: { paused: true, wait: "belt_still" },
+  resting: { phase: "resting", seconds_remaining: 1294 },
+  paused: { paused: true },
+};
+if (programFlag !== null && snapshot.active_program && PROGRAM_SCENARIOS[programFlag]) {
+  Object.assign(snapshot.active_program, PROGRAM_SCENARIOS[programFlag]);
+  if (programFlag !== "resting") Object.assign(snapshot.deck, { status: "Paused", speed_kmh: 0, raw_speed_kmh: 0, target_speed_kmh: 0 });
+}
+if (params.has("nostrava")) Object.assign(snapshot.strava, { has_credentials: false, connected: false, athlete_name: null, auto_sync: false, last_result: null });
+// ?reconnect: a login from before shoes and the duplicate check, so it needs a fresh grant.
+if (params.has("reconnect")) Object.assign(snapshot.strava, { needs_reconnect: true, gear: [], gear_id: null });
+
+// ?link=scanning|connecting|reconnecting|nodata|bt-off|failed previews each treadmill link state.
+// Countdowns tick down in the preview the way Rust's do.
+const linkFlag = params.get("link");
+const LAST_ERROR = { message: "Treadmill not found. Is it switched on?", at_ms: Date.now() - 4000 };
+const LINK_SCENARIOS: Record<string, Partial<ConnectionSnapshot>> = {
+  scanning: { link: { state: "scanning" } },
+  connecting: { link: { state: "connecting", attempt: 2, of: 3 } },
+  reconnecting: { link: { state: "reconnecting", attempt: 3, next_retry_s: 12 }, last_error: LAST_ERROR },
+  nodata: { link: { state: "no_data", since_s: 14 } },
+  "bt-off": {
+    link: { state: "adapter_unavailable" },
+    last_error: { message: "Bluetooth is off. Turn it on in Windows settings.", at_ms: Date.now() },
+  },
+  failed: { link: { state: "failed", message: LAST_ERROR.message }, last_error: LAST_ERROR },
+};
+if (linkFlag) {
+  const flags = { connected: linkFlag === "nodata", connecting: linkFlag === "connecting" };
+  Object.assign(snapshot.connection, flags, LINK_SCENARIOS[linkFlag]);
+}
+
+// ?strava=authorizing|uploading|processing|checking|backoff|error|paused previews each Strava state;
+// ?saved marks a walk as saved for Strava; ?reject makes every command fail; ?scan=empty|error|bt-off
+// and ?connect=fail shape the connect dialog.
+const stravaFlag = params.get("strava");
+const INACTIVE_MESSAGE =
+  "Strava turned off this API app: the account that owns it needs a Strava subscription. Subscribe, then reactivate it at strava.com/settings/api \u2014 or use Save for Strava below.";
+const OFFLINE_MESSAGE = "Can't reach Strava. Check your internet connection.";
+const PAUSED: Partial<StravaSnapshot> = {
+  activity: { state: "paused", reason: INACTIVE_MESSAGE },
+  last_result: {
+    ok: false,
+    message: `Auto-sync failed. ${INACTIVE_MESSAGE} Auto-sync is paused until you press Retry or change the credentials.`,
+    at_ms: Date.now() - 60_000,
+    hint: "open_api_settings",
+  },
+};
+const STRAVA_SCENARIOS: Record<string, Partial<StravaSnapshot>> = {
+  authorizing: { connected: false, athlete_name: null, activity: { state: "authorizing", expires_in_s: 252 } },
+  uploading: { syncing: true, activity: { state: "uploading", label: "2.40 km", step: "sending" } },
+  processing: { syncing: true, activity: { state: "uploading", label: "2.40 km", step: "processing" } },
+  checking: { syncing: true, activity: { state: "checking_duplicates" } },
+  backoff: {
+    activity: { state: "backing_off", retry_in_s: 842, reason: OFFLINE_MESSAGE },
+    last_result: {
+      ok: false,
+      message: `Auto-sync failed. ${OFFLINE_MESSAGE} Trying again in 15 minutes.`,
+      at_ms: Date.now() - 60_000,
+      hint: "check_internet",
+    },
+  },
+  error: PAUSED,
+  paused: PAUSED,
+};
+if (stravaFlag) Object.assign(snapshot.strava, STRAVA_SCENARIOS[stravaFlag]);
+const rejecting = params.has("reject");
+const scanFlag = params.get("scan");
+const connectFails = params.get("connect") === "fail";
+
+/** Count the preview's countdowns down once a second, like the Rust ones. */
+function tickCountdowns(): boolean {
+  let changed = false;
+  const c = snapshot.connection;
+  if (c.link.state === "reconnecting") {
+    c.link = { ...c.link, next_retry_s: c.link.next_retry_s > 1 ? c.link.next_retry_s - 1 : 15 };
+    changed = true;
+  } else if (c.link.state === "no_data") {
+    c.link = { state: "no_data", since_s: c.link.since_s + 1 };
+    changed = true;
+  }
+  const a = snapshot.strava.activity;
+  if (a.state === "authorizing") {
+    snapshot.strava.activity = { state: "authorizing", expires_in_s: Math.max(0, a.expires_in_s - 1) };
+    changed = true;
+  } else if (a.state === "backing_off") {
+    snapshot.strava.activity = { ...a, retry_in_s: Math.max(0, a.retry_in_s - 1) };
+    changed = true;
+  }
+  return changed;
+}
+
+// ?weekly shows the last-week HUD card. Variants: ?weekly=long (123.4 km, 12h 05m,
+// +1234%), ?weekly=new (nothing the week before), ?weekly=down.
+const weeklyFlag = params.get("weekly");
+const WEEKLY_SCENARIOS: Record<string, Partial<WeeklySummary>> = {
+  long: {
+    last_week: { ...snapshot.weekly.last_week, distance_km: 123.4, duration_s: 12 * 3600 + 5 * 60, active_days: 7, sessions: 21 },
+    distance_change: { pct: 1234, is_new: false },
+  },
+  new: {
+    week_before: { distance_km: 0, duration_s: 0, active_days: 0, sessions: 0, calories: 0, longest_day_km: 0 },
+    distance_change: { pct: null, is_new: true },
+  },
+  down: { distance_change: { pct: -23, is_new: false } },
+};
+if (weeklyFlag !== null) Object.assign(snapshot.weekly, { show_card: true }, WEEKLY_SCENARIOS[weeklyFlag]);
+
+// ?seated shows the sit-too-long HUD card. Variants: ?seated=off (treadmill off, nothing
+// picked yet), ?seated=queued (treadmill off, second program remembered), ?seated=long
+// (long program names, to check wrapping).
+const seatedFlag = params.get("seated");
+if (seatedFlag !== null) {
+  Object.assign(snapshot.seated, { show_card: true, seated_minutes: 63 });
+  if (seatedFlag === "off" || seatedFlag === "queued") snapshot.connection.connected = false;
+  if (seatedFlag === "queued") snapshot.seated.pending_program_id = 2;
+  if (seatedFlag === "long") {
+    ["Long afternoon recovery walk", "Standing desk intervals", "Post-lunch"].forEach((name, i) => {
+      snapshot.programs[i].name = name;
+    });
+  }
+}
+
+// ?call: on a call, the belt held at the quiet speed (the HUD preview also shows the toast).
+if (params.has("call")) {
+  Object.assign(snapshot.calls, { mic_in_use: true, quiet_active: true });
+  Object.assign(snapshot.deck, { speed_kmh: 2, raw_speed_kmh: 2.2, target_speed_kmh: 2 });
+}
+
+// ?neural=active: Neural flow is easing the belt off while you type.
+if (params.get("neural") === "active") {
+  Object.assign(snapshot.neural, { active: true, factor: 0.94, base_kmh: 3.5, target_kmh: 3.3, keys_per_min: 118 });
+  Object.assign(snapshot.deck, { speed_kmh: 3.3, target_speed_kmh: 3.3 });
+}
+
+// ?engage=timeout: the deck's screen is off. It shows the last Engage's failure, and
+// Engage waits 8 s and fails again. ?status=N: the deck sent an unknown status byte N.
+const engageTimeout = params.get("engage") === "timeout";
+const START_NO_RESPONSE =
+  "The treadmill didn't respond. If its screen is off, wake it with its power button or remote, then try again.";
+const startFailed = (at_ms: number) => ({
+  start_result: { ok: false, message: START_NO_RESPONSE, at_ms },
+  last_error: { message: START_NO_RESPONSE, at_ms },
+});
+if (engageTimeout) {
+  Object.assign(snapshot.deck, { status: "Stopped", speed_kmh: 0, raw_speed_kmh: 0 });
+  snapshot.active_program = null;
+  Object.assign(snapshot.connection, startFailed(Date.now() - 2000));
+}
+const statusFlag = params.get("status");
+if (statusFlag !== null) {
+  snapshot.deck.status = "Stopped";
+  snapshot.deck.unknown_status_code = Number(statusFlag) || 7;
+}
+
+// ?walkaway=warning: the idle warning counting down (STAY cancels it, reaching 0
+// pauses). ?walkaway=paused (or =lock): the belt was paused because the PC was
+// locked; ?walkaway=idle: paused after no input.
+const walkawayFlag = params.get("walkaway");
+if (walkawayFlag === "warning") {
+  Object.assign(snapshot.walkaway, { card: "warning", pause_in_s: 30 });
+} else if (walkawayFlag === "paused" || walkawayFlag === "lock" || walkawayFlag === "idle") {
+  Object.assign(snapshot.walkaway, { card: "paused", reason: walkawayFlag === "idle" ? "idle" : "lock" });
+  snapshot.deck.status = "Paused";
+}
+
+/** One second of the walk-away warning (Rust recomputes `pause_in_s` each snapshot). */
+function tickWalkaway(): boolean {
+  const w = snapshot.walkaway;
+  if (w.card !== "warning") return false;
+  if (w.pause_in_s > 1) {
+    w.pause_in_s -= 1;
+  } else {
+    Object.assign(w, { card: "paused", reason: "idle", pause_in_s: 0 });
+    snapshot.deck.status = "Paused";
+  }
+  return true;
+}
+
+// Auto-update. ?update=available: v1.3.0 is on offer (notes for it and the
+// skipped v1.2.1; the HUD shows UPDATE READY). ?update=downloading: it is
+// downloading. ?update=failed: the last automatic check failed (offline).
+// ?update=whatsnew: the first launch after updating to v1.2.0 ("What's new").
+const PREVIEW_NOTES = [
+  "## v1.3.0",
+  "",
+  "### New",
+  "",
+  "- **Auto-update**: Neon Strider checks GitHub when it starts and once a day, shows the release notes, and",
+  "  installs and restarts with one click. The walk carries on.",
+  "- `NEON STRIDER // WHAT'S NEW` after each update.",
+  "",
+  "### Fixed",
+  "",
+  "- The HUD's link label reconnects when clicked.",
+  "",
+  "## v1.2.1",
+  "",
+  "### Fixed",
+  "",
+  "- Tilt calibration applies at once, without a reconnect.",
+].join("\n");
+
+function offerUpdate(dismissed = false) {
+  const offer = { version: "1.3.0", notes: PREVIEW_NOTES, published: "2026-11-20T09:30:00Z" };
+  Object.assign(snapshot.update, {
+    status: { state: "available", ...offer },
+    offer,
+    dismissed,
+    hud_card: !dismissed,
+  });
+}
+
+/** Rust's download progress, then the installer (which would close the app). */
+function simulateInstall() {
+  snapshot.update.status = { state: "downloading", percent: 0 };
+  const step = () =>
+    later(400, () => {
+      const s = snapshot.update.status;
+      if (s.state !== "downloading") return;
+      const percent = Math.min(100, (s.percent ?? 0) + 17);
+      snapshot.update.status = percent >= 100 ? { state: "installing" } : { state: "downloading", percent };
+      if (percent < 100) step();
+    });
+  step();
+}
+
+const updateFlag = params.get("update");
+if (updateFlag === "available") offerUpdate();
+if (updateFlag === "downloading") {
+  offerUpdate();
+  snapshot.update.hud_card = false;
+  simulateInstall();
+}
+if (updateFlag === "failed") {
+  snapshot.update.status = {
+    state: "failed",
+    message: "Can't reach GitHub. Check the internet connection, then try again.",
+  };
+}
+if (updateFlag === "whatsnew") {
+  snapshot.update.whats_new = {
+    version: "1.2.0",
+    notes: "## v1.2.0\n\n### New\n\n- **Walk-away safety**: locking the PC pauses the belt.\n- **Drag the HUD** by its NEON STRIDER logo.\n\n### Fixed\n\n- Engage now says when the treadmill's screen is off.",
+  };
+}
+
+// ?custom: the HUD sits where it was dragged (a custom position).
+if (params.has("custom")) snapshot.hud.custom = { dx: 400, top: 120 };
+
+/**
+ * A logo drag in the preview. Rust follows the real cursor across the desktop;
+ * here the page can't move its window, so only the vertical part (the content's
+ * top inside the strip) is simulated, with the same 24 px snapping to the top
+ * and bottom corners.
+ */
+function simulateHudDrag(grabY: number) {
+  const anchor = snapshot.hud.anchor;
+  const right = anchor === "top_right" || anchor === "bottom_right";
+  const content = document.querySelector(".hud-content");
+  const height = content?.getBoundingClientRect().height ?? 200;
+  const place = (clientY: number) => {
+    const max = window.innerHeight - 8 - height;
+    const top = Math.min(Math.max(clientY - grabY, 8), Math.max(max, 8));
+    if (top - 8 <= 24) return { custom: null, anchor: right ? "top_right" : "top_left" } as const;
+    if (max - top <= 24) return { custom: null, anchor: right ? "bottom_right" : "bottom_left" } as const;
+    return { custom: { dx: 400, top }, anchor } as const;
+  };
+  let last: ReturnType<typeof place> | null = null;
+  const move = (e: PointerEvent) => {
+    last = place(e.clientY);
+    // Mid-drag the content follows the pointer even over a snap zone, as the
+    // real drag does (it snaps the frame, not just the drop).
+    void emit("hud-drag", { custom: last.custom ?? { dx: 400, top: e.clientY - grabY }, anchor, done: false });
+  };
+  const up = () => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+    if (!last) return;
+    snapshot.hud.custom = last.custom ? { ...last.custom } : null;
+    snapshot.hud.anchor = last.anchor;
+    void emit("hud-drag", { custom: snapshot.hud.custom, anchor: snapshot.hud.anchor, done: true });
+    publish();
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+}
+
+// ?hours: the belt reminder counts belt hours instead of distance.
+if (params.has("hours")) Object.assign(snapshot.maintenance, { basis: "hours", hours_since: 38.2 });
+
+/** The programs the card offers, as Rust resolves them. */
+let seatedChosen: number[] | null = null;
+function resolveSeatedPrograms() {
+  const existing = snapshot.programs.map((p) => p.id);
+  const picked = (seatedChosen ?? []).filter((id) => existing.includes(id)).slice(0, 3);
+  snapshot.seated.program_ids = picked.length > 0 ? picked : existing.slice(0, 3);
+  snapshot.seated.custom_programs = seatedChosen !== null;
+}
+
+/** Apply a maintenance change and recompute the derived fields (Rust does this for real). */
+function setMaintenance(patch: Partial<MaintenanceSnapshot>) {
+  const m = Object.assign(snapshot.maintenance, patch);
+  m.days_since = Math.max(0, Math.floor((Date.now() - m.last_service_ms) / 86_400_000));
+  const usage = m.basis === "hours" ? m.hours_since / m.interval_hours : m.distance_since_km / m.interval_km;
+  const frac = Math.max(
+    usage,
+    m.interval_days > 0 ? (Date.now() - m.last_service_ms) / (m.interval_days * 86_400_000) : 0,
+  );
+  m.progress = frac;
+  m.due = frac >= 1;
+}
+// ?due: well past the distance interval.
+if (params.has("due")) setMaintenance({ last_service_ms: Date.now() - 95 * 86_400_000, distance_since_km: 168.2, hours_since: 52.6 });
+resolveSeatedPrograms();
+
+/** A few weeks of fake walks for the History page. */
+function mockSessions() {
+  const out = [];
+  const day = 24 * 3600 * 1000;
+  let id = 1;
+  for (let d = 40; d >= 0; d -= 1) {
+    if (d % 3 === 1) continue;
+    const start = Date.now() - d * day - 6 * 3600 * 1000;
+    const dur = 900 + ((d * 437) % 2400);
+    const dist = dur * 0.9;
+    out.push({
+      id: id++, start_time: start, end_time: start + dur * 1000, duration_seconds: dur,
+      distance_meters: dist, raw_distance_meters: dist, calories: dist * 0.06, steps: dist * 1.4,
+      raw_steps: dist * 1.4, avg_speed: 3.2, raw_avg_speed: 3.6, avg_incline: 4,
+      strava_id: d % 4 === 0 ? "123" : null, neural_heat: 0, neural_ticks: 0, last_hardware_time: dur,
+    });
+  }
+  return out;
+}
+
+function mockSamples(sessionId: number) {
+  return Array.from({ length: 120 }, (_, i) => ({
+    id: i, session_id: sessionId, timestamp: Date.now() - (120 - i) * 10000,
+    speed: 3 + Math.sin(i / 10), raw_speed: 3.3, incline: 4 + (i > 60 ? 2 : 0),
+    distance: i * 9, raw_distance: i * 9, steps: i * 13, raw_steps: i * 13,
+  }));
+}
+
+function finishStravaTask(message: string) {
+  snapshot.strava.last_result = { ok: true, message, at_ms: Date.now(), hint: "none" };
+}
+
+/** Rust syncing in the background: "syncing" for a moment, then a result. */
+function stravaSync(message: string) {
+  snapshot.strava.syncing = true;
+  later(1500, () => {
+    snapshot.strava.syncing = false;
+    finishStravaTask(message);
+  });
+}
+
+const PREVIEW_CONFIG: RustConfig = {
+  last_device_id: null,
+  calibration_points: [],
+  belt_length: 120,
+  min_speed: 0.6,
+  max_speed: 12,
+  max_incline: 15,
+  tilt_multiplier: 1.25,
+  incline_offset: 0,
+  focus_stability_enabled: true,
+  body_mass_kg: 75,
+  neural_floor_pct: 90,
+  neural_sensitivity: "medium",
+};
+
+const sessions = mockSessions();
+const lastId = sessions[sessions.length - 1].id;
+
+/** ?engage=timeout: Engage on a stopped deck waits, then reports no answer. */
+function engageWithTimeout() {
+  if (snapshot.deck.status === "Running") return;
+  Object.assign(snapshot.connection, { start_pending: true, start_result: null });
+  later(8000, () => Object.assign(snapshot.connection, { start_pending: false }, startFailed(Date.now())));
+}
+
+const endWalkaway = { card: "none", reason: null } as const;
+const setProgramPaused = (paused: boolean) => {
+  if (!snapshot.active_program) return;
+  // GO ends a wait and starts the belt; HOLD pauses it.
+  Object.assign(snapshot.active_program, { paused, wait: null });
+  Object.assign(snapshot.deck, paused ? { status: "Paused", speed_kmh: 0 } : { status: "Running", speed_kmh: snapshot.active_program.speed_kmh });
+};
+
+/** What each dispatched command does to the snapshot. Commands not listed only republish it. */
+const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) => void } = {
+  ...(engageTimeout ? { start: engageWithTimeout, toggle_start: engageWithTimeout } : {}),
+  connect_now: () => {
+    Object.assign(snapshot.connection, { link: { state: "connecting", attempt: 1, of: 3 }, connecting: true });
+    later(1500, () =>
+      Object.assign(snapshot.connection, { connected: true, connecting: false, link: { state: "connected" }, last_error: null }),
+    );
+  },
+  open_connect_dialog: () => (snapshot.connection.connect_dialog_at_ms = Date.now()),
+  strava_cancel_connect: () => (snapshot.strava.activity = { state: "idle" }),
+  strava_retry_now: () => {
+    snapshot.strava.activity = { state: "idle" };
+    stravaSync("Nothing to upload yet");
+  },
+  strava_mark_uploaded: (c) => {
+    snapshot.strava.saved_session_ids = snapshot.strava.saved_session_ids.filter((i) => !c.session_ids.includes(i));
+    for (const sess of sessions) if (c.session_ids.includes(sess.id)) sess.strava_id = "manual";
+  },
+  program_run: (c) => {
+    const p = snapshot.programs.find((x) => x.id === c.id);
+    if (p) snapshot.active_program = startProgram(p);
+  },
+  program_save: (c) => {
+    const i = snapshot.programs.findIndex((x) => x.id === c.program.id);
+    if (i >= 0) snapshot.programs[i] = c.program;
+    else snapshot.programs.push({ ...c.program, id: Math.max(0, ...snapshot.programs.map((x) => x.id)) + 1 });
+  },
+  program_end: () => (snapshot.active_program = null),
+  program_pause: () => setProgramPaused(true),
+  program_resume: () => setProgramPaused(false),
+  hud_toggle_widget: ({ widget }) => {
+    const w = snapshot.hud.widgets;
+    snapshot.hud.widgets = w.includes(widget) ? w.filter((x) => x !== widget) : [...w, widget];
+  },
+  hud_set_widgets: (c) => (snapshot.hud.widgets = c.widgets),
+  hud_set_anchor: (c) => Object.assign(snapshot.hud, { anchor: c.anchor, custom: null }),
+  hud_reset_position: () => (snapshot.hud.custom = null),
+  hud_drag_start: (c) => simulateHudDrag(c.grab_y),
+  hud_set_monitor: (c) => {
+    snapshot.hud.monitor = c.monitor;
+    for (const m of snapshot.hud_monitors) m.active = c.monitor === null ? m.is_primary : m.name === c.monitor;
+  },
+  dashboard_set_pinned: (c) => (snapshot.hud.dashboard_pinned = c.pinned),
+  maintenance_mark_serviced: () => setMaintenance({ last_service_ms: Date.now(), distance_since_km: 0, hours_since: 0 }),
+  maintenance_set_last_service: (c) => {
+    if (c.at_ms > Date.now() || c.at_ms < Date.UTC(2020, 0, 1)) return;
+    // Fake distance: about 5.6 km a day since the date.
+    const days = (Date.now() - c.at_ms) / 86_400_000;
+    setMaintenance({ last_service_ms: c.at_ms, distance_since_km: Math.round(days * 56) / 10, hours_since: Math.round(days * 17) / 10 });
+  },
+  maintenance_set_intervals: (c) => setMaintenance({ interval_km: c.km, interval_days: c.days }),
+  maintenance_set_basis: (c) => setMaintenance({ basis: c.basis, interval_hours: c.hours }),
+  weekly_summary_ack: () => (snapshot.weekly.show_card = false),
+  seated_set_config: (c) => {
+    seatedChosen = c.program_ids && c.program_ids.length > 0 ? c.program_ids : null;
+    Object.assign(snapshot.seated, { enabled: c.enabled, minutes: c.minutes });
+    resolveSeatedPrograms();
+  },
+  seated_start: (c) => {
+    const p = snapshot.programs.find((x) => x.id === c.id);
+    if (p && snapshot.connection.connected) {
+      snapshot.seated.show_card = false;
+      snapshot.active_program = startProgram(p);
+    } else if (p) {
+      snapshot.seated.pending_program_id = p.id;
+    }
+  },
+  seated_snooze: () => Object.assign(snapshot.seated, { show_card: false, pending_program_id: null }),
+  seated_dismiss: () => Object.assign(snapshot.seated, { show_card: false, pending_program_id: null }),
+  calls_set_config: (c) => Object.assign(snapshot.calls, { enabled: c.enabled, quiet_kmh: c.quiet_kmh }),
+  walkaway_set_config: (c) => {
+    if (c.idle_minutes < 2 || c.idle_minutes > 30) throw "Idle time must be between 2 and 30 minutes";
+    Object.assign(snapshot.walkaway, { lock_enabled: c.lock_enabled, idle_enabled: c.idle_enabled, idle_minutes: c.idle_minutes });
+    if (!c.idle_enabled && snapshot.walkaway.card === "warning") snapshot.walkaway.card = "none";
+  },
+  walkaway_stay: () => Object.assign(snapshot.walkaway, { card: "none", pause_in_s: 0 }),
+  walkaway_resume: () => {
+    if (!snapshot.connection.connected) throw "The treadmill is offline";
+    Object.assign(snapshot.walkaway, endWalkaway);
+    snapshot.deck.status = "Running";
+  },
+  walkaway_end: () => {
+    Object.assign(snapshot.walkaway, endWalkaway);
+    snapshot.deck.status = "Stopped";
+    snapshot.active_program = null;
+  },
+  update_check: () => {
+    snapshot.update.status = { state: "checking" };
+    later(1200, () => {
+      const at_ms = Date.now();
+      snapshot.update.last_checked_ms = at_ms;
+      if (updateFlag === "failed") {
+        const message = "Can't reach GitHub. Check the internet connection, then try again.";
+        snapshot.update.status = { state: "failed", message };
+        snapshot.update.last_result = { ok: false, message, at_ms };
+      } else if (updateFlag === "available" || snapshot.update.offer) {
+        offerUpdate(snapshot.update.dismissed);
+        snapshot.update.last_result = { ok: true, message: "v1.3.0 is available.", at_ms };
+      } else {
+        snapshot.update.status = { state: "up_to_date" };
+        snapshot.update.last_result = { ok: true, message: "Up to date: v1.2.0 is the newest.", at_ms };
+      }
+    });
+  },
+  update_install: () => {
+    if (!snapshot.update.offer) throw "No update to install. Check for updates first.";
+    simulateInstall();
+  },
+  update_dismiss: () => Object.assign(snapshot.update, { dismissed: true, hud_card: false }),
+  update_hud_card: (c) => {
+    snapshot.update.hud_card = false;
+    if (c.open) snapshot.update.show_notes_at_ms = Date.now();
+  },
+  update_whats_new_ack: () => (snapshot.update.whats_new = null),
+  strava_set_credentials: () => (snapshot.strava.has_credentials = true),
+  strava_connect: () => {
+    Object.assign(snapshot.strava, { connected: true, athlete_name: "Preview Athlete" });
+    finishStravaTask("Connected as Preview Athlete");
+  },
+  strava_disconnect: () => Object.assign(snapshot.strava, { connected: false, athlete_name: null }),
+  strava_set_auto_sync: (c) => (snapshot.strava.auto_sync = c.enabled),
+  strava_set_daily_rollup: (c) => Object.assign(snapshot.strava, { daily_rollup: c.enabled, shift_end: c.shift_end }),
+  strava_set_gear: (c) => (snapshot.strava.gear_id = c.gear_id),
+  strava_refresh_gear: () => {
+    snapshot.strava.gear_loading = true;
+    later(800, () => {
+      snapshot.strava.gear_loading = false;
+      finishStravaTask("Loaded 2 shoes from Strava");
+    });
+  },
+  strava_set_mute: (c) => Object.assign(snapshot.strava, { mute_mode: c.mode, mute_under_minutes: c.under_minutes }),
+  strava_set_templates: (c) =>
+    Object.assign(snapshot.strava, {
+      title_template: c.title.trim() === "" ? DEFAULT_TITLE : c.title,
+      rollup_title_template: c.rollup_title.trim() === "" ? DEFAULT_ROLLUP_TITLE : c.rollup_title,
+      description_template: c.description.trim() === "" ? DEFAULT_DESCRIPTION : c.description,
+    }),
+  // Rust uploads in the background: show "syncing", then a result.
+  strava_upload: () => stravaSync("Uploaded 1.72 km to Strava (activity 123)"),
+  strava_sync_now: () => stravaSync("Nothing to upload yet"),
+};
+
+/** Resolve after a moment, the way a Bluetooth call takes a while. */
+const slow = <T,>(fn: () => T) => new Promise((resolve) => setTimeout(resolve, 1500)).then(fn);
+
+/** The app's named `invoke` calls besides `dispatch`. */
+const QUERIES: Record<string, (args: Record<string, unknown>) => unknown> = {
+  get_snapshot: () => snapshot,
+  open_log_folder: () => null,
+  scan_bluetooth_devices: () => {
+    if (scanFlag === "error") throw { kind: "generic", message: "Could not reach the treadmill. Try again." };
+    if (scanFlag === "bt-off") throw { kind: "adapter_off", message: "Bluetooth is off. Turn it on in Windows settings." };
+    return slow(() => (scanFlag === "empty" ? [] : [{ id: "preview-deck", name: "FS-Preview" }]));
+  },
+  connect_bluetooth_device: () =>
+    slow(() => {
+      if (connectFails) throw { kind: "not_found", message: "Treadmill not found. Is it switched on?" };
+      return null;
+    }),
+  strava_save_for_strava: (args) => {
+    if (params.get("savefail") !== null) throw "No finished walk to save. Every walk is already on Strava, or one is still running.";
+    const ids = args.sessionIds as number[] | null;
+    snapshot.strava.saved_session_ids = [...new Set([...snapshot.strava.saved_session_ids, ...(ids ?? [lastId])])];
+    publish();
+    return { file_name: "2026-11-13 NEON STRIDER // 2.40 KM UPLINK.tcx", folder: "C:/Users/you/Downloads/Neon Strider" };
+  },
+  export_sessions_csv: () => "C:/Users/you/Downloads/neon-strider-sessions-preview.csv",
+  get_sessions: () => sessions,
+  get_samples: (args) => mockSamples(args.sessionId as number),
+  strava_template_preview: (args) => {
+    const line = (t: unknown, fallback: string) => previewTemplate(t as string, fallback).replace(/\s+/g, " ").slice(0, 100);
+    return {
+      title: line(args.title, DEFAULT_TITLE),
+      rollup_title: line(args.rollupTitle, DEFAULT_ROLLUP_TITLE),
+      description: previewTemplate(args.description as string, DEFAULT_DESCRIPTION),
+    };
+  },
+  strava_tcx_preview: () => "<TrainingCenterDatabase><!-- preview --></TrainingCenterDatabase>",
+  get_rust_config: () => PREVIEW_CONFIG,
+  dispatch: (args) => {
+    if (rejecting) throw "Treadmill not connected";
+    const command = args.command as Command;
+    (COMMANDS[command.type] as ((c: Command) => void) | undefined)?.(command);
+    publish();
+    return null;
+  },
+};
+
+/** Answers the app's `invoke` calls and applies dispatched commands to the snapshot. */
+export function installMockBackend() {
+  const previous = sessions[sessions.length - 2];
+  if (stravaFlag === "error" || stravaFlag === "paused" || stravaFlag === "backoff") {
+    sessions[sessions.length - 1].strava_id = null;
+    snapshot.strava.upload_errors = { [String(lastId)]: stravaFlag === "backoff" ? OFFLINE_MESSAGE : INACTIVE_MESSAGE };
+  }
+  if (stravaFlag === "uploading" || stravaFlag === "processing") {
+    sessions[sessions.length - 1].strava_id = null;
+    snapshot.strava.uploading_session_ids = [lastId];
+  }
+  if (params.has("saved")) {
+    previous.strava_id = null;
+    snapshot.strava.saved_session_ids = [previous.id];
+  }
+  setInterval(() => {
+    const walkawayTicked = tickWalkaway();
+    if (tickCountdowns() || walkawayTicked) publish();
+  }, 1000);
+  mockIPC((cmd, payload) => QUERIES[cmd]?.((payload ?? {}) as Record<string, unknown>) ?? null, { shouldMockEvents: true });
+}

@@ -1,0 +1,2 @@
+- The HUD's link label (RELINK, BT OFFLINE, LINK FAILED) is now a button while the treadmill is offline: click it to reconnect to your saved treadmill straight away instead of waiting for the next retry. It reads LINKING… while it works, and a failure shows right under it.
+- With no treadmill saved yet, the same label opens the dashboard on its connect dialog, so you can pick one straight from the HUD.

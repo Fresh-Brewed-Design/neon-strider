@@ -1,0 +1,96 @@
+name: Release
+
+# Builds the Windows installer for a version tag and publishes it as a GitHub
+# release. Called by auto-release.yml after a merged PR (a tag pushed by the
+# workflow token does not trigger other workflows), or run by pushing a v* tag.
+#
+# The release body is that version's CHANGELOG section (passed in by
+# auto-release.yml, or read from CHANGELOG.md at the tag), then the SmartScreen
+# note. The app shows the text above the `<!-- installer-note -->` marker as
+# its update notes.
+#
+# Updater: the installer and its `.sig` are signed with the updater key (the
+# TAURI_SIGNING_PRIVATE_KEY secret, no password), and tauri-action uploads
+# `latest.json`, which the app checks. Local builds skip this:
+# createUpdaterArtifacts is only turned on here.
+on:
+  push:
+    tags: ["v*"]
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+      notes:
+        description: The version's CHANGELOG section; read from CHANGELOG.md at the tag when empty.
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Release body
+        id: body
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          notes="$RUNNER_TEMP/release-notes.md"
+          if [ -n "$NOTES" ]; then
+            printf '%s\n' "$NOTES" > "$notes"
+          else
+            node scripts/release-version.mjs notes "$TAG" "$notes"
+          fi
+          delim="EOF_$(openssl rand -hex 8)"
+          {
+            echo "body<<$delim"
+            cat "$notes"
+            echo
+            echo "<!-- installer-note -->"
+            echo "---"
+            echo
+            echo "Windows installer below (per-user, no admin). It isn't code-signed yet, so"
+            echo "SmartScreen will warn: choose More info, then Run anyway. Installed copies"
+            echo "update themselves."
+            echo "$delim"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build installer and publish release
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        with:
+          tagName: ${{ inputs.tag || github.ref_name }}
+          releaseName: Neon Strider ${{ inputs.tag || github.ref_name }}
+          releaseBody: ${{ steps.body.outputs.body }}
+          releaseDraft: false
+          prerelease: false
+          # Signed updater artifacts (.sig) and latest.json, for release builds only.
+          args: --config src-tauri/tauri.release.conf.json
+          includeUpdaterJson: true

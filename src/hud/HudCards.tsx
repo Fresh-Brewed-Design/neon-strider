@@ -1,0 +1,193 @@
+// The persistent HUD cards. Unlike toasts, each stays until it is acted on.
+
+import { useEffect, useState } from "react";
+import type { AppSnapshot } from "../ipc";
+import { formatDuration } from "../format";
+import { formatChange } from "../dashboard/history/weekly";
+import { describePlan } from "../dashboard/programs/format";
+import { KM_PER_MI } from "../units";
+import { HudNote } from "./HudNote";
+import { SmallButton } from "./SmallButton";
+import { useHudSend } from "./useHudSend";
+
+/**
+ * Belt service reminder. Not a toast: it stays until the service is marked
+ * done, and that takes two clicks so a stray one can't clear it.
+ */
+export function MaintenanceCard({ snapshot }: { snapshot: AppSnapshot }) {
+  const { send, error } = useHudSend();
+  const [arming, setArming] = useState(false);
+  useEffect(() => {
+    if (!arming) return;
+    const t = setTimeout(() => setArming(false), 4000);
+    return () => clearTimeout(t);
+  }, [arming]);
+
+  const m = snapshot.maintenance;
+  // Jogwell's distance interval is in miles, so that basis shows miles; belt hours are just hours.
+  const usage =
+    m.basis === "hours" ? `${m.hours_since.toFixed(1)} H` : `${Math.round(m.distance_since_km / KM_PER_MI)} MI`;
+  return (
+    <div className="hud-toast hud-maint accent-magenta" role="alert">
+      <div className="hud-toast-body">
+        <span className="hud-label">BELT SERVICE DUE</span>
+        <span className="hud-toast-message">
+          {usage} · {m.days_since} DAYS SINCE LAST
+        </span>
+        <span className="hud-sub">Lubricate the deck with silicone oil.</span>
+        <HudNote error={error} />
+      </div>
+      <SmallButton
+        onClick={() => {
+          if (arming) send({ type: "maintenance_mark_serviced" });
+          setArming(!arming);
+        }}
+      >
+        {arming ? "CONFIRM?" : "SERVICED"}
+      </SmallButton>
+    </div>
+  );
+}
+
+/**
+ * Last week's summary, shown on the first walk of a new week. Persistent like
+ * the maintenance card: it stays until OK, which Rust remembers per ISO week.
+ */
+export function WeeklyCard({ snapshot }: { snapshot: AppSnapshot }) {
+  const { send, error } = useHudSend();
+  const w = snapshot.weekly.last_week;
+  const change = formatChange(snapshot.weekly.distance_change);
+  return (
+    <div className="hud-toast hud-weekly accent-cyan" role="status">
+      <div className="hud-toast-body">
+        <span className="hud-label">LAST WEEK</span>
+        <div className="hud-weekly-main">
+          <span className="hud-value">
+            {w.distance_km.toFixed(1)}
+            <span className="hud-unit">KM</span>
+          </span>
+          {change && <span className={`hud-weekly-change tone-${change.tone}`}>{change.text}</span>}
+        </div>
+        <span className="hud-sub">
+          {w.active_days} / 7 DAYS · {formatDuration(w.duration_s).toUpperCase()}
+        </span>
+        <HudNote error={error} />
+      </div>
+      <SmallButton onClick={() => send({ type: "weekly_summary_ack" })}>OK</SmallButton>
+    </div>
+  );
+}
+
+/**
+ * Sat too long. Persistent like the maintenance card: it stays until acted on.
+ * A program button starts it now, or, with the treadmill off, remembers it and
+ * starts it as soon as the treadmill connects (Rust drops it after 15 minutes).
+ */
+export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
+  const { send, error } = useHudSend();
+  const s = snapshot.seated;
+  const programs = s.program_ids.flatMap((id) => snapshot.programs.find((p) => p.id === id) ?? []);
+  const queued = snapshot.programs.find((p) => p.id === s.pending_program_id);
+  const linked = snapshot.connection.connected;
+  return (
+    <div className="hud-toast hud-seated accent-yellow" role="alert">
+      <div className="hud-toast-body">
+        <span className="hud-label">STASIS_ALERT</span>
+        <span className="hud-toast-message">{s.seated_minutes} MIN SEATED</span>
+      </div>
+      {programs.length > 0 && (
+        <div className="hud-seated-programs">
+          {programs.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className={`hud-btn hud-btn-program${p.id === s.pending_program_id ? " is-queued" : ""}`}
+              aria-pressed={p.id === s.pending_program_id}
+              title={describePlan(p)}
+              onClick={() => send({ type: "seated_start", id: p.id })}
+            >
+              {p.name}
+            </button>
+          ))}
+        </div>
+      )}
+      {queued && (
+        <div className="hud-seated-note">
+          <span className="hud-label">QUEUED // {queued.name.toUpperCase()}</span>
+          <span className="hud-sub">Switch the treadmill on.</span>
+        </div>
+      )}
+      {!queued && !linked && programs.length > 0 && (
+        <span className="hud-sub">The treadmill is off. Pick a program, then switch it on.</span>
+      )}
+      <HudNote error={error} />
+      <div className="hud-seated-actions">
+        <SmallButton onClick={() => send({ type: "seated_snooze" })}>LATER</SmallButton>
+        <SmallButton onClick={() => send({ type: "seated_dismiss" })}>DISMISS</SmallButton>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A new version is ready, shown once per version. INSTALL opens the dashboard
+ * on the notes (it never installs blind); LATER just hides the card.
+ */
+export function UpdateCard({ snapshot }: { snapshot: AppSnapshot }) {
+  const { send, error } = useHudSend();
+  const version = snapshot.update.offer?.version;
+  if (!version) return null;
+  return (
+    <div className="hud-toast hud-update accent-cyan" role="status">
+      <div className="hud-toast-body">
+        <span className="hud-toast-message">UPDATE READY // v{version}</span>
+        <span className="hud-sub">Read what&apos;s new, then install from the dashboard.</span>
+        <HudNote error={error} />
+      </div>
+      <div className="hud-walkaway-actions">
+        <SmallButton onClick={() => send({ type: "update_hud_card", open: true })}>INSTALL</SmallButton>
+        <SmallButton onClick={() => send({ type: "update_hud_card", open: false })}>LATER</SmallButton>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Walk-away safety. The warning counts down to a pause after a long time with
+ * no keyboard or mouse input (any input or STAY cancels it); after a pause,
+ * the belt never restarts by itself, so the card waits for RESUME or END.
+ */
+export function WalkAwayCard({ snapshot }: { snapshot: AppSnapshot }) {
+  const { send, error } = useHudSend();
+  const w = snapshot.walkaway;
+  if (w.card === "warning") {
+    return (
+      <div className="hud-toast hud-walkaway accent-yellow" role="alert">
+        <div className="hud-toast-body">
+          <span className="hud-toast-message">WALK-AWAY // PAUSING IN {w.pause_in_s}s</span>
+          <span className="hud-sub">
+            No keyboard or mouse input for {w.idle_minutes} minutes. Move the mouse or press STAY to keep walking.
+          </span>
+          <HudNote error={error} />
+        </div>
+        <div className="hud-walkaway-actions">
+          <SmallButton onClick={() => send({ type: "walkaway_stay" })}>STAY</SmallButton>
+        </div>
+      </div>
+    );
+  }
+  const why = w.reason === "lock" ? "You locked the PC." : `No keyboard or mouse input for ${w.idle_minutes} minutes.`;
+  return (
+    <div className="hud-toast hud-walkaway accent-magenta" role="alert">
+      <div className="hud-toast-body">
+        <span className="hud-toast-message">WALK-AWAY // BELT PAUSED</span>
+        <span className="hud-sub">{why} The session is kept; resume when you are back.</span>
+        <HudNote error={error} />
+      </div>
+      <div className="hud-walkaway-actions">
+        <SmallButton onClick={() => send({ type: "walkaway_resume" })}>RESUME</SmallButton>
+        <SmallButton onClick={() => send({ type: "walkaway_end" })}>END</SmallButton>
+      </div>
+    </div>
+  );
+}

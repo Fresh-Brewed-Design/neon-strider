@@ -1,0 +1,1 @@
+- The System page no longer scrolls by itself while a background status (a Strava retry countdown, a failed update check) is showing.

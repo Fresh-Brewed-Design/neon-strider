@@ -1,0 +1,132 @@
+import type { ReactNode } from "react";
+import type { AppSnapshot, DeckSnapshot } from "../../ipc";
+import { linkView } from "../../state/linkStatus";
+import { useAppSnapshot } from "../../state/useAppState";
+import { STAT_WIDGETS } from "../../widgets/registry";
+import { Axis } from "../live/Axis";
+import { PinToggle } from "../live/PinToggle";
+import { Transport } from "../live/Transport";
+import { ActiveProgramCard } from "../programs/ActiveProgramCard";
+import { StatusPill } from "../StatusPill";
+import { MaintenanceBanner } from "../system/MaintenanceBanner";
+import { Label, Page, Panel, Waiting } from "../ui";
+import { cx, send, TONE_TEXT } from "../util";
+
+const SPEED_PRESETS = [1.5, 2.5, 3, 4, 5, 6];
+
+const LIVE_STATS = STAT_WIDGETS.filter((w) => w.id !== "VELOCITY" && w.id !== "INCLINE");
+
+/**
+ * Tilt presets from this treadmill's own range: its lowest step, a third,
+ * two thirds and the top, so none falls outside what it can do.
+ */
+function tiltPresets(deck: DeckSnapshot): number[] {
+  const top = deck.max_incline_level;
+  const levels = [...new Set([0, Math.round(top / 3), Math.round((2 * top) / 3), top])];
+  return levels.map((l) => deck.incline_offset_pct + l * deck.incline_pct_per_level);
+}
+
+/** The incline level nearest to a grade in percent. */
+function levelForPct(deck: DeckSnapshot, pct: number): number {
+  const per = deck.incline_pct_per_level;
+  const raw = Math.abs(per) < 1e-6 ? 0 : Math.round((pct - deck.incline_offset_pct) / per);
+  return Math.max(0, Math.min(deck.max_incline_level, raw));
+}
+
+/** A warning in the page header, where it costs no height: this page is sized to fit 760x600. */
+function headerNotice(s: AppSnapshot): ReactNode {
+  let notice: { label: string; title: string; text: string };
+  if (s.connection.link?.state === "no_data") {
+    const view = linkView(s.connection);
+    notice = { label: "NO DATA", title: view.title, text: view.headline };
+  } else if (s.connection.connected && s.deck.unknown_status_code !== null) {
+    notice = {
+      label: "STATE ?",
+      title: "The treadmill sent a status this app doesn't know yet. The log records it.",
+      text: `Treadmill state unknown (code ${s.deck.unknown_status_code})`,
+    };
+  } else {
+    return null;
+  }
+  return (
+    <div role="status" className="flex max-w-80 items-center gap-2 font-mono text-[11px] leading-snug text-neon-yellow">
+      <StatusPill bare tone="working" label={notice.label} title={notice.title} className="shrink-0" />
+      <span className="min-w-0">{notice.text}</span>
+    </div>
+  );
+}
+
+export function LivePage() {
+  const s = useAppSnapshot();
+  if (!s) return <Waiting />;
+  const { deck } = s;
+  const offline = !s.connection.connected;
+  const stats = LIVE_STATS.filter((w) => w.id !== "NEURAL" || s.neural.enabled);
+  const pinned = new Set(s.hud.widgets);
+
+  return (
+    <Page codename="LOCOMOTION_DECK" title="Live" actions={headerNotice(s)}>
+      {/* Fits the 760x600 popup without scrolling, even with the maintenance
+          banner and a running program both showing. */}
+      <div className="flex flex-col gap-2">
+        <MaintenanceBanner />
+        <div className="grid grid-cols-2 gap-3">
+          <Axis
+            title="Velocity"
+            tone="cyan"
+            unit="km/h"
+            actual={deck.speed_kmh}
+            target={deck.target_speed_kmh}
+            min={0}
+            max={Math.max(deck.max_speed_kmh, 0.1)}
+            step={0.1}
+            presets={SPEED_PRESETS}
+            formatPreset={(v) => v.toFixed(1)}
+            disabled={offline}
+            onSet={(kmh) => send({ type: "set_speed", kmh })}
+            onNudge={(up) => send({ type: "nudge_speed", up })}
+            pin={{ widget: "VELOCITY", pinned: pinned.has("VELOCITY") }}
+          />
+          <Axis
+            title="Tilt"
+            tone="magenta"
+            unit="%"
+            actual={deck.incline_pct}
+            target={deck.target_incline_pct}
+            min={deck.incline_offset_pct}
+            max={Math.max(deck.max_incline_pct, deck.incline_offset_pct + 0.1)}
+            step={Math.max(Math.abs(deck.incline_pct_per_level), 0.1)}
+            presets={tiltPresets(deck)}
+            formatPreset={(v) => `${Math.round(v * 10) / 10}%`}
+            disabled={offline}
+            onSet={(pct) => send({ type: "set_incline_level", level: levelForPct(deck, pct) })}
+            onNudge={(up) => send({ type: "nudge_incline", up })}
+            pin={{ widget: "INCLINE", pinned: pinned.has("INCLINE") }}
+          />
+        </div>
+
+        <Transport s={s} />
+
+        <ActiveProgramCard />
+
+        <div className="grid grid-cols-3 gap-2">
+          {stats.map((w) => {
+            const { value, unit } = w.read(s);
+            return (
+              <Panel key={w.id} className="flex flex-col gap-0.5 px-3 py-1.5">
+                <div className="flex items-start justify-between gap-1">
+                  <Label className="min-w-0 tracking-[0.12em] [overflow-wrap:anywhere]">{w.codename}</Label>
+                  <PinToggle widget={w.id} pinned={pinned.has(w.id)} />
+                </div>
+                <span className={cx("font-digital text-base tracking-wider", TONE_TEXT[w.accent])}>
+                  {value}
+                  {unit && <span className="ml-1 font-mono text-[11px] text-white/40">{unit}</span>}
+                </span>
+              </Panel>
+            );
+          })}
+        </div>
+      </div>
+    </Page>
+  );
+}

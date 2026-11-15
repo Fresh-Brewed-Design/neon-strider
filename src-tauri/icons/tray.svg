@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Tray icon: drawn for 16-32px. Solid dark tile so it reads on light and
+       dark taskbars; two forward chevrons (stride) over a magenta belt line. -->
+  <rect x="1" y="1" width="30" height="30" rx="7" fill="#060a10"/>
+  <g fill="none" stroke="#00f3ff" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7.5 7.5 L14 14 L7.5 20.5"/>
+    <path d="M17 7.5 L23.5 14 L17 20.5"/>
+  </g>
+  <rect x="6" y="24.2" width="20" height="3.2" rx="1.6" fill="#ff2bd6"/>
+</svg>
