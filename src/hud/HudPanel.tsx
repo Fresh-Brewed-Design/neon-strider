@@ -1,9 +1,10 @@
-import type { AppSnapshot, HudWidget } from "../ipc";
+import type { AppSnapshot, Command, HudWidget } from "../ipc";
 import { describeActive, describePlan, waitHeadline, waitReason } from "../dashboard/programs/format";
 import { statWidget } from "../widgets/registry";
 import { HudNote } from "./HudNote";
 import { isMoving, startFailure } from "../state/linkStatus";
 import { SmallButton } from "./SmallButton";
+import { engageLabel } from "./status";
 import { useHudSend } from "./useHudSend";
 
 /** One pinned stat, read through the shared widget registry. */
@@ -68,27 +69,31 @@ export function NeuralLine({ snapshot }: { snapshot: AppSnapshot }) {
   );
 }
 
+/** Engage / Stasis: one `toggle_start` to Rust, the same press as the shortcut. */
+export function EngageButton({ snapshot, send }: { snapshot: AppSnapshot; send: (c: Command) => Promise<boolean> }) {
+  const moving = isMoving(snapshot.deck);
+  return (
+    <button
+      type="button"
+      className={`hud-btn hud-btn-main ${moving ? "accent-magenta" : "accent-cyan"}`}
+      disabled={!snapshot.connection.connected}
+      onClick={() => void send({ type: "toggle_start" })}
+    >
+      {engageLabel(snapshot)}
+    </button>
+  );
+}
+
 /** Engage / Stasis, Dump and the speed and tilt steppers. */
 export function Controls({ snapshot }: { snapshot: AppSnapshot }) {
   const { send, error } = useHudSend();
   const { deck, connection } = snapshot;
-  const moving = isMoving(deck);
-  const waiting = connection.start_pending && !moving;
-  // On a paused program the main button is its GO (Rust resumes the program).
-  const programGo = !moving && snapshot.active_program?.phase === "walking" && snapshot.active_program.paused;
   // Every button sends one command to Rust. Nothing here derives the next value
   // from what is on screen, so rapid clicks can't collapse into one step.
   return (
     <div className="hud-module">
       <div className="hud-transport">
-        <button
-          type="button"
-          className={`hud-btn hud-btn-main ${moving ? "accent-magenta" : "accent-cyan"}`}
-          disabled={!connection.connected}
-          onClick={() => send({ type: "toggle_start" })}
-        >
-          {moving ? "STASIS" : waiting ? "WAKING…" : programGo ? "GO" : deck.status === "Paused" ? "RE-JACK" : "ENGAGE"}
-        </button>
+        <EngageButton snapshot={snapshot} send={send} />
         <button
           type="button"
           className="hud-btn hud-btn-stop accent-magenta"

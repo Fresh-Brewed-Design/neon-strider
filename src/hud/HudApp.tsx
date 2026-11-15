@@ -2,8 +2,10 @@ import { useRef } from "react";
 import { useAppSnapshot } from "../state/useAppState";
 import { statWidget } from "../widgets/registry";
 import { MaintenanceCard, SeatedCard, UpdateCard, WalkAwayCard, WeeklyCard } from "./HudCards";
+import { HudHeader } from "./HudHeader";
 import { HudNote } from "./HudNote";
 import { Controls, NeuralLine, ProgramsModule, StatCell } from "./HudPanel";
+import { StripRow } from "./HudStrip";
 import { linkLabel } from "./status";
 import { ToastCard } from "./ToastCard";
 import { useHitRegion } from "./useHitRegion";
@@ -16,7 +18,9 @@ import "./hud.css";
 /**
  * The always-on-top overlay: the panel (header, pinned stats, modules), the
  * persistent cards, then transient toasts. Only this content takes the
- * pointer; the rest of the window is click-through.
+ * pointer; the rest of the window is click-through. While the belt is still,
+ * Rust may ask for the panel as a strip or not at all (`hud_view`); the cards
+ * and toasts show either way.
  */
 export function HudApp() {
   const snapshot = useAppSnapshot();
@@ -29,14 +33,17 @@ export function HudApp() {
   const relink = useRelink(snapshot?.connection ?? null);
 
   const widgets = snapshot?.hud.widgets ?? [];
-  // A readout toast is redundant while the panel already shows that value live.
+  const view = snapshot?.hud_view ?? "full";
+  const full = view === "full";
+  // A readout toast is redundant while the full panel already shows that value
+  // live (the strip doesn't show it).
   const toasts = allToasts.filter(
     (t) =>
-      !(t.type === "VELOCITY" && widgets.includes("VELOCITY")) &&
-      !(t.type === "ELEVATION" && widgets.includes("INCLINE")),
+      !(full && t.type === "VELOCITY" && widgets.includes("VELOCITY")) &&
+      !(full && t.type === "ELEVATION" && widgets.includes("INCLINE")),
   );
   const stats = widgets.filter((w) => statWidget(w) !== undefined);
-  const hasPanel = snapshot !== null && widgets.length > 0;
+  const hasPanel = snapshot !== null && widgets.length > 0 && view !== "hidden";
   const maintenanceDue = snapshot?.maintenance.due ?? false;
   const weeklyCard = snapshot?.weekly.show_card ?? false;
   const seatedCard = snapshot?.seated.show_card ?? false;
@@ -62,42 +69,34 @@ export function HudApp() {
       {custom && <div className="hud-spacer" style={{ height: custom.top }} />}
       <div ref={contentRef} className="hud-content">
         {hasPanel && snapshot && link && (
-          <section ref={panelRef} className={`hud-panel ${resting ? "is-resting" : ""}`}>
-            <header className="hud-header">
-              <span className={`hud-led tone-${link.tone}`} />
-              <span
-                className={`hud-title is-draggable${placement.dragging ? " is-dragging" : ""}`}
-                title="Drag to move the HUD. Double-click to put it back in its corner."
-                {...logo}
-              >
-                NEON STRIDER
-              </span>
-              {relink.view?.clickable ? (
-                <button
-                  type="button"
-                  className={`hud-status hud-relink tone-${link.tone}`}
-                  title={relink.view.title ?? undefined}
-                  onClick={relink.relink}
-                >
-                  {link.text}
-                </button>
-              ) : (
-                <span className={`hud-status tone-${link.tone}`} title={relink.view?.title ?? undefined}>
-                  {link.text}
-                </span>
-              )}
-            </header>
+          <section
+            ref={panelRef}
+            className={`hud-panel${full ? "" : " is-strip"}${resting ? " is-resting" : ""}`}
+          >
+            <HudHeader
+              link={link}
+              relink={relink.view}
+              onRelink={relink.relink}
+              logo={logo}
+              dragging={placement.dragging}
+            />
             <HudNote error={relink.error ?? drag.error} />
-            {stats.length > 0 && (
-              <div className="hud-stats">
-                {stats.map((id) => (
-                  <StatCell key={id} id={id} snapshot={snapshot} />
-                ))}
-              </div>
+            {full ? (
+              <>
+                {stats.length > 0 && (
+                  <div className="hud-stats">
+                    {stats.map((id) => (
+                      <StatCell key={id} id={id} snapshot={snapshot} />
+                    ))}
+                  </div>
+                )}
+                <NeuralLine snapshot={snapshot} />
+                {widgets.includes("CONTROLS") && <Controls snapshot={snapshot} />}
+                {widgets.includes("PROGRAMS") && <ProgramsModule snapshot={snapshot} />}
+              </>
+            ) : (
+              <StripRow snapshot={snapshot} />
             )}
-            <NeuralLine snapshot={snapshot} />
-            {widgets.includes("CONTROLS") && <Controls snapshot={snapshot} />}
-            {widgets.includes("PROGRAMS") && <ProgramsModule snapshot={snapshot} />}
           </section>
         )}
         {walkawayCard && snapshot && <WalkAwayCard snapshot={snapshot} />}

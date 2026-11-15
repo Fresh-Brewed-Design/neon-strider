@@ -87,7 +87,9 @@ export const snapshot: AppSnapshot = {
     monitor: null,
     dashboard_pinned: false,
     custom: null,
+    idle_mode: "full",
   },
+  hud_view: "full",
   hud_monitors: [
     { name: "\\\\.\\DISPLAY1", label: "Display 1 · 1920×1080", is_primary: true, active: true, width: 1920, height: 1080 },
     { name: "\\\\.\\DISPLAY2", label: "Display 2 · 2560×1440", is_primary: false, active: false, width: 2560, height: 1440 },
@@ -167,7 +169,27 @@ export const snapshot: AppSnapshot = {
 
 /** Send the current snapshot to every listener, as Rust's `app-state` event does. */
 function publish() {
+  snapshot.hud_view = hudView();
   void emit("app-state", structuredClone(snapshot));
+}
+
+// The HUD during stasis, as `snapshot/stasis.rs` decides it: the whole panel
+// while the belt moves, for 10 s after it stops, while a program waits for GO
+// or is paused, and after expand until the belt next moves.
+const STASIS_GRACE_MS = 10_000;
+let lastMovingAt: number | null = null;
+let hudExpanded = false;
+function hudView(): AppSnapshot["hud_view"] {
+  const moving = snapshot.connection.connected && (snapshot.deck.status === "Running" || snapshot.deck.status === "Starting");
+  if (moving) {
+    lastMovingAt = Date.now();
+    hudExpanded = false;
+  }
+  const mode = snapshot.hud.idle_mode;
+  const a = snapshot.active_program;
+  const inGrace = lastMovingAt !== null && Date.now() - lastMovingAt < STASIS_GRACE_MS;
+  if (moving || mode === "full" || a?.paused || a?.wait || hudExpanded || inGrace) return "full";
+  return mode;
 }
 
 /** Rust finishing something in the background: apply `fn` after `ms`, then publish. */
@@ -459,6 +481,15 @@ if (updateFlag === "whatsnew") {
   };
 }
 
+// ?stasis=strip|hidden: "When the belt is still" set to that, with the belt
+// stopped and no program, so the HUD shows the strip or no panel at once.
+const stasisFlag = params.get("stasis");
+if (stasisFlag === "strip" || stasisFlag === "hidden") {
+  snapshot.hud.idle_mode = stasisFlag;
+  Object.assign(snapshot.deck, { status: "Stopped", speed_kmh: 0, raw_speed_kmh: 0 });
+  snapshot.active_program = null;
+}
+
 // ?custom: the HUD sits where it was dragged (a custom position).
 if (params.has("custom")) snapshot.hud.custom = { dx: 400, top: 120 };
 
@@ -604,6 +635,13 @@ const setProgramPaused = (paused: boolean) => {
 
 /** What each dispatched command does to the snapshot. Commands not listed only republish it. */
 const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) => void } = {
+  // Engage / Stasis: a still belt starts (or a paused program goes), a moving one pauses.
+  toggle_start: () => {
+    const a = snapshot.active_program;
+    if (a?.paused) return setProgramPaused(false);
+    const moving = snapshot.deck.status === "Running" || snapshot.deck.status === "Starting";
+    Object.assign(snapshot.deck, moving ? { status: "Paused", speed_kmh: 0 } : { status: "Running", speed_kmh: snapshot.deck.target_speed_kmh });
+  },
   ...(engageTimeout ? { start: engageWithTimeout, toggle_start: engageWithTimeout } : {}),
   connect_now: () => {
     Object.assign(snapshot.connection, { link: { state: "connecting", attempt: 1, of: 3 }, connecting: true });
@@ -646,6 +684,8 @@ const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) =>
     for (const m of snapshot.hud_monitors) m.active = c.monitor === null ? m.is_primary : m.name === c.monitor;
   },
   dashboard_set_pinned: (c) => (snapshot.hud.dashboard_pinned = c.pinned),
+  hud_set_idle_mode: (c) => (snapshot.hud.idle_mode = c.mode),
+  hud_expand: () => (hudExpanded = true),
   maintenance_mark_serviced: () => setMaintenance({ last_service_ms: Date.now(), distance_since_km: 0, hours_since: 0 }),
   maintenance_set_last_service: (c) => {
     if (c.at_ms > Date.now() || c.at_ms < Date.UTC(2020, 0, 1)) return;
@@ -750,7 +790,10 @@ const slow = <T,>(fn: () => T) => new Promise((resolve) => setTimeout(resolve, 1
 
 /** The app's named `invoke` calls besides `dispatch`. */
 const QUERIES: Record<string, (args: Record<string, unknown>) => unknown> = {
-  get_snapshot: () => snapshot,
+  get_snapshot: () => {
+    snapshot.hud_view = hudView();
+    return snapshot;
+  },
   open_log_folder: () => null,
   scan_bluetooth_devices: () => {
     if (scanFlag === "error") throw { kind: "generic", message: "Could not reach the treadmill. Try again." };
@@ -808,7 +851,8 @@ export function installMockBackend() {
   }
   setInterval(() => {
     const walkawayTicked = tickWalkaway();
-    if (tickCountdowns() || walkawayTicked) publish();
+    const viewChanged = hudView() !== snapshot.hud_view;
+    if (tickCountdowns() || walkawayTicked || viewChanged) publish();
   }, 1000);
   mockIPC((cmd, payload) => QUERIES[cmd]?.((payload ?? {}) as Record<string, unknown>) ?? null, { shouldMockEvents: true });
 }
