@@ -1,1 +1,0 @@
-- When the treadmill goes to sleep with its screen off, the HUD no longer shows `STATE ?6` and the Live page no longer says the treadmill state is unknown. It shows as standby, like any stopped belt.

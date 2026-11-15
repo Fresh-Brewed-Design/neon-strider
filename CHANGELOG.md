@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.1 (2026-11-15)
+
+### Fixed
+
+- Today's total no longer jumps down when you stop a walk that ran past midnight. A walk now counts toward the day it started, so after midnight today's total leaves it out instead of counting it and then dropping it.
+- When the treadmill goes to sleep with its screen off, the HUD no longer shows `STATE ?6` and the Live page no longer says the treadmill state is unknown. It shows as standby, like any stopped belt.
+
 ## 1.3.0 (2026-11-15)
 
 ### New

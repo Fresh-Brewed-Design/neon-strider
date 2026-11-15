@@ -1,1 +1,0 @@
-- Today's total no longer jumps down when you stop a walk that ran past midnight. A walk now counts toward the day it started, so after midnight today's total leaves it out instead of counting it and then dropping it.
