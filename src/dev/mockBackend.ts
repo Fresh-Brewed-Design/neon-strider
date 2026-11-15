@@ -123,8 +123,8 @@ export const snapshot: AppSnapshot = {
   },
   maintenance: {
     last_service_ms: Date.now() - 38 * 86_400_000,
-    distance_since_km: 100.4,
-    interval_km: 160.934,
+    distance_since_km: 84.5,
+    interval_km: 200,
     basis: "distance",
     hours_since: 31.4,
     interval_hours: 50,

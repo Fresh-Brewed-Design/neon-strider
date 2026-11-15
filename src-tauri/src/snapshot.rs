@@ -288,7 +288,7 @@ mod tests {
         MaintenanceSnapshot {
             last_service_ms: 0,
             distance_since_km: 0.0,
-            interval_km: 160.934,
+            interval_km: 200.0,
             basis: MaintenanceBasis::Distance,
             hours_since: 0.0,
             interval_hours: 50.0,
