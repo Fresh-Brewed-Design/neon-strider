@@ -22,7 +22,8 @@ pub struct ViewInput {
     pub still_for: Option<Duration>,
     /// Expand was pressed since the belt last moved.
     pub expanded: bool,
-    /// A program is paused or waiting for GO: its GO lives on the panel.
+    /// A program is waiting for GO: the prompt lives on the panel. One the user
+    /// paused collapses like a manual walk (the strip's main button is its GO).
     pub program_needs_go: bool,
 }
 
@@ -108,7 +109,7 @@ pub(super) fn view(snapshot: &AppSnapshot, now: Instant) -> HudView {
     let program_needs_go = snapshot
         .active_program
         .as_ref()
-        .is_some_and(|a| a.paused || a.wait.is_some());
+        .is_some_and(|a| a.wait.is_some());
     lock().view(
         snapshot.hud.idle_mode,
         snapshot.connection.connected,
@@ -181,7 +182,7 @@ mod tests {
     }
 
     #[test]
-    fn a_program_waiting_for_go_or_paused_is_full() {
+    fn a_program_waiting_for_go_is_full() {
         for mode in MODES {
             let i = ViewInput {
                 program_needs_go: true,

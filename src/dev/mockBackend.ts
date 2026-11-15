@@ -174,8 +174,8 @@ function publish() {
 }
 
 // The HUD during stasis, as `snapshot/stasis.rs` decides it: the whole panel
-// while the belt moves, for 10 s after it stops, while a program waits for GO
-// or is paused, and after expand until the belt next moves.
+// while the belt moves, for 10 s after it stops, while a program waits for GO,
+// and after expand until the belt next moves.
 const STASIS_GRACE_MS = 10_000;
 let lastMovingAt: number | null = null;
 let hudExpanded = false;
@@ -188,7 +188,7 @@ function hudView(): AppSnapshot["hud_view"] {
   const mode = snapshot.hud.idle_mode;
   const a = snapshot.active_program;
   const inGrace = lastMovingAt !== null && Date.now() - lastMovingAt < STASIS_GRACE_MS;
-  if (moving || mode === "full" || a?.paused || a?.wait || hudExpanded || inGrace) return "full";
+  if (moving || mode === "full" || a?.wait || hudExpanded || inGrace) return "full";
   return mode;
 }
 
