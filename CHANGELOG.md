@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.1 (2026-11-15)
+
+### New
+
+- **Record treadmill traffic** (System, Diagnostics, TRAFFIC_TAP): saves every command sent to the treadmill and everything it sends back, with timestamps, to a file in the log folder. It only listens, is off each time the app starts, and stops by itself after 4 hours or 20 MB. These recordings will drive a treadmill simulator for testing.
+
+### Fixed
+
+- Neural flow now brings the belt back up when you type less, even if you still type a few keys now and then: it starts within about 20 s and reaches full speed about a minute after you stop, instead of waiting for 45 s of near silence.
+
 ## 1.3.2 (2026-11-15)
 
 ### Changed
