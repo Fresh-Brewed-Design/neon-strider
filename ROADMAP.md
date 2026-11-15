@@ -4,6 +4,17 @@
 
 The scheduled improvement task picks from here first. Remove an item when its PR merges.
 
+- HUD strip (the mini view while the belt is still) cuts off today's distance and the
+  relinking message: make both fit, and check every other text the strip can show.
+
+- Idle prompt: the HUD prompt shown while idle offers only the saved programs, which doesn't
+  entirely make sense. Starting a program from it is fine, but it probably needs a default that
+  just starts the treadmill. Think the whole prompt through first (what it is for, what the
+  default action should be, how the choices are ordered and worded) and put the reasoning in the
+  PR. Any start still needs a press in that moment. It also has two ways to hide it, LATER
+  (back in 15 minutes) and DISMISS (restarts the seated timer), and the difference isn't clear:
+  keep one, labelled for what it does.
+
 - Treadmill simulator for testing, in two more PRs, in this order (step 1, recording real
   traffic, is done: Diagnostics' TRAFFIC_TAP writes the recordings the timings come from):
   1. A simulated deck in Rust at the protocol level (`sim.rs`, test-only): takes the bytes the
