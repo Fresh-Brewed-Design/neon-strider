@@ -3,7 +3,6 @@ import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { dispatch, type MaintenanceBasis } from "../../ipc";
 import { useAppSnapshot } from "../../state/useAppState";
-import { KM_PER_MI } from "../../units";
 import { Hint, Label, NeonButton } from "../ui";
 import { cx, send } from "../util";
 import { INPUT_CLASS, NumberField, Section } from "./fields";
@@ -13,8 +12,6 @@ const BASES: { id: MaintenanceBasis; label: string }[] = [
   { id: "distance", label: "Distance + days" },
   { id: "hours", label: "Belt hours + days" },
 ];
-
-const toMi = (km: number) => km / KM_PER_MI;
 
 /** One figure, against its service interval when there is one. */
 function Reading({ label, value, limit }: { label: string; value: string; limit?: string }) {
@@ -53,7 +50,7 @@ export function MaintenanceSection() {
     <Section
       id="sys-maintenance"
       title="Maintenance"
-      description="Jogwell recommends lubricating the deck every 3 months or 100 miles, whichever comes first. Use 100% silicone oil."
+      description="Lubricate the deck with 100% silicone oil every 200 km or 3 months, whichever comes first."
     >
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
@@ -66,8 +63,8 @@ export function MaintenanceSection() {
           ) : (
             <Reading
               label="Distance"
-              value={`${toMi(m.distance_since_km).toFixed(1)} mi · ${m.distance_since_km.toFixed(1)} km`}
-              limit={`${toMi(m.interval_km).toFixed(0)} mi`}
+              value={`${m.distance_since_km.toFixed(1)} km`}
+              limit={`${Math.round(m.interval_km)} km`}
             />
           )}
           <Reading label="Time" value={`${m.days_since} days`} limit={daysLimit} />
@@ -121,7 +118,7 @@ export function MaintenanceSection() {
         <Hint className="mt-1.5">
           {hoursBasis
             ? "Hours the belt has run, from the treadmill's own timer."
-            : "Jogwell's own figure: 100 miles."}
+            : "Deck sticker: 200 km (125 miles). Jogwell's manual: 100 miles."}
         </Hint>
       </div>
 
@@ -158,12 +155,12 @@ export function MaintenanceSection() {
         ) : (
           <NumberField
             label="Every"
-            value={Math.round(toMi(m.interval_km) * 10) / 10}
-            min={31.1}
-            max={3106.8}
+            value={Math.round(m.interval_km * 10) / 10}
+            min={50}
+            max={5000}
             step={10}
-            unit="miles"
-            onCommit={(mi) => dispatch({ type: "maintenance_set_intervals", km: mi * KM_PER_MI, days: m.interval_days })}
+            unit="km"
+            onCommit={(km) => dispatch({ type: "maintenance_set_intervals", km, days: m.interval_days })}
           />
         )}
         <NumberField
