@@ -29,11 +29,6 @@ Everything in [CHANGELOG.md](CHANGELOG.md). Tested on the treadmill (Jogwell Are
 
 The scheduled improvement task picks from here first. Remove an item when its PR merges.
 
-- Hide or shrink the HUD during stasis (belt paused or stopped): a setting to collapse it to a
-  small strip (link state, today's total, a way to expand and Engage) or hide it until the belt
-  moves again. Cards that need an answer (walk-away, update, maintenance, waiting for GO) still
-  show.
-
 
 ## Later (not scheduled)
 
