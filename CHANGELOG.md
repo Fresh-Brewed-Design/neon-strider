@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.3 (2026-11-15)
+
+### Changed
+
+- Sending raw commands from System -> Diagnostics now asks in the app's own confirm box instead of a plain Windows dialog.
+
+### Fixed
+
+- The command cycler in System -> Diagnostics now sends proper treadmill frames (with checksum), lets you pick which byte cycles, shows the exact bytes it will send, and no longer double-sends when auto-step starts.
+
 ## 1.4.2 (2026-11-15)
 
 ### Changed
