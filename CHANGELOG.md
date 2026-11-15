@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.0 (2026-11-15)
+
+### New
+
+- **HUD during stasis**: when the belt is still, the HUD can shrink to a small strip (link
+  state, today's total, expand and Engage) or hide until the belt moves again. Cards that need
+  an answer (walk-away, update, maintenance, a program waiting for GO) still show. HUD -> When
+  the belt is still; the default shows everything, as before.
+
 ## 1.2.2 (2026-11-15)
 
 ### Changed
