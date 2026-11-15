@@ -7,12 +7,16 @@ import { readPref, writePref } from "../localPrefs";
 import { Label, NeonButton } from "../ui";
 import { CommandCycler } from "./CommandCycler";
 import { Section, Toggle } from "./fields";
+import { TrafficRecorder } from "./TrafficRecorder";
 
 const DEV_TOOLS_KEY = "system.devTools";
 /** One confirm arms raw sending for this long, so auto-step isn't a dialog per byte. */
 const RAW_ARMED_MS = 5 * 60 * 1000;
 
-/** The log folder, and behind an opt-in, a tool that sends raw protocol bytes. */
+/**
+ * The log folder, the traffic recorder, and behind an opt-in, a tool that
+ * sends raw protocol bytes.
+ */
 export function DiagnosticsSection() {
   const [open, setOpen] = useState(false);
   // Raw commands can move the belt, so they sit behind an explicit opt-in that
@@ -65,6 +69,7 @@ export function DiagnosticsSection() {
       </button>
       {open && (
         <>
+          <TrafficRecorder />
           <Toggle
             label="Developer tools"
             description="Show tools that send raw commands to the treadmill."
