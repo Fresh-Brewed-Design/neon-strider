@@ -1,0 +1,1 @@
+- Updated the app's JavaScript libraries within their current major versions (React 19.3.1, Tailwind CSS 4.3.5, Framer Motion 12.43, Zustand 5.1), and the security audit of the libraries shipped in the app reports no known issues.
