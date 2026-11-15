@@ -22,6 +22,16 @@ export default tseslint.config(
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+      // Native dialogs are unthemed OS boxes: confirm through the store's `confirm`
+      // (ConfirmDialog) and show results under the control with <ActionStatus>.
+      "no-alert": "error",
+      "no-restricted-globals": [
+        "error",
+        ...["alert", "confirm", "prompt"].map((name) => ({
+          name,
+          message: "Use the store's `confirm` (ConfirmDialog) or <ActionStatus>, not a native dialog.",
+        })),
+      ],
     },
   },
 );
