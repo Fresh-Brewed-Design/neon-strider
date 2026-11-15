@@ -44,7 +44,7 @@ fn backups_to_delete(names: &[String], keep: usize) -> Vec<String> {
         .iter()
         .filter_map(|n| parse_backup_date(n).map(|d| (d, n)))
         .collect();
-    dated.sort_by(|a, b| b.0.cmp(&a.0));
+    dated.sort_by_key(|a| std::cmp::Reverse(a.0));
     dated
         .into_iter()
         .skip(keep)

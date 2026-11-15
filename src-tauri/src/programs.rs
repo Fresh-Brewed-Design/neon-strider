@@ -10,7 +10,7 @@
 //! `Instant` so it can be unit-tested without Tauri or a treadmill.
 
 use crate::bluetooth::ORCHESTRATOR;
-use crate::engine::OrchestratorState;
+use crate::engine::{OrchestratorState, STILL_KMH};
 use crate::persistence;
 use crate::protocol::{ControlIntent, MachineStatus};
 use serde::{Deserialize, Serialize};
@@ -422,7 +422,8 @@ pub async fn init(app: &tauri::AppHandle) {
 
     if let Some(saved) = saved {
         let now_ms = crate::util::now_ms();
-        match state.restore_run(&saved, now_ms, Instant::now()) {
+        let now = state.now();
+        match state.restore_run(&saved, now_ms, now) {
             Ok(()) => log::info!("Resumed program {} after restart", saved.program_id),
             Err(why) => log::info!("Not resuming program {}: {}", saved.program_id, why),
         }
@@ -968,10 +969,7 @@ impl OrchestratorState {
                 break;
             }
             let leftover = run.elapsed_s - len;
-            match self.advance(run, leftover, false, now) {
-                Some(next) => run = next,
-                None => return None,
-            }
+            run = self.advance(run, leftover, false, now)?;
         }
 
         if let (false, Some(why)) = (waiting_before, run.wait) {
@@ -1002,6 +1000,12 @@ impl OrchestratorState {
         if !self.program_walking() {
             return false;
         }
+        // Taking the speed down to zero by hand is a pause, not a step edited
+        // to 0 km/h: the step keeps its own speed, so Engage (GO) resumes it.
+        // A step target of zero would pause the belt again right after Engage.
+        if speed.is_some_and(|s| s < STILL_KMH) && self.pause_by_zero_speed(incline) {
+            return true;
+        }
         let Some(run) = self.program.as_mut() else {
             return false;
         };
@@ -1014,6 +1018,29 @@ impl OrchestratorState {
         let run = run.clone();
         self.set_program_intent_from(&run);
         true
+    }
+
+    /// The hand set the walking step's speed to zero: pause the program and
+    /// put the step's own speed back as its target. False when the step is
+    /// itself a 0 km/h step (nothing to resume to) or no program is walking.
+    fn pause_by_zero_speed(&mut self, incline: Option<u8>) -> bool {
+        let Some(run) = self.program.as_ref() else {
+            return false;
+        };
+        let Some(step) = run.program.steps.get(run.step_index) else {
+            return false;
+        };
+        if step.speed_kmh < STILL_KMH {
+            return false;
+        }
+        let step_speed = step.speed_kmh;
+        if let Some(run) = self.program.as_mut() {
+            run.target.speed = step_speed;
+            if let Some(i) = incline {
+                run.target.incline = i;
+            }
+        }
+        self.pause_program(self.now()).is_ok()
     }
 
     pub fn active_program(&self) -> Option<ActiveProgram> {
@@ -1263,6 +1290,7 @@ mod tests {
     fn run_ticks(s: &mut OrchestratorState, t0: Instant, from: u64, to: u64) -> Vec<(u64, String)> {
         let mut warnings = Vec::new();
         for t in (from + 1)..=to {
+            s.set_test_now(t0 + secs(t));
             if let Some(w) = s.tick_program(t0 + secs(t)) {
                 warnings.push((t, w.message().to_string()));
             }
@@ -1485,11 +1513,12 @@ mod tests {
     fn resume_kicks_a_paused_deck() {
         let mut s = state();
         s.last_status = MachineStatus::Running;
-        // Past instants so resolve_target (real clock) sees the manual lock expire.
-        let t0 = Instant::now().checked_sub(secs(1000)).unwrap();
+        let t0 = Instant::now();
         s.run_program(1, t0).unwrap();
         s.pause_program(t0 + secs(5)).unwrap();
         s.last_status = MachineStatus::Paused;
+        // The engine's clock reads the same instant, past the manual lockout.
+        s.set_test_now(t0 + secs(10));
         s.resume_program(t0 + secs(10)).unwrap();
         assert_eq!(s.handshake_step, crate::protocol::HandshakeStep::Priming);
     }
@@ -2006,6 +2035,7 @@ mod tests {
         let mut out = vec![];
         for i in 0..secs_n * 20 {
             let now = t0 + Duration::from_millis(50 * i);
+            s.set_test_now(now);
             if i % 20 == 0 {
                 s.tick_program(now);
             }
@@ -2140,9 +2170,9 @@ mod tests {
             let elapsed = s.program.as_ref().unwrap().elapsed_s;
             assert!((elapsed - 120.0).abs() < 1.0, "{status:?}: {elapsed}");
 
-            // GO starts it. (On the real clock: the engine reads it for the
-            // manual lockout.)
-            let later = Instant::now();
+            // GO starts it, right after the 10 s driven above.
+            let later = t0 + secs(10);
+            s.set_test_now(later);
             s.last_cmd_time = later;
             s.resume_program(later).unwrap();
             let sent = drive(&mut s, &mut engine, later, 2);
@@ -2182,12 +2212,6 @@ mod tests {
     // Still-belt starts: what each path does when the belt is not moving.
     // -----------------------------------------------------------------------
 
-    /// Instants in the past, so `resolve_target` (real clock) sees the
-    /// manual lockout long expired.
-    fn past() -> Instant {
-        Instant::now().checked_sub(secs(20_000)).unwrap()
-    }
-
     /// A 1-minute 0 km/h hold, then 2 minutes at 3.0 km/h.
     fn hold_then_walk() -> Program {
         Program {
@@ -2226,7 +2250,7 @@ mod tests {
     /// cycle now waits for GO instead of starting the belt.
     #[test]
     fn rest_end_on_a_still_belt_waits_for_go() {
-        let t0 = past();
+        let t0 = Instant::now();
         let mut s = workday_resting_on_a_still_belt(t0);
         let toasts = run_ticks(&mut s, t0, 300, 1800);
         let a = s.active_program().unwrap();
@@ -2258,7 +2282,7 @@ mod tests {
     /// Was `pin_a_walking_step_after_a_zero_step_starts_the_belt`.
     #[test]
     fn a_walking_step_after_a_zero_step_waits_for_go() {
-        let t0 = past();
+        let t0 = Instant::now();
         let mut s = state();
         s.programs.push(hold_then_walk());
         s.last_status = MachineStatus::Paused;
@@ -2308,7 +2332,7 @@ mod tests {
 
     #[test]
     fn waiting_for_go_never_times_out_and_go_starts_the_belt() {
-        let t0 = past();
+        let t0 = Instant::now();
         let mut s = workday_resting_on_a_still_belt(t0);
         run_ticks(&mut s, t0, 300, 1800);
         // Lunch: three hours of ticks, nothing moves and nothing ends.
@@ -2323,7 +2347,9 @@ mod tests {
             (2, Some(ProgramWait::RestComplete), Some(300))
         );
 
-        let later = Instant::now();
+        // GO, after the lunch driven above.
+        let later = t0 + secs(1801 + 3 * 3600);
+        s.set_test_now(later);
         s.last_cmd_time = later;
         s.resume_program(later).unwrap();
         let a = s.active_program().unwrap();
@@ -2335,7 +2361,7 @@ mod tests {
 
     #[test]
     fn walking_through_skip_end_and_engage_from_waiting() {
-        let t0 = past();
+        let t0 = Instant::now();
         // SKIP while waiting skips the cycle: back to resting, nothing moves.
         let mut s = workday_resting_on_a_still_belt(t0);
         run_ticks(&mut s, t0, 300, 1800);
@@ -2354,7 +2380,7 @@ mod tests {
 
     #[test]
     fn a_waiting_run_survives_a_restart_still_waiting() {
-        let t0 = past();
+        let t0 = Instant::now();
         let mut s = workday_resting_on_a_still_belt(t0);
         run_ticks(&mut s, t0, 300, 1800);
         let saved = saved_from(&s, 1_000_000);
@@ -2380,7 +2406,7 @@ mod tests {
 
     #[test]
     fn a_waiting_program_outlives_the_treadmill_switching_itself_off() {
-        let t0 = past();
+        let t0 = Instant::now();
         let mut s = workday_resting_on_a_still_belt(t0);
         run_ticks(&mut s, t0, 300, 1800);
         // The deck powers off while idle: the link drops and comes back.
@@ -2402,7 +2428,7 @@ mod tests {
 
     #[test]
     fn go_watches_for_the_deck_to_answer_like_engage() {
-        let t0 = past();
+        let t0 = Instant::now();
         let mut s = workday_resting_on_a_still_belt(t0);
         run_ticks(&mut s, t0, 300, 1800);
         // The watch from running the program was answered long ago.
@@ -2462,7 +2488,7 @@ mod tests {
     /// Was `pin_end_on_a_paused_program_restores_the_moving_speed_and_resumes`.
     #[test]
     fn end_on_a_paused_program_leaves_the_belt_paused_until_engage() {
-        let t0 = past();
+        let t0 = Instant::now();
         let mut s = post_meal_paused(t0);
         assert!(s.end_program(true, t0 + secs(20)));
         assert!(s.program.is_none());
@@ -2472,7 +2498,7 @@ mod tests {
     /// Was `pin_skip_on_the_last_step_while_paused_restores_and_resumes`.
     #[test]
     fn skip_on_the_last_step_while_paused_leaves_the_belt_paused_until_engage() {
-        let t0 = past();
+        let t0 = Instant::now();
         let mut s = post_meal_paused(t0);
         s.skip_program(t0 + secs(20)).unwrap();
         assert!(s.program.is_none());
@@ -2481,7 +2507,7 @@ mod tests {
 
     #[test]
     fn end_while_the_belt_is_moving_restores_the_speed_and_keeps_moving() {
-        let t0 = past();
+        let t0 = Instant::now();
         let mut s = state();
         moving(&mut s, BEFORE.speed, BEFORE.incline);
         s.run_program(1, t0).unwrap();
@@ -2507,7 +2533,7 @@ mod tests {
 
     #[test]
     fn skipping_into_a_rest_while_paused_does_not_start_the_belt() {
-        let t0 = past();
+        let t0 = Instant::now();
         let mut s = state();
         moving(&mut s, BEFORE.speed, BEFORE.incline);
         s.run_program(2, t0).unwrap();
@@ -2522,7 +2548,7 @@ mod tests {
 
     #[test]
     fn a_program_ending_on_a_zero_step_leaves_the_belt_still() {
-        let t0 = past();
+        let t0 = Instant::now();
         let mut s = state();
         s.programs.push(Program {
             id: 6,
@@ -2554,7 +2580,7 @@ mod tests {
 
     #[test]
     fn a_speed_set_by_hand_or_a_stop_drops_the_engage_speed() {
-        let t0 = past();
+        let t0 = Instant::now();
         let mut s = post_meal_paused(t0);
         s.end_program(true, t0 + secs(20));
         s.set_intent(Some(2.0), None, true);
@@ -2568,8 +2594,9 @@ mod tests {
 
     #[test]
     fn pin_skip_during_a_rest_starts_the_next_cycle() {
-        let t0 = past();
+        let t0 = Instant::now();
         let mut s = workday_resting_on_a_still_belt(t0);
+        s.set_test_now(t0 + secs(400));
         s.skip_program(t0 + secs(400)).unwrap();
         let a = s.active_program().unwrap();
         assert_eq!(
@@ -2583,9 +2610,10 @@ mod tests {
     fn skip_is_a_press_even_on_a_connection_holding_starts() {
         // After a reconnect (hold on), SKIP out of a rest or past a hold step
         // still starts the belt: the user pressed it.
-        let t0 = past();
+        let t0 = Instant::now();
         let mut s = workday_resting_on_a_still_belt(t0);
         s.hold_auto_start = true;
+        s.set_test_now(t0 + secs(400));
         s.skip_program(t0 + secs(400)).unwrap();
         assert!(!s.hold_auto_start);
         assert_eq!(s.active_program().unwrap().wait, None);
@@ -2596,6 +2624,7 @@ mod tests {
         s.last_status = MachineStatus::Paused;
         s.run_program(5, t0).unwrap();
         s.hold_auto_start = true;
+        s.set_test_now(t0 + secs(10));
         s.skip_program(t0 + secs(10)).unwrap();
         let a = s.active_program().unwrap();
         assert_eq!((a.step_index, a.paused, a.wait), (1, false, None));
@@ -2612,7 +2641,7 @@ mod tests {
             crate::engine::DeckAction::Start,
             crate::engine::DeckAction::ToggleStart,
         ] {
-            let t0 = past();
+            let t0 = Instant::now();
             let mut s = workday_resting_on_a_still_belt(t0);
             run_ticks(&mut s, t0, 300, 1800);
             assert!(s.active_program().unwrap().wait.is_some());
@@ -2628,6 +2657,28 @@ mod tests {
     /// Was `pin_a_resting_run_saved_over_ten_minutes_ago_is_dropped`: a run
     /// that holds the belt still now keeps for hours; a walking one still for
     /// ten minutes.
+    #[test]
+    fn speed_taken_to_zero_by_hand_pauses_the_program_and_engage_resumes_it() {
+        let t0 = Instant::now();
+        let mut s = state();
+        moving(&mut s, BEFORE.speed, BEFORE.incline);
+        s.run_program(1, t0).unwrap();
+        let step_speed = s.program_intent.map(|i| i.speed).unwrap();
+        assert!(step_speed > 1.0);
+
+        assert!(s.adjust_program_target(Some(0.0), None));
+        let a = s.active_program().unwrap();
+        assert!(a.paused, "zero by hand pauses the program");
+        assert_eq!(s.program.as_ref().unwrap().target.speed, step_speed);
+
+        s.trigger_action(crate::engine::DeckAction::Start);
+        let a = s.active_program().unwrap();
+        assert!(!a.paused, "Engage is GO");
+        assert_eq!(s.program_intent.map(|i| i.speed), Some(step_speed));
+        // Nothing left that would pause the belt again once the lockout ends.
+        assert!(s.resolve_target().0 >= step_speed - 0.01);
+    }
+
     #[test]
     fn a_still_run_keeps_for_hours_and_a_walking_one_for_minutes() {
         let t0 = Instant::now();
@@ -2753,7 +2804,7 @@ mod tests {
     /// Was `pin_a_start_at_the_treadmill_on_a_paused_program_is_paused_again`.
     #[test]
     fn a_start_at_the_treadmill_on_a_paused_program_is_its_go() {
-        let t0 = past();
+        let t0 = Instant::now();
         let mut s = post_meal_paused(t0);
         let mut engine = still_for(&mut s, t0 + secs(20), 5);
         let sent = start_at_the_treadmill(&mut s, &mut engine, t0 + secs(25), 5);
@@ -2770,7 +2821,7 @@ mod tests {
     /// Was `pin_a_start_at_the_treadmill_while_waiting_for_go_is_paused_again`.
     #[test]
     fn a_start_at_the_treadmill_while_waiting_for_go_is_its_go() {
-        let t0 = past();
+        let t0 = Instant::now();
         let mut s = workday_resting_on_a_still_belt(t0);
         run_ticks(&mut s, t0, 300, 1800);
         assert!(s.hold_auto_start);
@@ -2782,7 +2833,7 @@ mod tests {
 
     #[test]
     fn a_start_at_the_treadmill_waits_out_the_debounce_without_fighting() {
-        let t0 = past();
+        let t0 = Instant::now();
         let mut s = post_meal_paused(t0);
         let mut engine = still_for(&mut s, t0 + secs(20), 5);
         // Moving, but not yet for DECK_GO_DEBOUNCE: still paused, and the app
@@ -2806,7 +2857,7 @@ mod tests {
 
     #[test]
     fn a_stray_moving_frame_is_not_a_press() {
-        let t0 = past();
+        let t0 = Instant::now();
         let mut s = post_meal_paused(t0);
         let mut engine = still_for(&mut s, t0 + secs(20), 5);
         // Moving for 600 ms (one frame), then still again.
@@ -2827,7 +2878,7 @@ mod tests {
     fn a_pause_still_winding_down_is_not_a_press() {
         // HOLD on a walking belt: the deck reports it running for a while
         // before it reports the pause. That is never GO.
-        let t0 = past();
+        let t0 = Instant::now();
         let mut s = state();
         moving(&mut s, BEFORE.speed, BEFORE.incline);
         s.hardware_speed = 4.0;
@@ -2858,7 +2909,7 @@ mod tests {
     fn the_apps_own_start_in_flight_is_not_a_press() {
         // GO, then HOLD before the deck answers: the deck then starts on the
         // app's Start. That is not a press at the treadmill, so HOLD wins.
-        let t0 = past();
+        let t0 = Instant::now();
         let mut s = post_meal_paused(t0);
         let mut engine = still_for(&mut s, t0 + secs(20), 2);
         s.resume_program(t0 + secs(22)).unwrap();
@@ -2883,7 +2934,7 @@ mod tests {
 
     #[test]
     fn a_start_at_the_treadmill_taken_as_go_toasts_once() {
-        let t0 = past();
+        let t0 = Instant::now();
         let mut s = post_meal_paused(t0);
         let mut engine = still_for(&mut s, t0 + secs(20), 5);
         assert_eq!(s.take_program_toast(), None);
@@ -2905,7 +2956,7 @@ mod tests {
 
     #[test]
     fn a_start_at_the_treadmill_while_waiting_for_go_toasts_the_program() {
-        let t0 = past();
+        let t0 = Instant::now();
         let mut s = workday_resting_on_a_still_belt(t0);
         run_ticks(&mut s, t0, 300, 1800);
         let mut engine = still_for(&mut s, t0 + secs(1801), 5);
@@ -2919,7 +2970,7 @@ mod tests {
     #[test]
     fn an_in_app_go_and_a_rest_walk_raise_no_deck_toast() {
         // GO in the app has its own feedback.
-        let t0 = past();
+        let t0 = Instant::now();
         let mut s = post_meal_paused(t0);
         let mut engine = still_for(&mut s, t0 + secs(20), 2);
         s.resume_program(t0 + secs(22)).unwrap();
@@ -2941,7 +2992,7 @@ mod tests {
     /// Unchanged from the pin: the press already won here.
     #[test]
     fn a_start_at_the_treadmill_during_a_rest_is_a_manual_walk() {
-        let t0 = past();
+        let t0 = Instant::now();
         let mut s = workday_resting_on_a_still_belt(t0);
         let mut engine = still_for(&mut s, t0 + secs(400), 5);
         let sent = start_at_the_treadmill(&mut s, &mut engine, t0 + secs(405), 5);
@@ -2961,7 +3012,7 @@ mod tests {
         // The rest began at 300 s; the user starts the belt at the treadmill a
         // second later, inside the 5 s manual lockout of the rest's own
         // pause. The press is newer: it wins.
-        let t0 = past();
+        let t0 = Instant::now();
         let mut s = workday_resting_on_a_still_belt(t0);
         let mut engine = still_for(&mut s, t0 + secs(300), 1);
         let sent = start_at_the_treadmill(&mut s, &mut engine, t0 + secs(301), 5);

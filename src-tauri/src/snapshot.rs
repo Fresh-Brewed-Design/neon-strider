@@ -130,7 +130,7 @@ fn session_snapshot(state: &OrchestratorState, daily_base_m: f64) -> SessionSnap
 
 fn neural_snapshot(state: &OrchestratorState) -> NeuralSnapshot {
     let (target_speed, _, _) = state.resolve_target();
-    let (base_speed, _, _) = state.resolve_base(std::time::Instant::now());
+    let (base_speed, _, _) = state.resolve_base(state.now());
     let active = state.focus_stability_enabled
         && state.neural.active()
         && base_speed > 0.0
@@ -402,9 +402,7 @@ mod tests {
     /// A program run from a belt walking at 3.5 km/h (level 2), paused, then
     /// ended: the belt stays still and 3.5 waits for the next Engage.
     fn ended_on_a_still_belt() -> OrchestratorState {
-        let t0 = Instant::now()
-            .checked_sub(Duration::from_secs(600))
-            .unwrap();
+        let t0 = Instant::now();
         let mut state = OrchestratorState {
             programs: programs::seed_programs(),
             last_status: crate::protocol::MachineStatus::Running,
@@ -419,18 +417,22 @@ mod tests {
         state.last_status = crate::protocol::MachineStatus::Paused;
         assert!(state.end_program(true, t0));
         assert_eq!(state.engage_speed, Some(3.5));
+        // Ten minutes on: the manual lockout from the pause and END is over.
+        state.set_test_now(t0 + Duration::from_secs(600));
         state
     }
 
-    /// What the engine sends over `secs` seconds of 50 ms ticks from now.
+    /// What the engine sends over `secs` seconds of 50 ms ticks from the
+    /// state's clock.
     fn engine_sends(state: &mut OrchestratorState, secs: u64) -> Vec<crate::engine::PacketKind> {
         let mut engine = crate::engine::ProtocolEngine::new();
         engine.has_synced_reality = true;
         state.awaiting_first_packet = false;
-        let t0 = Instant::now();
+        let t0 = state.now();
         let mut sent = vec![];
         for i in 0..secs * 20 {
             let now = t0 + Duration::from_millis(50 * i);
+            state.set_test_now(now);
             if let Some(p) = engine.determine_next_packet(state, now) {
                 state.last_cmd_time = now;
                 sent.push(p.kind);
@@ -567,9 +569,10 @@ mod tests {
         engine.has_synced_reality = true;
         state.awaiting_first_packet = false;
         state.trigger_action(crate::engine::DeckAction::Start);
-        let t0 = Instant::now();
+        let t0 = state.now();
         for i in 0..200 {
             let now = t0 + Duration::from_millis(50 * i);
+            state.set_test_now(now);
             let Some(p) = engine.determine_next_packet(state, now) else {
                 continue;
             };
