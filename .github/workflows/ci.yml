@@ -1,15 +1,27 @@
 name: CI
 
-# PRs only: main is checked by the PR that changed it, and the release build
-# compiles it again. Windows runners bill at 2x, so skip runs that cannot
-# change the app (docs, release notes) and stop superseded runs.
+# Runs on PRs, and on main after each merge. The run on main is what keeps PRs
+# fast: only a cache saved from the default branch can be restored by every PR,
+# so main saves the compiled dependencies and PRs only restore them. Runs that
+# cannot change the app (docs, release notes) are skipped, and a newer push
+# stops an older run.
 on:
   pull_request:
     paths-ignore:
       - "**.md"
       - "changes/**"
       - "LICENSE"
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "changes/**"
+      - "LICENSE"
   workflow_dispatch:
+
+env:
+  # No debug info in CI builds: faster to compile and link, and a smaller cache.
+  CARGO_PROFILE_DEV_DEBUG: 0
 
 permissions:
   contents: read
@@ -38,6 +50,9 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: src-tauri
+          shared-key: ci
+          # PR caches are private to their PR; saving them only uses up the quota.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install JS dependencies
         run: npm ci
@@ -55,6 +70,11 @@ jobs:
       - name: Frontend build
         run: npx vite build
 
+      # Before anything compiles: it takes a second and fails fast.
+      - name: Formatting
+        working-directory: src-tauri
+        run: cargo fmt --check
+
       - name: Rust tests (also regenerates the TypeScript IPC bindings)
         working-directory: src-tauri
         run: cargo test
@@ -62,10 +82,6 @@ jobs:
       - name: Generated bindings are committed
         shell: bash
         run: git diff --exit-code -- src/ipc/bindings || (echo "Run cargo test in src-tauri and commit src/ipc/bindings." && exit 1)
-
-      - name: Formatting
-        working-directory: src-tauri
-        run: cargo fmt --check
 
       - name: Clippy (all targets, warnings are errors)
         working-directory: src-tauri
