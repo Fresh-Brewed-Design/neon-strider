@@ -33,6 +33,17 @@ The scheduled improvement task picks from here first. Remove an item when its PR
   small strip (link state, today's total, a way to expand and Engage) or hide it until the belt
   moves again. Cards that need an answer (walk-away, update, maintenance, waiting for GO) still
   show.
+- Treadmill simulator for testing, in three PRs, in this order:
+  1. Record real traffic: a Diagnostics switch that logs every packet sent and every status
+     frame received, with timestamps, to a file. The simulator's timings come from these
+     recordings, not from guesses.
+  2. A simulated deck in Rust at the protocol level (`sim.rs`, test-only): takes the bytes the
+     engine sends and answers with status frames; models the start countdown, speed ramp, pause
+     wind-down, standby (screen off) and power-off. Scenario tests run the real engine and
+     programs against it (e.g. run a program, speed to zero, RE-JACK, belt still running 30 s
+     later; pause and resume; reconnect while walking; rest ends and waits for GO).
+  3. A "simulated treadmill" choice in dev builds, so the whole app (HUD and dashboard) runs
+     with no hardware and behaviour changes can be checked end to end. Never in release builds.
 
 
 ## Later (not scheduled)
