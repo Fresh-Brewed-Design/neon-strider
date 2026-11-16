@@ -4,26 +4,6 @@
 
 The scheduled improvement task picks from here first. Remove an item when its PR merges.
 
-- Idle prompt: the HUD prompt shown while idle offers only the saved programs, which doesn't
-  entirely make sense. Starting a program from it is fine, but it probably needs a default that
-  just starts the treadmill. Think the whole prompt through first (what it is for, what the
-  default action should be, how the choices are ordered and worded) and put the reasoning in the
-  PR. Any start still needs a press in that moment. It also has two ways to hide it, LATER
-  (back in 15 minutes) and DISMISS (restarts the seated timer), and the difference isn't clear:
-  keep one, labelled for what it does.
-- HUD strip (the mini view while the belt is still) cuts off today's distance and the
-  relinking message: make both fit, and check every other text the strip can show.
-
-- Treadmill simulator for testing, one more PR: a "simulated treadmill" choice in dev builds,
-  so the whole app (HUD and dashboard) runs with no hardware and behaviour changes can be
-  checked end to end. Never in release builds. The recordings (Diagnostics' TRAFFIC_TAP), the
-  simulated deck and its scenario tests (`sim.rs`, test-only) are done; the choice can drive
-  the same `SimDeck`.
-
-- Desk-day consistency: show how many of the recent days the PC was used were also walked on
-  (e.g. "walked on 9 of the last 10 desk days"). A day off the PC doesn't count and doesn't break
-  anything. No records, bests or celebration: it's a walking pad, and the habit is what matters.
-
 - Minify the HUD while the belt is running: a control on the HUD (and a shortcut) that
   collapses it to the strip at any time, not only while the belt is still. The running strip
   shows what matters at a glance (speed, time or distance, the program step if one runs) and
