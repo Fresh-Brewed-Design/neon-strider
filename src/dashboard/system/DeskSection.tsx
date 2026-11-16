@@ -102,7 +102,7 @@ export function DeskSection() {
         tone="yellow"
         checked={seated.enabled}
         onChange={(enabled) => saveSeated({ enabled })}
-        description="After a while of keyboard and mouse use without walking, a card on the HUD offers a program. Only the time of the last input is kept, never which keys."
+        description="After a while of keyboard and mouse use without walking, a card on the HUD offers a walk or a program. Only the time of the last input is kept, never which keys."
       />
       {seated.enabled && (
         <>

@@ -344,18 +344,25 @@ const WEEKLY_SCENARIOS: Record<string, Partial<WeeklySummary>> = {
 };
 if (weeklyFlag !== null) Object.assign(snapshot.weekly, { show_card: true }, WEEKLY_SCENARIOS[weeklyFlag]);
 
-// ?seated shows the sit-too-long HUD card. Variants: ?seated=off (treadmill off, nothing
-// picked yet), ?seated=queued (treadmill off, second program remembered), ?seated=long
-// (long program names, to check wrapping).
-const seatedFlag = params.get("seated");
-if (seatedFlag !== null) {
+// ?seated shows the sit-too-long HUD card. Variants, comma-separated: off (treadmill off,
+// nothing picked yet), queued (treadmill off, second program remembered), long (long
+// program names, to check wrapping), none / one (no or one saved program), many (six
+// saved programs with long names; the card shows the first three).
+const seatedFlags = new Set((params.get("seated") ?? "").split(","));
+if (params.has("seated")) {
   Object.assign(snapshot.seated, { show_card: true, seated_minutes: 63 });
-  if (seatedFlag === "off" || seatedFlag === "queued") snapshot.connection.connected = false;
-  if (seatedFlag === "queued") snapshot.seated.pending_program_id = 2;
-  if (seatedFlag === "long") {
+  if (seatedFlags.has("off") || seatedFlags.has("queued")) snapshot.connection.connected = false;
+  if (seatedFlags.has("queued")) snapshot.seated.pending_program_id = 2;
+  if (seatedFlags.has("long")) {
     ["Long afternoon recovery walk", "Standing desk intervals", "Post-lunch"].forEach((name, i) => {
       snapshot.programs[i].name = name;
     });
+  }
+  if (seatedFlags.has("none")) snapshot.programs = [];
+  if (seatedFlags.has("one")) snapshot.programs = snapshot.programs.slice(0, 1);
+  if (seatedFlags.has("many")) {
+    const names = ["Long afternoon recovery walk", "Standing desk intervals", "Post-lunch digestion stroll", "Hill", "Endurance base builder", "Wind-down"];
+    snapshot.programs = names.map((name, i) => ({ ...snapshot.programs[i % snapshot.programs.length], id: i + 1, name }));
   }
 }
 
@@ -767,8 +774,13 @@ const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) =>
       snapshot.seated.pending_program_id = p.id;
     }
   },
+  seated_engage: () => {
+    if (!snapshot.connection.connected) throw "The treadmill is offline";
+    if (snapshot.deck.standby) return refuseWhileStopping();
+    Object.assign(snapshot.seated, { show_card: false, pending_program_id: null });
+    Object.assign(snapshot.deck, { status: "Running", speed_kmh: snapshot.deck.target_speed_kmh });
+  },
   seated_snooze: () => Object.assign(snapshot.seated, { show_card: false, pending_program_id: null }),
-  seated_dismiss: () => Object.assign(snapshot.seated, { show_card: false, pending_program_id: null }),
   calls_set_config: (c) => Object.assign(snapshot.calls, { enabled: c.enabled, quiet_kmh: c.quiet_kmh }),
   walkaway_set_config: (c) => {
     if (c.idle_minutes < 2 || c.idle_minutes > 30) throw "Idle time must be between 2 and 30 minutes";

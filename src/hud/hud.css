@@ -560,8 +560,8 @@ body,
 
 .hud-weekly .hud-sub { overflow-wrap: anywhere; }
 
-/* Sat-too-long card: yellow, persistent. Stacked (title, program buttons, a
-   note, then LATER / DISMISS) because side by side the buttons would not fit
+/* Sat-too-long card: yellow, persistent. Stacked (title, ENGAGE, program
+   buttons, a note, then SNOOZE) because side by side the buttons would not fit
    the 300px column. Program names wrap inside their buttons. */
 .hud-seated {
   flex-direction: column;
@@ -590,8 +590,18 @@ body,
   box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
-.hud-seated-note { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.hud-seated-note .hud-label { overflow-wrap: anywhere; }
+/* The default: a plain walk, filled so it reads first. */
+.hud-btn.hud-seated-engage {
+  height: 36px;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #05080c;
+}
+.hud-btn.hud-seated-engage:hover:not(:disabled) {
+  background: var(--accent);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
 .hud-seated .hud-sub { overflow-wrap: anywhere; line-height: 1.35; }
 
 .hud-seated-actions {
