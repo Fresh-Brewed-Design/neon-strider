@@ -4,7 +4,7 @@ import { dispatch } from "../../../ipc";
 import { useAppSnapshot } from "../../../state/useAppState";
 import { useTreadmillStore } from "../../../store/treadmillStore";
 import { GhostButton, Hint, Label, NeonButton } from "../../ui";
-import { Section } from "../fields";
+import { Section, Toggle } from "../fields";
 import { Markdown } from "./Markdown";
 import { formatPublished, installConfirmText, installProgress, updateBusy } from "./updates";
 
@@ -28,6 +28,7 @@ export function UpdatesSection() {
     status === "downloading" || status === "installing",
   );
   const notNow = useAction();
+  const autoToggle = useAction();
   if (!s || !u) return null;
 
   const busy = updateBusy(u);
@@ -78,6 +79,16 @@ export function UpdatesSection() {
         {backgroundFailure && <ActionStatus ambient error={`Last automatic check: ${backgroundFailure}`} />}
       </div>
 
+      <div>
+        <Toggle
+          label="Install automatically"
+          description="Only after the belt is still for 10 minutes and the PC idle for 5."
+          checked={u.auto_install}
+          onChange={(on) => void autoToggle.run(() => dispatch({ type: "update_auto_install", on }))}
+        />
+        <ActionStatus error={autoToggle.error} className="mt-1" />
+      </div>
+
       {offer && (
         <div className="flex flex-col gap-2 rounded border border-neon-magenta/30 bg-neon-magenta/5 p-3">
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
@@ -100,6 +111,11 @@ export function UpdatesSection() {
               </GhostButton>
             )}
             {u.dismissed && <Hint>Put off until tomorrow&apos;s check.</Hint>}
+            {!u.dismissed && u.auto_install && !busy && (
+              <span className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-neon-cyan/80">
+                Installs when idle
+              </span>
+            )}
           </div>
           <ActionStatus pending={progress ?? (install.pending && "Starting…")} error={install.error ?? notNow.error} />
         </div>

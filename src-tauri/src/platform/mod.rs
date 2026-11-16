@@ -8,10 +8,12 @@
 //! - Session lock: whether the user's session is locked (walk-away).
 //! - Microphone: which other apps are using the microphone (slow down on calls).
 //! - Pointer: the cursor position and primary button, for dragging the HUD.
+//! - Idle time: how long since the last keyboard or mouse input anywhere in
+//!   the session (auto-install of updates).
 //!
 //! `windows.rs` implements it. `other.rs` is the stand-in for every other OS:
 //! each feature reports "unsupported" (no input seen, never locked, microphone
-//! free), so the app runs without them.
+//! free, idle time unknown), so the app runs without them.
 
 #[cfg(windows)]
 #[path = "windows.rs"]
@@ -58,4 +60,10 @@ pub fn primary_button_down() -> bool {
 /// `placement` and the mouse hook).
 pub fn cursor_position() -> Option<(i32, i32)> {
     imp::cursor_position()
+}
+
+/// How long since the last keyboard or mouse input in the user's session;
+/// `None` when the OS can't say.
+pub fn input_idle_for() -> Option<std::time::Duration> {
+    imp::input_idle_for()
 }

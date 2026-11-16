@@ -40,6 +40,11 @@ mode, which exits the app and reopens it. It sends nothing to the treadmill: the
 going while the app is closed (a few seconds, with no HUD or shortcuts), the reconnect adopts
 it as the same session, and a running program carries on at the same step, its timer counting
 the time the app was closed. Background check failures only show in System -> Updates.
+With "Install automatically" on (default, `update_auto_install`), the scheduler (5 s tick) installs an
+offered update by itself only when the belt has been still with no program (walking, resting,
+paused or waiting for GO), start or countdown/stopping for 10 minutes and the PC has had no input
+for 5 (`platform::input_idle_for`); `auto_install` is the pure rule, and it runs again right
+before the installer starts.
 The installer is per-user NSIS; "launch at login" (`get/set_launch_at_login`) and single-instance are Rust plugins.
 `traffic.rs` is the Diagnostics traffic recorder: while switched on (`traffic_record`, off at every
 start) `bluetooth.rs` hands it every packet written and every notification received, and it appends
@@ -95,7 +100,8 @@ itself; `send()` toasts rejections as a backstop, the HUD uses `useHudSend` + `<
 
 OS-specific code goes only in `src-tauri/src/platform/` (`mod.rs` is the interface, `windows.rs`
 the Windows implementation, `other.rs` the stand-in for every other OS). It covers the input
-hooks, session lock, which apps use the microphone, and the cursor and mouse button. The rest of
+hooks, session lock, which apps use the microphone, the cursor and mouse button, and the PC's
+idle time. The rest of
 the code calls `platform::...` and never the OS directly. macOS and Linux are on the roadmap, so
 new code must not import `windows::` (or other OS APIs) outside `platform/`.
 
@@ -115,7 +121,7 @@ cargo clippy --all-targets -- -D warnings   # in src-tauri/: lints, no warnings 
 
 Design without a treadmill: with a Vite server running, open `/hud-preview.html` or
 `/dashboard-preview.html`. Both run on a mocked backend (`src/dev/mockBackend.ts`); URL flags
-like `?idle`, `?offline`, `?daily=12.34` (today's km), `?noprogram`, `?toasts` (`?toasts=deck` for the deck-start GO toast), `?anchor=top_left`, `?neural=active`, `?engage=timeout`, `?status=9|countdown|stopping|standby`, `?walkaway=warning|paused|idle`, `?custom`, `?update=available|downloading|failed|whatsnew`, `?stasis=strip|hidden` (with `?deck=paused` for RE-JACK), `?traffic=recording|saved` pick scenarios.
+like `?idle`, `?offline`, `?daily=12.34` (today's km), `?noprogram`, `?toasts` (`?toasts=deck` for the deck-start GO toast), `?anchor=top_left`, `?neural=active`, `?engage=timeout`, `?status=9|countdown|stopping|standby`, `?walkaway=warning|paused|idle`, `?custom`, `?update=available|downloading|failed|whatsnew` (with `?autoinstall=off`), `?stasis=strip|hidden` (with `?deck=paused` for RE-JACK), `?traffic=recording|saved` pick scenarios.
 `?program=ready|hold|still|resting|paused` shows a program waiting for GO after a rest, after a
 0 km/h step, or after a reconnect found the belt still; mid-rest; or paused by the user.
 

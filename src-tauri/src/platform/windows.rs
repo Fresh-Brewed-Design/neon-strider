@@ -229,6 +229,28 @@ pub fn cursor_position() -> Option<(i32, i32)> {
     Some((p.x, p.y))
 }
 
+/// From `GetLastInputInfo`: the whole session's last keyboard or mouse input,
+/// not only what the hooks saw. Both tick counts are 32-bit and wrap after
+/// 49.7 days, so the difference is taken wrapping.
+pub fn input_idle_for() -> Option<std::time::Duration> {
+    use windows::Win32::System::SystemInformation::GetTickCount;
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
+    let mut info = LASTINPUTINFO {
+        cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32,
+        dwTime: 0,
+    };
+    // SAFETY: `info` is a valid, sized out struct; GetTickCount only reads.
+    let now = unsafe {
+        if !GetLastInputInfo(&mut info).as_bool() {
+            return None;
+        }
+        GetTickCount()
+    };
+    Some(std::time::Duration::from_millis(
+        now.wrapping_sub(info.dwTime) as u64,
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // Session lock
 // ---------------------------------------------------------------------------
