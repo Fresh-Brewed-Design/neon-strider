@@ -505,14 +505,14 @@ pub enum Command {
         minutes: u32,
         program_ids: Option<Vec<u32>>,
     },
+    /// ENGAGE on the sit-too-long card: what Engage does on a still belt.
+    SeatedEngage,
     /// A program button on the sit-too-long card.
     SeatedStart {
         id: u32,
     },
-    /// LATER on the card: snooze 15 minutes.
+    /// SNOOZE 15 MIN on the card: hide it for 15 minutes; the time seated is kept.
     SeatedSnooze,
-    /// DISMISS on the card: reset the timer.
-    SeatedDismiss,
     /// Slow-down-on-calls settings: on or off, and the quiet speed 0.5 to 6 km/h.
     CallsSetConfig {
         enabled: bool,
@@ -775,8 +775,8 @@ mod tests {
         assert_eq!(c, Command::SeatedStart { id: 2 });
         let c: Command = serde_json::from_str(r#"{"type":"seated_snooze"}"#).unwrap();
         assert_eq!(c, Command::SeatedSnooze);
-        let c: Command = serde_json::from_str(r#"{"type":"seated_dismiss"}"#).unwrap();
-        assert_eq!(c, Command::SeatedDismiss);
+        let c: Command = serde_json::from_str(r#"{"type":"seated_engage"}"#).unwrap();
+        assert_eq!(c, Command::SeatedEngage);
         let c: Command =
             serde_json::from_str(r#"{"type":"calls_set_config","enabled":true,"quiet_kmh":1.8}"#)
                 .unwrap();

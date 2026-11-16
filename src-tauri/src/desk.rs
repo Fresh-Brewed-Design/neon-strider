@@ -274,14 +274,43 @@ pub async fn walkaway_end() -> Result<(), String> {
     Ok(())
 }
 
-/// LATER.
+/// SNOOZE 15 MIN.
 pub fn snooze() {
     seated::with(|rt| rt.machine.snooze(now_ms()));
 }
 
-/// DISMISS.
-pub fn dismiss() {
-    seated::with(|rt| rt.machine.dismiss());
+/// Shown under the card's buttons for ENGAGE without a usable link.
+const ENGAGE_OFFLINE: &str = "The treadmill is offline";
+
+/// ENGAGE on the card, the press itself: Engage's own start on a still belt
+/// (`DeckAction::Start`, which is also GO on a paused program). Nothing is
+/// remembered for later: without a link it fails at once. A deck in standby
+/// refuses the start in the engine, which says why (`start_result`, shown
+/// under the card's buttons), and the card stays up.
+fn engage(
+    state: &mut OrchestratorState,
+    ready: bool,
+    machine: &mut seated::Seated,
+    now: u64,
+) -> Result<(), String> {
+    if !ready {
+        return Err(ENGAGE_OFFLINE.to_string());
+    }
+    let refused = state.start_refusal().is_some();
+    state.trigger_action(DeckAction::Start);
+    if !refused {
+        log::info!("Nudge: Engage from the card");
+        machine.engaged(now);
+    }
+    Ok(())
+}
+
+/// ENGAGE on the card.
+pub async fn press_engage() -> Result<(), String> {
+    let connected = bluetooth::is_bluetooth_connected().await;
+    let mut state = ORCHESTRATOR.lock().await;
+    let ready = treadmill_ready(connected, &state);
+    seated::with(|rt| engage(&mut state, ready, &mut rt.machine, now_ms()))
 }
 
 /// A program button on the card: start it now when the treadmill is connected,
@@ -314,4 +343,97 @@ pub async fn press_program(app: &AppHandle, id: u32) -> Result<(), String> {
         blocking(move || programs::persist_last_run(&app_c, Some(id))).await?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::HandshakeStep;
+
+    const T0: u64 = 1_800_000_000_000;
+    const MIN: u64 = 60_000;
+
+    /// A machine with the card up: 16 minutes of typing, belt off, at 15 minutes.
+    fn card_up() -> (seated::Seated, seated::Config) {
+        let cfg = seated::Config {
+            minutes: 15,
+            ..seated::Config::default()
+        };
+        let mut m = seated::Seated::default();
+        let mut t = 0;
+        while t <= 16 * MIN {
+            m.tick(
+                &cfg,
+                T0 + t,
+                &seated::Tick {
+                    idle_ms: Some(0),
+                    belt_running: false,
+                    ready: true,
+                    program_waiting: false,
+                },
+            );
+            t += 1000;
+        }
+        assert!(m.show_card());
+        (m, cfg)
+    }
+
+    /// A still deck on a fresh connection: the hold is on until a press.
+    fn still_deck() -> OrchestratorState {
+        OrchestratorState {
+            hold_auto_start: true,
+            ..OrchestratorState::default()
+        }
+    }
+
+    #[test]
+    fn engage_on_the_card_is_the_engage_press() {
+        let (mut m, _) = card_up();
+        let mut card = still_deck();
+        engage(&mut card, true, &mut m, T0 + 16 * MIN).unwrap();
+
+        // The HUD's Engage on a still belt (`toggle_start`), and the start
+        // shortcut: the same start.
+        for action in [DeckAction::ToggleStart, DeckAction::Start] {
+            let mut hud = still_deck();
+            hud.trigger_action(action);
+            assert_eq!(card.handshake_step, hud.handshake_step);
+            assert_eq!(card.manual_intent, hud.manual_intent);
+            assert_eq!(card.hold_auto_start, hud.hold_auto_start);
+            assert_eq!(
+                card.start_requested_at.is_some(),
+                hud.start_requested_at.is_some()
+            );
+        }
+        assert_eq!(card.handshake_step, HandshakeStep::Priming);
+        assert!(!card.hold_auto_start, "the press releases the hold");
+        assert!(!m.show_card(), "the card steps aside for the walk");
+    }
+
+    #[test]
+    fn engage_without_a_link_starts_nothing_and_says_so() {
+        let (mut m, _) = card_up();
+        let mut state = still_deck();
+        let r = engage(&mut state, false, &mut m, T0 + 16 * MIN);
+        assert_eq!(r, Err(ENGAGE_OFFLINE.to_string()));
+        assert_eq!(state.handshake_step, HandshakeStep::Idle);
+        assert_eq!(state.manual_intent, None);
+        assert!(state.hold_auto_start);
+        assert!(m.show_card(), "the card stays to be pressed again");
+        assert_eq!(m.pending_program_id(), None, "nothing is kept for later");
+    }
+
+    #[test]
+    fn engage_on_a_deck_in_standby_is_refused_and_the_card_stays() {
+        let (mut m, _) = card_up();
+        let mut state = OrchestratorState {
+            deck_standby: true,
+            ..still_deck()
+        };
+        engage(&mut state, true, &mut m, T0 + 16 * MIN).unwrap();
+        assert_eq!(state.handshake_step, HandshakeStep::Idle);
+        assert!(state.start_requested_at.is_none());
+        assert!(state.start_blocked, "nothing starts it once it wakes");
+        assert!(m.show_card());
+    }
 }

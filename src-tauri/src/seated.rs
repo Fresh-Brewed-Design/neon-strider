@@ -1,9 +1,11 @@
 //! Sit-too-long nudge.
 //!
-//! After a set time of PC use without walking, a persistent HUD card offers
-//! one-tap programs. The treadmill powers itself off when idle, so nothing can
-//! start it from here: a program picked while it is off is remembered and
-//! started as soon as it connects (within 15 minutes).
+//! After a set time of PC use without walking, a persistent HUD card asks for a
+//! walk: ENGAGE (a plain walk, Engage's own path), then one-tap programs, then
+//! SNOOZE 15 MIN. Nothing here starts the belt without that press. The
+//! treadmill powers itself off when idle: ENGAGE then only says so, while a
+//! program picked while it is off is remembered and started as soon as it
+//! connects (within 15 minutes).
 //!
 //! "PC use" is any keyboard or mouse input seen by the global input hooks
 //! (`hooks::input_idle_ms`; only the time of the last one is kept). Seated
@@ -43,7 +45,7 @@ const ACTIVE_WINDOW_MS: u64 = 5 * MINUTE;
 const AWAY_MS: u64 = 15 * MINUTE;
 /// The belt must run this long to count as a walk.
 const WALK_MS: u64 = 2 * MINUTE;
-/// What LATER snoozes for.
+/// What SNOOZE 15 MIN snoozes for.
 const SNOOZE_MS: u64 = 15 * MINUTE;
 /// Quiet time after starting a program, so the card does not flash back if the
 /// belt takes a moment to spin up.
@@ -214,18 +216,27 @@ impl Seated {
         effect
     }
 
-    /// LATER: hide the card for 15 minutes. The time already seated is kept, so it
-    /// comes back at once when the snooze ends.
+    /// SNOOZE 15 MIN: hide the card for 15 minutes. The time already seated is
+    /// kept, so it comes back at once when the snooze ends.
     pub fn snooze(&mut self, now_ms: u64) {
         self.showing = false;
         self.quiet_until_ms = Some(now_ms + SNOOZE_MS);
         self.pending = None;
     }
 
-    /// DISMISS: forget the time seated and start counting again.
-    pub fn dismiss(&mut self) {
+    /// The nudge was switched off: forget the time seated and any remembered
+    /// program.
+    pub fn reset(&mut self) {
         self.clear_timer();
         self.pending = None;
+    }
+
+    /// ENGAGE was pressed and the belt was asked to start (the caller sent
+    /// Engage's own start): hide the card as after a program start. A plain walk
+    /// is never remembered for later, so a remembered program is dropped too.
+    pub fn engaged(&mut self, now_ms: u64) {
+        self.pending = None;
+        self.started(now_ms);
     }
 
     /// A program button. `ready`: the treadmill is connected, so start it now;
@@ -394,7 +405,7 @@ pub fn set_config(
             program_ids,
         };
         if !enabled {
-            rt.machine.dismiss();
+            rt.machine.reset();
         }
     });
     Ok(())
@@ -626,7 +637,7 @@ mod tests {
     }
 
     #[test]
-    fn later_hides_for_fifteen_minutes_then_returns() {
+    fn snooze_hides_for_fifteen_minutes_then_returns() {
         let c = cfg(15);
         let mut m = Seated::default();
         run(&mut m, &c, 0, 16 * M, |_| typing());
@@ -658,19 +669,74 @@ mod tests {
     }
 
     #[test]
-    fn dismiss_resets_the_timer() {
+    fn snooze_keeps_the_time_seated() {
+        let c = cfg(15);
+        let mut m = Seated::default();
+        run(&mut m, &c, 0, 20 * M, |_| typing());
+        m.snooze(T0 + 20 * M);
+        // The count goes on under the snooze: the card says how long, truthfully.
+        run(&mut m, &c, 20 * M + S, 34 * M, |_| typing());
+        assert!(!m.show_card());
+        assert_eq!(m.seated_minutes(), 34);
+    }
+
+    #[test]
+    fn turning_the_nudge_off_resets_the_timer() {
         let c = cfg(15);
         let mut m = Seated::default();
         run(&mut m, &c, 0, 16 * M, |_| typing());
-        assert!(m.show_card());
-        m.dismiss();
+        m.press(3, false, T0 + 16 * M);
+        m.reset();
         assert!(!m.show_card());
         assert_eq!(m.seated_minutes(), 0);
-        // A full interval of sitting again before it returns.
-        run(&mut m, &c, 16 * M + S, 30 * M, |_| typing());
+        assert_eq!(m.pending_program_id(), None);
+    }
+
+    #[test]
+    fn engage_hides_the_card_like_a_program_start() {
+        let c = cfg(15);
+        let mut m = Seated::default();
+        run(&mut m, &c, 0, 16 * M, |_| typing());
+        m.engaged(T0 + 16 * M);
         assert!(!m.show_card());
-        run(&mut m, &c, 30 * M + S, 31 * M + 5 * S, |_| typing());
+        // The belt takes a moment to report running: the card stays away.
+        let fx = run(&mut m, &c, 16 * M + S, 17 * M + 30 * S, |_| Tick {
+            ready: true,
+            ..typing()
+        });
+        assert!(fx.is_empty());
+        assert!(!m.show_card());
+    }
+
+    #[test]
+    fn engage_is_never_remembered_and_drops_a_remembered_program() {
+        let c = cfg(15);
+        let mut m = Seated::default();
+        run(&mut m, &c, 0, 16 * M, |_| typing());
+        m.press(3, false, T0 + 16 * M);
+        m.engaged(T0 + 16 * M + S);
+        assert_eq!(m.pending_program_id(), None);
+        // The treadmill connecting later starts nothing.
+        let fx = run(&mut m, &c, 16 * M + 2 * S, 20 * M, |_| Tick {
+            ready: true,
+            ..typing()
+        });
+        assert!(fx.is_empty());
+    }
+
+    #[test]
+    fn nothing_starts_without_a_press() {
+        // Hours of sitting with the card up and the treadmill ready: the
+        // machine only ever shows the card.
+        let c = cfg(15);
+        let mut m = Seated::default();
+        let fx = run(&mut m, &c, 0, 3 * 60 * M, |_| Tick {
+            ready: true,
+            ..typing()
+        });
+        assert!(fx.is_empty());
         assert!(m.show_card());
+        assert_eq!(m.pending_program_id(), None);
     }
 
     #[test]
@@ -767,13 +833,10 @@ mod tests {
     }
 
     #[test]
-    fn later_and_dismiss_forget_a_remembered_program() {
+    fn snooze_forgets_a_remembered_program() {
         let mut m = Seated::default();
         m.press(1, false, T0);
         m.snooze(T0 + S);
-        assert_eq!(m.pending_program_id(), None);
-        m.press(1, false, T0);
-        m.dismiss();
         assert_eq!(m.pending_program_id(), None);
     }
 
