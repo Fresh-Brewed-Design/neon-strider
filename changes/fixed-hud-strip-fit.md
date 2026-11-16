@@ -1,0 +1,1 @@
+- The HUD strip shows today's distance in full, even past 100 km, and the link status (such as `RELINK 12S`) is no longer cut off.

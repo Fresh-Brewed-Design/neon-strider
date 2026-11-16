@@ -4,9 +4,6 @@
 
 The scheduled improvement task picks from here first. Remove an item when its PR merges.
 
-- HUD strip (the mini view while the belt is still) cuts off today's distance and the
-  relinking message: make both fit, and check every other text the strip can show.
-
 - Idle prompt: the HUD prompt shown while idle offers only the saved programs, which doesn't
   entirely make sense. Starting a program from it is fine, but it probably needs a default that
   just starts the treadmill. Think the whole prompt through first (what it is for, what the
