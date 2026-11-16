@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.1 (2026-11-16)
+
+### Fixed
+
+- The HUD strip shows today's distance in full, even past 100 km, and the link status (such as `RELINK 12S`) is no longer cut off.
+
 ## 1.5.0 (2026-11-16)
 
 ### Changed
