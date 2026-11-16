@@ -138,6 +138,9 @@ PR adds a release note file `changes/<new|changed|fixed>-<slug>.md` (see `change
 which the release folds into CHANGELOG.md. All work goes to `main` through PRs. CI runs on
 PRs and on `main` after each merge; the run on `main` saves the compiled Rust dependencies
 (`shared-key: ci`) and PR runs restore them, so a PR compiles only this crate.
+`build-roadmap-issue.yml` builds a roadmap issue when Jeremy labels one of his own issues
+`roadmap:next`: Claude opens a PR that closes it (secret `CLAUDE_CODE_OAUTH_TOKEN`). Only his
+account (user ID 3596382) can start it, as both the issue's author and whoever added the label.
 
 The GitHub release body is the version's CHANGELOG section (`release-version.mjs` writes it to
 a file and auto-release passes it on; a hand-pushed `v*` tag reads it from CHANGELOG.md), then
