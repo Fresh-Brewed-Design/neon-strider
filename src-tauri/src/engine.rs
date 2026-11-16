@@ -1550,6 +1550,7 @@ impl ProtocolEngine {
         state.release_hold_if_moving();
         self.drive_stop(state, now);
         self.sync_with_deck(state, now);
+        self.forget_sent_when_stopped(state);
         // A start at the treadmill on a program holding the belt still is a
         // press; while it is being confirmed the target isn't followed (no
         // pause, no zero speed sent to the starting belt).
@@ -1644,6 +1645,16 @@ impl ProtocolEngine {
                 physical_speed,
                 state.hardware_incline
             );
+        }
+    }
+
+    /// A stopped deck forgets its speed: the next start runs at the deck's own
+    /// start speed. Forget what was sent too, so the target goes out again once
+    /// the belt runs, even when it is the same speed as last time.
+    fn forget_sent_when_stopped(&mut self, state: &OrchestratorState) {
+        if self.has_synced_reality && state.last_status == MachineStatus::Stopped {
+            self.last_sent_speed = 255;
+            self.last_sent_incline = 255;
         }
     }
 
