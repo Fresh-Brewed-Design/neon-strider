@@ -165,6 +165,7 @@ export const snapshot: AppSnapshot = {
     last_checked_ms: Date.now() - 3 * 3_600_000,
     last_result: null,
     whats_new: null,
+    auto_install: true,
   },
   traffic: { recording: false, file_path: null, file_name: null, packets: 0, bytes: 0, elapsed_s: 0, stop_reason: null },
 };
@@ -447,6 +448,7 @@ function tickWalkaway(): boolean {
 // skipped v1.2.1; the HUD shows UPDATE READY). ?update=downloading: it is
 // downloading. ?update=failed: the last automatic check failed (offline).
 // ?update=whatsnew: the first launch after updating to v1.2.0 ("What's new").
+// ?autoinstall=off: "Install automatically" switched off.
 const PREVIEW_NOTES = [
   "## v1.3.0",
   "",
@@ -492,6 +494,7 @@ function simulateInstall() {
 }
 
 const updateFlag = params.get("update");
+if (params.get("autoinstall") === "off") snapshot.update.auto_install = false;
 if (updateFlag === "available") offerUpdate();
 if (updateFlag === "downloading") {
   offerUpdate();
@@ -832,6 +835,7 @@ const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) =>
     if (c.open) snapshot.update.show_notes_at_ms = Date.now();
   },
   update_whats_new_ack: () => (snapshot.update.whats_new = null),
+  update_auto_install: (c) => (snapshot.update.auto_install = c.on),
   traffic_record: (c) => (c.on ? startTraffic(0) : stopTraffic()),
   traffic_open_folder: () => {},
   strava_set_credentials: () => (snapshot.strava.has_credentials = true),

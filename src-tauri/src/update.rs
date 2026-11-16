@@ -6,6 +6,10 @@
 //! - the pure logic (tested below): version order, joining the notes of every
 //!   version skipped since the installed one, the check schedule, "not now",
 //!   and plain-English error text;
+//! - the auto-install rule (`auto_install`, pure): an offered update installs
+//!   by itself only when the belt has been still, with no program, for 10
+//!   minutes and the PC has had no input for 5, checked again right before the
+//!   installer runs;
 //! - the runtime: checks (30 s after startup, then daily, or on demand), the
 //!   install (download and verify through `tauri-plugin-updater`, save the
 //!   running program, run the NSIS installer in passive mode, which restarts
@@ -20,6 +24,7 @@
 
 use crate::bluetooth::ORCHESTRATOR;
 use crate::persistence;
+use crate::protocol::MachineStatus;
 use serde::{Deserialize, Serialize};
 use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
@@ -29,6 +34,7 @@ use tauri::AppHandle;
 const KEY_DISMISSED: &str = "update_dismissed";
 const KEY_HUD_SEEN: &str = "update_hud_seen";
 const KEY_WHATS_NEW: &str = "update_whats_new";
+const KEY_AUTO_INSTALL: &str = "update_auto_install";
 
 const RELEASES_API: &str = "https://api.github.com/repos/Fresh-Brewed-Design/neon-strider/releases";
 const USER_AGENT: &str = "neon-strider-updater";
@@ -41,8 +47,14 @@ const DAY_MS: u64 = 24 * 60 * MINUTE_MS;
 const STARTUP_DELAY_MS: u64 = 30_000;
 /// A failed background check (offline at startup, say) is retried this soon.
 const RETRY_AFTER_FAILURE_MS: u64 = 60 * MINUTE_MS;
-/// How often the scheduler looks at the clock.
-const SCHEDULER_TICK: Duration = Duration::from_secs(30);
+/// How often the scheduler looks at the clock and the belt.
+const SCHEDULER_TICK: Duration = Duration::from_secs(5);
+/// Auto-install waits for the belt to be still, with no program, this long...
+const AUTO_BELT_STILL_MS: u64 = 10 * MINUTE_MS;
+/// ...and for this long without keyboard or mouse input on the PC.
+const AUTO_PC_IDLE_MS: u64 = 5 * MINUTE_MS;
+/// After an automatic install fails, the next automatic try waits this long.
+const AUTO_RETRY_MS: u64 = 60 * MINUTE_MS;
 /// "What's new" opens the dashboard by itself only this soon after the install began.
 const WHATS_NEW_OPEN_WITHIN_MS: u64 = 15 * MINUTE_MS;
 const HTTP_TIMEOUT: Duration = Duration::from_secs(20);
@@ -130,6 +142,8 @@ pub struct UpdateSnapshot {
     /// Buttons' outcome (Check now, Install); background checks never set it.
     pub last_result: Option<UpdateResult>,
     pub whats_new: Option<WhatsNew>,
+    /// Install an offered update by itself when the belt and the PC are idle.
+    pub auto_install: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -239,6 +253,124 @@ pub fn check_due(now_ms: u64, started_ms: u64, last: Option<LastCheck>) -> bool 
     }
 }
 
+/// The belt and the program right now, as auto-install sees them.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BeltNow {
+    pub connected: bool,
+    pub status: MachineStatus,
+    /// Any program: walking, resting, paused or waiting for GO.
+    pub program_active: bool,
+    /// A start asked for and not yet seen on the deck.
+    pub start_pending: bool,
+}
+
+impl BeltNow {
+    /// The link shows the belt turning, counting down or winding down.
+    fn deck_busy(&self) -> bool {
+        self.connected
+            && matches!(
+                self.status,
+                MachineStatus::Running | MachineStatus::Starting | MachineStatus::Stopping
+            )
+    }
+
+    /// Something is happening, or may be: the deck is busy, a start is in
+    /// flight, or a program is active.
+    pub fn busy(&self) -> bool {
+        self.deck_busy() || self.program_active || self.start_pending
+    }
+}
+
+/// When the belt was last busy. App start counts as busy (the belt may be
+/// going after a restart), so the 10 minutes run from startup at the earliest.
+/// While the link is down the belt can't be seen, so it counts as whatever it
+/// was when the link dropped: a link lost mid-walk keeps it busy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct BeltWatch {
+    last_busy_ms: u64,
+    busy_when_seen: bool,
+}
+
+impl BeltWatch {
+    pub fn new(started_ms: u64) -> Self {
+        Self {
+            last_busy_ms: started_ms,
+            busy_when_seen: false,
+        }
+    }
+
+    pub fn observe(&mut self, now_ms: u64, b: BeltNow) {
+        if b.connected {
+            self.busy_when_seen = b.deck_busy();
+        }
+        if b.busy() || self.busy_when_seen {
+            self.last_busy_ms = now_ms;
+        }
+    }
+
+    pub fn still_for_ms(&self, now_ms: u64) -> u64 {
+        now_ms.saturating_sub(self.last_busy_ms)
+    }
+}
+
+/// Everything the auto-install decision depends on.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AutoInput {
+    /// The setting.
+    pub enabled: bool,
+    /// An update is on offer and ready to download.
+    pub offered: bool,
+    /// "Not now" holds for the offered version.
+    pub dismissed: bool,
+    /// The updater is checking, downloading or installing.
+    pub updater_busy: bool,
+    /// The belt is busy right now.
+    pub belt_busy: bool,
+    pub belt_still_ms: u64,
+    /// Since the last keyboard or mouse input; `None` when the OS can't say.
+    pub pc_idle_ms: Option<u64>,
+    /// Since the last automatic install failed.
+    pub since_auto_failure_ms: Option<u64>,
+}
+
+/// What auto-install does now; `Wait` says why, for the log.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AutoInstall {
+    Install,
+    Wait(&'static str),
+}
+
+/// Install by itself only when it's on, an update is offered and not put off,
+/// the belt has been still with no program for 10 minutes, and the PC has had
+/// no input for 5. Called on every scheduler tick and again right before the
+/// installer runs.
+pub fn auto_install(i: AutoInput) -> AutoInstall {
+    use AutoInstall::Wait;
+    if !i.enabled {
+        return Wait("auto-install is off");
+    }
+    if !i.offered {
+        return Wait("no update on offer");
+    }
+    if i.updater_busy {
+        return Wait("the updater is busy");
+    }
+    if i.dismissed {
+        return Wait("put off with Not now");
+    }
+    if i.since_auto_failure_ms.is_some_and(|t| t < AUTO_RETRY_MS) {
+        return Wait("the last automatic install failed less than an hour ago");
+    }
+    if i.belt_busy || i.belt_still_ms < AUTO_BELT_STILL_MS {
+        return Wait("the belt or a program was active in the last 10 minutes");
+    }
+    match i.pc_idle_ms {
+        None => Wait("the PC's idle time is unknown"),
+        Some(t) if t < AUTO_PC_IDLE_MS => Wait("the PC was used in the last 5 minutes"),
+        Some(_) => AutoInstall::Install,
+    }
+}
+
 /// "Not now" for one version, remembered in settings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Dismissal {
@@ -340,6 +472,11 @@ struct Runtime {
     dismissed: Option<Dismissal>,
     hud_seen: Option<String>,
     whats_new: Option<WhatsNew>,
+    auto_install: bool,
+    belt: BeltWatch,
+    /// The last auto-install decision, so the log gets each change once.
+    last_auto: Option<AutoInstall>,
+    auto_failed_ms: Option<u64>,
 }
 
 static RT: Mutex<Option<Runtime>> = Mutex::new(None);
@@ -378,6 +515,9 @@ pub fn init(app: &AppHandle) {
     let hud_seen = persistence::read_setting(app, KEY_HUD_SEEN).filter(|s| !s.is_empty());
     let saved = persistence::read_setting(app, KEY_WHATS_NEW)
         .and_then(|s| serde_json::from_str::<SavedWhatsNew>(&s).ok());
+    let auto_install =
+        persistence::parse_setting(persistence::read_setting(app, KEY_AUTO_INSTALL).as_deref())
+            .unwrap_or(true);
 
     let mut open_dashboard = false;
     let whats_new = match saved {
@@ -406,6 +546,8 @@ pub fn init(app: &AppHandle) {
     with(|rt| {
         rt.current_version = running;
         rt.started_ms = now();
+        rt.belt = BeltWatch::new(rt.started_ms);
+        rt.auto_install = auto_install;
         rt.dismissed = dismissed;
         rt.hud_seen = hud_seen;
         rt.whats_new = whats_new;
@@ -415,7 +557,8 @@ pub fn init(app: &AppHandle) {
     }
 }
 
-/// The background schedule: a check 30 s after startup, then daily.
+/// The background schedule: a check 30 s after startup, then daily; and on
+/// every tick, whether an offered update may install by itself.
 pub fn spawn(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let mut ticker = tokio::time::interval(SCHEDULER_TICK);
@@ -427,8 +570,75 @@ pub fn spawn(app: AppHandle) {
             if due {
                 check(&app, false).await;
             }
+            if auto_decide(belt_now().await) == AutoInstall::Install {
+                if let Err(e) = start_install(&app, true) {
+                    log::info!("Auto-install didn't start: {}", e);
+                }
+            }
         }
     });
+}
+
+/// The belt and program now, read from the engine. Reads only.
+async fn belt_now() -> BeltNow {
+    let connected = crate::bluetooth::is_bluetooth_connected().await;
+    let state = ORCHESTRATOR.lock().await;
+    BeltNow {
+        connected,
+        status: state.last_status,
+        program_active: state.active_program().is_some(),
+        start_pending: state.start_requested_at.is_some(),
+    }
+}
+
+fn pc_idle_ms() -> Option<u64> {
+    crate::platform::input_idle_for().map(|d| d.as_millis() as u64)
+}
+
+/// Record the belt, then decide whether to install by itself now. Each new
+/// decision is logged once.
+fn auto_decide(belt: BeltNow) -> AutoInstall {
+    let pc_idle_ms = pc_idle_ms();
+    with(|rt| {
+        let now_ms = now();
+        rt.belt.observe(now_ms, belt);
+        let version = rt.offer.as_ref().map(|o| o.version.clone());
+        let decision = auto_install(AutoInput {
+            enabled: rt.auto_install,
+            offered: rt.pending.is_some()
+                && matches!(
+                    rt.status,
+                    UpdateStatus::Available { .. } | UpdateStatus::Failed { .. }
+                ),
+            dismissed: version
+                .as_deref()
+                .is_some_and(|v| dismissal_active(rt.dismissed.as_ref(), v, now_ms)),
+            updater_busy: busy(&rt.status),
+            belt_busy: belt.busy(),
+            belt_still_ms: rt.belt.still_for_ms(now_ms),
+            pc_idle_ms,
+            since_auto_failure_ms: rt.auto_failed_ms.map(|t| now_ms.saturating_sub(t)),
+        });
+        log_auto(rt, decision, version.as_deref(), pc_idle_ms);
+        decision
+    })
+}
+
+fn log_auto(rt: &mut Runtime, decision: AutoInstall, version: Option<&str>, pc_idle: Option<u64>) {
+    if rt.last_auto == Some(decision) {
+        return;
+    }
+    rt.last_auto = Some(decision);
+    let version = version.unwrap_or("-");
+    match decision {
+        AutoInstall::Install => log::info!(
+            "Auto-install: installing v{} (belt still {} s, PC idle {:?} s)",
+            version,
+            rt.belt.still_for_ms(now()) / 1000,
+            pc_idle.map(|t| t / 1000)
+        ),
+        AutoInstall::Wait(why) => log::info!("Auto-install: waiting (v{}): {}", version, why),
+    }
 }
 
 /// The notes for `update`: every version since the installed one from
@@ -578,14 +788,58 @@ pub async fn check(app: &AppHandle, manual: bool) {
     });
 }
 
-fn fail_install(message: String) {
-    log::warn!("Update install failed: {}", message);
+fn fail_install(message: String, auto: bool) {
+    let kind = if auto { "Automatic" } else { "Update" };
+    log::warn!("{} install failed: {}", kind, message);
     with(|rt| {
         rt.status = UpdateStatus::Failed {
             message: message.clone(),
         };
-        record_result(rt, false, message);
+        if auto {
+            rt.auto_failed_ms = Some(now());
+        } else {
+            record_result(rt, false, message);
+        }
     });
+}
+
+/// The automatic install's last look, right before the installer runs: if the
+/// belt or the PC woke up meanwhile, put the offer back and wait again.
+async fn still_idle_for_auto(app: &AppHandle) -> bool {
+    let belt = belt_now().await;
+    let pc_idle_ms = pc_idle_ms();
+    let decision = with(|rt| {
+        let now_ms = now();
+        rt.belt.observe(now_ms, belt);
+        auto_install(AutoInput {
+            enabled: rt.auto_install,
+            offered: true,
+            dismissed: false,
+            // This install is the updater's own work.
+            updater_busy: false,
+            belt_busy: belt.busy(),
+            belt_still_ms: rt.belt.still_for_ms(now_ms),
+            pc_idle_ms,
+            since_auto_failure_ms: None,
+        })
+    });
+    if let AutoInstall::Wait(why) = decision {
+        log::info!("Auto-install: called off right before installing: {}", why);
+        let _ = persistence::delete_setting(app, KEY_WHATS_NEW);
+        with(|rt| {
+            rt.last_auto = Some(decision);
+            if let Some(o) = rt.offer.clone() {
+                rt.status = UpdateStatus::Available {
+                    version: o.version,
+                    notes: o.notes,
+                    published: o.published,
+                };
+            }
+        });
+        return false;
+    }
+    log::info!("Auto-install: still idle; running the installer");
+    true
 }
 
 /// Save the running program just before the app closes (the emitter only
@@ -607,6 +861,12 @@ async fn save_running_program(app: &AppHandle) {
 /// the app and opens the new version. The belt is never paused or stopped.
 /// Returns at once; progress is in the snapshot.
 pub fn install(app: &AppHandle) -> Result<(), String> {
+    start_install(app, false)
+}
+
+/// `auto`: started by the idle rule, not a button. It records no button
+/// result, and checks the belt and the PC once more before the installer runs.
+fn start_install(app: &AppHandle, auto: bool) -> Result<(), String> {
     let (update, offer) = with(|rt| {
         if busy(&rt.status) {
             return Err("An update is already being installed.".to_string());
@@ -652,7 +912,7 @@ pub fn install(app: &AppHandle) -> Result<(), String> {
             Ok(b) => b,
             Err(e) => {
                 let _ = persistence::delete_setting(&app, KEY_WHATS_NEW);
-                fail_install(describe(&e));
+                fail_install(describe(&e), auto);
                 return;
             }
         };
@@ -665,10 +925,13 @@ pub fn install(app: &AppHandle) -> Result<(), String> {
         with(|rt| rt.status = UpdateStatus::Installing);
         // Let the windows show "Installing" before the app closes.
         tokio::time::sleep(Duration::from_millis(600)).await;
+        if auto && !still_idle_for_auto(&app).await {
+            return;
+        }
         // On success this starts the installer and exits the process.
         if let Err(e) = update.install(bytes) {
             let _ = persistence::delete_setting(&app, KEY_WHATS_NEW);
-            fail_install(describe(&e));
+            fail_install(describe(&e), auto);
         }
     });
     Ok(())
@@ -708,6 +971,17 @@ pub fn hud_card(app: &AppHandle, open: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// The auto-install setting (System -> Updates).
+pub fn set_auto_install(app: &AppHandle, on: bool) -> Result<(), String> {
+    persistence::write_setting(app, KEY_AUTO_INSTALL, if on { "true" } else { "false" })?;
+    log::info!("Auto-install {}", if on { "on" } else { "off" });
+    with(|rt| {
+        rt.auto_install = on;
+        rt.last_auto = None;
+    });
+    Ok(())
+}
+
 /// "What's new" was read.
 pub fn whats_new_ack(app: &AppHandle) -> Result<(), String> {
     persistence::delete_setting(app, KEY_WHATS_NEW)?;
@@ -734,6 +1008,7 @@ pub fn snapshot(now_ms: u64) -> UpdateSnapshot {
             last_checked_ms: rt.last_check.map(|c| c.at_ms as i64),
             last_result: rt.last_result.clone(),
             whats_new: rt.whats_new.clone(),
+            auto_install: rt.auto_install,
         }
     })
 }
@@ -854,6 +1129,145 @@ mod tests {
             start,
             failed
         ));
+    }
+
+    fn belt(connected: bool, status: MachineStatus) -> BeltNow {
+        BeltNow {
+            connected,
+            status,
+            program_active: false,
+            start_pending: false,
+        }
+    }
+
+    /// Idle long enough on every count: the one case that installs.
+    fn idle() -> AutoInput {
+        AutoInput {
+            enabled: true,
+            offered: true,
+            dismissed: false,
+            updater_busy: false,
+            belt_busy: false,
+            belt_still_ms: AUTO_BELT_STILL_MS,
+            pc_idle_ms: Some(AUTO_PC_IDLE_MS),
+            since_auto_failure_ms: None,
+        }
+    }
+
+    #[test]
+    fn auto_install_needs_ten_still_minutes_and_five_idle_pc_minutes() {
+        assert_eq!(auto_install(idle()), AutoInstall::Install);
+        let short_still = AutoInput {
+            belt_still_ms: AUTO_BELT_STILL_MS - 1,
+            ..idle()
+        };
+        assert!(matches!(auto_install(short_still), AutoInstall::Wait(_)));
+        let pc_in_use = AutoInput {
+            pc_idle_ms: Some(AUTO_PC_IDLE_MS - 1),
+            ..idle()
+        };
+        assert!(matches!(auto_install(pc_in_use), AutoInstall::Wait(_)));
+        let unknown_pc = AutoInput {
+            pc_idle_ms: None,
+            ..idle()
+        };
+        assert!(matches!(auto_install(unknown_pc), AutoInstall::Wait(_)));
+    }
+
+    #[test]
+    fn auto_install_never_runs_with_the_belt_busy_off_or_nothing_offered() {
+        for i in [
+            AutoInput {
+                belt_busy: true,
+                ..idle()
+            },
+            AutoInput {
+                enabled: false,
+                ..idle()
+            },
+            AutoInput {
+                offered: false,
+                ..idle()
+            },
+            AutoInput {
+                updater_busy: true,
+                ..idle()
+            },
+            AutoInput {
+                dismissed: true,
+                ..idle()
+            },
+        ] {
+            assert!(matches!(auto_install(i), AutoInstall::Wait(_)), "{i:?}");
+        }
+    }
+
+    #[test]
+    fn a_failed_auto_install_waits_an_hour_before_trying_again() {
+        let recent = AutoInput {
+            since_auto_failure_ms: Some(AUTO_RETRY_MS - 1),
+            ..idle()
+        };
+        assert!(matches!(auto_install(recent), AutoInstall::Wait(_)));
+        let later = AutoInput {
+            since_auto_failure_ms: Some(AUTO_RETRY_MS),
+            ..idle()
+        };
+        assert_eq!(auto_install(later), AutoInstall::Install);
+    }
+
+    #[test]
+    fn moving_counting_down_stopping_or_any_program_is_busy() {
+        use MachineStatus as M;
+        for status in [M::Running, M::Starting, M::Stopping] {
+            assert!(belt(true, status).busy(), "{status:?}");
+        }
+        for status in [M::Stopped, M::Paused] {
+            assert!(!belt(true, status).busy(), "{status:?}");
+        }
+        // A program walking, resting, paused or waiting for GO: all active.
+        let program = BeltNow {
+            program_active: true,
+            ..belt(true, M::Stopped)
+        };
+        assert!(program.busy());
+        let starting = BeltNow {
+            start_pending: true,
+            ..belt(true, M::Stopped)
+        };
+        assert!(starting.busy());
+    }
+
+    #[test]
+    fn the_still_time_counts_from_startup_and_from_the_last_busy_moment() {
+        use MachineStatus as M;
+        let start = 1_000_000;
+        let mut w = BeltWatch::new(start);
+        w.observe(start + 1_000, belt(true, M::Stopped));
+        assert_eq!(w.still_for_ms(start + 60_000), 60_000);
+
+        w.observe(start + 100_000, belt(true, M::Running));
+        w.observe(start + 200_000, belt(true, M::Stopped));
+        assert_eq!(w.still_for_ms(start + 200_000), 100_000);
+        let paused_program = BeltNow {
+            program_active: true,
+            ..belt(true, M::Paused)
+        };
+        w.observe(start + 300_000, paused_program);
+        assert_eq!(w.still_for_ms(start + 300_000), 0);
+    }
+
+    #[test]
+    fn a_link_lost_mid_walk_keeps_the_belt_busy_until_it_is_seen_still() {
+        use MachineStatus as M;
+        let mut w = BeltWatch::new(0);
+        w.observe(10_000, belt(true, M::Running));
+        // Offline: the belt may still be going.
+        w.observe(DAY_MS, belt(false, M::Running));
+        assert_eq!(w.still_for_ms(DAY_MS), 0);
+        w.observe(DAY_MS + 1_000, belt(true, M::Stopped));
+        w.observe(DAY_MS + 2_000, belt(false, M::Stopped));
+        assert_eq!(w.still_for_ms(DAY_MS + 600_000), 600_000);
     }
 
     #[test]

@@ -545,6 +545,11 @@ pub enum Command {
     },
     /// The "What's new" notes were read.
     UpdateWhatsNewAck,
+    /// Install an offered update by itself when the belt and the PC are idle
+    /// (`on`), or only by hand.
+    UpdateAutoInstall {
+        on: bool,
+    },
     /// Diagnostics: record every packet to and from the treadmill to a new
     /// file (`on`), or stop. Sends nothing to the treadmill.
     TrafficRecord {
@@ -804,6 +809,9 @@ mod tests {
         assert_eq!(c, Command::UpdateHudCard { open: true });
         let c: Command = serde_json::from_str(r#"{"type":"update_whats_new_ack"}"#).unwrap();
         assert_eq!(c, Command::UpdateWhatsNewAck);
+        let c: Command =
+            serde_json::from_str(r#"{"type":"update_auto_install","on":false}"#).unwrap();
+        assert_eq!(c, Command::UpdateAutoInstall { on: false });
         let c: Command = serde_json::from_str(r#"{"type":"traffic_record","on":true}"#).unwrap();
         assert_eq!(c, Command::TrafficRecord { on: true });
         let c: Command = serde_json::from_str(r#"{"type":"traffic_open_folder"}"#).unwrap();

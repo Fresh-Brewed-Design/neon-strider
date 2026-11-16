@@ -1,0 +1,1 @@
+- **Updates install by themselves**: once the belt has been still with no program for 10 minutes and the PC has had no input for 5, Neon Strider installs a waiting update and reopens. It checks again right before installing, so it never closes mid-walk. Switch it off under System -> Updates.

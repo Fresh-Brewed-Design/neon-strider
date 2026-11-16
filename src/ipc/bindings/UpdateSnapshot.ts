@@ -28,4 +28,8 @@ show_notes_at_ms: number | null, last_checked_ms: number | null,
 /**
  * Buttons' outcome (Check now, Install); background checks never set it.
  */
-last_result: UpdateResult | null, whats_new: WhatsNew | null, };
+last_result: UpdateResult | null, whats_new: WhatsNew | null, 
+/**
+ * Install an offered update by itself when the belt and the PC are idle.
+ */
+auto_install: boolean, };
