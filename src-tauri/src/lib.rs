@@ -31,6 +31,8 @@ mod platform;
 pub mod programs;
 pub mod protocol;
 pub mod secrets;
+#[cfg(test)]
+mod sim;
 pub mod snapshot;
 pub mod strava;
 pub mod strava_plan;

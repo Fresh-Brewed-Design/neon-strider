@@ -14,15 +14,11 @@ The scheduled improvement task picks from here first. Remove an item when its PR
 - HUD strip (the mini view while the belt is still) cuts off today's distance and the
   relinking message: make both fit, and check every other text the strip can show.
 
-- Treadmill simulator for testing, in two more PRs, in this order (step 1, recording real
-  traffic, is done: Diagnostics' TRAFFIC_TAP writes the recordings the timings come from):
-  1. A simulated deck in Rust at the protocol level (`sim.rs`, test-only): takes the bytes the
-     engine sends and answers with status frames; models the start countdown, speed ramp, pause
-     wind-down, standby (screen off) and power-off. Scenario tests run the real engine and
-     programs against it (e.g. run a program, speed to zero, RE-JACK, belt still running 30 s
-     later; pause and resume; reconnect while walking; rest ends and waits for GO).
-  2. A "simulated treadmill" choice in dev builds, so the whole app (HUD and dashboard) runs
-     with no hardware and behaviour changes can be checked end to end. Never in release builds.
+- Treadmill simulator for testing, one more PR: a "simulated treadmill" choice in dev builds,
+  so the whole app (HUD and dashboard) runs with no hardware and behaviour changes can be
+  checked end to end. Never in release builds. The recordings (Diagnostics' TRAFFIC_TAP), the
+  simulated deck and its scenario tests (`sim.rs`, test-only) are done; the choice can drive
+  the same `SimDeck`.
 
 - Desk-day consistency: show how many of the recent days the PC was used were also walked on
   (e.g. "walked on 9 of the last 10 desk days"). A day off the PC doesn't count and doesn't break
