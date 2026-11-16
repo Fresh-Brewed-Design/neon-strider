@@ -111,8 +111,12 @@ body,
 
 .hud-header {
   display: flex;
+  /* A status that can't fit beside the logo takes its own line, never an
+     ellipsis. */
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
-  gap: 8px;
+  gap: 6px 8px;
   padding: 7px 18px 7px 12px;
   border-bottom: 1px solid var(--hud-line);
   background: linear-gradient(90deg, rgba(0, 243, 255, 0.12), transparent 70%);
@@ -145,10 +149,6 @@ body,
   background: transparent;
   line-height: inherit;
   cursor: pointer;
-  /* Never wider than the header can give; the title keeps its room. */
-  max-width: 60%;
-  overflow: hidden;
-  text-overflow: ellipsis;
   transition: background-color 120ms ease, box-shadow 120ms ease;
 }
 .hud-relink:hover,
@@ -229,26 +229,32 @@ body,
   padding: 7px 12px 9px;
 }
 
+/* If today's total and the buttons can't share a line, the buttons wrap
+   under it rather than cut it off. */
 .hud-strip-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 6px 8px;
 }
 
+/* Label over value, like the panel's stat cells, so the strip stays one
+   button high and the value gets the width. */
 .hud-strip-total {
-  flex: 1;
-  min-width: 0;
+  flex: 1 0 auto;
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  flex-direction: column;
+  gap: 1px;
   white-space: nowrap;
-  overflow: hidden;
 }
+
+.hud-strip-total .hud-label { line-height: 1.2; }
 
 .hud-strip-total .hud-value { color: var(--accent); }
 
 .hud-btn.hud-btn-expand {
   flex-shrink: 0;
+  margin-left: auto;
   width: 32px;
   height: 30px;
   padding: 0;
