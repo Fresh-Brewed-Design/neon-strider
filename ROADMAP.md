@@ -18,6 +18,20 @@ The scheduled improvement task picks from here first. The PR that builds an item
   don't hold up, and add programs the research supports. Write the findings with sources in
   `docs/research.md`; keep the in-app text to one short sentence per program.
 
+- Treadmill simulator for testing, one more PR: a "simulated treadmill" choice in dev builds,
+  so the whole app (HUD and dashboard) runs with no hardware and behaviour changes can be
+  checked end to end. Never in release builds. The recordings (Diagnostics' TRAFFIC_TAP), the
+  simulated deck and its scenario tests (`sim.rs`, test-only) are done; the choice can drive
+  the same `SimDeck`.
+
+- Desk-day consistency: show how many of the recent days the PC was used were also walked on
+  (e.g. "walked on 9 of the last 10 desk days"). A day off the PC doesn't count and doesn't break
+  anything. No records, bests or celebration: it's a walking pad, and the habit is what matters.
+
+- Update dot everywhere: the pink dot on the System tab that says an update is waiting also
+  shows on the tray icon and on the Updates tab inside System, and all three clear together
+  (`showUpdateBadge`).
+
 ## Unscheduled
 
 The scheduled improvement task does not pick from here.
