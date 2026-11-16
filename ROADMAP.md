@@ -11,6 +11,8 @@ The scheduled improvement task picks from here first. Remove an item when its PR
   PR. Any start still needs a press in that moment. It also has two ways to hide it, LATER
   (back in 15 minutes) and DISMISS (restarts the seated timer), and the difference isn't clear:
   keep one, labelled for what it does.
+- HUD strip (the mini view while the belt is still) cuts off today's distance and the
+  relinking message: make both fit, and check every other text the strip can show.
 
 - Treadmill simulator for testing, in two more PRs, in this order (step 1, recording real
   traffic, is done: Diagnostics' TRAFFIC_TAP writes the recordings the timings come from):

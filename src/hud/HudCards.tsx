@@ -5,6 +5,7 @@ import type { AppSnapshot } from "../ipc";
 import { formatDuration } from "../format";
 import { formatChange } from "../dashboard/history/weekly";
 import { describePlan } from "../dashboard/programs/format";
+import { startFailure } from "../state/linkStatus";
 import { HudNote } from "./HudNote";
 import { SmallButton } from "./SmallButton";
 import { useHudSend } from "./useHudSend";
@@ -75,23 +76,44 @@ export function WeeklyCard({ snapshot }: { snapshot: AppSnapshot }) {
   );
 }
 
+/** The card's one line under its buttons, if the treadmill's state needs one. */
+function seatedLine(snapshot: AppSnapshot, programs: number): string | null {
+  const queued = snapshot.programs.find((p) => p.id === snapshot.seated.pending_program_id);
+  if (queued) return `${queued.name} starts when the treadmill is on.`;
+  // Only an unlinked treadmill queues a program; one linked but asleep refuses every start.
+  if (!snapshot.connection.connected && programs > 0) return "Treadmill off. Switch it on, or queue a program.";
+  if (!snapshot.connection.connected || snapshot.deck.standby) return "Treadmill off. Switch it on to engage.";
+  return null;
+}
+
 /**
- * Sat too long. Persistent like the maintenance card: it stays until acted on.
- * A program button starts it now, or, with the treadmill off, remembers it and
- * starts it as soon as the treadmill connects (Rust drops it after 15 minutes).
+ * Sat too long: a nudge to get up and walk. Persistent like the maintenance
+ * card: it stays until acted on. ENGAGE is the HUD's Engage (a plain walk), and
+ * needs the treadmill on; a program button starts it now, or, with the
+ * treadmill off, remembers it and starts it as soon as the treadmill connects
+ * (Rust drops it after 15 minutes). SNOOZE brings it back in 15 minutes.
  */
 export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
   const { send, error } = useHudSend();
   const s = snapshot.seated;
   const programs = s.program_ids.flatMap((id) => snapshot.programs.find((p) => p.id === id) ?? []);
-  const queued = snapshot.programs.find((p) => p.id === s.pending_program_id);
-  const linked = snapshot.connection.connected;
+  const line = seatedLine(snapshot, programs.length);
+  const note = error ?? startFailure(snapshot);
   return (
     <div className="hud-toast hud-seated accent-yellow" role="alert">
       <div className="hud-toast-body">
         <span className="hud-label">STASIS_ALERT</span>
         <span className="hud-toast-message">{s.seated_minutes} MIN SEATED</span>
       </div>
+      <button
+        type="button"
+        className="hud-btn hud-seated-engage"
+        disabled={!snapshot.connection.connected}
+        title="Start walking at the usual speed, like Engage."
+        onClick={() => void send({ type: "seated_engage" })}
+      >
+        ENGAGE
+      </button>
       {programs.length > 0 && (
         <div className="hud-seated-programs">
           {programs.map((p) => (
@@ -108,19 +130,10 @@ export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
           ))}
         </div>
       )}
-      {queued && (
-        <div className="hud-seated-note">
-          <span className="hud-label">QUEUED // {queued.name.toUpperCase()}</span>
-          <span className="hud-sub">Switch the treadmill on.</span>
-        </div>
-      )}
-      {!queued && !linked && programs.length > 0 && (
-        <span className="hud-sub">The treadmill is off. Pick a program, then switch it on.</span>
-      )}
-      <HudNote error={error} />
+      {/* One line at a time: a failed press says more than the standing hint. */}
+      {note ? <HudNote error={note} /> : line && <span className="hud-sub">{line}</span>}
       <div className="hud-seated-actions">
-        <SmallButton onClick={() => send({ type: "seated_snooze" })}>LATER</SmallButton>
-        <SmallButton onClick={() => send({ type: "seated_dismiss" })}>DISMISS</SmallButton>
+        <SmallButton onClick={() => send({ type: "seated_snooze" })}>SNOOZE 15 MIN</SmallButton>
       </div>
     </div>
   );

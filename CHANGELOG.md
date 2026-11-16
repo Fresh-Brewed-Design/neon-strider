@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.0 (2026-11-16)
+
+### Changed
+
+- The sit-too-long card on the HUD now leads with ENGAGE, which starts a plain walk just like the HUD's Engage button; your saved programs follow it. With the treadmill off, the card says to switch it on (a program you pick still waits for it, as before).
+- The card has one way to hide it: SNOOZE 15 MIN, which brings it back in 15 minutes and keeps counting the time you've sat. LATER and DISMISS are gone.
+
 ## 1.4.3 (2026-11-15)
 
 ### Changed
