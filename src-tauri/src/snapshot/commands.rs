@@ -188,13 +188,10 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             minutes,
             program_ids,
         } => blocking(move || seated::set_config(&app, enabled, minutes, program_ids)).await,
+        Command::SeatedEngage => desk::press_engage().await,
         Command::SeatedStart { id } => desk::press_program(&app, id).await,
         Command::SeatedSnooze => {
             desk::snooze();
-            Ok(())
-        }
-        Command::SeatedDismiss => {
-            desk::dismiss();
             Ok(())
         }
         Command::CallsSetConfig { enabled, quiet_kmh } => {
