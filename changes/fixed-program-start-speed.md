@@ -1,1 +1,0 @@
-- A program or speed started after a stop now reaches its speed, even when it is the same speed as last time; it used to stay at the treadmill's own start speed (1.2 km/h).

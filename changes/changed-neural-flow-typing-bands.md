@@ -1,1 +1,0 @@
-- Neural flow sensitivity follows realistic typing rates: Medium starts easing off at 90 keys a minute (steady writing) and reaches the slowest speed at 260 (an average typing burst). Light typing, about a key a second, no longer slows the belt.

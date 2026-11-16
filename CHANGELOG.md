@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.6.0 (2026-11-16)
+
+### New
+
+- **Updates install by themselves**: once the belt has been still with no program for 10 minutes and the PC has had no input for 5, Neon Strider installs a waiting update and reopens. It checks again right before installing, so it never closes mid-walk. Switch it off under System -> Updates.
+
+### Changed
+
+- Neural flow sensitivity follows realistic typing rates: Medium starts easing off at 90 keys a minute (steady writing) and reaches the slowest speed at 260 (an average typing burst). Light typing, about a key a second, no longer slows the belt.
+
+### Fixed
+
+- Neural flow: once you stop typing, the belt is back at full speed about 12 s after your last key, however fast you were typing.
+- Neural flow: the slowest speed is reached again on small belts and floors (a 90% floor at 0.2 km/h steps stopped one step short).
+- A program or speed started after a stop now reaches its speed, even when it is the same speed as last time; it used to stay at the treadmill's own start speed (1.2 km/h).
+
 ## 1.5.1 (2026-11-16)
 
 ### Fixed
