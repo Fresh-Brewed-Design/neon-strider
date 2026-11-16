@@ -112,7 +112,7 @@ cargo clippy --all-targets -- -D warnings   # in src-tauri/: lints, no warnings 
 
 Design without a treadmill: with a Vite server running, open `/hud-preview.html` or
 `/dashboard-preview.html`. Both run on a mocked backend (`src/dev/mockBackend.ts`); URL flags
-like `?idle`, `?offline`, `?noprogram`, `?toasts` (`?toasts=deck` for the deck-start GO toast), `?anchor=top_left`, `?neural=active`, `?engage=timeout`, `?status=9|countdown|stopping|standby`, `?walkaway=warning|paused|idle`, `?custom`, `?update=available|downloading|failed|whatsnew`, `?stasis=strip|hidden`, `?traffic=recording|saved` pick scenarios.
+like `?idle`, `?offline`, `?daily=12.34` (today's km), `?noprogram`, `?toasts` (`?toasts=deck` for the deck-start GO toast), `?anchor=top_left`, `?neural=active`, `?engage=timeout`, `?status=9|countdown|stopping|standby`, `?walkaway=warning|paused|idle`, `?custom`, `?update=available|downloading|failed|whatsnew`, `?stasis=strip|hidden` (with `?deck=paused` for RE-JACK), `?traffic=recording|saved` pick scenarios.
 `?program=ready|hold|still|resting|paused` shows a program waiting for GO after a rest, after a
 0 km/h step, or after a reconnect found the belt still; mid-rest; or paused by the user.
 

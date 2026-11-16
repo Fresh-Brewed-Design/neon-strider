@@ -228,6 +228,9 @@ if (params.has("idle")) snapshot.deck.status = "Stopped";
 // ?offline: no treadmill saved yet (the HUD's link label is not clickable).
 if (params.has("offline")) Object.assign(snapshot.connection, { connected: false, has_saved_device: false, link: { state: "idle" } });
 if (params.has("noprogram")) snapshot.active_program = null;
+// ?daily=12.34: today's total (DAILY_TOTAL) in km, to check long values fit.
+const dailyFlag = Number(params.get("daily"));
+if (params.has("daily") && Number.isFinite(dailyFlag)) snapshot.session.daily_distance_m = Math.round(dailyFlag * 1000);
 // ?program=ready: Workday's rest is over on a still belt, and cycle 4 waits for GO
 // (REST COMPLETE // PRESS GO). ?program=hold: a walking step after a 0 km/h step waits.
 // ?program=still: the belt was found still after a reconnect. ?program=resting: mid-rest.
@@ -510,10 +513,13 @@ if (updateFlag === "whatsnew") {
 
 // ?stasis=strip|hidden: "When the belt is still" set to that, with the belt
 // stopped and no program, so the HUD shows the strip or no panel at once.
+// ?status=stopping keeps the belt winding down; ?deck=paused leaves it paused
+// (Engage reads RE-JACK).
 const stasisFlag = params.get("stasis");
 if (stasisFlag === "strip" || stasisFlag === "hidden") {
   snapshot.hud.idle_mode = stasisFlag;
-  Object.assign(snapshot.deck, { status: "Stopped", speed_kmh: 0, raw_speed_kmh: 0 });
+  const status = statusFlag === "stopping" ? "Stopping" : params.get("deck") === "paused" ? "Paused" : "Stopped";
+  Object.assign(snapshot.deck, { status, speed_kmh: 0, raw_speed_kmh: 0 });
   snapshot.active_program = null;
 }
 
