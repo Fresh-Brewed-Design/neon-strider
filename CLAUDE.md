@@ -44,6 +44,9 @@ The installer is per-user NSIS; "launch at login" (`get/set_launch_at_login`) an
 `traffic.rs` is the Diagnostics traffic recorder: while switched on (`traffic_record`, off at every
 start) `bluetooth.rs` hands it every packet written and every notification received, and it appends
 them as JSON Lines to `logs/traffic/` (format in docs/protocol.md); it never sends anything.
+`sim.rs` (test-only) is a simulated deck that answers the engine's bytes like the real one, and
+runs scenario tests of the real engine and programs against it; add a scenario there for any
+change to how the app drives the belt.
 Neural flow (typing-aware pace) is pure logic in `neural.rs`; key-press counting is switched by Rust (`neural_monitor_wanted`, 1 Hz tick), not by a window.
 Status is visible, not silent. `link.rs` (treadmill link state, plain-English BLE errors) and
 `strava_status.rs` (Strava activity/steps, `describe()` turns Strava's JSON errors into one
