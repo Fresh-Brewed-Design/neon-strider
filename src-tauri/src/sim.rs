@@ -968,6 +968,39 @@ mod tests {
         assert_eq!(r.sessions_started, 1);
     }
 
+    /// The deck forgets the speed when it stops (it starts again at its own
+    /// start speed), so the same speed has to be sent again after the next
+    /// start on the same connection.
+    #[test]
+    fn a_program_run_again_after_a_stop_reaches_its_speed() {
+        let mut r = post_meal_walking();
+        r.press(DeckAction::Stop);
+        r.run(20.0);
+        assert!(r.deck.belt_still() && r.deck.status_code() == 0);
+        r.run_program(POST_MEAL);
+        r.run(20.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+    }
+
+    /// The same after a pause: a paused deck resumes at its own speed only
+    /// if that is what it was told last.
+    #[test]
+    fn engage_after_a_stop_reaches_the_speed_from_before() {
+        let mut r = Rig::new();
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(5.0);
+        r.set_speed(3.0);
+        r.run(20.0);
+        assert!(r.deck.running_at(3.0));
+        r.press(DeckAction::Stop);
+        r.run(20.0);
+        assert!(r.deck.belt_still());
+        r.set_speed(3.0);
+        r.run(20.0);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+    }
+
     #[test]
     fn a_power_cut_mid_walk_comes_back_still_and_nothing_starts_it() {
         let mut r = Rig::new();

@@ -49,16 +49,18 @@ pub enum NeuralSensitivity {
 impl NeuralSensitivity {
     /// Keys per minute where slowing begins, and where it reaches the floor.
     ///
-    /// Realistic typing: bursts run at 200 to 300 kpm, but the average over a
-    /// working stretch, pauses included, sits around 60 to 120 kpm. Every level
-    /// starts at moderate sustained typing and spreads the slowdown over a wide
-    /// band, so a typical pace lands part-way down and only intense typing
-    /// reaches the floor. Medium is about halfway at 110 kpm.
+    /// Realistic typing: an office day averages about 2,000 keys an hour
+    /// (some 33 kpm, idle time included); sustained typing past 160 kpm counts
+    /// as a high rate in ergonomics studies; a typing burst averages 52 wpm
+    /// (about 260 kpm, Dhakal et al., CHI 2018). Light typing (a key a second
+    /// or so: chat, a search, slow coding) never slows the belt. Medium starts
+    /// at steady writing and reaches the floor at an average burst; it is
+    /// about halfway at 175 kpm.
     pub fn band(self) -> (f32, f32) {
         match self {
-            NeuralSensitivity::High => (20.0, 150.0),
-            NeuralSensitivity::Medium => (30.0, 190.0),
-            NeuralSensitivity::Low => (45.0, 240.0),
+            NeuralSensitivity::High => (60.0, 200.0),
+            NeuralSensitivity::Medium => (90.0, 260.0),
+            NeuralSensitivity::Low => (120.0, 320.0),
         }
     }
 
@@ -184,6 +186,10 @@ const STREAK_GAP_MS: u64 = 8_000;
 /// short window takes to fill again: an 8 s pause keeps the level low for
 /// about 8.5 s at the headroom below.
 const RECOVER_AFTER_MS: u64 = 10_000;
+/// Typing has stopped: no key for this long. Then the belt heads all the way
+/// back without waiting for the slow 30 s level to drain (after fast typing
+/// that took half a minute). Longer than a thinking pause (`STREAK_GAP_MS`).
+const SILENCE_RECOVER_MS: u64 = 12_000;
 /// Recovery reads the curve at this multiple of the typing level, so the level
 /// has to fall about a fifth below the rate that set the current depth: keeps
 /// steady typing near a boundary from hunting between two speeds.
@@ -510,7 +516,9 @@ impl NeuralFlow {
         if !held
             && sustained
             && desired > self.steps_down
-            && depth_wanted >= self.steps_down as f32 + 1.0 + SLOW_MARGIN_STEPS - 1e-4
+            // The margin never puts the floor out of reach.
+            && depth_wanted
+                >= (self.steps_down as f32 + 1.0 + SLOW_MARGIN_STEPS).min(max as f32) - 1e-4
         {
             self.steps_down = (self.steps_down + SLOW_STEPS_PER_CHANGE).min(desired);
             self.last_change = Some(t.now_ms);
@@ -519,9 +527,15 @@ impl NeuralFlow {
             return true;
         }
 
-        let recover_due = self
-            .recover_since
-            .is_some_and(|r| t.now_ms.saturating_sub(r) >= RECOVER_AFTER_MS);
+        // `last_key` is cleared by a hand reset, so silence counts from then.
+        let silent = self
+            .last_key
+            .is_some_and(|k| t.now_ms.saturating_sub(k) >= SILENCE_RECOVER_MS);
+        let recover_to = if silent { 0 } else { recover_to };
+        let recover_due = silent
+            || self
+                .recover_since
+                .is_some_and(|r| t.now_ms.saturating_sub(r) >= RECOVER_AFTER_MS);
         if recover_due && recover_to < self.steps_down {
             let per_change = RECOVER_STEPS_PER_CHANGE.max(max.div_ceil(RECOVER_CHANGES_FROM_FLOOR));
             self.steps_down = self.steps_down.saturating_sub(per_change).max(recover_to);
@@ -727,7 +741,7 @@ mod tests {
     #[test]
     fn idle_restores_gradually_and_logs_it_as_recovery() {
         let mut n = NeuralFlow::default();
-        run(&mut n, &cfg(), 0, 90, 3.0, steady(250), none);
+        run(&mut n, &cfg(), 0, 90, 3.0, steady(300), none);
         let slowed = n.target_kmh();
         assert!(
             close(slowed, 2.4),
@@ -754,7 +768,7 @@ mod tests {
             ..cfg()
         };
         let mut n = NeuralFlow::default();
-        run(&mut n, &c, 0, 90, 4.0, steady(250), none);
+        run(&mut n, &c, 0, 90, 4.0, steady(300), none);
         // A shortcut or a short search now and then: 5 keys in one second.
         let fx = run(
             &mut n,
@@ -785,7 +799,7 @@ mod tests {
             ..cfg()
         };
         let mut n = NeuralFlow::default();
-        run(&mut n, &c, 0, 90, 4.0, steady(250), none);
+        run(&mut n, &c, 0, 90, 4.0, steady(300), none);
         assert!(
             close(n.target_kmh(), 3.6),
             "at the floor: {}",
@@ -812,7 +826,7 @@ mod tests {
             };
             let mut n = NeuralFlow::default();
             // Long enough to reach the floor even at 50% (13 changes).
-            run(&mut n, &c, 0, 240, base, steady(250), none);
+            run(&mut n, &c, 0, 240, base, steady(300), none);
             let slowed = n.target_kmh();
             assert!(slowed < base, "{floor}%: {slowed}");
             let fx = run(&mut n, &c, 240, 420, base, |_| 0, none);
@@ -832,6 +846,24 @@ mod tests {
             );
             assert!(!n.active());
         }
+    }
+
+    /// As reported: fast typing (the level near 430 kpm) slowed 4.0 to the
+    /// 90% floor, then typing stopped. The 30 s level took about half a minute
+    /// to drain before recovery could start; now 12 s without a key brings it back.
+    #[test]
+    fn fast_typing_that_stops_recovers_within_fifteen_seconds() {
+        let c = Config {
+            floor_pct: 90.0,
+            ..cfg()
+        };
+        let mut n = NeuralFlow::default();
+        run(&mut n, &c, 0, 60, 4.0, |_| 7, |t| t.step_kmh = 0.2);
+        assert!(close(n.target_kmh(), 3.6), "{}", n.target_kmh());
+        let fx = run(&mut n, &c, 60, 120, 4.0, |_| 0, |t| t.step_kmh = 0.2);
+        let back = fx.first().expect("recovers");
+        assert!(back.0 - 60 <= 15, "back at {}s", back.0 - 60);
+        assert!(close(back.1, 4.0), "{fx:?}");
     }
 
     type KeyPattern = Box<dyn Fn(u64) -> u32>;
@@ -892,15 +924,15 @@ mod tests {
             floor_pct: 90.0,
             ..cfg()
         };
-        // From the rate where Medium reaches the floor (190), and from well
-        // past it: typing above 190 slows no further but has to leave the
+        // From just past the rate where Medium reaches the floor (260), and from
+        // well past it: typing above 260 slows no further but has to leave the
         // 30 s level first, so it starts a few seconds later.
-        for (intense, starts_within) in [(200, 25), (250, 30)] {
+        for (intense, starts_within) in [(270, 30), (320, 35)] {
             let mut n = NeuralFlow::default();
             run(&mut n, &c, 0, 90, 6.0, steady(intense), none);
             assert!(close(n.target_kmh(), 5.4), "{}", n.target_kmh());
-            // Down to a moderate 90 kpm, still above the start rate (30).
-            let fx = run(&mut n, &c, 90, 390, 6.0, steady(90), none);
+            // Down to a moderate 170 kpm, still above the start rate (90).
+            let fx = run(&mut n, &c, 90, 390, 6.0, steady(170), none);
             assert!(!fx.is_empty());
             assert!(fx.windows(2).all(|w| w[1].1 > w[0].1), "only up: {fx:?}");
             assert!(
@@ -911,9 +943,14 @@ mod tests {
             assert!(fx.last().unwrap().0 - 90 <= 60, "{fx:?}");
             let v = n.target_kmh();
             assert!(v > 5.4 + 1e-3 && v < 6.0 - 1e-3, "part-way: {v}");
-            // Within one step of what the curve gives for 90 kpm.
-            let curve = 6.0 - 6.0 * 0.1 * depth_for_kpm(NeuralSensitivity::Medium, 90.0);
-            assert!((v - curve).abs() <= 0.1 + 1e-3, "{v} vs curve {curve}");
+            // Between what the curve gives for 170 kpm and for 170 kpm plus the
+            // headroom, give or take a step.
+            let curve = |kpm: f32| 6.0 - 6.0 * 0.1 * depth_for_kpm(NeuralSensitivity::Medium, kpm);
+            let (high, low) = (curve(170.0), curve(170.0 * RECOVER_HEADROOM));
+            assert!(
+                v <= high + 0.1 + 1e-3 && v >= low - 0.1 - 1e-3,
+                "{v} vs curve {low}..{high}"
+            );
         }
     }
 
@@ -926,7 +963,7 @@ mod tests {
         };
         let keys = |s: u64| {
             if s < 120 {
-                steady(250)(s)
+                steady(300)(s)
             } else if s < 300 {
                 0
             } else {
@@ -1006,12 +1043,12 @@ mod tests {
     #[test]
     fn quiet_mode_wins_and_never_slows_twice() {
         let mut n = NeuralFlow::default();
-        run(&mut n, &cfg(), 0, 60, 4.0, steady(250), none);
+        run(&mut n, &cfg(), 0, 60, 4.0, steady(300), none);
         let slowed = n.target_kmh();
         assert!(slowed < 4.0);
         // A call: quiet mode sets the base to 2.0, below our target. The quiet speed wins as is.
         assert!(close(n.speed_for(2.0, 0, true), 2.0));
-        let fx = run(&mut n, &cfg(), 60, 120, 2.0, steady(250), |t| {
+        let fx = run(&mut n, &cfg(), 60, 120, 2.0, steady(300), |t| {
             t.quiet = true
         });
         assert!(fx.is_empty());
@@ -1021,12 +1058,12 @@ mod tests {
         );
         // A quiet speed above our slowed speed: the lower one wins.
         let mut m = NeuralFlow::default();
-        run(&mut m, &cfg(), 0, 60, 4.0, steady(250), none);
+        run(&mut m, &cfg(), 0, 60, 4.0, steady(300), none);
         let ours = m.target_kmh();
-        run(&mut m, &cfg(), 60, 70, 3.9, steady(250), |t| t.quiet = true);
+        run(&mut m, &cfg(), 60, 70, 3.9, steady(300), |t| t.quiet = true);
         assert!(close(m.speed_for(3.9, 0, true), ours.min(3.9)));
         // The call ends and the base comes back: the slowdown carries on.
-        run(&mut n, &cfg(), 120, 121, 4.0, steady(250), none);
+        run(&mut n, &cfg(), 120, 121, 4.0, steady(300), none);
         assert!(
             close(n.speed_for(4.0, 0, false), slowed),
             "{} vs {}",
@@ -1038,12 +1075,12 @@ mod tests {
     #[test]
     fn a_program_step_carries_the_slowdown_to_the_new_base() {
         let mut n = NeuralFlow::default();
-        run(&mut n, &cfg(), 0, 60, 4.0, steady(250), none);
+        run(&mut n, &cfg(), 0, 60, 4.0, steady(300), none);
         let f = n.target_kmh() / 4.0;
         // Between ticks the new base already gets the slowdown.
         let v = n.speed_for(5.0, 0, false);
         assert!((v / 5.0 - f).abs() < 0.03, "{v}");
-        run(&mut n, &cfg(), 60, 61, 5.0, steady(250), none);
+        run(&mut n, &cfg(), 60, 61, 5.0, steady(300), none);
         assert!(close(n.target_kmh(), v));
         assert!(n.target_kmh() >= 4.0 - 1e-4);
     }
@@ -1051,7 +1088,7 @@ mod tests {
     #[test]
     fn nothing_changes_while_paused_and_a_stop_resets() {
         let mut n = NeuralFlow::default();
-        run(&mut n, &cfg(), 0, 60, 3.0, steady(250), none);
+        run(&mut n, &cfg(), 0, 60, 3.0, steady(300), none);
         let slowed = n.target_kmh();
         let fx = run(&mut n, &cfg(), 60, 200, 3.0, |_| 0, |t| t.running = false);
         assert!(fx.is_empty());
@@ -1084,25 +1121,26 @@ mod tests {
                 assert!(5.0 * (d5 - d) * 0.5 < 0.1, "{s:?} steep at {kpm}");
                 prev = d;
             }
-            // Moderate sustained typing starts it.
-            assert!(depth_for_kpm(s, 60.0) > 0.0, "{s:?}");
+            // A key a second never slows; steady writing does.
+            assert_eq!(depth_for_kpm(s, 60.0), 0.0, "{s:?}");
+            assert!(depth_for_kpm(s, 130.0) > 0.0, "{s:?}");
             // A typical pace lands part-way, not at the floor.
-            let typical = depth_for_kpm(s, 100.0);
+            let typical = depth_for_kpm(s, 160.0);
             assert!(typical > 0.0 && typical < 0.75, "{s:?}: {typical}");
         }
         // Medium is about halfway at a normal steady pace, and full only when intense.
-        let mid = depth_for_kpm(NeuralSensitivity::Medium, 110.0);
+        let mid = depth_for_kpm(NeuralSensitivity::Medium, 175.0);
         assert!((0.4..=0.6).contains(&mid), "{mid}");
-        assert!(depth_for_kpm(NeuralSensitivity::Medium, 150.0) < 1.0);
-        assert!(close(depth_for_kpm(NeuralSensitivity::Medium, 250.0), 1.0));
+        assert!(depth_for_kpm(NeuralSensitivity::Medium, 230.0) < 1.0);
+        assert!(close(depth_for_kpm(NeuralSensitivity::Medium, 300.0), 1.0));
         // Higher sensitivity slows more at the same pace.
         assert!(
-            depth_for_kpm(NeuralSensitivity::High, 90.0)
-                > depth_for_kpm(NeuralSensitivity::Medium, 90.0)
+            depth_for_kpm(NeuralSensitivity::High, 150.0)
+                > depth_for_kpm(NeuralSensitivity::Medium, 150.0)
         );
         assert!(
-            depth_for_kpm(NeuralSensitivity::Medium, 90.0)
-                > depth_for_kpm(NeuralSensitivity::Low, 90.0)
+            depth_for_kpm(NeuralSensitivity::Medium, 150.0)
+                > depth_for_kpm(NeuralSensitivity::Low, 150.0)
         );
     }
 
@@ -1113,7 +1151,7 @@ mod tests {
             ..cfg()
         };
         let mut n = NeuralFlow::default();
-        run(&mut n, &c, 0, 120, 5.0, steady(120), none);
+        run(&mut n, &c, 0, 120, 5.0, steady(170), none);
         let v = n.target_kmh();
         assert!(v < 5.0 && v > 4.5 + 1e-3, "{v}");
     }

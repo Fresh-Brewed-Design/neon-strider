@@ -1,0 +1,2 @@
+- Neural flow: once you stop typing, the belt is back at full speed about 12 s after your last key, however fast you were typing.
+- Neural flow: the slowest speed is reached again on small belts and floors (a 90% floor at 0.2 km/h steps stopped one step short).
