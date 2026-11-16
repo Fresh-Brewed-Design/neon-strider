@@ -2,7 +2,7 @@
 
 ## Next (small, ready to build)
 
-The scheduled improvement task picks from here first. Remove an item when its PR merges.
+The scheduled improvement task picks from here first. The PR that builds an item also removes it from this file.
 
 - Minify the HUD while the belt is running: a control on the HUD (and a shortcut) that
   collapses it to the strip at any time, not only while the belt is still. The running strip
