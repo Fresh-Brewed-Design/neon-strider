@@ -12,8 +12,8 @@ Some caveats apply to all of it:
   a meal, not long-term health outcomes.
 - The intensity figures (METs) below are estimates from the ACSM walking equation
   (oxygen cost = 0.1 × speed + 1.8 × speed × grade + 3.5, speed in m/min), not measurements. They
-  are less accurate below about 3 km/h. On the deck, an incline level may not be exactly that
-  percentage.
+  are less accurate below about 3 km/h. The app's incline is a percent grade once calibrated
+  (System, Calibration), so the equation's grade is the value shown.
 - None of this is medical advice. Anyone with heart disease or diabetes medication should check
   with their doctor before exercising straight after meals.
 
