@@ -1,1 +1,0 @@
-- Minify the HUD while you walk: the new button on its top row (or Alt + Insert) shrinks it to a strip with speed, time, distance, the program step, STASIS and DUMP. It stays that way, after a restart too, until you expand it again. Cards that need an answer still show.
