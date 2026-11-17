@@ -100,6 +100,14 @@ export function LinkControl() {
           label={view?.label ?? "OFFLINE"}
           className="tracking-[0.12em]"
         />
+        {conn?.simulated && (
+          <span
+            className="ml-auto shrink-0 rounded border border-neon-yellow/60 px-1 text-[11px] font-bold tracking-[0.12em] text-neon-yellow"
+            title="Simulated treadmill (dev build)"
+          >
+            SIM
+          </span>
+        )}
       </button>
       <BleDiscoveryModal
         show={open}

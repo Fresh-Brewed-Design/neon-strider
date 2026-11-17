@@ -14,6 +14,7 @@ const conn = (link: LinkState): ConnectionSnapshot => ({
   start_pending: false,
   start_result: null,
   connect_dialog_at_ms: null,
+  simulated: false,
 });
 
 const reconnecting = (next_retry_s: number) => conn({ state: "reconnecting", attempt: 1, next_retry_s });

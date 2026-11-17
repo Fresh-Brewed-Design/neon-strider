@@ -3,7 +3,8 @@ import type { useLogoDrag } from "./useHudDrag";
 
 /**
  * The panel's top row, also the strip's: the link LED, the draggable logo and
- * the link status, which is a relink button while the link is down.
+ * the link status, which is a relink button while the link is down. A SIM tag
+ * marks the dev builds' simulated treadmill.
  */
 export function HudHeader({
   link,
@@ -11,12 +12,15 @@ export function HudHeader({
   onRelink,
   logo,
   dragging,
+  simulated = false,
 }: {
   link: { text: string; tone: LinkTone };
   relink: RelinkView | null;
   onRelink: () => void;
   logo: ReturnType<typeof useLogoDrag>;
   dragging: boolean;
+  /** The linked deck is the dev builds' simulated treadmill. */
+  simulated?: boolean;
 }) {
   return (
     <header className="hud-header">
@@ -28,6 +32,11 @@ export function HudHeader({
       >
         NEON STRIDER
       </span>
+      {simulated && (
+        <span className="hud-sim-tag" title="Simulated treadmill (dev build)">
+          SIM
+        </span>
+      )}
       {relink?.clickable ? (
         <button
           type="button"

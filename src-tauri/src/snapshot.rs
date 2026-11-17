@@ -256,6 +256,7 @@ mod tests {
             start_pending: false,
             start_result: None,
             connect_dialog_at_ms: None,
+            simulated: false,
         }
     }
 

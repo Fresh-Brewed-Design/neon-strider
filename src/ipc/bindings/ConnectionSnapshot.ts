@@ -34,4 +34,9 @@ start_result: StartResult | null,
  * When the HUD asked the dashboard to open its connect dialog (epoch ms);
  * the dashboard opens it once per new value.
  */
-connect_dialog_at_ms: number | null, };
+connect_dialog_at_ms: number | null, 
+/**
+ * The linked deck is the dev builds' simulated treadmill (the windows
+ * show a SIM tag). Always false in release builds.
+ */
+simulated: boolean, };

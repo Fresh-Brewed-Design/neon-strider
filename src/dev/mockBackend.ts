@@ -34,6 +34,7 @@ export const snapshot: AppSnapshot = {
     start_pending: false,
     start_result: null,
     connect_dialog_at_ms: null,
+    simulated: false,
   },
   deck: {
     status: "Running",
@@ -231,6 +232,7 @@ if (params.has("idle")) snapshot.deck.status = "Stopped";
 // ?offline: no treadmill saved yet (the HUD's link label is not clickable).
 if (params.has("offline")) Object.assign(snapshot.connection, { connected: false, has_saved_device: false, link: { state: "idle" } });
 if (params.has("noprogram")) snapshot.active_program = null;
+if (params.has("sim")) Object.assign(snapshot.connection, { simulated: true, device_id: "SIM_DECK" });
 // ?daily=12.34: today's total (DAILY_TOTAL) in km, to check long values fit.
 const dailyFlag = Number(params.get("daily"));
 if (params.has("daily") && Number.isFinite(dailyFlag)) snapshot.session.daily_distance_m = Math.round(dailyFlag * 1000);

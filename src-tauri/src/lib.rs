@@ -31,8 +31,12 @@ mod platform;
 pub mod programs;
 pub mod protocol;
 pub mod secrets;
-#[cfg(test)]
+// The simulated deck: tests, and the dev builds' "simulated treadmill"
+// choice (`sim_link`). Never in release builds.
+#[cfg(any(test, debug_assertions))]
 mod sim;
+#[cfg(debug_assertions)]
+mod sim_link;
 pub mod snapshot;
 pub mod strava;
 pub mod strava_plan;
