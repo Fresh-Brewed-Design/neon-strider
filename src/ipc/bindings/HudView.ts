@@ -3,4 +3,4 @@
 /**
  * How the HUD panel shows right now. Cards and toasts are not affected.
  */
-export type HudView = "full" | "strip" | "hidden";
+export type HudView = "full" | "strip" | "hidden" | "minified";

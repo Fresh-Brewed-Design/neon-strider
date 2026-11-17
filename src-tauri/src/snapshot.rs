@@ -42,7 +42,7 @@ mod types;
 
 pub use calls::CallsSnapshot;
 pub use emitter::spawn_emitter;
-pub use hud::{hud_config, on_setting_written, refresh_monitors};
+pub use hud::{hud_config, on_setting_written, refresh_monitors, toggle_minified};
 pub use maintenance::{MaintenanceBasis, MaintenanceSnapshot};
 pub use odometer::OdometerSnapshot;
 pub use seated::SeatedSnapshot;

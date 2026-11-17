@@ -3,7 +3,8 @@ import type { useLogoDrag } from "./useHudDrag";
 
 /**
  * The panel's top row, also the strip's: the link LED, the draggable logo and
- * the link status, which is a relink button while the link is down.
+ * the link status, which is a relink button while the link is down. On the
+ * whole panel it ends with minify (`onMinify`).
  */
 export function HudHeader({
   link,
@@ -11,12 +12,15 @@ export function HudHeader({
   onRelink,
   logo,
   dragging,
+  onMinify,
 }: {
   link: { text: string; tone: LinkTone };
   relink: RelinkView | null;
   onRelink: () => void;
   logo: ReturnType<typeof useLogoDrag>;
   dragging: boolean;
+  /** Minify to the running strip; omitted on the strips. */
+  onMinify?: () => void;
 }) {
   return (
     <header className="hud-header">
@@ -28,20 +32,42 @@ export function HudHeader({
       >
         NEON STRIDER
       </span>
-      {relink?.clickable ? (
-        <button
-          type="button"
-          className={`hud-status hud-relink tone-${link.tone}`}
-          title={relink.title ?? undefined}
-          onClick={onRelink}
-        >
-          {link.text}
-        </button>
-      ) : (
-        <span className={`hud-status tone-${link.tone}`} title={relink?.title ?? undefined}>
-          {link.text}
-        </span>
-      )}
+      {/* Status and minify wrap to a line of their own together. */}
+      <span className="hud-header-end">
+        {relink?.clickable ? (
+          <button
+            type="button"
+            className={`hud-status hud-relink tone-${link.tone}`}
+            title={relink.title ?? undefined}
+            onClick={onRelink}
+          >
+            {link.text}
+          </button>
+        ) : (
+          <span className={`hud-status tone-${link.tone}`} title={relink?.title ?? undefined}>
+            {link.text}
+          </span>
+        )}
+        {onMinify && (
+          <button
+            type="button"
+            className="hud-btn hud-btn-minify"
+            aria-label="Minify the HUD"
+            title="Shrink the HUD to a strip (Alt+Insert)"
+            onClick={onMinify}
+          >
+            <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+              <path
+                d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="square"
+              />
+            </svg>
+          </button>
+        )}
+      </span>
     </header>
   );
 }

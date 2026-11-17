@@ -1,6 +1,6 @@
-//! The HUD during stasis: whether the panel shows in full, as a strip or not
-//! at all. Rust decides (`decide`, pure) and the HUD only renders
-//! `snapshot.hud_view`. What it remembers between snapshots (when the belt was
+//! The HUD during stasis, and minified: whether the panel shows in full, as
+//! the still-belt strip, as the running strip or not at all. Rust decides
+//! (`decide`, pure) and the HUD only renders `snapshot.hud_view`. What it remembers between snapshots (when the belt was
 //! last seen moving, whether the user pressed expand) lives here, in memory.
 
 use super::{AppSnapshot, HudIdleMode, HudView};
@@ -30,17 +30,26 @@ pub struct ViewInput {
     /// A program is waiting for GO: the prompt lives on the panel. One the user
     /// paused collapses like a manual walk (the strip's main button is its GO).
     pub program_needs_go: bool,
+    /// The user minified the HUD (`HudConfig::minified`).
+    pub minified: bool,
 }
 
-/// The view the HUD panel takes now.
+/// The view the HUD panel takes now. A program waiting for GO always gets
+/// the whole panel. Minified, the running strip takes the place of the whole
+/// panel, while still too when the idle mode is Full; once the belt has been
+/// still past the grace, a Strip or Hidden idle mode applies as before.
 pub fn decide(i: ViewInput) -> HudView {
-    let full = i.moving
-        || i.mode == HudIdleMode::Full
-        || i.program_needs_go
-        || i.expanded
-        || i.still_for.is_some_and(|d| d < GRACE);
-    if full {
+    if i.program_needs_go {
         return HudView::Full;
+    }
+    let awake = i.moving || i.expanded || i.still_for.is_some_and(|d| d < GRACE);
+    let full = awake || i.mode == HudIdleMode::Full;
+    if full {
+        return if i.minified {
+            HudView::Minified
+        } else {
+            HudView::Full
+        };
     }
     match i.mode {
         HudIdleMode::Full => HudView::Full,
@@ -88,6 +97,7 @@ impl Stasis {
         connected: bool,
         moving: bool,
         program_needs_go: bool,
+        minified: bool,
         now: Instant,
     ) -> HudView {
         let (still_for, expanded) = self.observe(connected, moving, now);
@@ -97,6 +107,7 @@ impl Stasis {
             still_for,
             expanded,
             program_needs_go,
+            minified,
         })
     }
 }
@@ -120,6 +131,7 @@ pub(super) fn view(snapshot: &AppSnapshot, deck_silent: bool, now: Instant) -> H
         snapshot.connection.connected,
         snapshot.deck.status.is_moving() && !deck_silent,
         program_needs_go,
+        snapshot.hud.minified,
         now,
     )
 }
@@ -140,6 +152,7 @@ mod tests {
             still_for: None,
             expanded: false,
             program_needs_go: false,
+            minified: false,
         }
     }
 
@@ -229,13 +242,13 @@ mod tests {
         let mut s = Stasis::new();
         let t0 = Instant::now();
         assert_eq!(
-            s.view(HudIdleMode::Strip, true, false, false, t0),
+            s.view(HudIdleMode::Strip, true, false, false, false, t0),
             HudView::Strip
         );
         // Offline at start: still too.
         let mut s = Stasis::new();
         assert_eq!(
-            s.view(HudIdleMode::Hidden, false, false, false, t0),
+            s.view(HudIdleMode::Hidden, false, false, false, false, t0),
             HudView::Hidden
         );
     }
@@ -245,13 +258,16 @@ mod tests {
         let mut s = Stasis::new();
         let t0 = Instant::now();
         let mode = HudIdleMode::Strip;
-        assert_eq!(s.view(mode, true, true, false, t0), HudView::Full);
+        assert_eq!(s.view(mode, true, true, false, false, t0), HudView::Full);
         let t = |secs: u64| t0 + Duration::from_secs(secs);
-        assert_eq!(s.view(mode, true, false, false, t(1)), HudView::Full);
-        assert_eq!(s.view(mode, true, false, false, t(9)), HudView::Full);
-        assert_eq!(s.view(mode, true, false, false, t(10)), HudView::Strip);
+        assert_eq!(s.view(mode, true, false, false, false, t(1)), HudView::Full);
+        assert_eq!(s.view(mode, true, false, false, false, t(9)), HudView::Full);
+        assert_eq!(
+            s.view(mode, true, false, false, false, t(10)),
+            HudView::Strip
+        );
         // Moving again: whole at once.
-        assert_eq!(s.view(mode, true, true, false, t(12)), HudView::Full);
+        assert_eq!(s.view(mode, true, true, false, false, t(12)), HudView::Full);
     }
 
     #[test]
@@ -259,11 +275,14 @@ mod tests {
         let mut s = Stasis::new();
         let t0 = Instant::now();
         let mode = HudIdleMode::Hidden;
-        assert_eq!(s.view(mode, true, true, false, t0), HudView::Full);
+        assert_eq!(s.view(mode, true, true, false, false, t0), HudView::Full);
         // The link drops; a stale Running status doesn't count as moving.
         let t = |secs: u64| t0 + Duration::from_secs(secs);
-        assert_eq!(s.view(mode, false, true, false, t(5)), HudView::Full);
-        assert_eq!(s.view(mode, false, true, false, t(20)), HudView::Hidden);
+        assert_eq!(s.view(mode, false, true, false, false, t(5)), HudView::Full);
+        assert_eq!(
+            s.view(mode, false, true, false, false, t(20)),
+            HudView::Hidden
+        );
     }
 
     #[test]
@@ -272,10 +291,16 @@ mod tests {
         let t0 = Instant::now();
         let mode = HudIdleMode::Strip;
         let t = |secs: u64| t0 + Duration::from_secs(secs);
-        assert_eq!(s.view(mode, true, true, false, t0), HudView::Full);
-        assert_eq!(s.view(mode, false, false, false, t(2)), HudView::Full);
+        assert_eq!(s.view(mode, true, true, false, false, t0), HudView::Full);
+        assert_eq!(
+            s.view(mode, false, false, false, false, t(2)),
+            HudView::Full
+        );
         // Back within the grace, belt still: collapsed at once.
-        assert_eq!(s.view(mode, true, false, false, t(4)), HudView::Strip);
+        assert_eq!(
+            s.view(mode, true, false, false, false, t(4)),
+            HudView::Strip
+        );
     }
 
     #[test]
@@ -284,13 +309,22 @@ mod tests {
         let t0 = Instant::now();
         let mode = HudIdleMode::Strip;
         let t = |secs: u64| t0 + Duration::from_secs(secs);
-        assert_eq!(s.view(mode, true, false, false, t0), HudView::Strip);
+        assert_eq!(s.view(mode, true, false, false, false, t0), HudView::Strip);
         s.expanded = true;
-        assert_eq!(s.view(mode, true, false, false, t(1)), HudView::Full);
-        assert_eq!(s.view(mode, true, false, false, t(300)), HudView::Full);
+        assert_eq!(s.view(mode, true, false, false, false, t(1)), HudView::Full);
+        assert_eq!(
+            s.view(mode, true, false, false, false, t(300)),
+            HudView::Full
+        );
         // The belt moves: expand is used up.
-        assert_eq!(s.view(mode, true, true, false, t(301)), HudView::Full);
-        assert_eq!(s.view(mode, true, false, false, t(400)), HudView::Strip);
+        assert_eq!(
+            s.view(mode, true, true, false, false, t(301)),
+            HudView::Full
+        );
+        assert_eq!(
+            s.view(mode, true, false, false, false, t(400)),
+            HudView::Strip
+        );
     }
 
     #[test]
@@ -299,8 +333,81 @@ mod tests {
         let t0 = Instant::now();
         let mode = HudIdleMode::Hidden;
         let t = |secs: u64| t0 + Duration::from_secs(secs);
-        assert_eq!(s.view(mode, true, true, false, t0), HudView::Full);
-        assert_eq!(s.view(mode, true, false, true, t(60)), HudView::Full);
-        assert_eq!(s.view(mode, true, false, false, t(61)), HudView::Hidden);
+        assert_eq!(s.view(mode, true, true, false, false, t0), HudView::Full);
+        assert_eq!(s.view(mode, true, false, true, false, t(60)), HudView::Full);
+        assert_eq!(
+            s.view(mode, true, false, false, false, t(61)),
+            HudView::Hidden
+        );
+    }
+
+    #[test]
+    fn minified_and_moving_is_the_running_strip() {
+        for mode in [HudIdleMode::Full, HudIdleMode::Strip, HudIdleMode::Hidden] {
+            let i = ViewInput {
+                moving: true,
+                minified: true,
+                still_for: Some(Duration::ZERO),
+                ..input(mode)
+            };
+            assert_eq!(decide(i), HudView::Minified);
+        }
+    }
+
+    #[test]
+    fn minified_and_still_keeps_the_idle_mode() {
+        // Within the grace (just paused from the strip): still the running strip.
+        for mode in [HudIdleMode::Full, HudIdleMode::Strip, HudIdleMode::Hidden] {
+            let i = ViewInput {
+                minified: true,
+                still_for: Some(Duration::from_secs(3)),
+                ..input(mode)
+            };
+            assert_eq!(decide(i), HudView::Minified);
+        }
+        // Past the grace: Strip and Hidden as before; Full stays minified.
+        let long = |mode| ViewInput {
+            minified: true,
+            still_for: Some(Duration::from_secs(600)),
+            ..input(mode)
+        };
+        assert_eq!(decide(long(HudIdleMode::Strip)), HudView::Strip);
+        assert_eq!(decide(long(HudIdleMode::Hidden)), HudView::Hidden);
+        assert_eq!(decide(long(HudIdleMode::Full)), HudView::Minified);
+    }
+
+    #[test]
+    fn minified_gives_way_to_a_program_waiting_for_go() {
+        let i = ViewInput {
+            minified: true,
+            program_needs_go: true,
+            still_for: Some(Duration::from_secs(600)),
+            ..input(HudIdleMode::Strip)
+        };
+        assert_eq!(decide(i), HudView::Full);
+    }
+
+    #[test]
+    fn minified_lasts_through_a_pause_and_a_restart() {
+        let mut s = Stasis::new();
+        let t0 = Instant::now();
+        let mode = HudIdleMode::Strip;
+        let t = |secs: u64| t0 + Duration::from_secs(secs);
+        assert_eq!(s.view(mode, true, true, false, true, t0), HudView::Minified);
+        // Paused from the running strip: it stays put for the grace.
+        assert_eq!(
+            s.view(mode, true, false, false, true, t(5)),
+            HudView::Minified
+        );
+        assert_eq!(
+            s.view(mode, true, false, false, true, t(10)),
+            HudView::Strip
+        );
+        // Walking again: minified until expanded.
+        assert_eq!(
+            s.view(mode, true, true, false, true, t(20)),
+            HudView::Minified
+        );
+        assert_eq!(s.view(mode, true, true, false, false, t(21)), HudView::Full);
     }
 }

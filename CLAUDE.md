@@ -70,8 +70,10 @@ itself; `send()` toasts rejections as a backstop, the HUD uses `useHudSend` + `<
     over its panel; separate small bundle). `HudApp` handles state and events; the panel is
     `HudPanel.tsx`, the cards `HudCards.tsx`, toasts `ToastCard.tsx`, notes `HudNote.tsx`, and
     status text in `status.ts`. While the belt is still, Rust may collapse the panel to a strip
-    (`HudStrip.tsx`) or hide it (`hud.idle_mode`, decided in `snapshot/stasis.rs` as
-    `snapshot.hud_view`); cards and toasts always show
+    (`HudStrip.tsx`) or hide it (`hud.idle_mode`); minified by the user (`hud.minified`, the
+    header's minify button or Alt+Insert) it shows the running strip instead of the whole panel
+    until expanded. Both are decided in `snapshot/stasis.rs` as `snapshot.hud_view`; cards and
+    toasts always show
 - **Shared**: `src/widgets/registry.ts` defines every stat once for the HUD and dashboard.
 - **Live state**: Rust owns it. Every window reads one `AppSnapshot` via `src/state/useAppState.ts`
   (`useAppState`/`useAppSnapshot` in components, `getAppSnapshot`/`subscribeAppSnapshot` in services)
@@ -121,7 +123,7 @@ cargo clippy --all-targets -- -D warnings   # in src-tauri/: lints, no warnings 
 
 Design without a treadmill: with a Vite server running, open `/hud-preview.html` or
 `/dashboard-preview.html`. Both run on a mocked backend (`src/dev/mockBackend.ts`); URL flags
-like `?idle`, `?offline`, `?daily=12.34` (today's km), `?noprogram`, `?toasts` (`?toasts=deck` for the deck-start GO toast), `?anchor=top_left`, `?neural=active`, `?engage=timeout`, `?status=9|countdown|stopping|standby`, `?walkaway=warning|paused|idle`, `?custom`, `?update=available|downloading|failed|whatsnew` (with `?autoinstall=off`), `?stasis=strip|hidden` (with `?deck=paused` for RE-JACK), `?traffic=recording|saved` pick scenarios.
+like `?idle`, `?offline`, `?daily=12.34` (today's km), `?noprogram`, `?toasts` (`?toasts=deck` for the deck-start GO toast), `?anchor=top_left`, `?neural=active`, `?engage=timeout`, `?status=9|countdown|stopping|standby`, `?walkaway=warning|paused|idle`, `?custom`, `?update=available|downloading|failed|whatsnew` (with `?autoinstall=off`), `?stasis=strip|hidden` (with `?deck=paused` for RE-JACK), `?minified` (the running strip; with `?program=resting|paused`, `?noprogram` or `?idle`), `?traffic=recording|saved` pick scenarios.
 `?program=ready|hold|still|resting|paused` shows a program waiting for GO after a rest, after a
 0 km/h step, or after a reconnect found the belt still; mid-rest; or paused by the user.
 

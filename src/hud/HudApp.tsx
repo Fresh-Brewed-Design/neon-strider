@@ -5,7 +5,7 @@ import { MaintenanceCard, SeatedCard, UpdateCard, WalkAwayCard, WeeklyCard } fro
 import { HudHeader } from "./HudHeader";
 import { HudNote } from "./HudNote";
 import { Controls, NeuralLine, ProgramsModule, StatCell } from "./HudPanel";
-import { StripRow } from "./HudStrip";
+import { RunStripRow, StripRow } from "./HudStrip";
 import { linkLabel } from "./status";
 import { ToastCard } from "./ToastCard";
 import { useHitRegion } from "./useHitRegion";
@@ -19,8 +19,8 @@ import "./hud.css";
  * The always-on-top overlay: the panel (header, pinned stats, modules), the
  * persistent cards, then transient toasts. Only this content takes the
  * pointer; the rest of the window is click-through. While the belt is still,
- * Rust may ask for the panel as a strip or not at all (`hud_view`); the cards
- * and toasts show either way.
+ * Rust may ask for the panel as a strip or not at all, and minified for the
+ * running strip (`hud_view`); the cards and toasts show either way.
  */
 export function HudApp() {
   const snapshot = useAppSnapshot();
@@ -29,17 +29,22 @@ export function HudApp() {
   const panelRef = useRef<HTMLElement>(null);
   const placement = usePlacement(snapshot?.hud);
   const drag = useHudSend();
+  const minify = useHudSend();
   const logo = useLogoDrag(panelRef, drag.report);
   const relink = useRelink(snapshot?.connection ?? null);
 
   const widgets = snapshot?.hud.widgets ?? [];
   const view = snapshot?.hud_view ?? "full";
   const full = view === "full";
-  // A readout toast is redundant while the full panel already shows that value
-  // live (the strip doesn't show it).
+  const minified = view === "minified";
+  // A program waiting for GO keeps the whole panel (Rust ignores minify then).
+  const canMinify = full && !snapshot?.active_program?.wait;
+  // A readout toast is redundant while the panel already shows that value live
+  // (the running strip shows speed; the still strip shows neither).
   const toasts = allToasts.filter(
     (t) =>
       !(full && t.type === "VELOCITY" && widgets.includes("VELOCITY")) &&
+      !(minified && t.type === "VELOCITY") &&
       !(full && t.type === "ELEVATION" && widgets.includes("INCLINE")),
   );
   const stats = widgets.filter((w) => statWidget(w) !== undefined);
@@ -79,8 +84,9 @@ export function HudApp() {
               onRelink={relink.relink}
               logo={logo}
               dragging={placement.dragging}
+              onMinify={canMinify ? () => void minify.send({ type: "hud_set_minified", minified: true }) : undefined}
             />
-            <HudNote error={relink.error ?? drag.error} />
+            <HudNote error={relink.error ?? drag.error ?? minify.error} />
             {full ? (
               <>
                 {stats.length > 0 && (
@@ -94,6 +100,8 @@ export function HudApp() {
                 {widgets.includes("CONTROLS") && <Controls snapshot={snapshot} />}
                 {widgets.includes("PROGRAMS") && <ProgramsModule snapshot={snapshot} />}
               </>
+            ) : minified ? (
+              <RunStripRow snapshot={snapshot} />
             ) : (
               <StripRow snapshot={snapshot} />
             )}

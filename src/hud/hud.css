@@ -273,6 +273,54 @@ body,
 
 .hud-strip .hud-note { margin-top: 6px; }
 
+.hud-header-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The header's minify button: small, after the link status. */
+.hud-btn.hud-btn-minify {
+  flex-shrink: 0;
+  width: 24px;
+  height: 20px;
+  margin: -2px -6px -2px 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0;
+}
+
+/* ---- Running strip (minified) -------------------------------------- */
+
+/* Speed, time and distance on one line, the program step under them, then
+   expand, Engage/Stasis and Dump. Values shrink before anything clips. */
+.hud-run-strip { display: flex; flex-direction: column; gap: 7px; }
+
+.hud-run-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, auto));
+  justify-content: space-between;
+  gap: 8px;
+}
+.hud-run-stats .hud-strip-total { min-width: 0; }
+
+.hud-run-program {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.hud-run-program .hud-label { flex-shrink: 0; color: var(--accent); }
+.hud-run-program .hud-sub { min-width: 0; overflow-wrap: anywhere; line-height: 1.35; }
+
+.hud-run-strip .hud-strip-row { flex-wrap: nowrap; }
+.hud-run-strip .hud-btn-expand { margin-left: 0; }
+.hud-run-strip .hud-btn-main { flex: 1 1 auto; min-width: 0; }
+.hud-run-strip .hud-btn-stop { flex-shrink: 0; height: 30px; }
+.hud-run-strip .hud-note { margin-top: 0; }
+
 /* ---- Stats ---------------------------------------------------------- */
 
 .hud-stats {

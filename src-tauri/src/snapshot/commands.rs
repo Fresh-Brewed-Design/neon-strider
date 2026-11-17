@@ -130,9 +130,12 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         }
         Command::HudSetIdleMode { mode } => set_hud(&app, |cfg| cfg.idle_mode = mode),
         Command::HudExpand => {
+            // Expand from either strip ends a minify too: back to the normal rules.
+            hud::mutate(&app, |cfg| cfg.minified = false);
             stasis::expand();
             Ok(())
         }
+        Command::HudSetMinified { minified } => set_hud(&app, |cfg| cfg.minified = minified),
 
         Command::StravaSetCredentials {
             client_id,

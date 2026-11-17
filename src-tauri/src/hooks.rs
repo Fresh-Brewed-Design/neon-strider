@@ -79,10 +79,13 @@ pub enum Shortcut {
     ToggleStart,
     /// End the running program, or run the last one again.
     ToggleProgram,
+    /// Minify the HUD to the running strip, or expand it again.
+    ToggleMinified,
 }
 
 impl Shortcut {
-    /// The engine action, or `None` for the program toggle (not an engine action).
+    /// The engine action, or `None` for the program and minify toggles (not
+    /// engine actions).
     fn deck_action(self) -> Option<DeckAction> {
         match self {
             Shortcut::SpeedUp => Some(DeckAction::SpeedUp),
@@ -90,14 +93,15 @@ impl Shortcut {
             Shortcut::InclineUp => Some(DeckAction::InclineUp),
             Shortcut::InclineDown => Some(DeckAction::InclineDown),
             Shortcut::ToggleStart => Some(DeckAction::ToggleStart),
-            Shortcut::ToggleProgram => None,
+            Shortcut::ToggleProgram | Shortcut::ToggleMinified => None,
         }
     }
 
     fn label(self) -> &'static str {
-        match self.deck_action() {
-            Some(action) => action.as_str(),
-            None => "toggle-automation",
+        match (self, self.deck_action()) {
+            (_, Some(action)) => action.as_str(),
+            (Shortcut::ToggleMinified, None) => "toggle-minified",
+            (_, None) => "toggle-automation",
         }
     }
 }
@@ -111,6 +115,10 @@ pub(crate) fn shortcut_pressed(shortcut: Shortcut) {
         log::info!("native shortcut action: {}", shortcut.label());
         // Shortcuts work with no window open; the HUD shows what they did.
         crate::hud::ensure_hud_native(app);
+        if shortcut == Shortcut::ToggleMinified {
+            crate::snapshot::toggle_minified(app);
+            return;
+        }
         tauri::async_runtime::block_on(async move {
             let mut state = crate::bluetooth::ORCHESTRATOR.lock().await;
             match shortcut.deck_action() {
@@ -147,6 +155,8 @@ mod tests {
         assert_eq!(Shortcut::ToggleProgram.deck_action(), None);
         assert_eq!(Shortcut::InclineDown.label(), "incline-down");
         assert_eq!(Shortcut::ToggleProgram.label(), "toggle-automation");
+        assert_eq!(Shortcut::ToggleMinified.deck_action(), None);
+        assert_eq!(Shortcut::ToggleMinified.label(), "toggle-minified");
     }
 
     #[test]
