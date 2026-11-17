@@ -124,11 +124,147 @@ fn migration_2_indexes(tx: &Transaction) -> rusqlite::Result<()> {
     )
 }
 
+/// Migration 3: the research-based defaults (docs/research.md, roadmap #26).
+///
+/// - The sit-too-long nudge moves from 60 to 30 minutes if it is still at 60
+///   (the old default; the settings page saves it with every change, so a
+///   stored 60 is treated as never chosen). Any other value is kept.
+/// - Seeded programs still exactly as shipped get the new values and their
+///   one-sentence note; one the user edited is left alone.
+/// - Micro-break and Brisk are added after the user's programs, unless the
+///   list is empty (they deleted every program) or one has that name already.
+///
+/// Frozen: the values are written out here, not read from `seed_programs`,
+/// so later seed changes don't change what this migration did.
+fn migration_3_research_programs(tx: &Transaction) -> rusqlite::Result<()> {
+    tx.execute(
+        "UPDATE settings SET value = '30'
+         WHERE key = 'seated_minutes' AND trim(value, ' \"') = '60'",
+        [],
+    )?;
+    let Some(raw) = get_setting_str(tx, "programs") else {
+        return Ok(()); // Never seeded: the first start seeds the new values.
+    };
+    let next_id = get_setting_str(tx, "program_next_id");
+    if let Some((programs, next_id)) = research_programs_v3(&raw, next_id.as_deref()) {
+        for (key, value) in [
+            ("programs", programs),
+            ("program_next_id", next_id.to_string()),
+        ] {
+            tx.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+                params![key, value],
+            )?;
+        }
+    }
+    Ok(())
+}
+
+/// Migration 3's change to the stored programs JSON. `None` when there is
+/// nothing to change or the value can't be read (it is then left as is).
+fn research_programs_v3(raw: &str, next_id: Option<&str>) -> Option<(String, u32)> {
+    use serde_json::{json, Value};
+    let mut list: Vec<Value> = serde_json::from_str(raw).ok()?;
+    let num = |v: &Value, x: f64| v.as_f64().is_some_and(|f| (f - x).abs() < 1e-3);
+    let opt = |v: &Value, x: Option<f64>| match x {
+        None => v.is_null(),
+        Some(x) => num(v, x),
+    };
+    // (name, old step, old repeat) -> (new step, note)
+    type Step = (Option<f64>, f64, f64);
+    let shipped: [(&str, Step, Option<f64>, Step, &str); 3] = [
+        (
+            "Post-meal",
+            (Some(10.0), 4.0, 10.0),
+            None,
+            (Some(10.0), 4.0, 5.0),
+            "A walk soon after eating blunts the rise in blood sugar.",
+        ),
+        (
+            "Workday",
+            (Some(5.0), 3.0, 5.0),
+            Some(30.0),
+            (Some(5.0), 3.0, 5.0),
+            "Five minutes every half hour offsets long sitting.",
+        ),
+        (
+            "Focus",
+            (None, 2.5, 5.0),
+            None,
+            (None, 2.0, 0.0),
+            "Slow and flat, so typing and thinking stay steady.",
+        ),
+    ];
+    let mut changed = false;
+    for p in list.iter_mut() {
+        for (name, (old_min, old_kmh, old_pct), old_repeat, (min, kmh, pct), note) in shipped {
+            let steps = p["steps"].as_array();
+            let unedited = p["name"] == name
+                && p.get("note").is_none_or(Value::is_null)
+                && opt(&p["repeat_every_minutes"], old_repeat)
+                && steps.is_some_and(|s| {
+                    s.len() == 1
+                        && opt(&s[0]["duration_minutes"], old_min)
+                        && num(&s[0]["speed_kmh"], old_kmh)
+                        && num(&s[0]["incline_pct"], old_pct)
+                });
+            if unedited {
+                p["steps"] =
+                    json!([{ "duration_minutes": min, "speed_kmh": kmh, "incline_pct": pct }]);
+                p["note"] = json!(note);
+                changed = true;
+            }
+        }
+    }
+    let max_id = list
+        .iter()
+        .filter_map(|p| p["id"].as_u64())
+        .max()
+        .unwrap_or(0) as u32;
+    let mut next = next_id
+        .and_then(|s| s.trim().trim_matches('"').parse::<u32>().ok())
+        .unwrap_or(0)
+        .max(max_id + 1);
+    if !list.is_empty() {
+        let added = [
+            json!({
+                "name": "Micro-break",
+                "steps": [{ "duration_minutes": 2.0, "speed_kmh": 3.2, "incline_pct": 0.0 }],
+                "repeat_every_minutes": 20.0,
+                "note": "Two easy minutes every 20 lower blood sugar after meals.",
+            }),
+            json!({
+                "name": "Brisk",
+                "steps": [{ "duration_minutes": 30.0, "speed_kmh": 5.0, "incline_pct": 0.0 }],
+                "repeat_every_minutes": null,
+                "note": "Moderate walking toward the weekly 150 minutes.",
+            }),
+        ];
+        for mut p in added {
+            if list.iter().any(|q| q["name"] == p["name"]) {
+                continue;
+            }
+            p["id"] = json!(next);
+            next += 1;
+            list.push(p);
+            changed = true;
+        }
+    }
+    if !changed {
+        return None;
+    }
+    Some((serde_json::to_string(&list).ok()?, next))
+}
+
 type Migration = fn(&Transaction) -> rusqlite::Result<()>;
 
 /// Append new migrations at the end; never reorder or edit a shipped one.
 /// `PRAGMA user_version` is the count of migrations already applied.
-const MIGRATIONS: &[Migration] = &[migration_1_baseline, migration_2_indexes];
+const MIGRATIONS: &[Migration] = &[
+    migration_1_baseline,
+    migration_2_indexes,
+    migration_3_research_programs,
+];
 
 fn schema_version(conn: &Connection) -> rusqlite::Result<u32> {
     conn.query_row("PRAGMA user_version", [], |r| r.get(0))
@@ -1275,6 +1411,126 @@ mod db_tests {
         for i in ["idx_samples_session", "idx_sessions_start_time"] {
             assert!(indexes.iter().any(|n| n == i), "missing index {}", i);
         }
+    }
+
+    /// The programs JSON v1.6 seeded, as `persist` wrote it.
+    const V1_SEEDS: &str = r#"[{"id":1,"name":"Post-meal","steps":[{"duration_minutes":10.0,"speed_kmh":4.0,"incline_pct":10.0}],"repeat_every_minutes":null},{"id":2,"name":"Workday","steps":[{"duration_minutes":5.0,"speed_kmh":3.0,"incline_pct":5.0}],"repeat_every_minutes":30.0},{"id":3,"name":"Focus","steps":[{"duration_minutes":null,"speed_kmh":2.5,"incline_pct":5.0}],"repeat_every_minutes":null}]"#;
+
+    fn migrated_to_v2() -> Connection {
+        let mut conn = Connection::open_in_memory().unwrap();
+        for (i, m) in MIGRATIONS[..2].iter().enumerate() {
+            let tx = conn.transaction().unwrap();
+            m(&tx).unwrap();
+            tx.execute_batch(&format!("PRAGMA user_version = {}", i + 1))
+                .unwrap();
+            tx.commit().unwrap();
+        }
+        conn
+    }
+
+    fn set(conn: &Connection, key: &str, value: &str) {
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+            params![key, value],
+        )
+        .unwrap();
+    }
+
+    fn stored_programs(conn: &Connection) -> Vec<crate::programs::Program> {
+        serde_json::from_str(&get_setting_str(conn, "programs").unwrap()).unwrap()
+    }
+
+    #[test]
+    fn migration_3_on_a_fresh_database_writes_nothing() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&mut conn).unwrap();
+        for key in ["programs", "program_next_id", "seated_minutes"] {
+            assert_eq!(get_setting_str(&conn, key), None, "{}", key);
+        }
+    }
+
+    #[test]
+    fn migration_3_moves_unedited_seeds_and_the_default_to_the_research_values() {
+        let mut conn = migrated_to_v2();
+        set(&conn, "programs", V1_SEEDS);
+        set(&conn, "program_next_id", "4");
+        set(&conn, "seated_minutes", "60");
+        migrate(&mut conn).unwrap();
+        assert_eq!(version(&conn), latest());
+        // Exactly what a new install now starts with.
+        assert_eq!(stored_programs(&conn), crate::programs::seed_programs());
+        assert_eq!(
+            get_setting_str(&conn, "program_next_id").as_deref(),
+            Some("6")
+        );
+        assert_eq!(
+            get_setting_str(&conn, "seated_minutes").as_deref(),
+            Some("30")
+        );
+    }
+
+    #[test]
+    fn migration_3_keeps_what_the_user_changed() {
+        let mut conn = migrated_to_v2();
+        // Post-meal edited to 15 min, Focus deleted, a program of their own
+        // with a higher id, and a sitting time they picked.
+        let edited = V1_SEEDS
+            .replacen("\"duration_minutes\":10.0", "\"duration_minutes\":15.0", 1)
+            .replace(
+                r#",{"id":3,"name":"Focus","steps":[{"duration_minutes":null,"speed_kmh":2.5,"incline_pct":5.0}],"repeat_every_minutes":null}"#,
+                r#",{"id":7,"name":"Brisk","steps":[{"duration_minutes":20.0,"speed_kmh":4.5,"incline_pct":0.0}],"repeat_every_minutes":null}"#,
+            );
+        set(&conn, "programs", &edited);
+        set(&conn, "program_next_id", "9");
+        set(&conn, "seated_minutes", "45");
+        migrate(&mut conn).unwrap();
+        let list = stored_programs(&conn);
+        let names: Vec<&str> = list.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, ["Post-meal", "Workday", "Brisk", "Micro-break"]);
+        // The edited Post-meal is untouched; the unedited Workday gains its note.
+        assert_eq!(list[0].steps[0].duration_minutes, Some(15.0));
+        assert_eq!(list[0].steps[0].incline_pct, 10.0);
+        assert_eq!(list[0].note, None);
+        assert!(list[1].note.is_some());
+        // Their own "Brisk" is kept and not duplicated; Micro-break takes the next id.
+        assert_eq!(list[2].id, 7);
+        assert_eq!(list[2].steps[0].speed_kmh, 4.5);
+        assert_eq!(list[3].id, 9);
+        assert_eq!(
+            get_setting_str(&conn, "program_next_id").as_deref(),
+            Some("10")
+        );
+        assert_eq!(
+            get_setting_str(&conn, "seated_minutes").as_deref(),
+            Some("45")
+        );
+        // Forced to run again, nothing changes.
+        let before = get_setting_str(&conn, "programs");
+        conn.execute_batch("PRAGMA user_version = 2").unwrap();
+        migrate(&mut conn).unwrap();
+        assert_eq!(get_setting_str(&conn, "programs"), before);
+    }
+
+    #[test]
+    fn migration_3_leaves_an_empty_or_unreadable_list_alone() {
+        for raw in ["[]", "not json"] {
+            let mut conn = migrated_to_v2();
+            set(&conn, "programs", raw);
+            migrate(&mut conn).unwrap();
+            assert_eq!(get_setting_str(&conn, "programs").as_deref(), Some(raw));
+            assert_eq!(get_setting_str(&conn, "program_next_id"), None);
+        }
+    }
+
+    #[test]
+    fn migration_3_moves_a_quoted_sixty_too() {
+        let mut conn = migrated_to_v2();
+        set(&conn, "seated_minutes", "\"60\"");
+        migrate(&mut conn).unwrap();
+        assert_eq!(
+            get_setting_str(&conn, "seated_minutes").as_deref(),
+            Some("30")
+        );
     }
 
     #[test]

@@ -31,7 +31,8 @@ const KEY_MINUTES: &str = "seated_minutes";
 /// JSON array of program ids; absent means the first three saved programs.
 pub const KEY_PROGRAMS: &str = "seated_program_ids";
 
-const DEFAULT_MINUTES: u32 = 60;
+/// Every 30 minutes: see docs/research.md (was 60 before migration 3).
+const DEFAULT_MINUTES: u32 = 30;
 const MIN_MINUTES: u32 = 15;
 const MAX_MINUTES: u32 = 240;
 /// Program buttons on the card.
@@ -273,7 +274,7 @@ impl Seated {
 // ---------------------------------------------------------------------------
 
 /// Build the config from raw stored values. Bad values fall back to the
-/// defaults (on, 60 minutes, the first three programs).
+/// defaults (on, 30 minutes, the first three programs).
 pub fn config_from_raw(
     enabled: Option<&str>,
     minutes: Option<&str>,
@@ -858,11 +859,11 @@ mod tests {
     // ---- settings ----
 
     #[test]
-    fn settings_default_to_on_sixty_minutes_first_three() {
+    fn settings_default_to_on_thirty_minutes_first_three() {
         let c = config_from_raw(None, None, None);
         assert_eq!(c, Config::default());
         assert!(c.enabled);
-        assert_eq!(c.minutes, 60);
+        assert_eq!(c.minutes, 30);
         assert_eq!(c.program_ids, None);
     }
 
@@ -879,7 +880,7 @@ mod tests {
         );
         let c = config_from_raw(Some("maybe"), Some("5"), Some("not json"));
         assert_eq!(c, Config::default());
-        assert_eq!(config_from_raw(None, Some("241"), None).minutes, 60);
+        assert_eq!(config_from_raw(None, Some("241"), None).minutes, 30);
         assert_eq!(config_from_raw(None, Some("\"45\""), None).minutes, 45);
         // Duplicates and extras are trimmed; an empty list means the default.
         assert_eq!(
@@ -912,6 +913,7 @@ mod tests {
             name: format!("P{id}"),
             steps: Vec::new(),
             repeat_every_minutes: None,
+            note: None,
         }
     }
 

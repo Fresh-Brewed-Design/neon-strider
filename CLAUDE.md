@@ -49,9 +49,15 @@ The installer is per-user NSIS; "launch at login" (`get/set_launch_at_login`) an
 `traffic.rs` is the Diagnostics traffic recorder: while switched on (`traffic_record`, off at every
 start) `bluetooth.rs` hands it every packet written and every notification received, and it appends
 them as JSON Lines to `logs/traffic/` (format in docs/protocol.md); it never sends anything.
-`sim.rs` (test-only) is a simulated deck that answers the engine's bytes like the real one, and
-runs scenario tests of the real engine and programs against it; add a scenario there for any
-change to how the app drives the belt.
+`sim.rs` (tests and dev builds, never release) is a simulated deck that answers the engine's bytes
+like the real one, and runs scenario tests of the real engine and programs against it; add a
+scenario there for any change to how the app drives the belt. In dev builds (`npm run tauri dev`)
+the Bluetooth scan lists `SIM_DECK // simulated treadmill`: `sim_link.rs` puts the same deck behind
+`bluetooth::DeckLink` (the seam the worker and status listener use for the real BLE deck), so the
+whole app runs with no hardware; `connection.simulated` shows a SIM tag on the HUD and dashboard.
+Its walks stay in memory (no History, odometer or Strava) and it is never saved as the treadmill
+to reconnect to, since dev and release builds share the database. Both modules are behind
+`cfg(debug_assertions)`, so release builds never list it and `simulated` is always false.
 Neural flow (typing-aware pace) is pure logic in `neural.rs`; key-press counting is switched by Rust (`neural_monitor_wanted`, 1 Hz tick), not by a window.
 Status is visible, not silent. `link.rs` (treadmill link state, plain-English BLE errors) and
 `strava_status.rs` (Strava activity/steps, `describe()` turns Strava's JSON errors into one
@@ -123,7 +129,7 @@ cargo clippy --all-targets -- -D warnings   # in src-tauri/: lints, no warnings 
 
 Design without a treadmill: with a Vite server running, open `/hud-preview.html` or
 `/dashboard-preview.html`. Both run on a mocked backend (`src/dev/mockBackend.ts`); URL flags
-like `?idle`, `?offline`, `?daily=12.34` (today's km), `?noprogram`, `?toasts` (`?toasts=deck` for the deck-start GO toast), `?anchor=top_left`, `?neural=active`, `?engage=timeout`, `?status=9|countdown|stopping|standby`, `?walkaway=warning|paused|idle`, `?custom`, `?update=available|downloading|failed|whatsnew` (with `?autoinstall=off`), `?stasis=strip|hidden` (with `?deck=paused` for RE-JACK), `?minified` (the running strip; with `?program=resting|paused`, `?noprogram` or `?idle`), `?traffic=recording|saved` pick scenarios.
+like `?idle`, `?offline`, `?daily=12.34` (today's km), `?noprogram`, `?toasts` (`?toasts=deck` for the deck-start GO toast), `?anchor=top_left`, `?neural=active`, `?engage=timeout`, `?status=9|countdown|stopping|standby`, `?walkaway=warning|paused|idle`, `?custom`, `?update=available|downloading|failed|whatsnew` (with `?autoinstall=off`), `?stasis=strip|hidden` (with `?deck=paused` for RE-JACK), `?minified` (the running strip; with `?program=resting|paused`, `?noprogram` or `?idle`), `?traffic=recording|saved`, `?sim` (the SIM tag) pick scenarios.
 `?program=ready|hold|still|resting|paused` shows a program waiting for GO after a rest, after a
 0 km/h step, or after a reconnect found the belt still; mid-rest; or paused by the user.
 

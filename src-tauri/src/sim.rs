@@ -1,6 +1,10 @@
 //! A simulated FitShow deck (the Jogwell Ares 11 Elite) at the byte level,
 //! and scenario tests that run the real engine and programs against it.
-//! Test-only: `lib.rs` has `#[cfg(test)] mod sim;`.
+//! Test and dev builds only: `lib.rs` has
+//! `#[cfg(any(test, debug_assertions))] mod sim;`, so release builds never
+//! contain it. Dev builds drive the same deck through `sim_link.rs` (the
+//! "simulated treadmill" in the Bluetooth scan list); the [`Rig`] and the
+//! scenarios are test-only.
 //!
 //! [`SimDeck`] takes the exact packets the engine writes and answers the way
 //! the deck does (docs/protocol.md): a status frame for each poll, an echo or
@@ -17,7 +21,9 @@
 //! (engine.rs, "Replays of a traffic recording", 2026-11-15) and from
 //! docs/protocol.md. Ones nobody has measured say "assumed".
 
+#[cfg(test)]
 use crate::bluetooth::apply_telemetry;
+#[cfg(test)]
 use crate::engine::{OrchestratorState, Packet, PacketKind, ProtocolEngine};
 use crate::protocol::{self, Control};
 use std::time::{Duration, Instant};
@@ -170,23 +176,28 @@ impl SimDeck {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn status_code(&self) -> u8 {
         self.phase.code()
     }
 
+    #[cfg(test)]
     pub(crate) fn speed_kmh(&self) -> f32 {
         self.speed
     }
 
+    #[cfg(test)]
     pub(crate) fn workout_s(&self) -> u16 {
         self.workout_s as u16
     }
 
     /// Running at `kmh` (to the 0.1 km/h the deck speaks).
+    #[cfg(test)]
     pub(crate) fn running_at(&self, kmh: f32) -> bool {
         self.phase == Phase::Running && (self.speed - kmh).abs() < 0.05
     }
 
+    #[cfg(test)]
     pub(crate) fn belt_still(&self) -> bool {
         self.speed == 0.0 && self.phase != Phase::Running
     }
@@ -365,6 +376,7 @@ impl SimDeck {
     }
 
     /// Start pressed on the deck's own buttons or remote.
+    #[cfg(test)]
     pub(crate) fn press_start(&mut self, now: Instant) {
         self.advance(now);
         if matches!(self.phase, Phase::Idle | Phase::Ended | Phase::Paused) {
@@ -373,6 +385,7 @@ impl SimDeck {
     }
 
     /// Pause pressed on the deck's own buttons or remote.
+    #[cfg(test)]
     pub(crate) fn press_pause(&mut self, now: Instant) {
         self.advance(now);
         if self.phase == Phase::Running {
@@ -381,6 +394,7 @@ impl SimDeck {
     }
 
     /// The screen goes off (standby), as it does by itself after idling.
+    #[cfg(test)]
     pub(crate) fn enter_standby(&mut self, now: Instant) {
         self.advance(now);
         self.set(Phase::Standby, now);
@@ -396,6 +410,7 @@ impl SimDeck {
 
     /// Switched off at the wall: the belt stops dead, the link drops, and
     /// nothing answers until it is switched on and connected again.
+    #[cfg(test)]
     pub(crate) fn power_off(&mut self, now: Instant) {
         self.advance(now);
         self.powered = false;
@@ -408,6 +423,7 @@ impl SimDeck {
     }
 
     /// Switched on again: it boots idle (assumed: counters at zero).
+    #[cfg(test)]
     pub(crate) fn power_on(&mut self, now: Instant) {
         self.advance(now);
         self.powered = true;
@@ -418,6 +434,11 @@ impl SimDeck {
     pub(crate) fn drop_link(&mut self) {
         self.linked = false;
         self.outbox.clear();
+    }
+
+    /// Linked to the app.
+    pub(crate) fn linked(&self) -> bool {
+        self.linked
     }
 
     /// Connect; only a deck that is switched on answers.
@@ -432,6 +453,7 @@ impl SimDeck {
 /// second, every packet written to the deck, every notification taken in as
 /// the status listener does. Sessions open and close as in the engine's
 /// replay tests (no database).
+#[cfg(test)]
 pub(crate) struct Rig {
     pub(crate) deck: SimDeck,
     pub(crate) state: OrchestratorState,
@@ -446,12 +468,13 @@ pub(crate) struct Rig {
     pub(crate) toasts: Vec<crate::programs::ProgramToast>,
 }
 
+#[cfg(test)]
 impl Rig {
     /// A fresh app connected to an idle deck, with the seeded programs.
     pub(crate) fn new() -> Self {
         let t = Instant::now();
         let mut state = OrchestratorState {
-            programs: crate::programs::seed_programs(),
+            programs: crate::programs::classic_programs(),
             program_next_id: 4,
             ..Default::default()
         };
@@ -892,6 +915,7 @@ mod tests {
                 },
             ],
             repeat_every_minutes: None,
+            note: None,
         });
         r.run(1.0);
         r.run_program(5);

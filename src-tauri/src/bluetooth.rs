@@ -8,6 +8,9 @@
 //!   Neural flow and programs.
 //!
 //! Both share `ORCHESTRATOR`, a tokio mutex; neither holds it across BLE I/O.
+//!
+//! Both talk to the deck through [`DeckLink`]: the real treadmill over BLE,
+//! or, in dev builds only, the simulated one (`sim_link.rs`).
 
 use crate::engine::{DeckAction, OrchestratorState, Packet, PacketKind, ProtocolEngine};
 use crate::protocol::{self, MachineStatus, Telemetry};
@@ -27,7 +30,7 @@ use tokio::sync::Mutex;
 static ADAPTER: Mutex<Option<Adapter>> = Mutex::const_new(None);
 /// The treadmill of the current (or last) connection. Lock order: this before
 /// `ORCHESTRATOR`.
-pub(crate) static CONNECTED_PERIPHERAL: Mutex<Option<Peripheral>> = Mutex::const_new(None);
+pub(crate) static CONNECTED_DECK: Mutex<Option<DeckLink>> = Mutex::const_new(None);
 /// The one shared engine state.
 pub(crate) static ORCHESTRATOR: LazyLock<Mutex<OrchestratorState>> =
     LazyLock::new(|| Mutex::new(OrchestratorState::default()));
@@ -65,6 +68,79 @@ const SPEED_TOAST_MIN_KMH: f32 = 0.1;
 pub struct BleDevice {
     pub id: String,
     pub name: String,
+}
+
+/// The deck a connection's tasks write to and watch: the real treadmill, or
+/// (dev builds only) the simulated one.
+#[derive(Clone)]
+pub(crate) enum DeckLink {
+    Ble(Peripheral),
+    #[cfg(debug_assertions)]
+    Sim(crate::sim_link::SimLink),
+}
+
+impl DeckLink {
+    pub(crate) fn id(&self) -> String {
+        match self {
+            DeckLink::Ble(p) => p.id().to_string(),
+            #[cfg(debug_assertions)]
+            DeckLink::Sim(_) => crate::sim_link::SIM_DECK_ID.to_string(),
+        }
+    }
+
+    /// Its walks stay out of the database (the dev builds' simulated deck).
+    fn simulated(&self) -> bool {
+        match self {
+            DeckLink::Ble(_) => false,
+            #[cfg(debug_assertions)]
+            DeckLink::Sim(_) => true,
+        }
+    }
+
+    pub(crate) async fn is_connected(&self) -> bool {
+        match self {
+            DeckLink::Ble(p) => p.is_connected().await.unwrap_or(false),
+            #[cfg(debug_assertions)]
+            DeckLink::Sim(s) => s.is_connected(),
+        }
+    }
+
+    pub(crate) async fn disconnect(&self) {
+        match self {
+            DeckLink::Ble(p) => {
+                let _ = p.disconnect().await;
+            }
+            #[cfg(debug_assertions)]
+            DeckLink::Sim(s) => s.disconnect(),
+        }
+    }
+
+    pub(crate) async fn write(&self, bytes: &[u8]) -> Result<(), String> {
+        match self {
+            DeckLink::Ble(p) => {
+                let characteristic = find_control_characteristic(p)?;
+                p.write(&characteristic, bytes, WriteType::WithResponse)
+                    .await
+                    .map_err(|e| e.to_string())
+            }
+            #[cfg(debug_assertions)]
+            DeckLink::Sim(s) => s.write(bytes),
+        }
+    }
+}
+
+/// The snapshot's `connection.simulated`: the linked deck is the dev builds'
+/// simulated one. Always false in release builds.
+pub(crate) fn is_simulated_id(device_id: Option<&str>) -> bool {
+    #[cfg(debug_assertions)]
+    {
+        device_id == Some(crate::sim_link::SIM_DECK_ID)
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        let _ = device_id;
+        false
+    }
 }
 
 /// The `uuid` belongs to the FitShow part tagged `tag` (one of the `*_TAG`s).
@@ -127,14 +203,8 @@ fn tick_each_second(
 }
 
 /// Write one packet; a successful write restarts the engine's command gap.
-async fn write_packet(peripheral: &Peripheral, packet: &Packet) {
-    let Ok(characteristic) = find_control_characteristic(peripheral) else {
-        return;
-    };
-    if let Err(e) = peripheral
-        .write(&characteristic, &packet.bytes, WriteType::WithResponse)
-        .await
-    {
+async fn write_packet(deck: &DeckLink, packet: &Packet) {
+    if let Err(e) = deck.write(&packet.bytes).await {
         log::error!("Write failed: {}", e);
         return;
     }
@@ -146,7 +216,7 @@ async fn write_packet(peripheral: &Peripheral, packet: &Packet) {
 }
 
 /// Drive one connection until the link drops or a newer worker takes over.
-pub async fn spawn_protocol_worker(app: tauri::AppHandle, peripheral: Peripheral) {
+pub(crate) async fn spawn_protocol_worker(app: tauri::AppHandle, deck: DeckLink) {
     crate::hud::toast(
         &app,
         serde_json::json!({ "type": "STATUS", "message": "DEVICE_CONNECTED", "isActionable": true }),
@@ -158,7 +228,7 @@ pub async fn spawn_protocol_worker(app: tauri::AppHandle, peripheral: Peripheral
         log::info!(
             "Spawning worker #{} for device {}. Config Loaded: Tilt={:.1}, Offset={:.1}",
             id,
-            peripheral.id(),
+            deck.id(),
             state.tilt_multiplier,
             state.incline_offset
         );
@@ -173,7 +243,7 @@ pub async fn spawn_protocol_worker(app: tauri::AppHandle, peripheral: Peripheral
             log::info!("Worker #{} superseded. Terminating.", worker_id);
             return;
         }
-        if !peripheral.is_connected().await.unwrap_or(false) {
+        if !deck.is_connected().await {
             log::info!("Peripheral disconnected. Terminating worker.");
             crate::hooks::set_key_counting(false);
             return;
@@ -207,16 +277,13 @@ pub async fn spawn_protocol_worker(app: tauri::AppHandle, peripheral: Peripheral
             );
         }
         if let Some(packet) = packet {
-            write_packet(&peripheral, &packet).await;
+            write_packet(&deck, &packet).await;
         }
 
         let stopped = {
             let mut state = ORCHESTRATOR.lock().await;
             if state.should_start_session() {
-                match crate::persistence::db_create_session(&app) {
-                    Ok(id) => state.start_session(id),
-                    Err(e) => log::error!("Failed to create session: {}", e),
-                }
+                open_session(&app, &mut state, deck.simulated());
             }
             state.last_status == MachineStatus::Stopped
         };
@@ -227,6 +294,23 @@ pub async fn spawn_protocol_worker(app: tauri::AppHandle, peripheral: Peripheral
             WORKER_TICK
         })
         .await;
+    }
+}
+
+/// Open the session a moving belt calls for. A simulated deck's walks stay in
+/// memory (negative ids), so a dev run never reaches History, the odometer or
+/// Strava.
+fn open_session(app: &tauri::AppHandle, state: &mut OrchestratorState, simulated: bool) {
+    #[cfg(debug_assertions)]
+    if simulated {
+        state.start_session(crate::sim_link::next_session_id());
+        return;
+    }
+    #[cfg(not(debug_assertions))]
+    let _ = simulated;
+    match crate::persistence::db_create_session(app) {
+        Ok(id) => state.start_session(id),
+        Err(e) => log::error!("Failed to create session: {}", e),
     }
 }
 
@@ -309,6 +393,7 @@ pub(crate) fn apply_telemetry(state: &mut OrchestratorState, t: &Telemetry) {
 async fn listen_for_status(
     app: tauri::AppHandle,
     mut stream: impl Stream<Item = ValueNotification> + Unpin,
+    simulated: bool,
 ) {
     let mut toasts = ToastTracker::default();
     while let Some(data) = stream.next().await {
@@ -324,17 +409,27 @@ async fn listen_for_status(
 
         let mut state = ORCHESTRATOR.lock().await;
         apply_telemetry(&mut state, &t);
-        // Resume or new session, once per connection, from the deck's live
-        // totals, so a walk already under way is picked up.
-        state.evaluate_session_on_connect(
-            &app,
-            t.time_sec,
-            (t.distance_km * 1000.0) as f64,
-            t.steps as f64,
-            t.calories,
-        );
-        state.update_physics();
-        state.manage_session_lifecycle(&app);
+        if simulated {
+            // In memory only, the way `sim::Rig` runs them.
+            state.update_physics();
+            if state.should_start_session() {
+                open_session(&app, &mut state, true);
+            } else if state.should_stop_session() {
+                state.stop_session();
+            }
+        } else {
+            // Resume or new session, once per connection, from the deck's live
+            // totals, so a walk already under way is picked up.
+            state.evaluate_session_on_connect(
+                &app,
+                t.time_sec,
+                (t.distance_km * 1000.0) as f64,
+                t.steps as f64,
+                t.calories,
+            );
+            state.update_physics();
+            state.manage_session_lifecycle(&app);
+        }
 
         let neural_easing = state
             .neural_changed_at
@@ -371,7 +466,7 @@ async fn listen_for_status(
 #[tauri::command]
 pub async fn scan_bluetooth_devices() -> Result<Vec<BleDevice>, crate::link::LinkError> {
     let _scanning = crate::link::ScanGuard::new();
-    match scan_inner().await {
+    let result = match scan_inner().await {
         Ok(devices) => {
             crate::link::adapter_ok();
             Ok(devices)
@@ -381,7 +476,22 @@ pub async fn scan_bluetooth_devices() -> Result<Vec<BleDevice>, crate::link::Lin
             crate::link::note_error(&err, &raw);
             Err(err)
         }
-    }
+    };
+    // Dev builds: the simulated treadmill is listed even with no Bluetooth
+    // (the failure still shows in the link state).
+    #[cfg(debug_assertions)]
+    let result = Ok(with_sim_deck(result.unwrap_or_default()));
+    result
+}
+
+/// Dev builds list the simulated treadmill first.
+#[cfg(debug_assertions)]
+fn with_sim_deck(found: Vec<BleDevice>) -> Vec<BleDevice> {
+    let sim = BleDevice {
+        id: crate::sim_link::SIM_DECK_ID.to_string(),
+        name: crate::sim_link::SIM_DECK_NAME.to_string(),
+    };
+    std::iter::once(sim).chain(found).collect()
 }
 
 /// The name to list a device under, or `None` when it is not a FitShow deck:
@@ -479,9 +589,9 @@ pub async fn connect_bluetooth_device(
 pub async fn is_bluetooth_connected() -> bool {
     // Cloned out so the slot isn't locked across the BLE query, which would
     // stall a connect attempt waiting on it.
-    let peripheral = CONNECTED_PERIPHERAL.lock().await.clone();
-    match peripheral {
-        Some(p) => p.is_connected().await.unwrap_or(false),
+    let deck = CONNECTED_DECK.lock().await.clone();
+    match deck {
+        Some(d) => d.is_connected().await,
         None => false,
     }
 }
@@ -497,18 +607,27 @@ fn ids_match(a: &str, b: &str) -> bool {
     a.contains(b) || b.contains(a)
 }
 
-async fn connect_to(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
-    let central = find_central().await.map_err(|e| e.to_string())?;
-
-    {
-        let mut connected = CONNECTED_PERIPHERAL.lock().await;
-        if let Some(existing) = connected.take() {
-            log::debug!("Disconnecting existing active link before new connection...");
-            let _ = existing.disconnect().await;
-        }
-        ORCHESTRATOR.lock().await.reset_connection();
-        log::debug!("Readiness reset for new node entry.");
+/// Drop any old link and reset the engine for a new connection (which sets
+/// `hold_auto_start`: connecting never starts the belt).
+async fn begin_new_link() {
+    let mut connected = CONNECTED_DECK.lock().await;
+    if let Some(existing) = connected.take() {
+        log::debug!("Disconnecting existing active link before new connection...");
+        existing.disconnect().await;
     }
+    ORCHESTRATOR.lock().await.reset_connection();
+    log::debug!("Readiness reset for new node entry.");
+}
+
+async fn connect_to(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
+    #[cfg(debug_assertions)]
+    if id == crate::sim_link::SIM_DECK_ID {
+        connect_sim(app).await;
+        return Ok(());
+    }
+
+    let central = find_central().await.map_err(|e| e.to_string())?;
+    begin_new_link().await;
 
     let target = normalize_id(id);
     let mut peripherals = central.peripherals().await.map_err(|e| e.to_string())?;
@@ -554,6 +673,20 @@ async fn connect_to(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
         }
     }
     Err("Device not found".to_string())
+}
+
+/// Link the dev builds' simulated treadmill and start the connection's tasks,
+/// as `subscribe_and_start` does for a real one. It is not saved as the
+/// treadmill to reconnect to: dev and release builds share the database.
+#[cfg(debug_assertions)]
+async fn connect_sim(app: &tauri::AppHandle) {
+    begin_new_link().await;
+    log::info!("Linking the simulated treadmill (dev build).");
+    let link = crate::sim_link::SimLink::connect();
+    tokio::spawn(listen_for_status(app.clone(), link.notifications(), true));
+    let deck = DeckLink::Sim(link);
+    tokio::spawn(spawn_protocol_worker(app.clone(), deck.clone()));
+    *CONNECTED_DECK.lock().await = Some(deck);
 }
 
 /// Up to `link::CONNECT_TRIES` full cycles of disconnect, connect, discover
@@ -623,9 +756,10 @@ async fn subscribe_and_start(
                 .notifications()
                 .await
                 .map_err(|e| e.to_string())?;
-            tokio::spawn(listen_for_status(app.clone(), stream));
-            tokio::spawn(spawn_protocol_worker(app.clone(), peripheral.clone()));
-            *CONNECTED_PERIPHERAL.lock().await = Some(peripheral.clone());
+            tokio::spawn(listen_for_status(app.clone(), stream, false));
+            let deck = DeckLink::Ble(peripheral.clone());
+            tokio::spawn(spawn_protocol_worker(app.clone(), deck.clone()));
+            *CONNECTED_DECK.lock().await = Some(deck);
 
             // The raw id matches fastest next time.
             let mut config = crate::persistence::load_config(app);
@@ -693,18 +827,13 @@ pub async fn sync_orchestrator_config(
 pub async fn send_bluetooth_command(body: Vec<u8>) -> Result<(), String> {
     let data = crate::protocol::raw_packet(&body)?;
     log::debug!("Raw command from diagnostics: {:02X?}", data);
-    let peripheral = CONNECTED_PERIPHERAL.lock().await.clone();
-    if let Some(peripheral) = peripheral {
-        if let Ok(characteristic) = find_control_characteristic(&peripheral) {
-            peripheral
-                .write(&characteristic, &data, WriteType::WithResponse)
-                .await
-                .map_err(|e| e.to_string())?;
-            crate::traffic::record_tx("RAW", &data);
-            return Ok(());
-        }
-    }
-    Err("No device connected".to_string())
+    let deck = CONNECTED_DECK.lock().await.clone();
+    let Some(deck) = deck else {
+        return Err("No device connected".to_string());
+    };
+    deck.write(&data).await?;
+    crate::traffic::record_tx("RAW", &data);
+    Ok(())
 }
 
 /// Set the manual intent (speed and/or incline) as the user's own change.

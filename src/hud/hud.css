@@ -159,6 +159,17 @@ body,
 }
 .hud-relink:active { background: color-mix(in srgb, currentColor 30%, transparent); }
 
+/* The dev builds' simulated treadmill. */
+.hud-sim-tag {
+  padding: 0 4px;
+  border: 1px solid var(--hud-yellow);
+  font-family: var(--hud-font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--hud-yellow);
+}
+
 .hud-led {
   width: 7px;
   height: 7px;

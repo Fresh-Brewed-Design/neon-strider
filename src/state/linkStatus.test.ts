@@ -13,6 +13,7 @@ const conn = (link: LinkState, connected = false): ConnectionSnapshot => ({
   start_pending: false,
   start_result: null,
   connect_dialog_at_ms: null,
+  simulated: false,
 });
 
 describe("linkView", () => {

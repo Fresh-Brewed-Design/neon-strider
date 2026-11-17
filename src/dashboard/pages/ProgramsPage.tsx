@@ -58,6 +58,7 @@ export function ProgramsPage() {
                     <div className="min-w-0 flex-1" title={describePlan(p)}>
                       <div className="break-words font-digital text-sm font-bold leading-tight tracking-wider text-white">{p.name}</div>
                       <div className="font-mono text-xs text-white/50">{describeProgram(p)}</div>
+                      {p.note && <div className="text-xs leading-snug text-white/40">{p.note}</div>}
                     </div>
                     <GhostButton aria-label={`Edit ${p.name}`} onClick={() => setEditing(toDraft(p))}>
                       <Pencil size={14} />

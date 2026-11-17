@@ -4,7 +4,8 @@ import type { useLogoDrag } from "./useHudDrag";
 /**
  * The panel's top row, also the strip's: the link LED, the draggable logo and
  * the link status, which is a relink button while the link is down. On the
- * whole panel it ends with minify (`onMinify`).
+ * whole panel it ends with minify (`onMinify`). A SIM tag marks the dev
+ * builds' simulated treadmill.
  */
 export function HudHeader({
   link,
@@ -13,6 +14,7 @@ export function HudHeader({
   logo,
   dragging,
   onMinify,
+  simulated = false,
 }: {
   link: { text: string; tone: LinkTone };
   relink: RelinkView | null;
@@ -21,6 +23,8 @@ export function HudHeader({
   dragging: boolean;
   /** Minify to the running strip; omitted on the strips. */
   onMinify?: () => void;
+  /** The linked deck is the dev builds' simulated treadmill. */
+  simulated?: boolean;
 }) {
   return (
     <header className="hud-header">
@@ -34,6 +38,11 @@ export function HudHeader({
       </span>
       {/* Status and minify wrap to a line of their own together. */}
       <span className="hud-header-end">
+        {simulated && (
+          <span className="hud-sim-tag" title="Simulated treadmill (dev build)">
+            SIM
+          </span>
+        )}
         {relink?.clickable ? (
           <button
             type="button"

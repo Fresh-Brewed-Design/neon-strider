@@ -9,7 +9,6 @@ use super::{
 use crate::bluetooth::{self, ORCHESTRATOR};
 use crate::programs::{self, SavedRun};
 use crate::strava;
-use btleplug::api::Peripheral as _;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter as _, Manager};
 
@@ -23,14 +22,14 @@ const CONNECTION_POLL: Duration = Duration::from_secs(1);
 const DAILY_REFRESH: Duration = Duration::from_secs(60);
 const MONITOR_REFRESH: Duration = Duration::from_secs(3);
 
-/// Locking rule: `connect_bluetooth_device_internal` takes CONNECTED_PERIPHERAL
+/// Locking rule: `bluetooth::connect_to` takes CONNECTED_DECK
 /// and then ORCHESTRATOR. Everything here takes them one at a time and never
 /// holds one across an await on the other.
 pub(super) async fn read_connection() -> (bool, Option<String>) {
     let connected = bluetooth::is_bluetooth_connected().await;
     let device_id = if connected {
-        let guard = bluetooth::CONNECTED_PERIPHERAL.lock().await;
-        guard.as_ref().map(|p| p.id().to_string())
+        let guard = bluetooth::CONNECTED_DECK.lock().await;
+        guard.as_ref().map(|d| d.id())
     } else {
         None
     };
@@ -41,6 +40,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     let state = ORCHESTRATOR.lock().await;
     let (link, last_error) = crate::link::current(connected, state.is_connecting);
     let connection = ConnectionSnapshot {
+        simulated: connected && crate::bluetooth::is_simulated_id(device_id.as_deref()),
         connected,
         connecting: state.is_connecting,
         device_id,

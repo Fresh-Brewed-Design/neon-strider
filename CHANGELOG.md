@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.7.0 (2026-11-17)
+
+### New
+
+- Two new example programs: Micro-break (2 minutes at 3.2 km/h every 20 minutes) and Brisk (30 minutes at 5.0 km/h). They are added after your own programs, unless you have deleted all of them or already have one with that name.
+
+### Changed
+
+- The example programs and the sit-too-long nudge now follow current research, with sources in docs/research.md.
+- Post-meal walks at 5 % instead of 10 %, and Focus at 2.0 km/h on the flat instead of 2.5 km/h at 5 %. If you never edited them they change; an edited program is left alone.
+- The sit-too-long nudge comes after 30 minutes instead of 60. If you never changed it, it moves to 30; a time you set yourself is kept.
+- Each example program shows one sentence on why it is built that way. Renaming keeps it; changing the steps removes it.
+
 ## 1.6.1 (2026-11-17)
 
 ### Fixed

@@ -85,6 +85,7 @@ export function HudApp() {
               logo={logo}
               dragging={placement.dragging}
               onMinify={canMinify ? () => void minify.send({ type: "hud_set_minified", minified: true }) : undefined}
+              simulated={snapshot.connection.simulated}
             />
             <HudNote error={relink.error ?? drag.error ?? minify.error} />
             {full ? (
