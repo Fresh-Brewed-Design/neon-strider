@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import type { AppSnapshot, HudWidget } from "../ipc";
 import { describeActive } from "../dashboard/programs/format";
 import { startFailure } from "../state/linkStatus";
@@ -65,6 +66,12 @@ const RUN_STATS: HudWidget[] = ["VELOCITY", "TIMER", "DISTANCE"];
  * distance, the program step when one runs, then expand, Engage/Stasis and
  * Dump. It stays until expanded again.
  */
+/** The program line as whole segments; each keeps its trailing dot so a wrap
+ *  never starts a line with one. */
+function programSegments(name: string, detail: string): string[] {
+  return [name, ...detail.split(" · ")];
+}
+
 export function RunStripRow({ snapshot }: { snapshot: AppSnapshot }) {
   const { send, error } = useHudSend();
   const { deck, connection } = snapshot;
@@ -91,7 +98,16 @@ export function RunStripRow({ snapshot }: { snapshot: AppSnapshot }) {
       {a && (
         <div className="hud-run-program accent-yellow">
           <span className="hud-label">{a.paused ? "PAUSED" : "PROGRAM"}</span>
-          <span className="hud-sub">{`${a.name} · ${describeActive(a)}`}</span>
+          <span className="hud-sub hud-run-segments">
+            {programSegments(a.name, describeActive(a)).map((seg, i, all) => (
+              <Fragment key={i}>
+                {i > 0 && " "}
+                <span className={i === 0 ? "hud-run-seg hud-run-seg-name" : "hud-run-seg"} title={i === 0 ? a.name : undefined}>
+                  {i < all.length - 1 ? `${seg} ·` : seg}
+                </span>
+              </Fragment>
+            ))}
+          </span>
         </div>
       )}
       <div className="hud-strip-row">
