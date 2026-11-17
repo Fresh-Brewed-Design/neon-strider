@@ -141,6 +141,10 @@ PRs and on `main` after each merge; the run on `main` saves the compiled Rust de
 `build-roadmap-issue.yml` builds a roadmap issue when Jeremy labels one of his own issues
 `roadmap:next`: Claude opens a PR that closes it (secret `CLAUDE_CODE_OAUTH_TOKEN`). Only his
 account (user ID 3596382) can start it, as both the issue's author and whoever added the label.
+`pr-followup.yml` is how he asks for changes afterwards: a comment or review of his on a PR that
+says `@claude ...` starts a run that changes that PR's branch and replies there (again only his
+account; PRs from forks are refused). Neither run appears in the desktop app. Both install
+Claude Code from npm first, because the action's own installer does not run on Windows.
 
 The GitHub release body is the version's CHANGELOG section (`release-version.mjs` writes it to
 a file and auto-release passes it on; a hand-pushed `v*` tag reads it from CHANGELOG.md), then
