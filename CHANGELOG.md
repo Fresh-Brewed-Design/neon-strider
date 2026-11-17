@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.1 (2026-11-17)
+
+### Fixed
+
+- The HUD now collapses to its strip when the treadmill is switched off while the app still shows the link as up, instead of staying expanded on a stale RUNNING status.
+
 ## 1.6.0 (2026-11-16)
 
 ### New
