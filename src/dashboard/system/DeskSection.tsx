@@ -62,6 +62,64 @@ function WalkAwaySettings() {
   );
 }
 
+/** Eye breaks: off by default; the belt is never touched. */
+function EyeBreakSettings() {
+  const s = useAppSnapshot();
+  if (!s) return null;
+  const e = s.eye_break;
+  const save = (patch: { enabled?: boolean; minutes?: number; seconds?: number; sound?: boolean }) =>
+    send({
+      type: "eye_break_set_config",
+      enabled: e.enabled,
+      minutes: e.minutes,
+      seconds: e.seconds,
+      sound: e.sound,
+      ...patch,
+    });
+  return (
+    <>
+      <Toggle
+        label="Eye breaks"
+        tone="cyan"
+        checked={e.enabled}
+        onChange={(enabled) => save({ enabled })}
+        description="While you use the PC, the HUD warns a minute ahead, then asks you to look into the distance and blink, with a tone every 10 seconds and one at the end. It never touches the belt. Typing or clicking with the PC unlocked counts as screen time; only the time of the last input is kept."
+      />
+      {e.enabled && (
+        <>
+          <NumberField
+            label="Break every"
+            unit="minutes of screen use"
+            min={10}
+            max={120}
+            step={5}
+            value={e.minutes}
+            hint="10 to 120. The 20-minute habit is popular, but studies on myopia favour 5 minutes an hour."
+            onCommit={(minutes) => save({ minutes })}
+          />
+          <NumberField
+            label="Break lasts"
+            unit="seconds"
+            min={20}
+            max={300}
+            step={10}
+            value={e.seconds}
+            hint="20 to 300. Focusing needs about 90 seconds to relax; 20 seconds is often too short."
+            onCommit={(seconds) => save({ seconds })}
+          />
+          <Toggle
+            label="Tones"
+            tone="cyan"
+            checked={e.sound}
+            onChange={(sound) => save({ sound })}
+            description="A soft beep to blink, two rising beeps when the break is over. Played by the HUD."
+          />
+        </>
+      )}
+    </>
+  );
+}
+
 /** Settings for the sit-too-long nudge and for easing the belt during calls. */
 export function DeskSection() {
   const s = useAppSnapshot();
@@ -162,6 +220,10 @@ export function DeskSection() {
           </div>
         </>
       )}
+
+      <div className="border-t border-white/10" />
+
+      <EyeBreakSettings />
 
       <div className="border-t border-white/10" />
 

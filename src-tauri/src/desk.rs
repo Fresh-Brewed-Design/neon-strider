@@ -14,7 +14,7 @@ use crate::bluetooth::{self, ORCHESTRATOR};
 use crate::engine::{DeckAction, OrchestratorState};
 use crate::programs::{self, ProgramPhase};
 use crate::protocol::MachineStatus;
-use crate::snapshot::{calls, seated, walkaway};
+use crate::snapshot::{calls, eyebreak, seated, walkaway};
 use crate::util::{blocking, now_ms_u64 as now_ms};
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
@@ -200,6 +200,7 @@ fn announce(app: &AppHandle, message: &'static str) {
 /// Load the settings. Blocking; call once after the DB is initialised.
 pub fn init(app: &AppHandle) {
     seated::init(app);
+    eyebreak::init(app);
     calls::init(app);
     walkaway::init(app);
 }
@@ -218,6 +219,11 @@ pub fn spawn(app: AppHandle) {
             let connected = bluetooth::is_bluetooth_connected().await;
             let now = now_ms();
             let idle_ms = crate::hooks::input_idle_ms(now);
+            let eye = eyebreak::Tick {
+                idle_ms,
+                locked: crate::platform::session_locked(),
+            };
+            eyebreak::with(|rt| rt.machine.tick(&rt.cfg, now, &eye));
             let out = step(connected, now, idle_ms, &mut machine).await;
             if let Some(id) = out.started_program {
                 let app_c = app.clone();

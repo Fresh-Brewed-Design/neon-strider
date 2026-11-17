@@ -155,6 +155,16 @@ export const snapshot: AppSnapshot = {
     seated_minutes: 60,
     pending_program_id: null,
   },
+  eye_break: {
+    enabled: false,
+    minutes: 20,
+    seconds: 90,
+    sound: true,
+    phase: "idle",
+    remaining_s: 0,
+    blink_seq: 0,
+    end_seq: 0,
+  },
   calls: { enabled: true, quiet_kmh: 2, mic_in_use: false, quiet_active: false },
   odometer: { distance_km: 412.6, belt_hours: 138.2, since_ms: Date.UTC(2026, 2, 12) },
   walkaway: { lock_enabled: true, idle_enabled: true, idle_minutes: 10, card: "none", pause_in_s: 0, reason: null },
@@ -354,6 +364,11 @@ const WEEKLY_SCENARIOS: Record<string, Partial<WeeklySummary>> = {
   down: { distance_change: { pct: -23, is_new: false } },
 };
 if (weeklyFlag !== null) Object.assign(snapshot.weekly, { show_card: true }, WEEKLY_SCENARIOS[weeklyFlag]);
+
+// ?eyebreak=upcoming|break shows the eye-break HUD card.
+const eyeBreakFlag = params.get("eyebreak");
+if (eyeBreakFlag === "upcoming") Object.assign(snapshot.eye_break, { enabled: true, phase: "upcoming", remaining_s: 48 });
+if (eyeBreakFlag === "break") Object.assign(snapshot.eye_break, { enabled: true, phase: "break", remaining_s: 72 });
 
 // ?seated shows the sit-too-long HUD card. Variants, comma-separated: off (treadmill off,
 // nothing picked yet), queued (treadmill off, second program remembered), long (long
@@ -812,6 +827,11 @@ const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) =>
     Object.assign(snapshot.deck, { status: "Running", speed_kmh: snapshot.deck.target_speed_kmh });
   },
   seated_snooze: () => Object.assign(snapshot.seated, { show_card: false, pending_program_id: null }),
+  eye_break_set_config: (c) => {
+    Object.assign(snapshot.eye_break, { enabled: c.enabled, minutes: c.minutes, seconds: c.seconds, sound: c.sound });
+    if (!c.enabled) Object.assign(snapshot.eye_break, { phase: "idle", remaining_s: 0 });
+  },
+  eye_break_skip: () => Object.assign(snapshot.eye_break, { phase: "idle", remaining_s: 0 }),
   calls_set_config: (c) => Object.assign(snapshot.calls, { enabled: c.enabled, quiet_kmh: c.quiet_kmh }),
   walkaway_set_config: (c) => {
     if (c.idle_minutes < 2 || c.idle_minutes > 30) throw "Idle time must be between 2 and 30 minutes";

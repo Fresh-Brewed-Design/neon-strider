@@ -11,7 +11,7 @@
 //! - `emitter`: collecting the snapshot and pushing it to the windows
 //!
 //! The feature modules that contribute a part of the snapshot or act on it
-//! (calls, desk, hud_drag, maintenance, odometer, seated, tray, walkaway,
+//! (calls, desk, eyebreak, hud_drag, maintenance, odometer, seated, tray, walkaway,
 //! weekly) are declared here rather than in `lib.rs`, so this module owns
 //! their wiring.
 
@@ -19,6 +19,8 @@
 pub mod calls;
 #[path = "desk.rs"]
 pub mod desk;
+#[path = "eyebreak.rs"]
+pub mod eyebreak;
 #[path = "hud_drag.rs"]
 pub mod hud_drag;
 #[path = "maintenance.rs"]
@@ -42,6 +44,7 @@ mod types;
 
 pub use calls::CallsSnapshot;
 pub use emitter::spawn_emitter;
+pub use eyebreak::EyeBreakSnapshot;
 pub use hud::{hud_config, on_setting_written, refresh_monitors, toggle_minified};
 pub use maintenance::{MaintenanceBasis, MaintenanceSnapshot};
 pub use odometer::OdometerSnapshot;
@@ -81,6 +84,7 @@ pub struct SnapshotParts {
     pub maintenance: MaintenanceSnapshot,
     pub weekly: WeeklySummary,
     pub seated: SeatedSnapshot,
+    pub eye_break: EyeBreakSnapshot,
     pub calls: CallsSnapshot,
     pub odometer: OdometerSnapshot,
 }
@@ -181,6 +185,7 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         maintenance: parts.maintenance,
         weekly: parts.weekly,
         seated: parts.seated,
+        eye_break: parts.eye_break,
         calls: parts.calls,
         odometer: parts.odometer,
         walkaway: WalkAwaySnapshot::default(),
@@ -324,6 +329,7 @@ mod tests {
                 maintenance: maint_snap(),
                 weekly: WeeklySummary::default(),
                 seated: SeatedSnapshot::default(),
+                eye_break: EyeBreakSnapshot::default(),
                 calls: CallsSnapshot::default(),
                 odometer: OdometerSnapshot::default(),
             },
