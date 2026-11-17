@@ -28,7 +28,7 @@ function still(view: AppSnapshot["hud_view"], patch: (s: AppSnapshot) => void = 
   const s = structuredClone(mock);
   s.deck = { ...s.deck, status: "Stopped", speed_kmh: 0 };
   s.active_program = null;
-  s.hud = { ...s.hud, idle_mode: view === "full" ? "full" : view };
+  s.hud = { ...s.hud, idle_mode: view === "strip" || view === "hidden" ? view : "full" };
   s.hud_view = view;
   patch(s);
   return s;
@@ -134,5 +134,83 @@ describe("HUD full", () => {
     expect(container.querySelector(".hud-stats")).not.toBeNull();
     expect(screen.getByText("DUMP")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Show the whole HUD" })).not.toBeInTheDocument();
+  });
+});
+
+/** The mock's snapshot with the belt walking and the HUD minified, then `patch`. */
+function minified(patch: (s: AppSnapshot) => void = () => {}): AppSnapshot {
+  const s = structuredClone(mock);
+  s.hud = { ...s.hud, minified: true };
+  s.hud_view = "minified";
+  patch(s);
+  return s;
+}
+
+describe("HUD minified", () => {
+  it("shows speed, time, distance, the program step, expand, Stasis and Dump", () => {
+    const { container } = show(minified());
+    expect(screen.getByText("VEL")).toBeInTheDocument();
+    expect(screen.getByText("TIME")).toBeInTheDocument();
+    expect(screen.getByText("DIST")).toBeInTheDocument();
+    expect(screen.getByText("PROGRAM")).toBeInTheDocument();
+    expect(container.querySelector(".hud-run-segments")?.textContent).toBe("Workday · Walk · 04:12 left · cycle 3");
+    expect(container.querySelectorAll(".hud-run-seg")).toHaveLength(4);
+    expect(screen.getByRole("button", { name: "Show the whole HUD" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "STASIS" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "DUMP" })).toBeEnabled();
+    // The whole panel's stats, steppers and program buttons are gone, and so is minify.
+    expect(container.querySelector(".hud-stats")).toBeNull();
+    expect(screen.queryByText("TILT")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Minify the HUD" })).not.toBeInTheDocument();
+  });
+
+  it("leaves the program line out when no program runs", () => {
+    show(minified((s) => (s.active_program = null)));
+    expect(screen.queryByText("PROGRAM")).not.toBeInTheDocument();
+    expect(screen.getByText("VEL")).toBeInTheDocument();
+  });
+
+  it("expand, Stasis and Dump each send one command", async () => {
+    vi.mocked(invoke).mockClear();
+    show(minified());
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Show the whole HUD" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "STASIS" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "DUMP" })));
+    expect(dispatched()).toEqual([
+      { command: { type: "hud_set_minified", minified: false } },
+      { command: { type: "toggle_start" } },
+      { command: { type: "stop" } },
+    ]);
+  });
+
+  it("shows a rejected press right under the strip", async () => {
+    vi.mocked(invoke).mockRejectedValueOnce("Treadmill not connected");
+    vi.spyOn(console, "error").mockImplementationOnce(() => {});
+    const { container } = show(minified());
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "DUMP" })));
+    expect(container.querySelector(".hud-run-strip [role=alert]")).toHaveTextContent("SYS // TREADMILL NOT CONNECTED");
+  });
+
+  it("still shows a card that needs an answer", () => {
+    const { container } = show(minified((s) => Object.assign(s.walkaway, { card: "warning", pause_in_s: 20, reason: "idle" })));
+    expect(container.querySelector(".hud-run-strip")).not.toBeNull();
+    expect(container.querySelector(".hud-walkaway")).not.toBeNull();
+  });
+
+  it("the whole panel has a minify button that sends one command", async () => {
+    vi.mocked(invoke).mockClear();
+    show(still("full", (s) => (s.deck.status = "Running")));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Minify the HUD" })));
+    expect(dispatched()).toEqual([{ command: { type: "hud_set_minified", minified: true } }]);
+  });
+
+  it("has no minify button while a program waits for GO (the panel stays whole)", () => {
+    show(
+      still("full", (s) => {
+        s.deck.status = "Paused";
+        s.active_program = { ...structuredClone(mock.active_program!), paused: true, wait: "rest_complete" };
+      }),
+    );
+    expect(screen.queryByRole("button", { name: "Minify the HUD" })).not.toBeInTheDocument();
   });
 });

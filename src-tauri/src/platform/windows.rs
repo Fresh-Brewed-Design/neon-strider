@@ -82,12 +82,13 @@ const VK_PRIOR: u16 = 0x21;
 const VK_NEXT: u16 = 0x22;
 const VK_END: u16 = 0x23;
 const VK_HOME: u16 = 0x24;
+const VK_INSERT: u16 = 0x2D;
 const VK_OEM_PLUS: u16 = 0xBB;
 const VK_OEM_MINUS: u16 = 0xBD;
 
 /// The Alt shortcut a key press is, if any: Alt with volume up or down (or
 /// `=` and `-`) for speed, Page Up and Page Down for incline, Home to start or
-/// pause, End to run or end the last program.
+/// pause, End to run or end the last program, Insert to minify or expand the HUD.
 fn shortcut_for_key(vk: u16, alt_down: bool) -> Option<Shortcut> {
     if !alt_down {
         return None;
@@ -99,6 +100,7 @@ fn shortcut_for_key(vk: u16, alt_down: bool) -> Option<Shortcut> {
         VK_NEXT => Some(Shortcut::InclineDown),
         VK_HOME => Some(Shortcut::ToggleStart),
         VK_END => Some(Shortcut::ToggleProgram),
+        VK_INSERT => Some(Shortcut::ToggleMinified),
         _ => None,
     }
 }
@@ -684,11 +686,12 @@ mod tests {
         assert_eq!(alt(0x22), Some(Shortcut::InclineDown));
         assert_eq!(alt(0x24), Some(Shortcut::ToggleStart));
         assert_eq!(alt(0x23), Some(Shortcut::ToggleProgram));
+        assert_eq!(alt(0x2D), Some(Shortcut::ToggleMinified));
         // Other keys with Alt, and the same keys without it, are not shortcuts.
         for vk in [0x41u16, 0x25, 0x09, 0x0D, 0x70] {
             assert_eq!(alt(vk), None, "{vk:#x}");
         }
-        for vk in [0xAFu16, 0xAE, 0x21, 0x22, 0x23, 0x24, 0xBB, 0xBD] {
+        for vk in [0xAFu16, 0xAE, 0x21, 0x22, 0x23, 0x24, 0x2D, 0xBB, 0xBD] {
             assert_eq!(shortcut_for_key(vk, false), None, "{vk:#x}");
         }
     }

@@ -92,6 +92,7 @@ export const snapshot: AppSnapshot = {
     dashboard_pinned: false,
     custom: null,
     idle_mode: "full",
+    minified: false,
   },
   hud_view: "full",
   hud_monitors: [
@@ -181,7 +182,8 @@ function publish() {
 
 // The HUD during stasis, as `snapshot/stasis.rs` decides it: the whole panel
 // while the belt moves, for 10 s after it stops, while a program waits for GO,
-// and after expand until the belt next moves.
+// and after expand until the belt next moves. Minified, the running strip
+// takes the whole panel's place (a program waiting for GO still gets it).
 const STASIS_GRACE_MS = 10_000;
 let lastMovingAt: number | null = null;
 let hudExpanded = false;
@@ -194,7 +196,8 @@ function hudView(): AppSnapshot["hud_view"] {
   const mode = snapshot.hud.idle_mode;
   const a = snapshot.active_program;
   const inGrace = lastMovingAt !== null && Date.now() - lastMovingAt < STASIS_GRACE_MS;
-  if (moving || mode === "full" || a?.wait || hudExpanded || inGrace) return "full";
+  if (a?.wait) return "full";
+  if (moving || mode === "full" || hudExpanded || inGrace) return snapshot.hud.minified ? "minified" : "full";
   return mode;
 }
 
@@ -530,6 +533,10 @@ if (stasisFlag === "strip" || stasisFlag === "hidden") {
   snapshot.active_program = null;
 }
 
+// ?minified: the user minified the HUD, so it shows the running strip
+// (combine with ?program=resting|paused, ?noprogram or ?idle).
+if (params.has("minified")) snapshot.hud.minified = true;
+
 // The Diagnostics traffic recorder. ?traffic=recording: a recording 42 s in
 // (the packet count ticks). ?traffic=saved: one saved after reaching the
 // 4-hour limit. Switching it on in the preview starts a fresh one.
@@ -769,7 +776,11 @@ const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) =>
   },
   dashboard_set_pinned: (c) => (snapshot.hud.dashboard_pinned = c.pinned),
   hud_set_idle_mode: (c) => (snapshot.hud.idle_mode = c.mode),
-  hud_expand: () => (hudExpanded = true),
+  hud_expand: () => {
+    hudExpanded = true;
+    snapshot.hud.minified = false;
+  },
+  hud_set_minified: (c) => (snapshot.hud.minified = c.minified),
   maintenance_mark_serviced: () => setMaintenance({ last_service_ms: Date.now(), distance_since_km: 0, hours_since: 0 }),
   maintenance_set_last_service: (c) => {
     if (c.at_ms > Date.now() || c.at_ms < Date.UTC(2020, 0, 1)) return;

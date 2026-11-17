@@ -154,6 +154,7 @@ function IdleModePicker({ mode }: { mode: HudIdleMode }) {
       </div>
       <ActionStatus pending={set.pending} error={set.error} />
       <Hint>Cards that need an answer still show. Hide comes back when the belt moves.</Hint>
+      <Hint>Alt + Insert shrinks the HUD to a strip at any time, and brings it back.</Hint>
     </div>
   );
 }

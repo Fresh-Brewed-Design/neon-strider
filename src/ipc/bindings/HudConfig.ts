@@ -18,4 +18,9 @@ custom: HudCustom | null,
 /**
  * What the panel does while the belt is still (paused, stopped or offline).
  */
-idle_mode: HudIdleMode, };
+idle_mode: HudIdleMode, 
+/**
+ * Minified by the user (the HUD's minify button or Alt+Insert): the
+ * running strip instead of the whole panel, until expanded again.
+ */
+minified: boolean, };

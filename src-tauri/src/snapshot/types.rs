@@ -234,6 +234,9 @@ pub struct HudConfig {
     pub custom: Option<placement::HudCustom>,
     /// What the panel does while the belt is still (paused, stopped or offline).
     pub idle_mode: HudIdleMode,
+    /// Minified by the user (the HUD's minify button or Alt+Insert): the
+    /// running strip instead of the whole panel, until expanded again.
+    pub minified: bool,
 }
 
 /// The HUD setting "When the belt is still".
@@ -257,8 +260,12 @@ pub enum HudIdleMode {
 pub enum HudView {
     #[default]
     Full,
+    /// The still-belt strip: today's total, expand and Engage.
     Strip,
     Hidden,
+    /// Minified by the user: speed, time, distance, the program step, expand,
+    /// Engage/Stasis and Dump.
+    Minified,
 }
 
 impl HudConfig {
@@ -422,8 +429,13 @@ pub enum Command {
     HudSetIdleMode {
         mode: HudIdleMode,
     },
-    /// Show the whole panel until the belt next moves (the strip's expand button).
+    /// Show the whole panel until the belt next moves (the strip's expand
+    /// button). Also ends a minify.
     HudExpand,
+    /// Minify the HUD to the running strip, or expand it again (persisted).
+    HudSetMinified {
+        minified: bool,
+    },
     StravaSetCredentials {
         client_id: String,
         client_secret: String,
@@ -618,6 +630,9 @@ mod tests {
         );
         let c: Command = serde_json::from_str(r#"{"type":"hud_expand"}"#).unwrap();
         assert_eq!(c, Command::HudExpand);
+        let c: Command =
+            serde_json::from_str(r#"{"type":"hud_set_minified","minified":true}"#).unwrap();
+        assert_eq!(c, Command::HudSetMinified { minified: true });
         assert!(
             serde_json::from_str::<Command>(r#"{"type":"hud_set_idle_mode","mode":"tiny"}"#)
                 .is_err()

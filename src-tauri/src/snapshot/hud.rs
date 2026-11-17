@@ -17,6 +17,8 @@ const KEY_HUD_MONITOR: &str = "hud_monitor";
 const KEY_HUD_POSITION: &str = "hud_position";
 /// `HudIdleMode` as a JSON string (`"full"`, `"strip"`, `"hidden"`).
 const KEY_HUD_IDLE_MODE: &str = "hud_idle_mode";
+/// `true` while the user has the HUD minified to the running strip.
+const KEY_HUD_MINIFIED: &str = "hud_minified";
 /// Longest display name accepted from a window.
 const MAX_MONITOR_NAME: usize = 200;
 
@@ -28,6 +30,7 @@ static HUD: Mutex<HudConfig> = Mutex::new(HudConfig {
     monitor_rect: None,
     custom: None,
     idle_mode: HudIdleMode::Full,
+    minified: false,
 });
 
 static MONITORS: Mutex<Vec<MonitorGeom>> = Mutex::new(Vec::new());
@@ -87,6 +90,11 @@ pub(super) fn parse_idle_mode(raw: &str) -> HudIdleMode {
         .unwrap_or_default()
 }
 
+/// A stored boolean: `true`, bare or JSON-quoted; anything else is `false`.
+pub(super) fn parse_flag(raw: &str) -> bool {
+    raw.trim().trim_matches('"') == "true"
+}
+
 /// The stored monitor setting as (name, bounds). Both formats load (see
 /// `placement::parse_saved_monitor`); one without a name means the primary.
 pub(super) fn parse_monitor(raw: &str) -> (Option<String>, Option<placement::Rect>) {
@@ -140,6 +148,7 @@ pub(super) fn load(app: &AppHandle) {
         idle_mode: read(KEY_HUD_IDLE_MODE)
             .map(|s| parse_idle_mode(&s))
             .unwrap_or_default(),
+        minified: read(KEY_HUD_MINIFIED).is_some_and(|s| parse_flag(&s)),
     };
     *hud_lock() = config;
 }
@@ -162,12 +171,18 @@ fn persist(app: &AppHandle, cfg: &HudConfig) {
             KEY_HUD_IDLE_MODE,
             serde_json::to_string(&cfg.idle_mode).unwrap_or_default(),
         ),
+        (KEY_HUD_MINIFIED, cfg.minified.to_string()),
     ];
     for (key, value) in writes {
         if let Err(e) = persistence::write_setting(app, key, &value) {
             log::error!("Failed to persist {}: {}", key, e);
         }
     }
+}
+
+/// Minify the HUD, or expand it again (the Alt+Insert shortcut).
+pub fn toggle_minified(app: &AppHandle) {
+    mutate(app, |cfg| cfg.minified = !cfg.minified);
 }
 
 /// Mutate the HUD config, persist it, and keep the HUD window in step.
@@ -217,6 +232,7 @@ pub fn on_setting_written(app: &AppHandle, key: &str) {
         KEY_HUD_MONITOR,
         KEY_HUD_POSITION,
         KEY_HUD_IDLE_MODE,
+        KEY_HUD_MINIFIED,
     ];
     if !hud_keys.contains(&key) {
         return;
@@ -401,6 +417,16 @@ mod tests {
         assert_eq!(parse_idle_mode("\"STRIP\""), HudIdleMode::Full);
         assert_eq!(parse_idle_mode("{\"mode\":1}"), HudIdleMode::Full);
         assert_eq!(parse_idle_mode("garbage"), HudIdleMode::Full);
+    }
+
+    #[test]
+    fn minified_defaults_off_and_reads_true_only() {
+        assert!(!HudConfig::default().minified);
+        assert!(parse_flag(&true.to_string()));
+        assert!(parse_flag(" \"true\" "));
+        for raw in ["false", "", "null", "TRUE", "1", "garbage"] {
+            assert!(!parse_flag(raw), "{raw}");
+        }
     }
 
     #[test]
