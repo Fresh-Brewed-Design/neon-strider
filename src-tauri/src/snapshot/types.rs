@@ -147,6 +147,9 @@ pub struct ConnectionSnapshot {
     /// the dashboard opens it once per new value.
     #[ts(type = "number | null")]
     pub connect_dialog_at_ms: Option<i64>,
+    /// The linked deck is the dev builds' simulated treadmill (the windows
+    /// show a SIM tag). Always false in release builds.
+    pub simulated: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS)]

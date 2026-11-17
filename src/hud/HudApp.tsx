@@ -79,6 +79,7 @@ export function HudApp() {
               onRelink={relink.relink}
               logo={logo}
               dragging={placement.dragging}
+              simulated={snapshot.connection.simulated}
             />
             <HudNote error={relink.error ?? drag.error} />
             {full ? (
