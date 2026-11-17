@@ -1,4 +1,0 @@
-- The example programs and the sit-too-long nudge now follow current research, with sources in docs/research.md.
-- Post-meal walks at 5 % instead of 10 %, and Focus at 2.0 km/h on the flat instead of 2.5 km/h at 5 %. If you never edited them they change; an edited program is left alone.
-- The sit-too-long nudge comes after 30 minutes instead of 60. If you never changed it, it moves to 30; a time you set yourself is kept.
-- Each example program shows one sentence on why it is built that way. Renaming keeps it; changing the steps removes it.
