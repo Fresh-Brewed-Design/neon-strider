@@ -109,7 +109,12 @@ jobs:
           path_to_claude_code_executable: ${{ steps.claude.outputs.path }}
           branch_prefix: issue/
           include_comments_by_actor: freshbreweddesign
-          claude_args: --max-turns 200
+          # Without an allow-list every tool call is refused (nobody is there to
+          # approve it) and Claude stops at once. The job runs on a throwaway
+          # machine with this repository's token only, on a task Jeremy wrote.
+          claude_args: >-
+            --max-turns 200
+            --allowedTools "Bash,Read,Write,Edit,MultiEdit,Glob,Grep,TodoWrite,Task"
           prompt: |
             Build roadmap issue #${{ github.event.issue.number }} of ${{ github.repository }}
             and open one pull request into main for it.
@@ -137,3 +142,18 @@ jobs:
             - Never push to main, merge, tag, edit workflows, or change release automation.
               Don't edit ROADMAP.md, CHANGELOG.md or version numbers. Don't comment on,
               close or relabel issues.
+
+      # "Success" must mean a PR exists: Claude can end early without one.
+      - name: Check a pull request was opened
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          STARTED: ${{ github.event.issue.updated_at }}
+        run: |
+          found=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 50 --json body,createdAt,url --jq "[.[] | select(.createdAt >= \"$STARTED\") | select(.body | test(\"(Closes|Part of) #$ISSUE([^0-9]|$)\"))] | .[0].url // empty")
+          if [ -z "$found" ]; then
+            echo "::error::Claude finished without opening a pull request for issue #$ISSUE. Open the Claude step above for what it did."
+            exit 1
+          fi
+          echo "Pull request: $found"
