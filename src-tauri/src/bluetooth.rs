@@ -302,6 +302,7 @@ pub(crate) fn apply_telemetry(state: &mut OrchestratorState, t: &Telemetry) {
     state.hardware_incline = t.incline;
     state.hardware_time = t.time_sec;
     state.awaiting_first_packet = false;
+    state.last_frame_at = Some(std::time::Instant::now());
 }
 
 /// Handle status frames until the notification stream ends.

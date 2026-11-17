@@ -11,6 +11,11 @@ use std::time::{Duration, Instant};
 /// doesn't pull the panel away from under the pointer.
 pub const GRACE: Duration = Duration::from_secs(10);
 
+/// A deck that has sent no status frame for this long (the engine polls every
+/// 0.6 s) is off or out of reach, even while the link still reads as up; its
+/// last reported status no longer counts as the belt moving.
+pub const SILENCE: Duration = Duration::from_secs(4);
+
 /// Everything the decision depends on.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ViewInput {
@@ -105,7 +110,7 @@ fn lock() -> MutexGuard<'static, Stasis> {
 /// The panel's view for this snapshot. Called each time a snapshot is
 /// assembled (every emitter tick), so the grace running out reaches the HUD
 /// on the next tick's on-change emit.
-pub(super) fn view(snapshot: &AppSnapshot, now: Instant) -> HudView {
+pub(super) fn view(snapshot: &AppSnapshot, deck_silent: bool, now: Instant) -> HudView {
     let program_needs_go = snapshot
         .active_program
         .as_ref()
@@ -113,7 +118,7 @@ pub(super) fn view(snapshot: &AppSnapshot, now: Instant) -> HudView {
     lock().view(
         snapshot.hud.idle_mode,
         snapshot.connection.connected,
-        snapshot.deck.status.is_moving(),
+        snapshot.deck.status.is_moving() && !deck_silent,
         program_needs_go,
         now,
     )

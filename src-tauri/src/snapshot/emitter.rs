@@ -61,6 +61,9 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     } else {
         (0.0, 0)
     };
+    let deck_silent = state
+        .last_frame_at
+        .is_some_and(|t| t.elapsed() >= stasis::SILENCE);
     let hud = hud::hud_config();
     let hud_monitors = hud::monitors(&hud);
     let (daily_base_m, live_counts_today) = daily_base();
@@ -87,7 +90,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     snapshot.traffic = crate::traffic::snapshot();
     // Recomputed every tick, so the end of the grace after a stop reaches the
     // HUD with the next on-change emit (within a tick).
-    snapshot.hud_view = stasis::view(&snapshot, Instant::now());
+    snapshot.hud_view = stasis::view(&snapshot, deck_silent, Instant::now());
     snapshot
 }
 

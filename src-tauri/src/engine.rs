@@ -192,6 +192,9 @@ pub struct OrchestratorState {
     pub is_connecting: bool,
     /// No telemetry yet on this connection: nothing is sent until there is.
     pub awaiting_first_packet: bool,
+    /// When the last status frame arrived. The link can stay up for a while
+    /// after the deck loses power, leaving `last_status` stale.
+    pub last_frame_at: Option<Instant>,
     /// The resume-vs-new-session decision for this connection is made (it
     /// needs the deck's first telemetry). Reset on disconnect.
     pub session_evaluated_on_connect: bool,
@@ -299,6 +302,7 @@ impl Default for OrchestratorState {
             max_speed: 12.0,
             is_connecting: false,
             awaiting_first_packet: true,
+            last_frame_at: None,
             session_evaluated_on_connect: false,
             paused_since: None,
             pause_saved: false,

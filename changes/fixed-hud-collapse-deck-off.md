@@ -1,0 +1,1 @@
+- The HUD now collapses to its strip when the treadmill is switched off while the app still shows the link as up, instead of staying expanded on a stale RUNNING status.
