@@ -60,9 +60,22 @@ jobs:
       - name: Install JS dependencies
         run: npm ci
 
+      # The action's own installer is a shell script that refuses to run on
+      # Windows, so install the same version from npm and hand it the path.
+      # Bump this version together with the action's SHA below.
+      - name: Install Claude Code
+        id: claude
+        shell: bash
+        run: |
+          npm install -g @anthropic-ai/claude-code@2.1.314
+          exe="$(npm prefix -g)/node_modules/@anthropic-ai/claude-code/bin/claude.exe"
+          "$exe" --version
+          echo "path=$(cygpath -w "$exe")" >> "$GITHUB_OUTPUT"
+
       - uses: anthropics/claude-code-action@6d5ae526d25ce88daa2200be073e1a373167f064 # v1.0.265
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          path_to_claude_code_executable: ${{ steps.claude.outputs.path }}
           branch_prefix: issue/
           include_comments_by_actor: freshbreweddesign
           claude_args: --max-turns 200
