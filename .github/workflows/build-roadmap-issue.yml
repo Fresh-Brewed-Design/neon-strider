@@ -72,6 +72,37 @@ jobs:
           "$exe" --version
           echo "path=$(cygpath -w "$exe")" >> "$GITHUB_OUTPUT"
 
+      # The action hides Claude's output, so a sign-in problem shows only as
+      # "is_error: true". Ask Claude for one word first and print what it says:
+      # an error here is a short message (bad token, usage limit), never a secret.
+      - name: Check Claude sign-in
+        shell: bash
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          CLAUDE_EXE: ${{ steps.claude.outputs.path }}
+        run: |
+          t="$CLAUDE_CODE_OAUTH_TOKEN"
+          if [ -z "$t" ]; then
+            echo "::error::The CLAUDE_CODE_OAUTH_TOKEN secret is empty or missing."
+            exit 1
+          fi
+          if [ "$(printf '%s' "$t" | tr -d '[:space:]')" != "$t" ]; then
+            echo "::error::The CLAUDE_CODE_OAUTH_TOKEN secret contains a line break or a space. Set it again with: gh secret set CLAUDE_CODE_OAUTH_TOKEN --repo ${{ github.repository }} (paste the token when asked)."
+            exit 1
+          fi
+          echo "Token: ${#t} characters."
+          out=$("$CLAUDE_EXE" -p "Reply with the single word ok." --output-format json --max-turns 1 2>&1) || true
+          printf '%s' "$out" > "$RUNNER_TEMP/claude-check.json"
+          node -e '
+            const fs = require("fs");
+            const raw = fs.readFileSync(process.argv[1], "utf8");
+            let r;
+            try { r = JSON.parse(raw); } catch { r = { is_error: true, result: raw.slice(0, 600) }; }
+            const text = String(r.result ?? "").slice(0, 600);
+            if (r.is_error) { console.log(`::error::Claude could not start: ${text || "no message"}`); process.exit(1); }
+            console.log(`Claude answered: ${text}`);
+          ' "$RUNNER_TEMP/claude-check.json"
+
       - uses: anthropics/claude-code-action@6d5ae526d25ce88daa2200be073e1a373167f064 # v1.0.265
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
