@@ -451,7 +451,7 @@ impl Rig {
     pub(crate) fn new() -> Self {
         let t = Instant::now();
         let mut state = OrchestratorState {
-            programs: crate::programs::seed_programs(),
+            programs: crate::programs::classic_programs(),
             program_next_id: 4,
             ..Default::default()
         };
@@ -892,6 +892,7 @@ mod tests {
                 },
             ],
             repeat_every_minutes: None,
+            note: None,
         });
         r.run(1.0);
         r.run_program(5);

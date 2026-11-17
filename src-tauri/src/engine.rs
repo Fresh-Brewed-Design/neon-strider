@@ -3155,6 +3155,7 @@ mod tests {
                         incline_pct: 0.0,
                     }],
                     repeat_every_minutes: None,
+                    note: None,
                 }];
                 let now = s.now();
                 s.run_program(1, now).unwrap();

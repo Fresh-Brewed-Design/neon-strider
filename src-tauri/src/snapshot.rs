@@ -457,7 +457,7 @@ mod tests {
     #[test]
     fn snapshot_carries_programs_and_active_program() {
         let mut state = OrchestratorState {
-            programs: programs::seed_programs(),
+            programs: programs::classic_programs(),
             ..OrchestratorState::default()
         };
         let idle = snap(&state, 0.0, 15);
@@ -477,7 +477,7 @@ mod tests {
     fn ended_on_a_still_belt() -> OrchestratorState {
         let t0 = Instant::now();
         let mut state = OrchestratorState {
-            programs: programs::seed_programs(),
+            programs: programs::classic_programs(),
             last_status: crate::protocol::MachineStatus::Running,
             manual_intent: Some(crate::protocol::ControlIntent {
                 speed: 3.5,

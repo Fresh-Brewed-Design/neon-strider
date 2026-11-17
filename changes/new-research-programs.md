@@ -1,0 +1,1 @@
+- Two new example programs: Micro-break (2 minutes at 3.2 km/h every 20 minutes) and Brisk (30 minutes at 5.0 km/h). They are added after your own programs, unless you have deleted all of them or already have one with that name.

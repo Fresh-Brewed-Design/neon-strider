@@ -21,8 +21,10 @@ tried.
   Clicks pass straight through it except on the panel itself.
 - **Dashboard.** Opens from the tray icon, with five pages:
   - **Live**: speed and tilt control, transport, the running program, session stats.
-  - **Programs**: saved routines, e.g. *Post-meal* (10 min at 4.0 km/h, 10 %),
-    *Workday* (5 min every 30 min) or *Focus* (until you stop it). When a program ends, the
+  - **Programs**: saved routines, e.g. *Post-meal* (10 min at 4.0 km/h, 5 %),
+    *Workday* (5 min every 30 min), *Focus* (2.0 km/h until you stop it), *Micro-break*
+    (2 min every 20 min) or *Brisk* (30 min at 5.0 km/h). Why each is built that way, with
+    sources: [docs/research.md](docs/research.md). When a program ends, the
     treadmill goes back to what it was doing before; ended while the belt is paused, it stays
     paused, and Engage starts it at your earlier speed. A program never starts a still belt by
     itself: after each rest (or a 0 km/h step) the HUD shows `REST COMPLETE // PRESS GO` and
@@ -41,7 +43,7 @@ tried.
   or every so many belt hours if you prefer. It stays on the HUD until you mark the belt
   serviced. **System → Maintenance** also shows a lifetime odometer (distance, belt hours,
   since when), which you can pin to the HUD as ODO.
-- **Sit-too-long nudge.** After 60 minutes (15 to 240) of keyboard and mouse use without
+- **Sit-too-long nudge.** After 30 minutes (15 to 240) of keyboard and mouse use without
   walking, a HUD card offers up to three programs. The treadmill switches itself off when
   idle, so if it is off, the program you pick starts when it connects (within 15 minutes).
   LATER snoozes 15 minutes; DISMISS starts the count again. Only the time of the last input
