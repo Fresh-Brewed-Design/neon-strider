@@ -9,4 +9,10 @@ id: number, name: string, steps: Array<ProgramStep>,
 /**
  * Start a new cycle this many minutes after the previous one started.
  */
-repeat_every_minutes: number | null, };
+repeat_every_minutes: number | null, 
+/**
+ * One sentence on why the program is built this way (docs/research.md).
+ * Set by Rust for the seeded programs only; a save that changes the steps
+ * or the repeat drops it, since it no longer describes the program.
+ */
+note?: string, };

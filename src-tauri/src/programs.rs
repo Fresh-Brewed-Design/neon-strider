@@ -61,6 +61,12 @@ pub struct Program {
     pub steps: Vec<ProgramStep>,
     /// Start a new cycle this many minutes after the previous one started.
     pub repeat_every_minutes: Option<f32>,
+    /// One sentence on why the program is built this way (docs/research.md).
+    /// Set by Rust for the seeded programs only; a save that changes the steps
+    /// or the repeat drops it, since it no longer describes the program.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS)]
@@ -315,38 +321,77 @@ fn validate_program(p: &Program, min_speed: f32, max_speed: f32) -> Result<(), S
     Ok(())
 }
 
+/// The examples a new install starts with. Values and sources are in
+/// docs/research.md. Existing installs were moved to these by
+/// `persistence::migration_3_research_programs`, which keeps its own copy.
 pub fn seed_programs() -> Vec<Program> {
+    let program =
+        |id: u32, name: &str, step: ProgramStep, repeat: Option<f32>, note: &str| Program {
+            id,
+            name: name.to_string(),
+            steps: vec![step],
+            repeat_every_minutes: repeat,
+            note: Some(note.to_string()),
+        };
+    let step = |minutes: Option<f32>, speed_kmh: f32, incline_pct: f32| ProgramStep {
+        duration_minutes: minutes,
+        speed_kmh,
+        incline_pct,
+    };
     vec![
-        Program {
-            id: 1,
-            name: "Post-meal".to_string(),
-            steps: vec![ProgramStep {
-                duration_minutes: Some(10.0),
-                speed_kmh: 4.0,
-                incline_pct: 10.0,
-            }],
-            repeat_every_minutes: None,
-        },
-        Program {
-            id: 2,
-            name: "Workday".to_string(),
-            steps: vec![ProgramStep {
-                duration_minutes: Some(5.0),
-                speed_kmh: 3.0,
-                incline_pct: 5.0,
-            }],
-            repeat_every_minutes: Some(30.0),
-        },
-        Program {
-            id: 3,
-            name: "Focus".to_string(),
-            steps: vec![ProgramStep {
-                duration_minutes: None,
-                speed_kmh: 2.5,
-                incline_pct: 5.0,
-            }],
-            repeat_every_minutes: None,
-        },
+        program(
+            1,
+            "Post-meal",
+            step(Some(10.0), 4.0, 5.0),
+            None,
+            NOTE_POST_MEAL,
+        ),
+        program(
+            2,
+            "Workday",
+            step(Some(5.0), 3.0, 5.0),
+            Some(30.0),
+            NOTE_WORKDAY,
+        ),
+        program(3, "Focus", step(None, 2.0, 0.0), None, NOTE_FOCUS),
+        program(
+            4,
+            "Micro-break",
+            step(Some(2.0), 3.2, 0.0),
+            Some(20.0),
+            NOTE_MICRO_BREAK,
+        ),
+        program(5, "Brisk", step(Some(30.0), 5.0, 0.0), None, NOTE_BRISK),
+    ]
+}
+
+pub const NOTE_POST_MEAL: &str = "A walk soon after eating blunts the rise in blood sugar.";
+pub const NOTE_WORKDAY: &str = "Five minutes every half hour offsets long sitting.";
+pub const NOTE_FOCUS: &str = "Slow and flat, so typing and thinking stay steady.";
+pub const NOTE_MICRO_BREAK: &str = "Two easy minutes every 20 lower blood sugar after meals.";
+pub const NOTE_BRISK: &str = "Moderate walking toward the weekly 150 minutes.";
+
+/// Test fixture: the three programs v1.6 seeded (Post-meal 10 min at 4.0 km/h
+/// and 10 %, Workday 5 min every 30 at 3.0 km/h and 5 %, Focus at 2.5 km/h and
+/// 5 % until ended), with ids 1 to 3. The engine and program tests are written
+/// against these, so they don't move when the seeds do.
+#[cfg(test)]
+pub(crate) fn classic_programs() -> Vec<Program> {
+    let program = |id, name: &str, minutes, speed_kmh, incline_pct, repeat| Program {
+        id,
+        name: name.to_string(),
+        steps: vec![ProgramStep {
+            duration_minutes: minutes,
+            speed_kmh,
+            incline_pct,
+        }],
+        repeat_every_minutes: repeat,
+        note: None,
+    };
+    vec![
+        program(1, "Post-meal", Some(10.0), 4.0, 10.0, None),
+        program(2, "Workday", Some(5.0), 3.0, 5.0, Some(30.0)),
+        program(3, "Focus", None, 2.5, 5.0, None),
     ]
 }
 
@@ -1073,6 +1118,8 @@ impl OrchestratorState {
         let max_speed = self.to_physical_speed(self.max_speed);
         validate_program(&program, self.min_speed, max_speed)?;
         if program.id == 0 {
+            // Notes are Rust's; a new program has none.
+            program.note = None;
             let floor = self.programs.iter().map(|p| p.id).max().unwrap_or(0) + 1;
             program.id = self.program_next_id.max(floor);
             self.program_next_id = program.id + 1;
@@ -1083,6 +1130,10 @@ impl OrchestratorState {
                 .iter_mut()
                 .find(|p| p.id == program.id)
                 .ok_or_else(|| "Program not found".to_string())?;
+            // The note survives a rename, not a change to what the program does.
+            let same_plan = slot.steps == program.steps
+                && slot.repeat_every_minutes == program.repeat_every_minutes;
+            program.note = if same_plan { slot.note.clone() } else { None };
             *slot = program.clone();
         }
         Ok(())
@@ -1279,7 +1330,7 @@ mod tests {
 
     fn state() -> OrchestratorState {
         OrchestratorState {
-            programs: seed_programs(),
+            programs: classic_programs(),
             program_next_id: 4,
             ..Default::default()
         }
@@ -1542,6 +1593,7 @@ mod tests {
                 },
             ],
             repeat_every_minutes: Some(10.0),
+            note: None,
         });
         moving(&mut s, 2.0, 0);
         let t0 = Instant::now();
@@ -1677,6 +1729,7 @@ mod tests {
                 incline_pct: 0.0,
             }],
             repeat_every_minutes: None,
+            note: None,
         });
         s.last_status = MachineStatus::Paused;
         let t0 = Instant::now();
@@ -1718,18 +1771,27 @@ mod tests {
     #[test]
     fn save_assigns_ids_and_delete_ends_running() {
         let mut s = state();
-        let mut p = seed_programs().remove(0);
+        s.programs[0].note = Some(NOTE_POST_MEAL.to_string());
+        let mut p = s.programs[0].clone();
         p.id = 0;
         p.name = "  New  ".to_string();
         s.save_program(p).unwrap();
         assert_eq!(s.programs.last().unwrap().id, 4);
         assert_eq!(s.programs.last().unwrap().name, "New");
+        assert_eq!(s.programs.last().unwrap().note, None, "notes are Rust's");
         assert_eq!(s.program_next_id, 5);
 
+        // A rename keeps the note (the editor sends none); a new pace drops it.
         let mut edit = s.programs[0].clone();
         edit.name = "Renamed".to_string();
+        edit.note = None;
         s.save_program(edit).unwrap();
         assert_eq!(s.programs[0].name, "Renamed");
+        assert_eq!(s.programs[0].note.as_deref(), Some(NOTE_POST_MEAL));
+        let mut edit = s.programs[0].clone();
+        edit.steps[0].speed_kmh = 4.5;
+        s.save_program(edit).unwrap();
+        assert_eq!(s.programs[0].note, None);
         let mut ghost = s.programs[0].clone();
         ghost.id = 99;
         assert!(s.save_program(ghost).is_err());
@@ -1753,6 +1815,7 @@ mod tests {
                 incline_pct: 2.0,
             }],
             repeat_every_minutes: None,
+            note: None,
         }
     }
 
@@ -1764,6 +1827,11 @@ mod tests {
     fn validation_accepts_seeds_and_rejects_each_invalid_case() {
         for p in seed_programs() {
             validate_program(&p, 0.6, 12.0).unwrap();
+            // Also inside the deck's own 1.0 to 8.0 km/h, with one short sentence.
+            validate_program(&p, 1.0, 8.0).unwrap();
+            let note = p.note.as_deref().unwrap();
+            assert!(note.len() <= 70 && note.ends_with('.'), "{}", note);
+            assert_eq!(note.matches(". ").count(), 0, "{}", note);
         }
         validate_program(&base(), 0.6, 12.0).unwrap();
 
@@ -1888,7 +1956,7 @@ mod tests {
         let l = initial_programs(None, None);
         assert!(l.seeded);
         assert_eq!(l.programs, seed_programs());
-        assert_eq!(l.next_id, 4);
+        assert_eq!(l.next_id, 6);
 
         // Present (even empty) is never reseeded.
         let l = initial_programs(Some("[]"), None);
@@ -2136,6 +2204,7 @@ mod tests {
                 },
             ],
             repeat_every_minutes: None,
+            note: None,
         });
         before.last_status = MachineStatus::Running;
         before.run_program(9, t0).unwrap();
@@ -2230,6 +2299,7 @@ mod tests {
                 },
             ],
             repeat_every_minutes: None,
+            note: None,
         }
     }
 
@@ -2566,6 +2636,7 @@ mod tests {
                 },
             ],
             repeat_every_minutes: None,
+            note: None,
         });
         moving(&mut s, BEFORE.speed, BEFORE.incline);
         s.run_program(6, t0).unwrap();

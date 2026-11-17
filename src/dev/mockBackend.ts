@@ -55,9 +55,11 @@ export const snapshot: AppSnapshot = {
   },
   session: { active_id: 1, duration_s: 1934, distance_m: 1720, steps: 2412, calories: 103, daily_distance_m: 4310 },
   programs: [
-    { id: 1, name: "Post-meal", steps: [{ duration_minutes: 10, speed_kmh: 4, incline_pct: 10 }], repeat_every_minutes: null },
-    { id: 2, name: "Workday", steps: [{ duration_minutes: 5, speed_kmh: 3, incline_pct: 5 }], repeat_every_minutes: 30 },
-    { id: 3, name: "Focus", steps: [{ duration_minutes: null, speed_kmh: 2.5, incline_pct: 5 }], repeat_every_minutes: null },
+    { id: 1, name: "Post-meal", steps: [{ duration_minutes: 10, speed_kmh: 4, incline_pct: 5 }], repeat_every_minutes: null, note: "A walk soon after eating blunts the rise in blood sugar." },
+    { id: 2, name: "Workday", steps: [{ duration_minutes: 5, speed_kmh: 3, incline_pct: 5 }], repeat_every_minutes: 30, note: "Five minutes every half hour offsets long sitting." },
+    { id: 3, name: "Focus", steps: [{ duration_minutes: null, speed_kmh: 2, incline_pct: 0 }], repeat_every_minutes: null, note: "Slow and flat, so typing and thinking stay steady." },
+    { id: 4, name: "Micro-break", steps: [{ duration_minutes: 2, speed_kmh: 3.2, incline_pct: 0 }], repeat_every_minutes: 20, note: "Two easy minutes every 20 lower blood sugar after meals." },
+    { id: 5, name: "Brisk", steps: [{ duration_minutes: 30, speed_kmh: 5, incline_pct: 0 }], repeat_every_minutes: null, note: "Moderate walking toward the weekly 150 minutes." },
   ],
   active_program: {
     program_id: 2,
@@ -144,7 +146,7 @@ export const snapshot: AppSnapshot = {
   },
   seated: {
     enabled: true,
-    minutes: 60,
+    minutes: 30,
     program_ids: [1, 2, 3],
     custom_programs: false,
     show_card: false,
@@ -738,8 +740,15 @@ const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) =>
   },
   program_save: (c) => {
     const i = snapshot.programs.findIndex((x) => x.id === c.program.id);
-    if (i >= 0) snapshot.programs[i] = c.program;
-    else snapshot.programs.push({ ...c.program, id: Math.max(0, ...snapshot.programs.map((x) => x.id)) + 1 });
+    // Notes are Rust's: whatever the editor sent is ignored.
+    const program = { ...c.program, note: undefined };
+    if (i >= 0) {
+      // Like Rust: the note survives a rename, not a change to the plan.
+      const old = snapshot.programs[i];
+      const samePlan =
+        JSON.stringify(old.steps) === JSON.stringify(program.steps) && old.repeat_every_minutes === program.repeat_every_minutes;
+      snapshot.programs[i] = samePlan && old.note ? { ...program, note: old.note } : program;
+    } else snapshot.programs.push({ ...program, id: Math.max(0, ...snapshot.programs.map((x) => x.id)) + 1 });
   },
   program_end: () => (snapshot.active_program = null),
   program_pause: () => setProgramPaused(true),
