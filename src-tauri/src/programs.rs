@@ -362,8 +362,36 @@ pub fn seed_programs() -> Vec<Program> {
             NOTE_MICRO_BREAK,
         ),
         program(5, "Brisk", step(Some(30.0), 5.0, 0.0), None, NOTE_BRISK),
+        vo2_max_program(6),
     ]
 }
+
+/// The Norwegian 4x4 for the deck: warm-up, four 4-minute climbs each followed
+/// by 3 minutes of easy walking, cool-down. The deck tops out at 8 km/h and
+/// 10 %, so the hard part is the incline (docs/research.md). Existing installs
+/// get it from `persistence::migration_4_vo2_max_program`, which keeps its own copy.
+fn vo2_max_program(id: u32) -> Program {
+    let step = |minutes: f32, speed_kmh: f32, incline_pct: f32| ProgramStep {
+        duration_minutes: Some(minutes),
+        speed_kmh,
+        incline_pct,
+    };
+    let mut steps = vec![step(5.0, 4.5, 0.0)];
+    for _ in 0..4 {
+        steps.push(step(4.0, 6.0, 10.0));
+        steps.push(step(3.0, 4.0, 0.0));
+    }
+    steps.push(step(3.0, 3.0, 0.0));
+    Program {
+        id,
+        name: "VO2 max".to_string(),
+        steps,
+        repeat_every_minutes: None,
+        note: Some(NOTE_VO2_MAX.to_string()),
+    }
+}
+
+pub const NOTE_VO2_MAX: &str = "Four hard 4-minute climbs with easy walks between train VO2 max.";
 
 pub const NOTE_POST_MEAL: &str = "A walk soon after eating blunts the rise in blood sugar.";
 pub const NOTE_WORKDAY: &str = "Five minutes every half hour offsets long sitting.";
@@ -1956,7 +1984,7 @@ mod tests {
         let l = initial_programs(None, None);
         assert!(l.seeded);
         assert_eq!(l.programs, seed_programs());
-        assert_eq!(l.next_id, 6);
+        assert_eq!(l.next_id, 7);
 
         // Present (even empty) is never reseeded.
         let l = initial_programs(Some("[]"), None);

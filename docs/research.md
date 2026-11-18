@@ -104,6 +104,30 @@ steady."
 
 **In the app:** "Moderate walking toward the weekly 150 minutes."
 
+## VO2 max (new)
+
+**New:** 5 min at 4.5 km/h, then four times (4 min at 6.0 km/h and 10 % incline, 3 min at
+4.0 km/h flat), then 3 min at 3.0 km/h. 36 minutes in all.
+
+- The Norwegian 4x4 is the best-studied interval format for raising VO2 max: four 4-minute
+  efforts at 85 to 95 % of maximum heart rate, with 3 minutes of easy movement between them.
+  Wisløff et al. (2007) found it raised VO2 max about 46 % more than moderate continuous
+  training in people with heart failure. A meta-analysis of interval training found it improved
+  VO2 max more than continuous moderate training, with the biggest gains from intervals of 3 to
+  5 minutes (Bacon et al. 2013; Weston et al. 2014).
+- The deck tops out at 8 km/h and 10 % incline, so the effort comes from the incline: by the
+  ACSM equation, 6.0 km/h at 10 % is about 9 METs, against about 3 METs for the easy walks
+  between. The estimate is a guide only. It ignores the belt's own friction and your weight.
+  Whether it reaches 85 to 95 % of your maximum heart rate depends on your fitness, so judge it
+  by effort: hard but steady, with a few words still possible. The 4 minutes are the dose, so a
+  fit runner may need a faster speed (edit the program) and a beginner a lower incline.
+- The warm-up and cool-down follow the same protocol. No step starts a still belt: the belt
+  moves for the whole program, so it starts with one press, like any program.
+- Two or three sessions a week with a day between is what the studies used. This is hard
+  exercise: anyone with heart disease or risk factors should check with their doctor first.
+
+**In the app:** "Four hard 4-minute climbs with easy walks between train VO2 max."
+
 ## Sit-too-long nudge
 
 **Was:** after 60 minutes of PC use without walking. **Now:** 30 minutes.
@@ -138,6 +162,9 @@ video while walking is normal), not health advice, so the literature has nothing
   1575–1581. https://doi.org/10.1249/MSS.0b013e31821ece12
 - American College of Sports Medicine (2021). *ACSM's Guidelines for Exercise Testing and
   Prescription*, 11th ed. Wolters Kluwer. (Walking metabolic equation.)
+- Bacon AP, Carter RE, Ogle EA, Joyner MJ (2013). VO2max trainability and high intensity
+  interval training in humans: a meta-analysis. *PLoS ONE* 8(9): e73182.
+  https://doi.org/10.1371/journal.pone.0073182
 - Buffey AJ, Herring MP, Langley CK, Donnelly AE, Carson BP (2022). The acute effects of
   interrupting prolonged sitting time in adults with standing and light-intensity walking on
   biomarkers of cardiometabolic health in adults: a systematic review and meta-analysis.
@@ -186,3 +213,9 @@ video while walking is normal), not health advice, so the literature has nothing
 - Tudor-Locke C, Aguiar EJ, Han H, et al. (2019). Walking cadence (steps/min) and intensity in
   21–40 year olds: CADENCE-adults. *International Journal of Behavioral Nutrition and Physical
   Activity* 16: 8. https://doi.org/10.1186/s12966-019-0769-6
+- Weston KS, Wisløff U, Coombes JS (2014). High-intensity interval training in patients with
+  lifestyle-induced cardiometabolic disease: a systematic review and meta-analysis. *British
+  Journal of Sports Medicine* 48(16): 1227–1234. https://doi.org/10.1136/bjsports-2013-092576
+- Wisløff U, Støylen A, Loennechen JP, et al. (2007). Superior cardiovascular effect of aerobic
+  interval training versus moderate continuous training in heart failure patients: a randomized
+  study. *Circulation* 115(24): 3086–3094. https://doi.org/10.1161/CIRCULATIONAHA.106.675041
