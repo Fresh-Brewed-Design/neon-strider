@@ -47,6 +47,7 @@ describe("waiting for GO", () => {
     expect(waitHeadline("rest_complete")).toBe("REST COMPLETE // PRESS GO");
     expect(waitHeadline("hold_complete")).toBe("HOLD COMPLETE // PRESS GO");
     expect(waitHeadline("belt_still")).toBe("BELT STILL // PRESS GO");
+    expect(waitHeadline("lights_out")).toBe("LIGHTS OUT // PRESS GO");
   });
 
   it("describes the walk that is waiting, not one that is under way", () => {

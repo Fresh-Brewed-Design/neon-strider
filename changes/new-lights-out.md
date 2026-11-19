@@ -1,0 +1,1 @@
+- LIGHTS_OUT (System, Desk, off by default): when the PC's display turns off, the belt stops so the treadmill can go to sleep too; a running program pauses and waits for GO instead. Nothing starts again when the display comes back on.

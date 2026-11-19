@@ -5,6 +5,7 @@ import { useAppSnapshot } from "../../state/useAppState";
 import { GhostButton, Hint, Label } from "../ui";
 import { cx, send } from "../util";
 import { NumberField, Section, Toggle } from "./fields";
+import { LightsOutSetting } from "./LightsOutSetting";
 
 const MAX_PROGRAM_BUTTONS = 3;
 
@@ -166,6 +167,7 @@ export function DeskSection() {
       <div className="border-t border-white/10" />
 
       <WalkAwaySettings />
+      <LightsOutSetting />
 
       <div className="border-t border-white/10" />
 

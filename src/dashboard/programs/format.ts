@@ -59,6 +59,8 @@ export function waitHeadline(w: ProgramWait): string {
       return "HOLD COMPLETE // PRESS GO";
     case "belt_still":
       return "BELT STILL // PRESS GO";
+    case "lights_out":
+      return "LIGHTS OUT // PRESS GO";
   }
 }
 
@@ -71,6 +73,8 @@ export function waitReason(w: ProgramWait): string {
       return "The next step walks. The belt starts when you press GO.";
     case "belt_still":
       return "The belt was found still after a reconnect. Press GO to carry on.";
+    case "lights_out":
+      return "The display turned off, so the belt paused. Press GO to carry on.";
   }
 }
 

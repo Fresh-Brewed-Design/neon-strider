@@ -28,7 +28,14 @@ export function ToastCard({ toast, snapshot }: { toast: Toast; snapshot: AppSnap
     );
   }
 
-  const accent = toast.type === "AUTOMATION" ? "yellow" : toast.type === "ERGO" ? "green" : "cyan";
+  const accent =
+    toast.type === "AUTOMATION"
+      ? "yellow"
+      : toast.type === "ERGO"
+        ? "green"
+        : toast.type === "LIGHTS_OUT"
+          ? "magenta"
+          : "cyan";
   return (
     <div className={`hud-toast accent-${accent}`}>
       <div className="hud-toast-body">
