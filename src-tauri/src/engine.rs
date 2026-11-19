@@ -12,6 +12,7 @@
 //! [`OrchestratorState::to_physical_speed`] convert between the two using the
 //! calibration points.
 
+use crate::calibration;
 use crate::persistence::{self, Session};
 use crate::programs::{Program, ProgramPhase, ProgramRun};
 use crate::protocol::{
@@ -392,9 +393,12 @@ fn interpolate(
 }
 
 /// A calibration point's physical speed: its hardware speed over its scale.
+/// The scale is clamped the same way the speed conversions clamp it, so the
+/// points sort on the axis they are applied on.
 fn physical_axis_velocity(p: &CalibrationPoint) -> f32 {
     let scale = if p.distance_scale > 0.0 {
         p.distance_scale
+            .clamp(calibration::MIN_SCALE, calibration::MAX_SCALE)
     } else {
         1.0
     };
@@ -429,7 +433,7 @@ pub(crate) fn calculate_hardware_bytes(
         physical_speed,
     )
     .unwrap_or(1.0)
-    .clamp(0.5, 2.5);
+    .clamp(calibration::MIN_SCALE, calibration::MAX_SCALE);
     let hw_speed = (physical_speed * scale * 10.0).round().clamp(0.0, max_byte);
     (hw_speed as u8, incline)
 }
@@ -534,7 +538,7 @@ impl OrchestratorState {
             hw_speed,
         )
         .unwrap_or(1.0)
-        .clamp(0.5, 2.5)
+        .clamp(calibration::MIN_SCALE, calibration::MAX_SCALE)
     }
 
     /// Calibrated km/h for a hardware speed.
@@ -557,7 +561,9 @@ impl OrchestratorState {
             |p| p.stride_length_cm,
             physical_speed,
         )
-        .map_or(DEFAULT_STRIDE_CM, |cm| cm.clamp(30.0, 130.0))
+        .map_or(DEFAULT_STRIDE_CM, |cm| {
+            cm.clamp(calibration::MIN_STRIDE_CM, calibration::MAX_STRIDE_CM)
+        })
     }
 
     /// Calibrated metres per uncalibrated metre: from the resumed session's own

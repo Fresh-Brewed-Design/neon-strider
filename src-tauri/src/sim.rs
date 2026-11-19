@@ -1051,4 +1051,44 @@ mod tests {
         assert!(r.deck.belt_still() && r.deck.status_code() == 0);
         assert_eq!(r.finalised.len(), 1, "the walk was saved once");
     }
+
+    /// Guided calibration: RUN on a still belt is his press. It starts the
+    /// belt and brings the deck to the target's hardware speed through the
+    /// current calibration; the reconnect hold never lets it start by itself.
+    #[test]
+    fn a_calibration_run_starts_the_belt_at_the_target_deck_speed() {
+        let mut r = Rig::new();
+        r.state.sync_config(&crate::persistence::AppConfig {
+            calibration_points: vec![protocol::CalibrationPoint {
+                speed: 4.0,
+                stride_length_cm: 70.0,
+                distance_scale: 0.8,
+            }],
+            ..Default::default()
+        });
+        r.run(5.0);
+        assert!(r.deck.belt_still(), "nothing starts before RUN");
+        r.state.set_test_now(r.t);
+        crate::calibration::begin_run(&mut r.state, 4.0).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(r.state.hardware_speed, 4.0);
+        // A repeat at another speed changes the belt without stopping it.
+        let mark = r.mark();
+        r.state.set_test_now(r.t);
+        crate::calibration::begin_run(&mut r.state, 2.5).unwrap();
+        r.run(10.0);
+        assert!(r.deck.running_at(2.5), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(r.controls_since(mark, Control::Stop), 0);
+        assert_eq!(r.controls_since(mark, Control::Pause), 0);
+    }
+
+    #[test]
+    fn a_calibration_run_is_refused_while_a_program_runs() {
+        let mut r = post_meal_walking();
+        r.state.set_test_now(r.t);
+        assert!(crate::calibration::begin_run(&mut r.state, 3.0).is_err());
+        r.run(5.0);
+        assert!(r.deck.running_at(4.0), "the program keeps its speed");
+    }
 }

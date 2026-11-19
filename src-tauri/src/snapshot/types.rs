@@ -44,6 +44,8 @@ pub struct AppSnapshot {
     pub update: crate::update::UpdateSnapshot,
     /// The Diagnostics traffic recorder (off at every start).
     pub traffic: crate::traffic::TrafficSnapshot,
+    /// The guided calibration (Labs): its switch, limits and any run.
+    pub calibration: crate::calibration::CalibrationSnapshot,
 }
 
 /// Strava as the windows see it. Tokens and the client secret never appear here.
@@ -572,6 +574,25 @@ pub enum Command {
     },
     /// Show the folder the traffic recordings are saved in.
     TrafficOpenFolder,
+    /// Labs: the guided calibration wizard on or off (persisted, off by default).
+    CalibrationSetWizard {
+        on: bool,
+    },
+    /// RUN (or REPEAT) on a target speed: set the belt to `target_kmh` (deck
+    /// km/h) and start it if it is still. The press is his.
+    CalibrationRunStart {
+        target_kmh: f32,
+    },
+    /// COUNT: start the run's clock (refused while the belt is still).
+    CalibrationCountStart,
+    /// DONE: stop the clock (refused if the belt stopped or changed speed).
+    CalibrationCountStop,
+    /// What he counted; the point appears in `calibration.run.result`.
+    CalibrationRunCount {
+        count: crate::calibration::CalibrationCount,
+    },
+    /// Close the run (after saving its point, or to cancel). The belt keeps going.
+    CalibrationRunClose,
 }
 
 #[cfg(test)]
