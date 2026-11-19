@@ -1,5 +1,7 @@
 //! Live tray readout: the tooltip says what the belt is doing, and the icon is
 //! lit while the belt runs, normal when connected and idle, dimmed offline.
+//! While an update is waiting (`snapshot.update.dot`, the same rule as the
+//! dashboard's dots) the icon carries a pink dot and the tooltip says so.
 //!
 //! The text and the throttle are pure and tested here; the snapshot emitter
 //! calls `Updater::apply` with every snapshot it builds.
@@ -20,6 +22,8 @@ const TOOLTIP_EVERY_MS: u64 = 2000;
 
 const APP: &str = "Neon Strider";
 const SEP: &str = " \u{b7} ";
+/// The tooltip's last part while an update is waiting.
+const UPDATE_READY: &str = "update ready";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayState {
@@ -44,6 +48,8 @@ pub struct TrayView {
     pub today_m: f64,
     /// The running program's name.
     pub program: Option<String>,
+    /// An update is waiting (`update::show_update_dot`).
+    pub update_dot: bool,
 }
 
 impl TrayView {
@@ -56,6 +62,7 @@ impl TrayView {
             session_m: s.session.active_id.map(|_| s.session.distance_m),
             today_m: s.session.daily_distance_m,
             program: s.active_program.as_ref().map(|a| a.name.clone()),
+            update_dot: s.update.dot,
         }
     }
 
@@ -98,7 +105,8 @@ fn shorten(s: &str, max: usize) -> String {
 
 /// The tooltip text, under Windows' 127-unit limit. Examples:
 /// `Neon Strider · 3.2 km/h · 1.84 km · today 5.6 km`,
-/// `Neon Strider · idle · today 5.6 km`, `Neon Strider · treadmill offline`.
+/// `Neon Strider · idle · today 5.6 km`, `Neon Strider · treadmill offline`,
+/// each ending `· update ready` while an update is waiting.
 /// A running program's name comes first; it is the part shortened if needed.
 pub fn tooltip(v: &TrayView) -> String {
     if !v.connected {
@@ -107,7 +115,11 @@ pub fn tooltip(v: &TrayView) -> String {
         } else {
             "treadmill offline"
         };
-        return format!("{APP}{SEP}{what}");
+        return if v.update_dot {
+            format!("{APP}{SEP}{what}{SEP}{UPDATE_READY}")
+        } else {
+            format!("{APP}{SEP}{what}")
+        };
     }
     let today = format!("today {:.1} km", v.today_m / 1000.0);
     let mut parts: Vec<String> = Vec::new();
@@ -125,6 +137,9 @@ pub fn tooltip(v: &TrayView) -> String {
         }
     }
     parts.push(today);
+    if v.update_dot {
+        parts.push(UPDATE_READY.to_string());
+    }
     let rest = parts.join(SEP);
 
     let text = match &v.program {
@@ -145,12 +160,20 @@ pub fn tooltip(v: &TrayView) -> String {
 }
 
 /// Remembers what the tray shows, so the tooltip changes at most once per
-/// `TOOLTIP_EVERY_MS` and the icon only when the state does.
+/// `TOOLTIP_EVERY_MS` and the icon only when the state or the update dot does.
 #[derive(Debug, Default)]
 pub struct Throttle {
     text: Option<String>,
     text_at_ms: Option<u64>,
-    state: Option<TrayState>,
+    art: Option<TrayArt>,
+}
+
+/// Which tray image to show.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TrayArt {
+    pub state: TrayState,
+    /// The pink "update waiting" dot.
+    pub dot: bool,
 }
 
 impl Throttle {
@@ -172,13 +195,13 @@ impl Throttle {
         Some(text.to_string())
     }
 
-    /// The icon to set now, if the state changed.
-    pub fn icon(&mut self, state: TrayState) -> Option<TrayState> {
-        if self.state == Some(state) {
+    /// The icon to set now, if the state or the dot changed.
+    pub fn icon(&mut self, art: TrayArt) -> Option<TrayArt> {
+        if self.art == Some(art) {
             return None;
         }
-        self.state = Some(state);
-        Some(state)
+        self.art = Some(art);
+        Some(art)
     }
 }
 
@@ -186,13 +209,24 @@ impl Throttle {
 const ICON_IDLE: &[u8] = include_bytes!("../icons/tray.png");
 const ICON_RUNNING: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tray-running.png"));
 const ICON_OFFLINE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tray-offline.png"));
+const ICON_IDLE_DOT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tray-idle-dot.png"));
+const ICON_RUNNING_DOT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tray-running-dot.png"));
+const ICON_OFFLINE_DOT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tray-offline-dot.png"));
 
-/// The tray image for a state.
+/// The tray image for a state, without the update dot.
 pub fn icon(state: TrayState) -> Option<tauri::image::Image<'static>> {
-    let bytes = match state {
-        TrayState::Running => ICON_RUNNING,
-        TrayState::Idle => ICON_IDLE,
-        TrayState::Offline => ICON_OFFLINE,
+    art(TrayArt { state, dot: false })
+}
+
+/// The tray image for a state, with or without the update dot.
+pub fn art(art: TrayArt) -> Option<tauri::image::Image<'static>> {
+    let bytes = match (art.state, art.dot) {
+        (TrayState::Running, false) => ICON_RUNNING,
+        (TrayState::Idle, false) => ICON_IDLE,
+        (TrayState::Offline, false) => ICON_OFFLINE,
+        (TrayState::Running, true) => ICON_RUNNING_DOT,
+        (TrayState::Idle, true) => ICON_IDLE_DOT,
+        (TrayState::Offline, true) => ICON_OFFLINE_DOT,
     };
     tauri::image::Image::from_bytes(bytes).ok()
 }
@@ -207,8 +241,11 @@ impl Updater {
     pub fn apply(&mut self, app: &AppHandle, s: &AppSnapshot, now_ms: u64) {
         let view = TrayView::from_snapshot(s);
         let text = self.throttle.tooltip(&tooltip(&view), now_ms);
-        let state = self.throttle.icon(view.state());
-        if text.is_none() && state.is_none() {
+        let image = self.throttle.icon(TrayArt {
+            state: view.state(),
+            dot: view.update_dot,
+        });
+        if text.is_none() && image.is_none() {
             return;
         }
         let Some(tray) = app.tray_by_id(TRAY_ID) else {
@@ -219,8 +256,8 @@ impl Updater {
                 log::debug!("Tray tooltip not updated: {}", e);
             }
         }
-        if let Some(state) = state {
-            if let Err(e) = tray.set_icon(icon(state)) {
+        if let Some(image) = image {
+            if let Err(e) = tray.set_icon(art(image)) {
                 log::debug!("Tray icon not updated: {}", e);
             }
         }
@@ -244,6 +281,7 @@ mod tests {
             session_m: Some(1840.0),
             today_m: 5600.0,
             program: None,
+            update_dot: false,
         }
     }
 
@@ -389,13 +427,62 @@ mod tests {
     }
 
     #[test]
-    fn icon_changes_only_with_the_state() {
+    fn icon_changes_only_with_the_state_or_the_dot() {
         let mut t = Throttle::default();
-        assert_eq!(t.icon(TrayState::Offline), Some(TrayState::Offline));
-        assert_eq!(t.icon(TrayState::Offline), None);
-        assert_eq!(t.icon(TrayState::Idle), Some(TrayState::Idle));
-        assert_eq!(t.icon(TrayState::Running), Some(TrayState::Running));
-        assert_eq!(t.icon(TrayState::Running), None);
+        let a = |state, dot| TrayArt { state, dot };
+        assert_eq!(
+            t.icon(a(TrayState::Offline, false)),
+            Some(a(TrayState::Offline, false))
+        );
+        assert_eq!(t.icon(a(TrayState::Offline, false)), None);
+        assert_eq!(
+            t.icon(a(TrayState::Idle, false)),
+            Some(a(TrayState::Idle, false))
+        );
+        assert_eq!(
+            t.icon(a(TrayState::Running, false)),
+            Some(a(TrayState::Running, false))
+        );
+        assert_eq!(t.icon(a(TrayState::Running, false)), None);
+        // The dot appearing or clearing swaps the icon once, not every snapshot.
+        assert_eq!(
+            t.icon(a(TrayState::Running, true)),
+            Some(a(TrayState::Running, true))
+        );
+        assert_eq!(t.icon(a(TrayState::Running, true)), None);
+        assert_eq!(
+            t.icon(a(TrayState::Running, false)),
+            Some(a(TrayState::Running, false))
+        );
+    }
+
+    #[test]
+    fn tooltip_says_when_an_update_is_ready() {
+        let v = TrayView {
+            update_dot: true,
+            ..walking()
+        };
+        assert_eq!(
+            tooltip(&v),
+            "Neon Strider \u{b7} 3.2 km/h \u{b7} 1.84 km \u{b7} today 5.6 km \u{b7} update ready"
+        );
+        let offline = TrayView {
+            connected: false,
+            ..v
+        };
+        assert_eq!(
+            tooltip(&offline),
+            "Neon Strider \u{b7} treadmill offline \u{b7} update ready"
+        );
+        // A long program name is shortened before the update note is lost.
+        let long = TrayView {
+            program: Some("Very long program name ".repeat(20)),
+            update_dot: true,
+            ..walking()
+        };
+        let t = tooltip(&long);
+        assert!(t.encode_utf16().count() <= MAX_TOOLTIP_UNITS);
+        assert!(t.ends_with("update ready"));
     }
 
     #[test]
@@ -403,6 +490,9 @@ mod tests {
         for state in [TrayState::Running, TrayState::Idle, TrayState::Offline] {
             let img = icon(state).expect("decodes");
             assert_eq!((img.width(), img.height()), (32, 32));
+            let dotted = art(TrayArt { state, dot: true }).expect("decodes");
+            assert_eq!((dotted.width(), dotted.height()), (32, 32));
+            assert_ne!(img.rgba(), dotted.rgba());
         }
         let idle = icon(TrayState::Idle).unwrap();
         let running = icon(TrayState::Running).unwrap();
@@ -434,6 +524,29 @@ mod tests {
         // The middle is untouched, and so is the transparent outside.
         assert_eq!(at(&lit, 5, 5), [6, 10, 16, 255]);
         assert_eq!(at(&lit, 0, 0), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn update_dot_is_pink_in_the_top_right_and_leaves_the_rest() {
+        let (w, h) = (32u32, 32u32);
+        let px: Vec<u8> = [6u8, 10, 16, 255].repeat((w * h) as usize);
+        let mut dotted = px.clone();
+        tray_art::update_dot(&mut dotted, w, h);
+        let at = |p: &[u8], x: u32, y: u32| {
+            let i = ((y * w + x) * 4) as usize;
+            [p[i], p[i + 1], p[i + 2], p[i + 3]]
+        };
+        // The dot's centre is the belt line's magenta.
+        assert_eq!(at(&dotted, 26, 6), [0xff, 0x2b, 0xd6, 255]);
+        // The rest of the icon, chevrons and belt line included, is untouched.
+        assert_eq!(at(&dotted, 8, 8), at(&px, 8, 8));
+        assert_eq!(at(&dotted, 16, 25), at(&px, 16, 25));
+        assert_eq!(at(&dotted, 20, 14), at(&px, 20, 14));
+        // On a transparent corner the ring makes the pixels opaque enough to see.
+        let mut clear = vec![0u8; (w * h * 4) as usize];
+        tray_art::update_dot(&mut clear, w, h);
+        assert_eq!(at(&clear, 26, 6)[3], 255);
+        assert_eq!(at(&clear, 0, 31), [0, 0, 0, 0]);
     }
 
     #[test]
