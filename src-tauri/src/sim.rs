@@ -1025,6 +1025,63 @@ mod tests {
         assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
     }
 
+    /// Issue #58/#60: on a calibration whose km/h dips between points, the
+    /// HUD's speed-up stuck at one byte (about 3.8 km/h). Every press now
+    /// reaches the deck as one more 0.1 hardware step, up to the max speed,
+    /// and speed-down walks it back the same way.
+    #[test]
+    fn speed_up_presses_reach_the_max_speed_on_a_dipping_calibration() {
+        let mut r = Rig::new();
+        r.state.sync_config(&crate::persistence::AppConfig {
+            calibration_points: vec![
+                protocol::CalibrationPoint {
+                    speed: 0.6,
+                    stride_length_cm: 50.0,
+                    distance_scale: 0.6 / 1.46,
+                },
+                protocol::CalibrationPoint {
+                    speed: 1.5,
+                    stride_length_cm: 60.0,
+                    distance_scale: 1.5 / 4.84,
+                },
+                protocol::CalibrationPoint {
+                    speed: 2.0,
+                    stride_length_cm: 65.0,
+                    distance_scale: 2.0 / 2.97,
+                },
+            ],
+            max_speed: 5.0,
+            ..Default::default()
+        });
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(6.0);
+        assert_eq!(r.deck.status_code(), 3, "running");
+        r.set_speed(r.state.to_physical_speed(1.0));
+        r.run(5.0);
+        assert!(r.deck.running_at(1.0), "{} km/h", r.deck.speed_kmh());
+
+        let tenths = |kmh: f32| (kmh * 10.0).round() as i32;
+        let mut targets = vec![tenths(r.deck.target)];
+        for _ in 0..45 {
+            r.press(DeckAction::SpeedUp);
+            r.run(0.5);
+            targets.push(tenths(r.deck.target));
+        }
+        let climb: Vec<i32> = (10..=50).chain([50; 5]).collect();
+        assert_eq!(targets, climb, "one byte a press, held at the top");
+        r.run(10.0);
+        assert!(r.deck.running_at(5.0), "{} km/h", r.deck.speed_kmh());
+
+        let mut targets = vec![];
+        for _ in 0..10 {
+            r.press(DeckAction::SpeedDown);
+            r.run(0.5);
+            targets.push(tenths(r.deck.target));
+        }
+        assert_eq!(targets, (40..50).rev().collect::<Vec<_>>());
+    }
+
     #[test]
     fn a_power_cut_mid_walk_comes_back_still_and_nothing_starts_it() {
         let mut r = Rig::new();
