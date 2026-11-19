@@ -1,0 +1,1 @@
+- Calibration no longer saves a 0 km/h point when the belt has already stopped; it tells you to run it again.

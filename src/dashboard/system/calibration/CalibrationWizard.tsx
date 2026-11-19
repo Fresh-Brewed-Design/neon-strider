@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Calculator } from "lucide-react";
-import { getAppSnapshot, useAppState } from "../../../state/useAppState";
+import { useAppState } from "../../../state/useAppState";
 import { useTreadmillStore } from "../../../store/treadmillStore";
 import type { CalibrationPoint } from "../../../store/types";
-import { STEPS_PER_RUN, wizardResult, type WizardMode } from "./math";
+import { STEPS_PER_RUN, isSavablePoint, wizardResult, type WizardMode } from "./math";
 
 type Phase = "SETUP" | "COUNTDOWN" | "WALKING" | "RESULT";
 
@@ -25,6 +25,14 @@ export function CalibrationWizard({ onClose, onSave }: { onClose: () => void; on
   const [capturedTargetSpeed, setCapturedTargetSpeed] = useState(0);
   const beltLength = useTreadmillStore((s) => s.beltLength);
   const currentSpeed = useAppState((s) => s.deck.raw_speed_kmh) ?? 0;
+  // The last nonzero raw speed seen while walking. The belt may be stopped or
+  // coasting by the time DONE is clicked, so the click itself is no source.
+  const walkingSpeed = useRef(0);
+
+  useEffect(() => {
+    if (phase === "COUNTDOWN") walkingSpeed.current = 0;
+    if (phase === "WALKING" && currentSpeed > 0) walkingSpeed.current = currentSpeed;
+  }, [phase, currentSpeed]);
 
   useEffect(() => {
     if (phase !== "COUNTDOWN") return;
@@ -48,9 +56,9 @@ export function CalibrationWizard({ onClose, onSave }: { onClose: () => void; on
 
   const finishWalking = () => {
     setEndTime(Date.now());
-    // Calibrate against the raw speed the deck reports. The calibrated speed
-    // already has the old points applied and would feed them back in.
-    setCapturedTargetSpeed(getAppSnapshot()?.deck.raw_speed_kmh ?? 0);
+    // Calibrate against the raw speed the deck reported while walking. The
+    // calibrated speed already has the old points applied and would feed them back in.
+    setCapturedTargetSpeed(walkingSpeed.current);
     setPhase("RESULT");
   };
 
@@ -63,6 +71,8 @@ export function CalibrationWizard({ onClose, onSave }: { onClose: () => void; on
     elapsedSeconds: (endTime - startTime) / 1000,
     reportedKmh: capturedTargetSpeed,
   });
+
+  const canSave = isSavablePoint(capturedTargetSpeed, result.scale);
 
   return (
     <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
@@ -211,6 +221,14 @@ export function CalibrationWizard({ onClose, onSave }: { onClose: () => void; on
               </div>
             </div>
 
+            {!canSave && (
+              <p role="alert" className="text-center font-mono text-xs text-neon-magenta">
+                {capturedTargetSpeed > 0
+                  ? "That result is not valid. Run it again."
+                  : "No belt speed was seen. Run it again."}
+              </p>
+            )}
+
             <div className="flex gap-2">
               <button
                 onClick={() => setPhase("SETUP")}
@@ -219,11 +237,13 @@ export function CalibrationWizard({ onClose, onSave }: { onClose: () => void; on
                 RETRY
               </button>
               <button
+                disabled={!canSave}
                 onClick={() => {
+                  if (!canSave) return;
                   onSave({ speed: capturedTargetSpeed, stride_length_cm: result.strideCm, distance_scale: result.scale });
                   onClose();
                 }}
-                className="flex-1 py-3 bg-neon-cyan text-black hover:bg-white rounded font-black text-[11px] tracking-widest shadow-[0_0_20px_rgba(0,243,255,0.3)] transition-all"
+                className="flex-1 py-3 bg-neon-cyan text-black hover:bg-white rounded font-black text-[11px] tracking-widest shadow-[0_0_20px_rgba(0,243,255,0.3)] transition-all disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 SAVE MULTI-AXIS DATA
               </button>
