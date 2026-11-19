@@ -3,8 +3,8 @@
 //! included, so the `///` text here is part of the generated TypeScript.
 
 use super::{
-    CallsSnapshot, MaintenanceBasis, MaintenanceSnapshot, OdometerSnapshot, SeatedSnapshot,
-    WalkAwaySnapshot, WeeklySummary,
+    CallsSnapshot, DeskSync, MaintenanceBasis, MaintenanceSnapshot, OdometerSnapshot,
+    SeatedSnapshot, WalkAwaySnapshot, WeeklySummary,
 };
 use crate::link::{LastError, LinkState};
 use crate::placement;
@@ -32,6 +32,9 @@ pub struct AppSnapshot {
     pub maintenance: MaintenanceSnapshot,
     /// Last week against the week before, and this week so far.
     pub weekly: WeeklySummary,
+    /// DESK_SYNC: how many of the recent desk days (days the PC was used)
+    /// were walked on.
+    pub desk_sync: DeskSync,
     /// The sit-too-long nudge: its settings and whether the HUD card shows.
     pub seated: SeatedSnapshot,
     /// Slow down on calls: its settings and whether the microphone is in use.

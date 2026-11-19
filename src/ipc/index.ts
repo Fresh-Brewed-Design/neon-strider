@@ -50,6 +50,8 @@ export type { WalkAwayCard } from "./bindings/WalkAwayCard";
 export type { WalkAwayReason } from "./bindings/WalkAwayReason";
 export type { WalkAwaySnapshot } from "./bindings/WalkAwaySnapshot";
 export type { WeeklySummary } from "./bindings/WeeklySummary";
+export type { DeskDay } from "./bindings/DeskDay";
+export type { DeskSync } from "./bindings/DeskSync";
 export type { WeekStats } from "./bindings/WeekStats";
 export type { UpdateOffer } from "./bindings/UpdateOffer";
 export type { UpdateResult } from "./bindings/UpdateResult";

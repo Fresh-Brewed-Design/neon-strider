@@ -160,6 +160,18 @@ fn migration_3_research_programs(tx: &Transaction) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// Migration 4: desk days (roadmap #28). One row per local calendar day the PC
+/// had keyboard or mouse input while the app ran, for DESK_SYNC ("walked on 9
+/// of your last 10 desk days"). `day` is the local date as `YYYY-MM-DD`.
+fn migration_4_desk_days(tx: &Transaction) -> rusqlite::Result<()> {
+    tx.execute_batch(
+        "CREATE TABLE IF NOT EXISTS desk_days (
+            day TEXT PRIMARY KEY NOT NULL,
+            first_input_ms INTEGER NOT NULL
+        );",
+    )
+}
+
 /// Migration 3's change to the stored programs JSON. `None` when there is
 /// nothing to change or the value can't be read (it is then left as is).
 fn research_programs_v3(raw: &str, next_id: Option<&str>) -> Option<(String, u32)> {
@@ -264,6 +276,7 @@ const MIGRATIONS: &[Migration] = &[
     migration_1_baseline,
     migration_2_indexes,
     migration_3_research_programs,
+    migration_4_desk_days,
 ];
 
 fn schema_version(conn: &Connection) -> rusqlite::Result<u32> {
@@ -844,6 +857,7 @@ pub async fn delete_session(app: tauri::AppHandle, id: i64) -> Result<(), String
     })?;
     // The weekly totals and the odometer are cached; a deleted session changes them.
     crate::snapshot::weekly::refresh(&app, None);
+    crate::snapshot::desk_sync::refresh(&app, None);
     crate::snapshot::odometer::refresh_current(&app);
     Ok(())
 }
@@ -1089,6 +1103,27 @@ pub fn session_rows_since(
                 calories: row.get(3)?,
             })
         })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+    })
+}
+
+/// Record `day` (local `YYYY-MM-DD`) as a desk day. A day already recorded
+/// keeps its first input time.
+pub fn record_desk_day(app: &tauri::AppHandle, day: &str, input_ms: i64) -> Result<(), String> {
+    with_conn(app, |conn| {
+        conn.execute(
+            "INSERT OR IGNORE INTO desk_days (day, first_input_ms) VALUES (?1, ?2)",
+            params![day, input_ms],
+        )
+        .map(|_| ())
+    })
+}
+
+/// Desk days (local `YYYY-MM-DD`) on or after `since_day`.
+pub fn desk_days_since(app: &tauri::AppHandle, since_day: &str) -> Result<Vec<String>, String> {
+    with_conn(app, |conn| {
+        let mut stmt = conn.prepare("SELECT day FROM desk_days WHERE day >= ?1 ORDER BY day")?;
+        let rows = stmt.query_map(params![since_day], |row| row.get::<_, String>(0))?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
     })
 }
@@ -1404,7 +1439,13 @@ mod db_tests {
     fn assert_latest_schema(conn: &Connection) {
         assert_eq!(version(conn), latest());
         let tables = names(conn, "table");
-        for t in ["settings", "automation_state", "sessions", "samples"] {
+        for t in [
+            "settings",
+            "automation_state",
+            "sessions",
+            "samples",
+            "desk_days",
+        ] {
             assert!(tables.iter().any(|n| n == t), "missing table {}", t);
         }
         let indexes = names(conn, "index");

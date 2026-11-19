@@ -11,7 +11,7 @@
 //! - `emitter`: collecting the snapshot and pushing it to the windows
 //!
 //! The feature modules that contribute a part of the snapshot or act on it
-//! (calls, desk, hud_drag, maintenance, odometer, seated, tray, walkaway,
+//! (calls, desk, desk_sync, hud_drag, maintenance, odometer, seated, tray, walkaway,
 //! weekly) are declared here rather than in `lib.rs`, so this module owns
 //! their wiring.
 
@@ -19,6 +19,8 @@
 pub mod calls;
 #[path = "desk.rs"]
 pub mod desk;
+#[path = "desk_sync.rs"]
+pub mod desk_sync;
 #[path = "hud_drag.rs"]
 pub mod hud_drag;
 #[path = "maintenance.rs"]
@@ -41,6 +43,7 @@ mod stasis;
 mod types;
 
 pub use calls::CallsSnapshot;
+pub use desk_sync::DeskSync;
 pub use emitter::spawn_emitter;
 pub use hud::{hud_config, on_setting_written, refresh_monitors, toggle_minified};
 pub use maintenance::{MaintenanceBasis, MaintenanceSnapshot};
@@ -164,7 +167,7 @@ fn neural_snapshot(state: &OrchestratorState) -> NeuralSnapshot {
 }
 
 /// Build a snapshot from state. Pure (no Tauri, no locks, no I/O) so it can be
-/// unit-tested. `walkaway`, `update`, `traffic` and `hud_view` are left at their defaults:
+/// unit-tested. `desk_sync`, `walkaway`, `update`, `traffic` and `hud_view` are left at their defaults:
 /// they depend on the clock, so the emitter fills them in.
 pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSnapshot {
     AppSnapshot {
@@ -180,6 +183,7 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         strava: parts.strava,
         maintenance: parts.maintenance,
         weekly: parts.weekly,
+        desk_sync: DeskSync::default(),
         seated: parts.seated,
         calls: parts.calls,
         odometer: parts.odometer,
@@ -220,6 +224,7 @@ pub fn init(app: &AppHandle) {
     refresh_daily_base(app, None);
     maintenance::init(app);
     weekly::init(app);
+    desk_sync::init(app);
     odometer::init(app);
     desk::init(app);
 }
