@@ -671,6 +671,252 @@ mod mic {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Bluetooth peripheral (GHOST_POD)
+// ---------------------------------------------------------------------------
+//
+// A WinRT GATT server (`GattServiceProvider`). It needs an adapter with the
+// peripheral role; most can be a central (the treadmill, through btleplug)
+// and a peripheral at once. Windows advertises with the PC's own Bluetooth
+// name. Event handlers run on WinRT threads and only call `events`.
+
+pub use peripheral::{peripheral_notify, peripheral_start, peripheral_stop};
+
+mod peripheral {
+    use super::super::{PeripheralCharacteristic, PeripheralEvent, PeripheralEvents};
+    use std::sync::{Mutex, MutexGuard, PoisonError};
+    use windows::core::{IInspectable, Ref, GUID};
+    use windows::Devices::Bluetooth::GenericAttributeProfile::{
+        GattCharacteristicProperties, GattLocalCharacteristic, GattLocalCharacteristicParameters,
+        GattLocalService, GattProtectionLevel, GattServiceProvider,
+        GattServiceProviderAdvertisementStatus,
+        GattServiceProviderAdvertisementStatusChangedEventArgs,
+        GattServiceProviderAdvertisingParameters, GattWriteOption, GattWriteRequestedEventArgs,
+    };
+    use windows::Devices::Bluetooth::{BluetoothAdapter, BluetoothError};
+    use windows::Foundation::TypedEventHandler;
+    use windows::Storage::Streams::{DataReader, DataWriter, IBuffer};
+
+    struct Server {
+        provider: GattServiceProvider,
+        chars: Vec<(u16, GattLocalCharacteristic)>,
+    }
+
+    static SERVER: Mutex<Option<Server>> = Mutex::new(None);
+
+    /// A 16-bit SIG number on the Bluetooth base UUID.
+    fn sig_uuid(short: u16) -> GUID {
+        GUID::from_u128(0x0000_0000_0000_1000_8000_0080_5f9b_34fb | ((short as u128) << 96))
+    }
+
+    fn win(e: windows::core::Error) -> String {
+        format!("Windows Bluetooth error: {}", e.message())
+    }
+
+    /// Plain English for a WinRT Bluetooth error.
+    fn bt_error(e: BluetoothError) -> String {
+        match e {
+            BluetoothError::RadioNotAvailable => {
+                "Bluetooth is off or the adapter is missing.".to_string()
+            }
+            BluetoothError::ResourceInUse => {
+                "Another app is already serving a foot pod on this PC.".to_string()
+            }
+            BluetoothError::DisabledByPolicy => {
+                "A Windows policy turns Bluetooth sensors off on this PC.".to_string()
+            }
+            BluetoothError::DisabledByUser => "Bluetooth is turned off in Windows.".to_string(),
+            BluetoothError::NotSupported | BluetoothError::TransportNotSupported => {
+                "This PC's Bluetooth adapter can't act as a sensor.".to_string()
+            }
+            BluetoothError::ConsentRequired => {
+                "Windows needs permission to use Bluetooth.".to_string()
+            }
+            other => format!("Bluetooth refused the pod (error {}).", other.0),
+        }
+    }
+
+    fn buffer(bytes: &[u8]) -> windows::core::Result<IBuffer> {
+        let writer = DataWriter::new()?;
+        writer.WriteBytes(bytes)?;
+        writer.DetachBuffer()
+    }
+
+    fn bytes_of(buf: &IBuffer) -> windows::core::Result<Vec<u8>> {
+        let reader = DataReader::FromBuffer(buf)?;
+        let mut out = vec![0u8; reader.UnconsumedBufferLength()? as usize];
+        reader.ReadBytes(&mut out)?;
+        Ok(out)
+    }
+
+    fn server() -> MutexGuard<'static, Option<Server>> {
+        SERVER.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    pub fn peripheral_start(
+        service: u16,
+        characteristics: &[PeripheralCharacteristic],
+        events: PeripheralEvents,
+    ) -> Result<(), String> {
+        peripheral_stop();
+        let adapter = BluetoothAdapter::GetDefaultAsync()
+            .and_then(|op| op.get())
+            .map_err(|_| "No Bluetooth adapter found.".to_string())?;
+        if !adapter.IsPeripheralRoleSupported().map_err(win)? {
+            return Err(
+                "This PC's Bluetooth adapter can't act as a sensor (no peripheral role)."
+                    .to_string(),
+            );
+        }
+
+        let created = GattServiceProvider::CreateAsync(sig_uuid(service))
+            .and_then(|op| op.get())
+            .map_err(win)?;
+        let err = created.Error().map_err(win)?;
+        if err != BluetoothError::Success {
+            return Err(bt_error(err));
+        }
+        let provider = created.ServiceProvider().map_err(win)?;
+        let local = provider.Service().map_err(win)?;
+
+        let mut chars = Vec::new();
+        for c in characteristics {
+            let ch = add_characteristic(&local, c, &events)?;
+            chars.push((c.uuid, ch));
+        }
+
+        let on_status = events.clone();
+        provider
+            .AdvertisementStatusChanged(&TypedEventHandler::new(
+                move |_: Ref<GattServiceProvider>,
+                      args: Ref<GattServiceProviderAdvertisementStatusChangedEventArgs>| {
+                    let args = args.ok()?;
+                    let status = args.Status()?;
+                    log::info!("GHOST_POD: advertisement status {}", status.0);
+                    if status == GattServiceProviderAdvertisementStatus::Started
+                        || status
+                            == GattServiceProviderAdvertisementStatus::StartedWithoutAllAdvertisementData
+                    {
+                        on_status(PeripheralEvent::Advertising);
+                    } else if status == GattServiceProviderAdvertisementStatus::Aborted {
+                        on_status(PeripheralEvent::Failed(bt_error(args.Error()?)));
+                    }
+                    Ok(())
+                },
+            ))
+            .map_err(win)?;
+
+        let params = GattServiceProviderAdvertisingParameters::new().map_err(win)?;
+        params.SetIsConnectable(true).map_err(win)?;
+        params.SetIsDiscoverable(true).map_err(win)?;
+        provider
+            .StartAdvertisingWithParameters(&params)
+            .map_err(win)?;
+        *server() = Some(Server { provider, chars });
+        Ok(())
+    }
+
+    fn add_characteristic(
+        local: &GattLocalService,
+        c: &PeripheralCharacteristic,
+        events: &PeripheralEvents,
+    ) -> Result<GattLocalCharacteristic, String> {
+        let params = GattLocalCharacteristicParameters::new().map_err(win)?;
+        let mut props = GattCharacteristicProperties::None;
+        if c.read.is_some() {
+            props |= GattCharacteristicProperties::Read;
+        }
+        if c.notify {
+            props |= GattCharacteristicProperties::Notify;
+        }
+        if c.indicate {
+            props |= GattCharacteristicProperties::Indicate;
+        }
+        if c.write {
+            props |= GattCharacteristicProperties::Write;
+        }
+        params.SetCharacteristicProperties(props).map_err(win)?;
+        params
+            .SetReadProtectionLevel(GattProtectionLevel::Plain)
+            .map_err(win)?;
+        if c.write {
+            params
+                .SetWriteProtectionLevel(GattProtectionLevel::Plain)
+                .map_err(win)?;
+        }
+        if let Some(v) = &c.read {
+            params
+                .SetStaticValue(&buffer(v).map_err(win)?)
+                .map_err(win)?;
+        }
+        let made = local
+            .CreateCharacteristicAsync(sig_uuid(c.uuid), &params)
+            .and_then(|op| op.get())
+            .map_err(win)?;
+        let err = made.Error().map_err(win)?;
+        if err != BluetoothError::Success {
+            return Err(bt_error(err));
+        }
+        let ch = made.Characteristic().map_err(win)?;
+        let uuid = c.uuid;
+
+        if c.notify || c.indicate {
+            let ev = events.clone();
+            ch.SubscribedClientsChanged(&TypedEventHandler::new(
+                move |sender: Ref<GattLocalCharacteristic>, _: Ref<IInspectable>| {
+                    let count = sender.ok()?.SubscribedClients()?.Size()?;
+                    ev(PeripheralEvent::Subscribers { uuid, count });
+                    Ok(())
+                },
+            ))
+            .map_err(win)?;
+        }
+        if c.write {
+            let ev = events.clone();
+            ch.WriteRequested(&TypedEventHandler::new(
+                move |_: Ref<GattLocalCharacteristic>, args: Ref<GattWriteRequestedEventArgs>| {
+                    let args = args.ok()?;
+                    let deferral = args.GetDeferral()?;
+                    let request = args.GetRequestAsync()?.get()?;
+                    let value = bytes_of(&request.Value()?)?;
+                    if request.Option()? == GattWriteOption::WriteWithResponse {
+                        request.Respond()?;
+                    }
+                    deferral.Complete()?;
+                    ev(PeripheralEvent::Write { uuid, value });
+                    Ok(())
+                },
+            ))
+            .map_err(win)?;
+        }
+        Ok(ch)
+    }
+
+    pub fn peripheral_notify(uuid: u16, value: &[u8]) -> Result<(), String> {
+        let guard = server();
+        let Some(server) = guard.as_ref() else {
+            return Ok(());
+        };
+        let Some((_, ch)) = server.chars.iter().find(|(u, _)| *u == uuid) else {
+            return Err(format!("No characteristic {:04X} on the pod.", uuid));
+        };
+        // Not awaited: Windows delivers it to each subscriber by itself.
+        let _op = ch
+            .NotifyValueAsync(&buffer(value).map_err(win)?)
+            .map_err(win)?;
+        Ok(())
+    }
+
+    pub fn peripheral_stop() {
+        if let Some(s) = server().take() {
+            if let Err(e) = s.provider.StopAdvertising() {
+                log::warn!("GHOST_POD: stop advertising failed: {}", e.message());
+            }
+            log::info!("GHOST_POD: stopped");
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -3,6 +3,7 @@ import type { ActiveProgram } from "./ActiveProgram";
 import type { CallsSnapshot } from "./CallsSnapshot";
 import type { ConnectionSnapshot } from "./ConnectionSnapshot";
 import type { DeckSnapshot } from "./DeckSnapshot";
+import type { GhostPodSnapshot } from "./GhostPodSnapshot";
 import type { HudConfig } from "./HudConfig";
 import type { HudMonitor } from "./HudMonitor";
 import type { HudView } from "./HudView";
@@ -55,4 +56,8 @@ update: UpdateSnapshot,
 /**
  * The Diagnostics traffic recorder (off at every start).
  */
-traffic: TrafficSnapshot, };
+traffic: TrafficSnapshot, 
+/**
+ * Labs: GHOST_POD, the PC as a foot pod for a watch (off by default).
+ */
+ghost_pod: GhostPodSnapshot, };

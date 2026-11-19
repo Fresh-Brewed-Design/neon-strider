@@ -44,6 +44,8 @@ pub struct AppSnapshot {
     pub update: crate::update::UpdateSnapshot,
     /// The Diagnostics traffic recorder (off at every start).
     pub traffic: crate::traffic::TrafficSnapshot,
+    /// Labs: GHOST_POD, the PC as a foot pod for a watch (off by default).
+    pub ghost_pod: crate::ghost_pod::GhostPodSnapshot,
 }
 
 /// Strava as the windows see it. Tokens and the client secret never appear here.
@@ -572,6 +574,11 @@ pub enum Command {
     },
     /// Show the folder the traffic recordings are saved in.
     TrafficOpenFolder,
+    /// Labs: GHOST_POD on (`on`) or off. On, the PC advertises as a Bluetooth
+    /// foot pod and sends the belt speed to a paired watch once a second.
+    GhostPodSet {
+        on: bool,
+    },
 }
 
 #[cfg(test)]
@@ -833,6 +840,8 @@ mod tests {
         assert_eq!(c, Command::UpdateAutoInstall { on: false });
         let c: Command = serde_json::from_str(r#"{"type":"traffic_record","on":true}"#).unwrap();
         assert_eq!(c, Command::TrafficRecord { on: true });
+        let c: Command = serde_json::from_str(r#"{"type":"ghost_pod_set","on":true}"#).unwrap();
+        assert_eq!(c, Command::GhostPodSet { on: true });
         let c: Command = serde_json::from_str(r#"{"type":"traffic_open_folder"}"#).unwrap();
         assert_eq!(c, Command::TrafficOpenFolder);
 

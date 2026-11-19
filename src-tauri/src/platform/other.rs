@@ -2,7 +2,8 @@
 //! "unsupported". No input is ever seen (so the sit-too-long nudge and the
 //! walk-away idle timer never fire), the session is never locked, and the
 //! microphone is always free. PC idle time is unknown, so updates never
-//! install by themselves. The HUD stays click-through.
+//! install by themselves. The HUD stays click-through. There is no Bluetooth
+//! peripheral, so GHOST_POD says it isn't supported.
 
 pub fn install_input_hooks() {
     log::info!("Global input hooks are not supported on this OS");
@@ -33,3 +34,17 @@ pub fn cursor_position() -> Option<(i32, i32)> {
 pub fn input_idle_for() -> Option<std::time::Duration> {
     None
 }
+
+pub fn peripheral_start(
+    _service: u16,
+    _characteristics: &[super::PeripheralCharacteristic],
+    _events: super::PeripheralEvents,
+) -> Result<(), String> {
+    Err("The watch pod only works on Windows for now.".to_string())
+}
+
+pub fn peripheral_notify(_uuid: u16, _value: &[u8]) -> Result<(), String> {
+    Ok(())
+}
+
+pub fn peripheral_stop() {}
