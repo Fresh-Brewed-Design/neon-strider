@@ -163,6 +163,7 @@ export const snapshot: AppSnapshot = {
     status: { state: "up_to_date" },
     offer: null,
     dismissed: false,
+    dot: false,
     hud_card: false,
     notes_warning: null,
     show_notes_at_ms: null,
@@ -177,6 +178,7 @@ export const snapshot: AppSnapshot = {
 /** Send the current snapshot to every listener, as Rust's `app-state` event does. */
 function publish() {
   snapshot.hud_view = hudView();
+  snapshot.update.dot = updateDot();
   void emit("app-state", structuredClone(snapshot));
 }
 
@@ -476,12 +478,18 @@ const PREVIEW_NOTES = [
   "- Tilt calibration applies at once, without a reconnect.",
 ].join("\n");
 
+/** The "update waiting" dot, as `update::show_update_dot` decides it. */
+function updateDot(): boolean {
+  return snapshot.update.status.state === "available" && !snapshot.update.dismissed;
+}
+
 function offerUpdate(dismissed = false) {
   const offer = { version: "1.3.0", notes: PREVIEW_NOTES, published: "2026-11-20T09:30:00Z" };
   Object.assign(snapshot.update, {
     status: { state: "available", ...offer },
     offer,
     dismissed,
+    dot: !dismissed,
     hud_card: !dismissed,
   });
 }
@@ -895,6 +903,7 @@ const slow = <T,>(fn: () => T) => new Promise((resolve) => setTimeout(resolve, 1
 const QUERIES: Record<string, (args: Record<string, unknown>) => unknown> = {
   get_snapshot: () => {
     snapshot.hud_view = hudView();
+    snapshot.update.dot = updateDot();
     return snapshot;
   },
   open_log_folder: () => null,

@@ -1,0 +1,1 @@
+- When an update is waiting, the pink dot now shows on the tray icon and on System's Updates tab as well as on the System page, and the tray tooltip says "update ready". All three clear together when you install it or choose "Not now".
