@@ -6,7 +6,7 @@ import type { AppSnapshot } from "../ipc";
 const { snapshot: mock } = await import("../dev/mockBackend");
 const { SeatedCard } = await import("./HudCards");
 
-/** The mock, sat for 63 minutes with the belt still, then `patch`. */
+/** The mock, idle for 63 minutes with the belt still, then `patch`. */
 function seated(patch: (s: AppSnapshot) => void = () => {}): AppSnapshot {
   const s = structuredClone(mock);
   s.deck = { ...s.deck, status: "Stopped", speed_kmh: 0 };
@@ -23,12 +23,18 @@ const buttons = () => screen.getAllByRole("button").map((b) => b.textContent);
 beforeEach(() => vi.mocked(invoke).mockClear());
 
 describe("SeatedCard", () => {
+  it("says the belt has been idle, never that you are sitting", () => {
+    const { container } = render(<SeatedCard snapshot={seated()} />);
+    expect(screen.getByText("63 MIN IDLE")).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/seat|sitting|sit|sat/i);
+  });
+
   it("puts ENGAGE first, then the programs in the configured order, then one way to hide it", () => {
     const s = seated((x) => (x.seated.program_ids = [3, 1]));
     render(<SeatedCard snapshot={s} />);
     const names = (id: number) => s.programs.find((p) => p.id === id)!.name;
     expect(buttons()).toEqual(["ENGAGE", names(3), names(1), "SNOOZE 15 MIN"]);
-    expect(screen.getByText("63 MIN SEATED")).toBeInTheDocument();
+    expect(screen.getByText("63 MIN IDLE")).toBeInTheDocument();
     expect(screen.queryByText(/DISMISS|LATER/)).not.toBeInTheDocument();
   });
 
