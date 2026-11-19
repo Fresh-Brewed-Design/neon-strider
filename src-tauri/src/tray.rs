@@ -23,7 +23,7 @@ const TOOLTIP_EVERY_MS: u64 = 2000;
 const APP: &str = "Neon Strider";
 const SEP: &str = " \u{b7} ";
 /// The tooltip's last part while an update is waiting.
-const UPDATE_READY: &str = "update ready";
+const UPDATE_READY: &str = "UPDATE READY";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayState {
@@ -106,7 +106,7 @@ fn shorten(s: &str, max: usize) -> String {
 /// The tooltip text, under Windows' 127-unit limit. Examples:
 /// `Neon Strider · 3.2 km/h · 1.84 km · today 5.6 km`,
 /// `Neon Strider · idle · today 5.6 km`, `Neon Strider · treadmill offline`,
-/// each ending `· update ready` while an update is waiting.
+/// each ending `· UPDATE READY` (the HUD card's code) while an update is waiting.
 /// A running program's name comes first; it is the part shortened if needed.
 pub fn tooltip(v: &TrayView) -> String {
     if !v.connected {
@@ -464,7 +464,7 @@ mod tests {
         };
         assert_eq!(
             tooltip(&v),
-            "Neon Strider \u{b7} 3.2 km/h \u{b7} 1.84 km \u{b7} today 5.6 km \u{b7} update ready"
+            "Neon Strider \u{b7} 3.2 km/h \u{b7} 1.84 km \u{b7} today 5.6 km \u{b7} UPDATE READY"
         );
         let offline = TrayView {
             connected: false,
@@ -472,7 +472,7 @@ mod tests {
         };
         assert_eq!(
             tooltip(&offline),
-            "Neon Strider \u{b7} treadmill offline \u{b7} update ready"
+            "Neon Strider \u{b7} treadmill offline \u{b7} UPDATE READY"
         );
         // A long program name is shortened before the update note is lost.
         let long = TrayView {
@@ -482,7 +482,7 @@ mod tests {
         };
         let t = tooltip(&long);
         assert!(t.encode_utf16().count() <= MAX_TOOLTIP_UNITS);
-        assert!(t.ends_with("update ready"));
+        assert!(t.ends_with("UPDATE READY"));
     }
 
     #[test]
