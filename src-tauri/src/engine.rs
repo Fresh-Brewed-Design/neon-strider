@@ -1448,9 +1448,17 @@ impl OrchestratorState {
 
     /// The deck has reported the belt moving on this connection: from here on
     /// the automatic start and resume work as usual (a pause later in this walk
-    /// can be resumed by a program step, say).
+    /// can be resumed by a program step, say). Not while a stop is in flight or
+    /// a program waits for GO: that belt is on its way to still, and the hold
+    /// set for it (lights out) stays until a press.
     fn release_hold_if_moving(&mut self) {
-        if self.hold_auto_start && !self.awaiting_first_packet && self.last_status.is_moving() {
+        let winding_down =
+            self.stop_requested || self.program.as_ref().is_some_and(|r| r.wait.is_some());
+        if self.hold_auto_start
+            && !self.awaiting_first_packet
+            && self.last_status.is_moving()
+            && !winding_down
+        {
             self.hold_auto_start = false;
             log::info!("Belt seen moving on this connection: automatic start allowed");
         }

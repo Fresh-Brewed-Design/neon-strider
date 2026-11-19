@@ -1051,4 +1051,114 @@ mod tests {
         assert!(r.deck.belt_still() && r.deck.status_code() == 0);
         assert_eq!(r.finalised.len(), 1, "the walk was saved once");
     }
+
+    /// Lights out (`snapshot/lights_out.rs`) as `desk.rs` runs it: once a
+    /// second, with the display `off` or on, for `secs` seconds. Returns the
+    /// effects it applied.
+    fn lights_out_for(
+        r: &mut Rig,
+        m: &mut crate::snapshot::lights_out::LightsOut,
+        off: bool,
+        secs: u32,
+    ) -> Vec<crate::snapshot::lights_out::Effect> {
+        use crate::snapshot::lights_out;
+        let mut applied = vec![];
+        for _ in 0..secs {
+            r.run(1.0);
+            let input = lights_out::Input {
+                connected: r.linked && !r.state.awaiting_first_packet,
+                display_off: off,
+                belt: lights_out::belt(&r.state),
+            };
+            if let Some(effect) = m.tick(true, &input) {
+                r.state.set_test_now(r.t);
+                lights_out::apply(&mut r.state, effect, r.t);
+                applied.push(effect);
+            }
+        }
+        applied
+    }
+
+    #[test]
+    fn lights_out_stops_a_walk_and_the_display_waking_starts_nothing() {
+        use crate::snapshot::lights_out::{Effect, LightsOut};
+        let mut m = LightsOut::default();
+        let mut r = Rig::new();
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(5.0);
+        r.set_speed(3.0);
+        assert!(lights_out_for(&mut r, &mut m, false, 30).is_empty());
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+
+        // The display turns off: one Stop, the normal one.
+        let mark = r.mark();
+        assert_eq!(lights_out_for(&mut r, &mut m, true, 20), vec![Effect::Stop]);
+        assert_eq!(r.commands_since(mark), vec![PacketKind::AtomicAction]);
+        assert_eq!(r.controls_since(mark, Control::Stop), 1);
+        assert!(
+            r.deck.history.ends_with(&[3, 4, 1, 0]),
+            "{:?}",
+            r.deck.history
+        );
+        assert_eq!(r.finalised.len(), 1, "the walk was saved");
+        assert!(r.state.hold_auto_start);
+
+        // The deck goes to its own sleep while the display stays off.
+        assert!(lights_out_for(&mut r, &mut m, true, 15 * 60).is_empty());
+        assert_eq!(r.deck.status_code(), 6, "standby, screen off");
+
+        // The display wakes: only the notice; nothing is sent, the belt
+        // stays still and the hold stands.
+        let mark = r.mark();
+        assert_eq!(lights_out_for(&mut r, &mut m, false, 1), vec![Effect::Back]);
+        assert!(lights_out_for(&mut r, &mut m, false, 5 * 60).is_empty());
+        assert_eq!(r.commands_since(mark), vec![]);
+        assert!(r.deck.belt_still());
+        assert!(r.state.hold_auto_start);
+        assert_eq!(r.sessions_started, 1);
+    }
+
+    #[test]
+    fn lights_out_holds_a_program_for_go() {
+        use crate::snapshot::lights_out::{Effect, LightsOut};
+        let mut m = LightsOut::default();
+        let mut r = post_meal_walking();
+        let step_before = r.program().step_index;
+
+        assert_eq!(
+            lights_out_for(&mut r, &mut m, true, 15),
+            vec![Effect::PauseProgram]
+        );
+        let a = r.program();
+        assert_eq!(
+            (a.phase, a.paused, a.wait, a.step_index),
+            (
+                ProgramPhase::Walking,
+                true,
+                Some(ProgramWait::LightsOut),
+                step_before
+            )
+        );
+        assert_eq!(r.deck.status_code(), 10, "the program's pause");
+        assert!(r.deck.belt_still());
+        assert!(r.state.hold_auto_start);
+
+        // The display wakes: the program still waits; nothing starts it.
+        let mark = r.mark();
+        assert_eq!(lights_out_for(&mut r, &mut m, false, 1), vec![Effect::Back]);
+        assert!(lights_out_for(&mut r, &mut m, false, 120).is_empty());
+        let sent = r.commands_since(mark);
+        assert!(!app_starts(&sent), "{sent:?}");
+        assert!(r.deck.belt_still());
+        assert_eq!(r.program().wait, Some(ProgramWait::LightsOut));
+
+        // GO carries on at the same step.
+        r.go();
+        r.run(15.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        let a = r.program();
+        assert_eq!((a.paused, a.wait, a.step_index), (false, None, step_before));
+        assert_eq!(r.sessions_started, 1, "the same session");
+    }
 }

@@ -4,4 +4,4 @@
  * Why a program is paused waiting for GO: its next step would start a belt
  * that is still, and the belt never starts without a press in that moment.
  */
-export type ProgramWait = "rest_complete" | "hold_complete" | "belt_still";
+export type ProgramWait = "rest_complete" | "hold_complete" | "belt_still" | "lights_out";

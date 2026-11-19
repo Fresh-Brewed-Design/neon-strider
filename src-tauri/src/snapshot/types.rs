@@ -3,8 +3,8 @@
 //! included, so the `///` text here is part of the generated TypeScript.
 
 use super::{
-    CallsSnapshot, MaintenanceBasis, MaintenanceSnapshot, OdometerSnapshot, SeatedSnapshot,
-    WalkAwaySnapshot, WeeklySummary,
+    CallsSnapshot, LightsOutSnapshot, MaintenanceBasis, MaintenanceSnapshot, OdometerSnapshot,
+    SeatedSnapshot, WalkAwaySnapshot, WeeklySummary,
 };
 use crate::link::{LastError, LinkState};
 use crate::placement;
@@ -44,6 +44,8 @@ pub struct AppSnapshot {
     pub update: crate::update::UpdateSnapshot,
     /// The Diagnostics traffic recorder (off at every start).
     pub traffic: crate::traffic::TrafficSnapshot,
+    /// Lights out: stop the belt when the PC's display turns off.
+    pub lights_out: LightsOutSnapshot,
 }
 
 /// Strava as the windows see it. Tokens and the client secret never appear here.
@@ -572,6 +574,11 @@ pub enum Command {
     },
     /// Show the folder the traffic recordings are saved in.
     TrafficOpenFolder,
+    /// Lights out: stop the belt (or pause a program until GO) when the PC's
+    /// display turns off.
+    LightsOutSetConfig {
+        enabled: bool,
+    },
 }
 
 #[cfg(test)]
