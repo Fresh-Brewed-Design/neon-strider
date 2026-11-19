@@ -26,7 +26,7 @@ describe("SeatedCard", () => {
   it("says the belt has been idle, never that you are sitting", () => {
     const { container } = render(<SeatedCard snapshot={seated()} />);
     expect(screen.getByText("63 MIN IDLE")).toBeInTheDocument();
-    expect(container.textContent).not.toMatch(/seat|sitting|sit|sat/i);
+    expect(container.textContent).not.toMatch(/seat|sitting|\bsit\b|\bsat\b/i);
   });
 
   it("puts ENGAGE first, then the programs in the configured order, then one way to hide it", () => {

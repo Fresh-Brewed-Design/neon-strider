@@ -2,7 +2,7 @@
 
 export type SeatedSnapshot = { enabled: boolean, 
 /**
- * Minutes of sitting before the card appears.
+ * Minutes of PC use with the belt still before the card appears.
  */
 minutes: number, 
 /**
@@ -18,7 +18,7 @@ custom_programs: boolean,
  */
 show_card: boolean, 
 /**
- * Whole minutes seated; what the card says.
+ * Whole minutes idle (belt still); what the card says.
  */
 seated_minutes: number, 
 /**
