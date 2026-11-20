@@ -24,13 +24,13 @@ export function TreadmillSection() {
     >
       {deck && offer && (
         <div className="flex flex-wrap items-center gap-3">
-          <Hint>
-            DECK_PROFILE saw the treadmill run {limitsText(deck.profile)}. Your limits are looser than that.
-          </Hint>
+          <Hint>DECK_PROFILE saw the treadmill run {limitsText(deck.profile)}, inside your speed limits.</Hint>
           <GhostButton onClick={() => updateSettings(offer)}>Use deck limits</GhostButton>
         </div>
       )}
       <div className="grid grid-cols-2 gap-4">
+        {/* 0.1 km/h is one deck speed step, the slowest the deck can be asked
+            for; 25 km/h matches Top speed's range. */}
         <NumberField
           label="Slowest speed"
           unit="km/h"

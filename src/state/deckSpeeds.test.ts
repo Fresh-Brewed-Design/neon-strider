@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DeckProfileSnapshot, DeckSpeedStep } from "../ipc";
-import { deckLimitOffer, profileSummary, roundSpeed, snapToDeck } from "./deckSpeeds";
+import { deckLimitOffer, limitsText, profileSummary, roundSpeed, snapToDeck } from "./deckSpeeds";
 
 const none: DeckProfileSnapshot = {
   learned: 0,
@@ -58,6 +58,15 @@ describe("deckLimitOffer", () => {
 
   it("offers nothing before the limits are seen", () => {
     expect(deckLimitOffer(none, 0.6, 12)).toBeNull();
+  });
+});
+
+describe("limitsText", () => {
+  it("names the limits in the deck's own km/h, the settings' unit", () => {
+    expect(limitsText({ ...none, floor_kmh: 0.5, ceiling_kmh: 3.6, floor_hw_kmh: 0.6, ceiling_hw_kmh: 4 })).toBe(
+      "0.6 to 4.0 km/h",
+    );
+    expect(limitsText({ ...none, ceiling_hw_kmh: 4 })).toBe("no faster than 4.0 km/h");
   });
 });
 

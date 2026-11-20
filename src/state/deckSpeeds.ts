@@ -69,10 +69,15 @@ export function profileSummary(p: DeckProfileSnapshot): string {
   return `${parts.join(", ")}.`;
 }
 
-/** The deck's seen limits as a range, e.g. "0.6 to 4.0 km/h". */
+/**
+ * The deck's seen limits as a range, e.g. "0.6 to 4.0 km/h", in the deck's own
+ * km/h: the unit of the Slowest speed and Top speed fields the offer fills.
+ */
 export function limitsText(p: DeckProfileSnapshot): string {
-  if (p.floor_kmh != null && p.ceiling_kmh != null) return `${p.floor_kmh.toFixed(1)} to ${kmh(p.ceiling_kmh)}`;
-  if (p.floor_kmh != null) return `no slower than ${kmh(p.floor_kmh)}`;
-  if (p.ceiling_kmh != null) return `no faster than ${kmh(p.ceiling_kmh)}`;
-  return "its limits";
+  const lo = p.floor_hw_kmh;
+  const hi = p.ceiling_hw_kmh;
+  if (lo != null && hi != null) return `${lo.toFixed(1)} to ${kmh(hi)}`;
+  if (lo != null) return `no slower than ${kmh(lo)}`;
+  if (hi != null) return `no faster than ${kmh(hi)}`;
+  return "within its own limits";
 }
