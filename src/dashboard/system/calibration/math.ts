@@ -40,3 +40,7 @@ export function wizardResult(input: WizardInput) {
     strideCm: (distanceM / input.steps) * 100,
   };
 }
+
+/** A point worth saving: a real speed and a positive scale. */
+export const isSavablePoint = (speed: number, scale: number) =>
+  Number.isFinite(speed) && Number.isFinite(scale) && speed > 0 && scale > 0;

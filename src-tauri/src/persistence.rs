@@ -256,6 +256,64 @@ fn research_programs_v3(raw: &str, next_id: Option<&str>) -> Option<(String, u32
     Some((serde_json::to_string(&list).ok()?, next))
 }
 
+/// Migration 4: the VO2 max program (docs/research.md, roadmap #53), added
+/// after the user's programs unless the list is empty (they deleted every
+/// program), unreadable, or one has that name already.
+///
+/// Frozen: the program is written out here, not read from `seed_programs`.
+fn migration_4_vo2_max_program(tx: &Transaction) -> rusqlite::Result<()> {
+    let Some(raw) = get_setting_str(tx, "programs") else {
+        return Ok(()); // Never seeded: the first start seeds it.
+    };
+    let next_id = get_setting_str(tx, "program_next_id");
+    if let Some((programs, next_id)) = vo2_max_program_v4(&raw, next_id.as_deref()) {
+        for (key, value) in [
+            ("programs", programs),
+            ("program_next_id", next_id.to_string()),
+        ] {
+            tx.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+                params![key, value],
+            )?;
+        }
+    }
+    Ok(())
+}
+
+/// Migration 4's change to the stored programs JSON; `None` when there is
+/// nothing to add or the value can't be read.
+fn vo2_max_program_v4(raw: &str, next_id: Option<&str>) -> Option<(String, u32)> {
+    use serde_json::{json, Value};
+    let mut list: Vec<Value> = serde_json::from_str(raw).ok()?;
+    if list.is_empty() || list.iter().any(|p| p["name"] == "VO2 max") {
+        return None;
+    }
+    let max_id = list
+        .iter()
+        .filter_map(|p| p["id"].as_u64())
+        .max()
+        .unwrap_or(0) as u32;
+    let id = next_id
+        .and_then(|s| s.trim().trim_matches('"').parse::<u32>().ok())
+        .unwrap_or(0)
+        .max(max_id + 1);
+    let step = |minutes: f64, speed: f64, incline: f64| json!({ "duration_minutes": minutes, "speed_kmh": speed, "incline_pct": incline });
+    let mut steps = vec![step(5.0, 4.5, 0.0)];
+    for _ in 0..4 {
+        steps.push(step(4.0, 6.0, 10.0));
+        steps.push(step(3.0, 4.0, 0.0));
+    }
+    steps.push(step(3.0, 3.0, 0.0));
+    list.push(json!({
+        "id": id,
+        "name": "VO2 max",
+        "steps": steps,
+        "repeat_every_minutes": null,
+        "note": "Four hard 4-minute climbs with easy walks between train VO2 max.",
+    }));
+    Some((serde_json::to_string(&list).ok()?, id + 1))
+}
+
 type Migration = fn(&Transaction) -> rusqlite::Result<()>;
 
 /// Append new migrations at the end; never reorder or edit a shipped one.
@@ -264,6 +322,7 @@ const MIGRATIONS: &[Migration] = &[
     migration_1_baseline,
     migration_2_indexes,
     migration_3_research_programs,
+    migration_4_vo2_max_program,
 ];
 
 fn schema_version(conn: &Connection) -> rusqlite::Result<u32> {
@@ -1461,7 +1520,7 @@ mod db_tests {
         assert_eq!(stored_programs(&conn), crate::programs::seed_programs());
         assert_eq!(
             get_setting_str(&conn, "program_next_id").as_deref(),
-            Some("6")
+            Some("7")
         );
         assert_eq!(
             get_setting_str(&conn, "seated_minutes").as_deref(),
@@ -1486,7 +1545,10 @@ mod db_tests {
         migrate(&mut conn).unwrap();
         let list = stored_programs(&conn);
         let names: Vec<&str> = list.iter().map(|p| p.name.as_str()).collect();
-        assert_eq!(names, ["Post-meal", "Workday", "Brisk", "Micro-break"]);
+        assert_eq!(
+            names,
+            ["Post-meal", "Workday", "Brisk", "Micro-break", "VO2 max"]
+        );
         // The edited Post-meal is untouched; the unedited Workday gains its note.
         assert_eq!(list[0].steps[0].duration_minutes, Some(15.0));
         assert_eq!(list[0].steps[0].incline_pct, 10.0);
@@ -1496,9 +1558,10 @@ mod db_tests {
         assert_eq!(list[2].id, 7);
         assert_eq!(list[2].steps[0].speed_kmh, 4.5);
         assert_eq!(list[3].id, 9);
+        assert_eq!(list[4].id, 10);
         assert_eq!(
             get_setting_str(&conn, "program_next_id").as_deref(),
-            Some("10")
+            Some("11")
         );
         assert_eq!(
             get_setting_str(&conn, "seated_minutes").as_deref(),
@@ -1509,6 +1572,32 @@ mod db_tests {
         conn.execute_batch("PRAGMA user_version = 2").unwrap();
         migrate(&mut conn).unwrap();
         assert_eq!(get_setting_str(&conn, "programs"), before);
+    }
+
+    #[test]
+    fn migration_4_adds_vo2_max_once_and_keeps_a_namesake() {
+        let list = |conn: &Connection| stored_programs(conn);
+        let mut conn = migrated_to_v2();
+        set(&conn, "programs", V1_SEEDS);
+        migrate(&mut conn).unwrap();
+        let first = list(&conn);
+        assert_eq!(first.iter().filter(|p| p.name == "VO2 max").count(), 1);
+        assert_eq!(first.last().unwrap().steps.len(), 10);
+        // Forced to run again, nothing changes.
+        let before = get_setting_str(&conn, "programs");
+        conn.execute_batch("PRAGMA user_version = 3").unwrap();
+        migrate(&mut conn).unwrap();
+        assert_eq!(get_setting_str(&conn, "programs"), before);
+
+        // A program of their own with that name is kept as it is.
+        let mut conn = migrated_to_v2();
+        let own = r#"[{"id":1,"name":"VO2 max","steps":[{"duration_minutes":20.0,"speed_kmh":5.0,"incline_pct":0.0}],"repeat_every_minutes":null}]"#;
+        set(&conn, "programs", own);
+        migrate(&mut conn).unwrap();
+        let l = list(&conn);
+        assert_eq!(l.len(), 3, "Micro-break and Brisk come from migration 3");
+        assert_eq!(l.iter().filter(|p| p.name == "VO2 max").count(), 1);
+        assert_eq!(l[0].steps.len(), 1);
     }
 
     #[test]

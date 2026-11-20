@@ -33,3 +33,17 @@ describe("settings slice", () => {
     expect(useTreadmillStore.getState().neuralFloorPct).toBe(63);
   });
 });
+
+describe("calibration point validation", () => {
+  beforeEach(() => useTreadmillStore.getState().updateSettings(DEFAULT_SETTINGS));
+
+  it("never stores a point with speed 0 or scale 0", () => {
+    const s = useTreadmillStore.getState();
+    s.addCalibrationPoint(point(0, 1));
+    s.addCalibrationPoint(point(5, 0));
+    expect(useTreadmillStore.getState().calibrationPoints).toEqual([]);
+    s.addCalibrationPoint(point(5));
+    s.updateCalibrationPoint(0, point(5, 0));
+    expect(useTreadmillStore.getState().calibrationPoints).toEqual([point(5)]);
+  });
+});
