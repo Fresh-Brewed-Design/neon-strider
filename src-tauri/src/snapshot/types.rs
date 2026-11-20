@@ -541,14 +541,16 @@ pub enum Command {
     /// SNOOZE 15 MIN on the card: hide it for 15 minutes; the idle time is kept.
     SeatedSnooze,
     /// Eye-break settings: on or off, minutes of screen use between breaks (10 to
-    /// 120), seconds a break lasts (20 to 300), whether the HUD plays tones and
-    /// whether a break pauses a walking belt.
+    /// 120), seconds a break lasts (20 to 300), whether the HUD plays tones,
+    /// whether a break pauses a walking belt and whether breaks fit into a
+    /// running program's rests.
     EyeBreakSetConfig {
         enabled: bool,
         minutes: u32,
         seconds: u32,
         sound: bool,
         pause_belt: bool,
+        fit_rests: bool,
     },
     /// SKIP on an eye-break card: no break now, and the count starts again. A
     /// belt the break paused stays paused, and the resume card shows.
