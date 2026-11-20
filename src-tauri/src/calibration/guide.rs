@@ -12,7 +12,8 @@
 //!
 //! A check runs at a speed the deck runs: when DECK_PROFILE says the deck
 //! skips the halfway speed, the check moves to the nearest one it runs inside
-//! the span, and the view says so (`GuideCheck::halfway_kmh`).
+//! the span, and the view says so (`GuideCheck::halfway_kmh`). Once run, the
+//! speeds and checks show the speed the deck really ran (`ran_kmh`).
 //!
 //! This is pure planning. Every move to a new speed is the user's RUN press
 //! (`calibration::guide_run`); nothing here touches the belt.
@@ -129,6 +130,8 @@ pub struct GuideCheck {
     pub mid_kmh: f32,
     /// The halfway speed, when the deck skips it and the check moved off it.
     pub halfway_kmh: Option<f32>,
+    /// The speed the deck ran, when the run measured another than `mid_kmh`.
+    pub ran_kmh: Option<f32>,
     pub verdict: CheckVerdict,
     /// The measured distance error at the midpoint, %, once run.
     pub error_pct: Option<f32>,
@@ -147,7 +150,10 @@ pub enum GuideMark {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, ts_rs::TS)]
 #[ts(export, export_to = "../../src/ipc/bindings/")]
 pub struct GuideSpeed {
+    /// The planned speed, the one RUN sets.
     pub kmh: f32,
+    /// The speed the deck ran, when the run measured another than `kmh`.
+    pub ran_kmh: Option<f32>,
     pub mark: GuideMark,
     /// The slowest or the top speed; false for a midpoint check.
     pub end: bool,
@@ -221,6 +227,14 @@ impl Guide {
 
     fn runs(&self, kmh: f32) -> bool {
         !self.skipped.iter().any(|s| same(*s, kmh))
+    }
+
+    /// The speed the deck ran at planned `kmh`, when it measured another.
+    fn ran(&self, kmh: f32) -> Option<f32> {
+        match self.outcome(kmh) {
+            Some(Outcome::Measured { at_kmh, .. }) if !same(at_kmh, kmh) => Some(tenths(at_kmh)),
+            _ => None,
+        }
     }
 
     fn outcome(&self, kmh: f32) -> Option<Outcome> {
@@ -319,6 +333,7 @@ impl Guide {
         for end in [self.slow_kmh, self.top_kmh] {
             plan.speeds.push(GuideSpeed {
                 kmh: end,
+                ran_kmh: self.ran(end),
                 mark: self.mark(end),
                 end: true,
             });
@@ -329,7 +344,12 @@ impl Guide {
         if let (Some(lo), Some(hi)) = (self.measured(self.slow_kmh), self.measured(self.top_kmh)) {
             self.walk((self.slow_kmh, lo), (self.top_kmh, hi), 1, &mut plan);
         }
-        plan.speeds.sort_by(|a, b| a.kmh.total_cmp(&b.kmh));
+        // By the speed each chip shows: the deck's, once it ran another.
+        plan.speeds.sort_by(|a, b| {
+            a.ran_kmh
+                .unwrap_or(a.kmh)
+                .total_cmp(&b.ran_kmh.unwrap_or(b.kmh))
+        });
         plan
     }
 
@@ -346,8 +366,10 @@ impl Guide {
         let Some((mid, halfway)) = check_speed(lo.0, hi.0, |k| self.runs(k)) else {
             return;
         };
+        let ran = self.ran(mid);
         plan.speeds.push(GuideSpeed {
             kmh: mid,
+            ran_kmh: ran,
             mark: self.mark(mid),
             end: false,
         });
@@ -356,6 +378,7 @@ impl Guide {
             hi_kmh: hi.0,
             mid_kmh: mid,
             halfway_kmh: halfway,
+            ran_kmh: ran,
             verdict: CheckVerdict::Pending,
             error_pct: None,
         };
@@ -383,7 +406,14 @@ impl Guide {
                 };
                 plan.checks.push(check);
                 if check.verdict == CheckVerdict::Split {
-                    let m = (mid, (at_kmh, scale));
+                    // The point sits where the deck ran, so the halves meet
+                    // there; a speed outside the span (the remote took the
+                    // deck past an end) would leave a half with no inside,
+                    // so the planned speed stays the split then.
+                    let at = ran
+                        .filter(|r| *r > lo.0 + STEP_KMH / 2.0 && *r < hi.0 - STEP_KMH / 2.0)
+                        .unwrap_or(mid);
+                    let m = (at, (at_kmh, scale));
                     self.walk(lo, m, depth + 1, plan);
                     self.walk(m, hi, depth + 1, plan);
                 }
@@ -668,5 +698,41 @@ mod tests {
             "{ran:?}"
         );
         assert!(ran.len() > 3, "the bend still splits: {ran:?}");
+    }
+
+    /// #172: a check the deck ran at another speed shows that speed on its
+    /// chip and its line, as the note says, and its halves meet there.
+    #[test]
+    fn a_check_the_deck_ran_elsewhere_shows_the_speed_it_ran() {
+        let mut g = Guide::new(1.0, 6.0).unwrap();
+        g.record(1.0, 1.0, 1.0);
+        g.record(6.0, 6.0, 1.0);
+        assert_eq!(
+            g.view()
+                .speeds
+                .iter()
+                .find(|s| same(s.kmh, 6.0))
+                .unwrap()
+                .ran_kmh,
+            None
+        );
+        g.record(3.5, 3.8, 1.06);
+        let v = g.view();
+        assert!(v.note.as_deref().unwrap().contains("the check uses 3.8"));
+        let chip = v.speeds.iter().find(|s| same(s.kmh, 3.5)).unwrap();
+        assert_eq!((chip.ran_kmh, chip.mark), (Some(3.8), GuideMark::Saved));
+        assert_eq!(v.checks[0].ran_kmh, Some(3.8));
+        assert_eq!(v.checks[0].verdict, CheckVerdict::Split);
+        assert_eq!((v.checks[1].lo_kmh, v.checks[1].hi_kmh), (1.0, 3.8));
+        assert_eq!((v.checks[2].lo_kmh, v.checks[2].hi_kmh), (3.8, 6.0));
+        assert_eq!(g.next(), Some(2.4), "the slower half's check, from 3.8");
+        // A check the remote took past an end keeps its planned split.
+        let mut g = Guide::new(1.0, 6.0).unwrap();
+        g.record(1.0, 1.0, 1.0);
+        g.record(6.0, 6.0, 1.0);
+        g.record(3.5, 6.5, 1.2);
+        let v = g.view();
+        assert_eq!(v.checks[0].ran_kmh, Some(6.5));
+        assert_eq!((v.checks[2].lo_kmh, v.checks[2].hi_kmh), (3.5, 6.0));
     }
 }

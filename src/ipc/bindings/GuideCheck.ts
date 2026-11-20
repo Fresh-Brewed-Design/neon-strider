@@ -13,7 +13,11 @@ mid_kmh: number,
 /**
  * The halfway speed, when the deck skips it and the check moved off it.
  */
-halfway_kmh: number | null, verdict: CheckVerdict, 
+halfway_kmh: number | null, 
+/**
+ * The speed the deck ran, when the run measured another than `mid_kmh`.
+ */
+ran_kmh: number | null, verdict: CheckVerdict, 
 /**
  * The measured distance error at the midpoint, %, once run.
  */

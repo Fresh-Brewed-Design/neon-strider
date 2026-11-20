@@ -11,7 +11,8 @@
 // midpoint check up next; =guidesplit the check 3.1 % off and split;
 // =guidedone the walk done with its summary; =guidemoved RUN asked 0.6, the
 // deck ran 1.2 (a start at the treadmill), and the walk's slowest moved there;
-// =guideskip both ends saved on a deck that skips 2.8, so the check moved to 2.7.
+// =guideskip both ends saved on a deck that skips 2.8, so the check moved to 2.7;
+// =guideran the 2.8 check the deck ran at 2.9, split there.
 // ?caloffer: a connected treadmill
 // with no calibration, so the first-connect card shows. The math is a rough
 // stand-in for Rust's (calibration.rs and calibration/tap.rs, unit-tested there).
@@ -261,25 +262,40 @@ function guidePlan(): CalibrationGuideView | null {
   const speeds: GuideSpeed[] = [];
   const checks: GuideCheck[] = [];
   let next: number | null = null;
+  /** The speed the deck ran, when it measured another than planned (Rust: `Guide::ran`). */
+  const ran = (kmh: number) => {
+    const o = guideOutcomes.get(key(kmh));
+    return o === undefined || o === "skipped" || key(o.at) === key(kmh) ? null : key(o.at) / 10;
+  };
   const mark = (kmh: number) => {
     const o = guideOutcomes.get(key(kmh));
     return o === undefined ? "pending" : o === "skipped" ? "skipped" : "saved";
   };
+  // A split's halves can meet where the deck ran, so a span end is also found by the speed run there.
   const measuredAt = (kmh: number) => {
-    const o = guideOutcomes.get(key(kmh));
+    const o = guideOutcomes.get(key(kmh)) ?? [...guideOutcomes.values()].find((v) => v !== "skipped" && key(v.at) === key(kmh));
     return o === undefined || o === "skipped" ? null : o;
   };
   for (const end of [slow, top]) {
-    speeds.push({ kmh: end, mark: mark(end), end: true });
+    speeds.push({ kmh: end, ran_kmh: ran(end), mark: mark(end), end: true });
     if (!guideOutcomes.has(key(end)) && next === null) next = end;
   }
   const walk = (lo: number, hi: number, depth: number) => {
     const at = guideCheckSpeed(lo, hi);
     if (!at) return;
     const mid = at.mid;
-    speeds.push({ kmh: mid, mark: mark(mid), end: false });
+    const ranAt = ran(mid);
+    speeds.push({ kmh: mid, ran_kmh: ranAt, mark: mark(mid), end: false });
     const o = guideOutcomes.get(key(mid));
-    const check: GuideCheck = { lo_kmh: lo, hi_kmh: hi, mid_kmh: mid, halfway_kmh: at.halfway, verdict: "pending", error_pct: null };
+    const check: GuideCheck = {
+      lo_kmh: lo,
+      hi_kmh: hi,
+      mid_kmh: mid,
+      halfway_kmh: at.halfway,
+      ran_kmh: ranAt,
+      verdict: "pending",
+      error_pct: null,
+    };
     checks.push(check);
     if (o === undefined) {
       if (next === null) next = mid;
@@ -298,12 +314,14 @@ function guidePlan(): CalibrationGuideView | null {
     check.error_pct = err * 100;
     check.verdict = err <= 0.02 ? "agreed" : depth >= 3 ? "at_limit" : "split";
     if (check.verdict === "split") {
-      walk(lo, mid, depth + 1);
-      walk(mid, hi, depth + 1);
+      // The halves meet where the deck ran, when that is inside the span.
+      const m = ranAt !== null && ranAt > lo && ranAt < hi ? ranAt : mid;
+      walk(lo, m, depth + 1);
+      walk(m, hi, depth + 1);
     }
   };
   if (measuredAt(slow) && measuredAt(top)) walk(slow, top, 1);
-  speeds.sort((x, y) => x.kmh - y.kmh);
+  speeds.sort((x, y) => (x.ran_kmh ?? x.kmh) - (y.ran_kmh ?? y.kmh));
   const ended = checks.filter((c) => c.verdict === "agreed" || c.verdict === "at_limit").map((c) => c.error_pct ?? 0);
   return {
     slow_kmh: slow,
@@ -580,6 +598,12 @@ export const calibration: Scenario = {
     }
     if (calFlag === "guidecheck") guideLoad([[0.6, 0.86], [5, 1.04]]);
     if (calFlag === "guideskip") guideLoad([[0.6, 0.86], [5, 1.04]], [2.8]);
+    if (calFlag === "guideran") {
+      guideLoad([[0.6, 0.86], [5, 1.04]]);
+      guideOutcomes.set(key(2.8), { at: 2.9, scale: 0.99 });
+      guideNote = "The deck ran 2.9, not 2.8, so the check uses 2.9.";
+      guidePublish();
+    }
     if (calFlag === "guidesplit") guideLoad([[0.6, 0.86], [5, 1.04], [2.8, 0.98]]);
     if (calFlag === "guidedone") guideLoad([[0.6, 0.86], [5, 1.04], [2.8, 0.98], [1.7, 0.925], [3.9, 1.015]]);
     if (calFlag.startsWith("guide") && calFlag !== "guiderun" && calFlag !== "guidemoved") {

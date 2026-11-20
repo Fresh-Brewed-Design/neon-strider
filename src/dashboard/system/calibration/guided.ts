@@ -89,7 +89,8 @@ function pct(v: number): string {
 /** One line per midpoint check of the guided walk, in plain words. */
 export function checkLine(c: GuideCheck, tolerancePct: number): string {
   const span = `${c.lo_kmh.toFixed(1)} to ${c.hi_kmh.toFixed(1)} km/h`;
-  const at = c.mid_kmh.toFixed(1);
+  // Once run, the speed the deck ran, as the chip and the walk's note show it.
+  const at = (c.ran_kmh ?? c.mid_kmh).toFixed(1);
   const off = c.error_pct === null ? "" : pct(c.error_pct);
   switch (c.verdict) {
     case "pending":
@@ -110,7 +111,7 @@ export function checkLine(c: GuideCheck, tolerancePct: number): string {
 
 /** The walk's summary once every speed is done: what was calibrated, and how far off the curve still is. */
 export function guideSummary(g: CalibrationGuideView): string[] {
-  const saved = g.speeds.filter((s) => s.mark === "saved").map((s) => s.kmh);
+  const saved = g.speeds.filter((s) => s.mark === "saved").map((s) => s.ran_kmh ?? s.kmh);
   const lines = [saved.length === 0 ? "No speed was calibrated." : `Calibrated ${speedList(saved)}.`];
   const ended = g.checks.filter((c) => c.verdict === "agreed" || c.verdict === "at_limit");
   if (g.remaining_error_pct !== null) {
