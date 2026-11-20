@@ -1,3 +1,0 @@
-- Workday and Micro-break are now one program, DUTY_CYCLE: 5 easy minutes every 30 by default. Set the walk length with the step's minutes and the spacing with Repeat every, for example 2 minutes every 20.
-- A Workday you never edited becomes DUTY_CYCLE. A Micro-break you never edited is removed, unless the sit-too-long card offers it or it was your last or running program, and then it becomes DUTY_CYCLE at 2 minutes every 20. Programs you edited stay as they are.
-- The notes under Post-meal, Focus, Brisk and VO2 max are reworded to read more plainly. A program you edited keeps its note.

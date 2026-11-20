@@ -1,5 +1,5 @@
 // Programs. ?noprogram: none running.
-// ?program=ready: DUTY_CYCLE's rest is over on a still belt, and cycle 4 waits for GO
+// ?program=ready: Workday's rest is over on a still belt, and cycle 4 waits for GO
 // (REST COMPLETE // PRESS GO). ?program=hold: a walking step after a 0 km/h step waits.
 // ?program=still: the belt was found still after a reconnect. ?program=resting: mid-rest.
 // ?program=paused: paused by the user (plain GO, no wait).

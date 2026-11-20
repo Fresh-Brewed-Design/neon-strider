@@ -153,7 +153,7 @@ describe("HUD minified", () => {
     expect(screen.getByText("TIME")).toBeInTheDocument();
     expect(screen.getByText("DIST")).toBeInTheDocument();
     expect(screen.getByText("PROGRAM")).toBeInTheDocument();
-    expect(container.querySelector(".hud-run-segments")?.textContent).toBe("DUTY_CYCLE · Walk · 04:12 left · cycle 3");
+    expect(container.querySelector(".hud-run-segments")?.textContent).toBe("Workday · Walk · 04:12 left · cycle 3");
     expect(container.querySelectorAll(".hud-run-seg")).toHaveLength(4);
     expect(screen.getByRole("button", { name: "Show the whole HUD" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "STASIS" })).toBeEnabled();

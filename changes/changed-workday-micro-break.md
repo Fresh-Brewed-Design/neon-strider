@@ -1,0 +1,3 @@
+- Micro-break folds into Workday. Workday is 5 easy minutes every 30 by default. Set the walk length with the step minutes and the spacing with Repeat every, for example 2 minutes every 20.
+- A Micro-break you never edited is removed. The sit-too-long card, your last program or a running program keeps it, and then it stays as Micro-break. Programs you edited stay as they are.
+- The notes under Workday, Micro-break, Post-meal, Focus, Brisk and VO2 max are reworded to read more plainly. A program you edited keeps its note.

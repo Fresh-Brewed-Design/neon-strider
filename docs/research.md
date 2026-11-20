@@ -38,11 +38,11 @@ Some caveats apply to all of it:
 **Verdict:** keep the time and speed, lower the incline to 5 %. **In the app:** "Walking soon
 after a meal blunts the rise in blood sugar."
 
-## DUTY_CYCLE
+## Workday
 
 **Was:** two programs, Workday (5 min at 3.0 km/h and 5 %, every 30 min) and Micro-break (2 min
-at 3.2 km/h, flat, every 20 min). **Now:** one program, DUTY_CYCLE, at Workday's 5 min every
-30 min, 3.0 km/h and 5 %.
+at 3.2 km/h, flat, every 20 min). **Now:** one program, Workday, at 5 min every 30 min, 3.0 km/h
+and 5 %.
 
 - Both were sitting breaks backed by the same trials, so they differ only in break length and
   spacing. In the program those are its two settings: the step's minutes are the break length
@@ -64,17 +64,16 @@ at 3.2 km/h, flat, every 20 min). **Now:** one program, DUTY_CYCLE, at Workday's
   glucose and insulin compared with unbroken sitting, and do better than standing breaks
   (Buffey et al. 2022).
 - At about 3.7 METs, 3.0 km/h with 5 % is light to moderate, in line with the trials.
-- DUTY_CYCLE and the idle nudge both follow these trials, but they do different jobs. DUTY_CYCLE
+- Workday and the idle nudge both follow these trials, but they do different jobs. Workday
   walks you: once started it runs a short walk on a timer, all day, and after each rest the
   belt waits for GO. The idle nudge only reminds you: after 30 minutes of PC use with the belt
   still it shows a card, and nothing moves until you pick a program or start the belt.
-- Existing installs: a Workday never edited becomes DUTY_CYCLE. A Micro-break never edited is
-  removed, unless the sit-too-long card offers it, it was the last program run, or it was
-  running, resting or waiting for GO; then it becomes DUTY_CYCLE at 2 minutes every 20. It
-  also stays, as DUTY_CYCLE, when Workday was edited or deleted. Edited copies keep what you
-  set.
-
-**In the app:** "Five easy minutes every half hour keep the body online."
+- Existing installs: a Workday never edited keeps its name and plan, with a reworded note. A
+  Micro-break never edited is removed, unless the sit-too-long card offers it, it was the last
+  program run, or it was running, resting or waiting for GO. Then it stays as Micro-break at
+  2 minutes every 20, with a reworded note. It also stays when Workday was edited or deleted.
+  Edited copies keep what you set.
+**In the app:** "Five easy minutes every half hour keep the body online." Micro-break, where it stays: "Two easy minutes every 20 keep the body moving."
 
 ## Focus
 
@@ -188,8 +187,8 @@ for one person, and Neon Strider shows no blood pressure figures or claims.
   isometric training ranked first for systolic pressure (Edwards et al. 2023).
 - IWT lowered resting systolic blood pressure more than continuous walking at a moderate
   pace (Nemoto et al. 2007, above).
-- DUTY_CYCLE: in Duran et al. (2023) every break dose lowered systolic blood pressure over
-  one 8-hour day of sitting, against sitting through (see DUTY_CYCLE). That is a one-day lab
+- Workday: in Duran et al. (2023) every break dose lowered systolic blood pressure over
+  one 8-hour day of sitting, against sitting through (see Workday). That is a one-day lab
   result, not a training effect.
 - Not cited: the press coverage of Nemoto et al. gives the IWT group's drop as 9 and 5 mmHg
   (systolic and diastolic). The abstract doesn't state those figures and the full paper could

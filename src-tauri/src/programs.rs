@@ -432,7 +432,7 @@ pub(crate) fn validate_program(p: &Program, min_speed: f32, max_speed: f32) -> R
         }
         // A cycle starts every `r` minutes and the rest is what is left after
         // the steps, so a spacing no longer than the walk would leave no rest
-        // (DUTY_CYCLE: the spacing must be longer than the break).
+        // (Workday: the spacing must be longer than the break).
         if r <= total_minutes(p) {
             return Err("Repeat interval must be longer than the program".to_string());
         }
@@ -445,7 +445,7 @@ pub(crate) fn validate_program(p: &Program, min_speed: f32, max_speed: f32) -> R
 /// `persistence::migration_3_research_programs` and
 /// `persistence::migration_8_seeded_programs`, which keep their own copies.
 /// The ids match what a v1.6 install ends up with after every migration
-/// (id 4 was Micro-break, merged into DUTY_CYCLE), so a migrated install and
+/// (id 4 was Micro-break, merged into Workday), so a migrated install and
 /// a new one hold the same list.
 pub fn seed_programs() -> Vec<Program> {
     let program =
@@ -472,14 +472,10 @@ pub fn seed_programs() -> Vec<Program> {
         ),
         program(
             2,
-            "DUTY_CYCLE",
-            step(
-                Some(DESK_BREAK_MINUTES),
-                DESK_BREAK_KMH,
-                DESK_BREAK_INCLINE_PCT,
-            ),
-            Some(DESK_BREAK_EVERY_MINUTES),
-            NOTE_DUTY_CYCLE,
+            "Workday",
+            step(Some(WORKDAY_MINUTES), WORKDAY_KMH, WORKDAY_INCLINE_PCT),
+            Some(WORKDAY_EVERY_MINUTES),
+            NOTE_WORKDAY,
         ),
         program(3, "Focus", step(None, 2.0, 0.0), None, NOTE_FOCUS),
         program(5, "Brisk", step(Some(30.0), 5.0, 0.0), None, NOTE_BRISK),
@@ -488,7 +484,7 @@ pub fn seed_programs() -> Vec<Program> {
     ]
 }
 
-/// DUTY_CYCLE's two settings are the program's own fields: the break length
+/// Workday's two settings are the program's own fields: the break length
 /// is its one step's minutes and the spacing is `repeat_every_minutes`, both
 /// edited like any program's, with speed and incline. The defaults are
 /// Duran et al. (2023)'s best dose: 5 minutes of light walking every 30 was
@@ -496,12 +492,12 @@ pub fn seed_programs() -> Vec<Program> {
 /// meals. The limits are the ones every program has (`validate_program`):
 /// the spacing must be longer than the break, since the rest between breaks
 /// is the spacing minus the break.
-const DESK_BREAK_MINUTES: f32 = 5.0;
-const DESK_BREAK_EVERY_MINUTES: f32 = 30.0;
+const WORKDAY_MINUTES: f32 = 5.0;
+const WORKDAY_EVERY_MINUTES: f32 = 30.0;
 /// Light walking, about 3.7 METs by the ACSM equation, in line with the
 /// trials' light breaks (docs/research.md).
-const DESK_BREAK_KMH: f32 = 3.0;
-const DESK_BREAK_INCLINE_PCT: f32 = 5.0;
+const WORKDAY_KMH: f32 = 3.0;
+const WORKDAY_INCLINE_PCT: f32 = 5.0;
 
 /// The Norwegian 4x4 for the deck: warm-up, four 4-minute climbs each followed
 /// by 3 minutes of easy walking, cool-down. The deck tops out at 8 km/h and
@@ -586,7 +582,7 @@ const INTERVAL_EASY_KMH: f32 = 3.5;
 pub const NOTE_VO2_MAX: &str =
     "Four hard climbs of four minutes, split by easy walks, train VO2 max.";
 pub const NOTE_POST_MEAL: &str = "Walking soon after a meal blunts the rise in blood sugar.";
-pub const NOTE_DUTY_CYCLE: &str = "Five easy minutes every half hour keep the body online.";
+pub const NOTE_WORKDAY: &str = "Five easy minutes every half hour keep the body online.";
 pub const NOTE_FOCUS: &str = "A slow, flat walk keeps typing and thinking steady.";
 pub const NOTE_BRISK: &str = "Thirty brisk minutes count toward a weekly 150 of moderate activity.";
 pub const NOTE_INTERVAL_WALK: &str =

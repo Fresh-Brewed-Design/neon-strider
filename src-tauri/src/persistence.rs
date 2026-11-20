@@ -410,12 +410,12 @@ fn vo2_max_zones_v7(raw: &str) -> Option<String> {
 
 /// Migration 8: the seeded programs, second round (docs/research.md).
 ///
-/// - DUTY_CYCLE (#160): an untouched Workday becomes DUTY_CYCLE, same id
-///   and plan. An untouched Micro-break is removed when nothing refers to it
-///   and DUTY_CYCLE now exists; otherwise it becomes DUTY_CYCLE too, kept at
-///   its 2 minutes every 20, so a card, a last run or a saved run that points
-///   at its id still finds it. Copies the user edited stay as they are, and
-///   nothing changes if a program is already called DUTY_CYCLE.
+/// - Workday and Micro-break (#160): an untouched Workday keeps its name,
+///   id and plan and gets a new note. An untouched Micro-break is removed
+///   when nothing refers to it and Workday is still there. Otherwise it stays
+///   as Micro-break at its 2 minutes every 20 with a new note, so a card, a
+///   last run or a saved run that points at its id still finds it. Copies
+///   the user edited stay as they are.
 /// - Interval walk (#161) is added after the user's programs, unless the
 ///   list is empty (they deleted every program), unreadable, or one has that
 ///   name already.
@@ -564,8 +564,8 @@ fn vo2_max_untouched_v8(p: &serde_json::Value) -> bool {
         })
 }
 
-const DUTY_CYCLE_V8: &str = "DUTY_CYCLE";
-const DUTY_CYCLE_NOTE_V8: &str = "Five easy minutes every half hour keep the body online.";
+const WORKDAY_NOTE_V8: &str = "Five easy minutes every half hour keep the body online.";
+const MICRO_BREAK_NOTE_V8: &str = "Two easy minutes every 20 keep the body moving.";
 
 /// Migration 8's change to the stored programs JSON; `None` when there is
 /// nothing to change or the value can't be read. `referenced` lists the ids
@@ -591,31 +591,25 @@ fn seeded_programs_v8(
         .max(max_id + 1);
     let mut changed = false;
 
-    // DUTY_CYCLE (#160).
-    if !list.iter().any(|p| p["name"] == DUTY_CYCLE_V8) {
-        let into_desk_breaks = |p: &mut Value| {
-            p["name"] = json!(DUTY_CYCLE_V8);
-            p["note"] = json!(DUTY_CYCLE_NOTE_V8);
-        };
-        let workday = list.iter().position(|p| WORKDAY_V3.matches(p));
-        if let Some(i) = workday {
-            into_desk_breaks(&mut list[i]);
-            changed = true;
+    // Workday and Micro-break (#160).
+    let workday = list.iter().position(|p| WORKDAY_V3.matches(p));
+    if let Some(i) = workday {
+        list[i]["note"] = json!(WORKDAY_NOTE_V8);
+        changed = true;
+    }
+    if let Some(i) = list.iter().position(|p| MICRO_BREAK_V3.matches(p)) {
+        let in_use = list[i]["id"]
+            .as_u64()
+            .is_some_and(|id| referenced.iter().any(|&r| u64::from(r) == id));
+        // Removed only when nothing points at it and Workday is still there;
+        // with Workday edited or deleted, the user's only break program
+        // stays, under its own name.
+        if in_use || workday.is_none() {
+            list[i]["note"] = json!(MICRO_BREAK_NOTE_V8);
+        } else {
+            list.remove(i);
         }
-        if let Some(i) = list.iter().position(|p| MICRO_BREAK_V3.matches(p)) {
-            let in_use = list[i]["id"]
-                .as_u64()
-                .is_some_and(|id| referenced.iter().any(|&r| u64::from(r) == id));
-            // Removed only when nothing points at it and DUTY_CYCLE took
-            // Workday's place; with Workday edited or deleted, the user's
-            // only break program stays, renamed.
-            if in_use || workday.is_none() {
-                into_desk_breaks(&mut list[i]);
-            } else {
-                list.remove(i);
-            }
-            changed = true;
-        }
+        changed = true;
     }
 
     // Notes (#180): each untouched seed's note in the writing rules' words.
@@ -2344,7 +2338,7 @@ mod db_tests {
     }
 
     /// `list` without the programs migration 8 adds or gives a new note, so
-    /// what is left is what DUTY_CYCLE may change.
+    /// what is left is what migration 8 may change.
     fn break_programs(mut list: Vec<crate::programs::Program>) -> Vec<crate::programs::Program> {
         let other = ["Interval walk", "Post-meal", "Focus", "Brisk", "VO2 max"];
         list.retain(|p| !other.contains(&p.name.as_str()));
@@ -2365,22 +2359,22 @@ mod db_tests {
     }
 
     #[test]
-    fn migration_8_turns_an_untouched_workday_into_desk_breaks_and_drops_micro_break() {
+    fn migration_8_keeps_an_untouched_workday_and_drops_an_unused_micro_break() {
         let mut conn = seeds_at_v7();
         let before = stored_programs(&conn);
         migrate(&mut conn).unwrap();
         let list = stored_programs(&conn);
         let names: Vec<&str> = list.iter().map(|p| p.name.as_str()).collect();
-        assert!(!names.contains(&"Workday") && !names.contains(&"Micro-break"));
-        let desk = list.iter().find(|p| p.name == "DUTY_CYCLE").unwrap();
+        assert!(!names.contains(&"Micro-break"));
+        let desk = list.iter().find(|p| p.name == "Workday").unwrap();
         let workday = before.iter().find(|p| p.name == "Workday").unwrap();
         // Same id and plan as the Workday it was.
         assert_eq!(
             (desk.id, &desk.steps, desk.repeat_every_minutes),
             (workday.id, &workday.steps, workday.repeat_every_minutes)
         );
-        assert_eq!(desk.note.as_deref(), Some(DUTY_CYCLE_NOTE_V8));
-        assert_eq!(list.iter().filter(|p| p.name == "DUTY_CYCLE").count(), 1);
+        assert_eq!(desk.note.as_deref(), Some(WORKDAY_NOTE_V8));
+        assert_eq!(list.iter().filter(|p| p.name == "Workday").count(), 1);
         // Forced to run again, nothing changes.
         let raw = get_setting_str(&conn, "programs");
         rerun_from_7(&mut conn);
@@ -2407,18 +2401,10 @@ mod db_tests {
         set(&conn, "programs", &serde_json::to_string(&list).unwrap());
         rerun_from_7(&mut conn);
         assert_eq!(break_programs(stored_programs(&conn)), break_programs(list));
-
-        // A program already called DUTY_CYCLE leaves both seeds alone.
-        let mut conn = seeds_at_v7();
-        let mut list = stored_programs(&conn);
-        list[0].name = "DUTY_CYCLE".to_string();
-        set(&conn, "programs", &serde_json::to_string(&list).unwrap());
-        rerun_from_7(&mut conn);
-        assert_eq!(break_programs(stored_programs(&conn)), break_programs(list));
     }
 
     #[test]
-    fn migration_8_keeps_a_referenced_micro_break_as_desk_breaks_at_2_every_20() {
+    fn migration_8_keeps_a_referenced_micro_break_as_micro_break_at_2_every_20() {
         let refs = [
             ("seated_program_ids", "[4,1]"),
             ("program_last_run_id", "4"),
@@ -2433,14 +2419,14 @@ mod db_tests {
             rerun_from_7(&mut conn);
             let list = stored_programs(&conn);
             let kept = list.iter().find(|p| p.id == 4).expect(key);
-            assert_eq!(kept.name, "DUTY_CYCLE", "{}", key);
+            assert_eq!(kept.name, "Micro-break", "{}", key);
             assert_eq!(kept.steps[0].duration_minutes, Some(2.0), "{}", key);
             assert_eq!(kept.steps[0].speed_kmh, 3.2, "{}", key);
             assert_eq!(kept.repeat_every_minutes, Some(20.0), "{}", key);
-            assert_eq!(kept.note.as_deref(), Some(DUTY_CYCLE_NOTE_V8), "{}", key);
-            // Workday became DUTY_CYCLE too, at 5 every 30.
+            assert_eq!(kept.note.as_deref(), Some(MICRO_BREAK_NOTE_V8), "{}", key);
+            // Workday keeps its name and plan, at 5 every 30.
             let workday = list.iter().find(|p| p.id == 2).unwrap();
-            assert_eq!(workday.name, "DUTY_CYCLE", "{}", key);
+            assert_eq!(workday.name, "Workday", "{}", key);
             assert_eq!(workday.repeat_every_minutes, Some(30.0), "{}", key);
         }
 
@@ -2454,10 +2440,25 @@ mod db_tests {
         let kept = list.iter().find(|p| p.id == 4).unwrap();
         assert_eq!(
             (kept.name.as_str(), kept.repeat_every_minutes),
-            ("DUTY_CYCLE", Some(20.0))
+            ("Micro-break", Some(20.0))
         );
     }
 
+    #[test]
+    fn migration_8_leaves_a_v1_6_install_with_the_ids_a_new_install_seeds() {
+        let mut conn = seeds_at_v7();
+        rerun_from_7(&mut conn);
+        let migrated = stored_programs(&conn);
+        let seeded = crate::programs::seed_programs();
+        let ids = |l: &[crate::programs::Program]| l.iter().map(|p| p.id).collect::<Vec<_>>();
+        assert_eq!(ids(&migrated), ids(&seeded));
+        assert_eq!(migrated, seeded);
+        assert!(seeded.iter().any(|p| p.name == "Workday"));
+        // Forced to run again, nothing changes.
+        let raw = get_setting_str(&conn, "programs");
+        rerun_from_7(&mut conn);
+        assert_eq!(get_setting_str(&conn, "programs"), raw);
+    }
     #[test]
     fn migration_8_adds_interval_walk_once_and_keeps_a_namesake() {
         let mut conn = seeds_at_v7();
@@ -2572,7 +2573,14 @@ mod db_tests {
             state.restore_run(&run, now_ms, t0).unwrap();
             let active = state.active_program().unwrap();
             assert_eq!(active.program_id, run.program_id);
-            assert_eq!(active.name, "DUTY_CYCLE");
+            assert_eq!(
+                active.name,
+                if run.program_id == 2 {
+                    "Workday"
+                } else {
+                    "Micro-break"
+                }
+            );
             assert_eq!(active.wait, run.wait);
             for id in [2, 4] {
                 assert!(state.programs.iter().any(|p| p.id == id), "{}", id);
