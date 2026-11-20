@@ -1,7 +1,7 @@
 # Connect IQ watch app (scope)
 
 Roadmap #55 wants a pause or resume on the watch to pause or resume the belt. #56 wants a
-Garmin interval workout to drive the belt's speed, and to see the workout. Jeremy also asked
+Garmin interval workout to drive the belt's speed, and to see the workout. Fresh Brewed Design also asked
 about speed and incline from the watch, and which kind of Connect IQ app this should be. This
 page is what Garmin's docs and forums say (checked November 2026), what fits, and a phased plan.
 Nothing here is built yet. GHOST_POD, the foot pod the PC already serves, is in watch-pod.md.
@@ -137,7 +137,7 @@ Nothing here is built yet. GHOST_POD, the foot pod the PC already serves, is in 
   `00b165d6-40c2-4f94-8df9-0f69431f21af`, with three characteristics (all little endian):
   - **Command** (write with response, watch to PC): `[seq u8][op u8][arg u8]`. `op`:
     `0x01` pause, `0x02` resume (a press), `0x03` speed up, `0x04` speed down,
-    `0x05` incline up, `0x06` incline down, `0x07` start from still (a press, only if Jeremy
+    `0x05` incline up, `0x06` incline down, `0x07` start from still (a press, only if Fresh Brewed Design
     picks "watch start starts the belt"). `seq` lets the PC drop a repeated write.
   - **Workout step** (write, watch to PC): `[seq u8][index u8][intensity u8][duration_type u8]
     [duration_value u32][target_type u8][target_low u32][target_high u32]`, the current step,
@@ -190,14 +190,14 @@ Nothing is installed yet. All of it is free.
 1. **Phase 0, the link test (smallest useful slice).** PC: serve the new service with only the
    State characteristic, behind the Labs switch, and log connects. Watch: a data field that
    scans for the service, connects while the GHOST_POD foot pod is paired, and shows the belt
-   speed it reads. Answers the one open risk. If it fails, Jeremy picks a fallback (decision 1).
+   speed it reads. Answers the one open risk. If it fails, Fresh Brewed Design picks a fallback (decision 1).
 2. **Phase 1, pause and resume (#55).** Add Command `0x01` and `0x02`, the safety rules above,
    the sim tests, and a short "belt paused" flash in the field when a command is refused.
 3. **Phase 2, workout steps (#56).** Send the current and next step on `onWorkoutStarted` and
    `onWorkoutStepComplete`; Rust runs them as the `Watch` program source; the dashboard and HUD
    show the step, its target and what comes next. Belt speed and incline go into custom FIT
    fields.
-4. **Phase 3, controls (only if Jeremy wants them).** Whichever of decision 2 he picks.
+4. **Phase 3, controls (only if Fresh Brewed Design wants them).** Whichever of decision 2 it picks.
 
 ## Open questions
 
