@@ -167,6 +167,9 @@ export function DeskSection() {
       <div className="border-t border-white/10" />
 
       <WalkAwaySettings />
+
+      <div className="border-t border-white/10" />
+
       <LightsOutSetting />
 
       <div className="border-t border-white/10" />
