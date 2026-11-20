@@ -75,13 +75,26 @@ jobs:
         working-directory: src-tauri
         run: cargo fmt --check
 
+      # Every file in src/ipc/bindings is ts-rs output. Clearing them first means
+      # the check below also catches a new type left uncommitted and a stale file
+      # for a type that no longer exists.
+      - name: Clear the generated bindings
+        shell: bash
+        run: rm -rf src/ipc/bindings
+
       - name: Rust tests (also regenerates the TypeScript IPC bindings)
         working-directory: src-tauri
         run: cargo test
 
-      - name: Generated bindings are committed
+      - name: Committed bindings match a fresh export
         shell: bash
-        run: git diff --exit-code -- src/ipc/bindings || (echo "Run cargo test in src-tauri and commit src/ipc/bindings." && exit 1)
+        run: |
+          if [ -n "$(git status --porcelain -- src/ipc/bindings)" ]; then
+            git status --short -- src/ipc/bindings
+            git diff -- src/ipc/bindings
+            echo "src/ipc/bindings is out of date: run cargo test in src-tauri and commit the result (regenerate, don't hand-merge)."
+            exit 1
+          fi
 
       - name: Clippy (all targets, warnings are errors)
         working-directory: src-tauri

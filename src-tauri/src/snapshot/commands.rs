@@ -72,7 +72,9 @@ fn toggle_widget(widgets: &mut Vec<HudWidget>, widget: HudWidget) {
 }
 
 pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> {
+    // Grouped by feature like the `Command` enum in `types.rs`.
     match command {
+        // ---- Belt: start, stop, speed and incline ----
         Command::Start => press("start").await,
         Command::Pause => press("pause").await,
         Command::Stop => {
@@ -96,6 +98,14 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             Ok(())
         }
 
+        // ---- Treadmill link ----
+        Command::ConnectNow => crate::link::connect_now(&app),
+        Command::OpenConnectDialog => {
+            crate::link::open_connect_dialog(&app);
+            Ok(())
+        }
+
+        // ---- Programs ----
         Command::ProgramSave { program } => {
             change_programs(&app, |state| state.save_program(program)).await
         }
@@ -115,18 +125,12 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             Ok(())
         }
 
+        // ---- HUD and dashboard windows ----
         Command::HudToggleWidget { widget } => {
             set_hud(&app, |cfg| toggle_widget(&mut cfg.widgets, widget))
         }
         Command::HudSetWidgets { widgets } => {
             set_hud(&app, |cfg| cfg.widgets = hud::dedup_widgets(widgets))
-        }
-        Command::HudSetMonitor { monitor } => {
-            let (monitor, rect) = hud::monitor_choice(monitor);
-            set_hud(&app, |cfg| {
-                cfg.monitor = monitor;
-                cfg.monitor_rect = rect;
-            })
         }
         Command::HudSetAnchor { anchor } => set_hud(&app, |cfg| {
             cfg.anchor = anchor;
@@ -134,6 +138,13 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         }),
         Command::HudDragStart { grab_x, grab_y } => hud_drag::start(&app, grab_x, grab_y),
         Command::HudResetPosition => set_hud(&app, |cfg| cfg.custom = None),
+        Command::HudSetMonitor { monitor } => {
+            let (monitor, rect) = hud::monitor_choice(monitor);
+            set_hud(&app, |cfg| {
+                cfg.monitor = monitor;
+                cfg.monitor_rect = rect;
+            })
+        }
         Command::DashboardSetPinned { pinned } => {
             set_hud(&app, |cfg| cfg.dashboard_pinned = pinned)
         }
@@ -146,6 +157,7 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         }
         Command::HudSetMinified { minified } => set_hud(&app, |cfg| cfg.minified = minified),
 
+        // ---- Strava ----
         Command::StravaSetCredentials {
             client_id,
             client_secret,
@@ -175,12 +187,7 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             description,
         } => strava::set_templates(&app, title, rollup_title, description),
 
-        Command::ConnectNow => crate::link::connect_now(&app),
-        Command::OpenConnectDialog => {
-            crate::link::open_connect_dialog(&app);
-            Ok(())
-        }
-
+        // ---- Belt reminder (maintenance) ----
         Command::MaintenanceMarkServiced => {
             blocking(move || maintenance::mark_serviced(&app)).await
         }
@@ -193,8 +200,11 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         Command::MaintenanceSetBasis { basis, hours } => {
             blocking(move || maintenance::set_basis(&app, basis, hours)).await
         }
+
+        // ---- Weekly summary ----
         Command::WeeklySummaryAck => blocking(move || weekly::acknowledge(&app)).await,
 
+        // ---- Idle nudge (STASIS_ALERT) ----
         Command::SeatedSetConfig {
             enabled,
             minutes,
@@ -206,6 +216,8 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             desk::snooze();
             Ok(())
         }
+
+        // ---- Eye breaks (OCULAR_IMPLANT) ----
         Command::EyeBreakSetConfig {
             enabled,
             minutes,
@@ -233,10 +245,13 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             desk::eye_break_stay_still();
             Ok(())
         }
+
+        // ---- Slow down on calls ----
         Command::CallsSetConfig { enabled, quiet_kmh } => {
             blocking(move || calls::set_config(&app, enabled, quiet_kmh)).await
         }
 
+        // ---- Walk-away safety ----
         Command::WalkawaySetConfig {
             lock_enabled,
             idle_enabled,
@@ -251,10 +266,13 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         }
         Command::WalkawayResume => desk::walkaway_resume().await,
         Command::WalkawayEnd => desk::walkaway_end().await,
+
+        // ---- LIGHTS_OUT ----
         Command::LightsOutSetConfig { enabled } => {
             blocking(move || lights_out::set_enabled(&app, enabled)).await
         }
 
+        // ---- Auto-update ----
         Command::UpdateCheck => {
             crate::update::check(&app, true).await;
             Ok(())
@@ -269,10 +287,13 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             blocking(move || crate::update::set_auto_install(&app, on)).await
         }
 
+        // ---- Diagnostics: traffic recorder ----
         Command::TrafficRecord { on } => {
             blocking(move || crate::traffic::set_recording(&app, on)).await
         }
         Command::TrafficOpenFolder => crate::traffic::open_folder(&app),
+
+        // ---- DECK_PROFILE and DECK_SWEEP ----
         Command::DeckProfileForget => {
             ORCHESTRATOR.lock().await.forget_deck_profile();
             Ok(())
@@ -284,6 +305,7 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         }
         Command::DeckProfileSweepSet { on } => crate::profile_sweep::set_enabled(&app, on).await,
 
+        // ---- Guided calibration (Labs) ----
         Command::CalibrationSetWizard { on } => {
             blocking(move || calibration::set_wizard(&app, on)).await
         }
@@ -342,9 +364,19 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             calibration::close_all();
             Ok(())
         }
+
+        // ---- GHOST_POD and WRIST_LINK (Labs) ----
         Command::GhostPodSet { on } => {
             blocking(move || crate::ghost_pod::set_enabled(&app, on)).await
         }
+        Command::GhostPodPowerSet { on } => {
+            blocking(move || crate::ghost_pod::set_power(&app, on)).await
+        }
+        Command::WristLinkSet { on } => {
+            blocking(move || crate::ghost_pod::set_wrist_link(&app, on)).await
+        }
+
+        // ---- HEART_LINK ----
         Command::HeartRateScan => crate::heart_rate::scan().await,
         Command::HeartRatePick { id, name } => {
             blocking(move || crate::heart_rate::pick_sensor(&app, id, name)).await
@@ -352,12 +384,6 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         Command::HeartRateForget => blocking(move || crate::heart_rate::forget_sensor(&app)).await,
         Command::HeartRateMaxSet { bpm } => {
             blocking(move || crate::heart_rate::set_max_heart_rate(&app, bpm)).await
-        }
-        Command::GhostPodPowerSet { on } => {
-            blocking(move || crate::ghost_pod::set_power(&app, on)).await
-        }
-        Command::WristLinkSet { on } => {
-            blocking(move || crate::ghost_pod::set_wrist_link(&app, on)).await
         }
     }
 }

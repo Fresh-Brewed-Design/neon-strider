@@ -2,3 +2,6 @@
 *.png binary
 *.ico binary
 *.icns binary
+
+# ts-rs output (cargo test in src-tauri). On a conflict, regenerate; never hand-merge.
+src/ipc/bindings/*.ts linguist-generated=true
