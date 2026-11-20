@@ -1,1 +1,0 @@
-- GROUND_TRUTH: ADD RUN times a saved speed again and averages the new run into the saved point, with every run weighing the same, and each row shows how many RUNS it holds. Editing a point by hand starts its count over at one.

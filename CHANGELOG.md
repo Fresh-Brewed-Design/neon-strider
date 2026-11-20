@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.20.0 (2026-11-20)
+
+### Changed
+
+- GROUND_TRUTH: ADD RUN times a saved speed again and averages the new run into the saved point, with every run weighing the same, and each row shows how many RUNS it holds. Editing a point by hand starts its count over at one.
+
 ## 1.19.0 (2026-11-20)
 
 ### New
