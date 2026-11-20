@@ -1017,11 +1017,20 @@ fn decode_belt(raw: Option<&str>) -> Option<f32> {
         .filter(|cm| in_range(*cm, MIN_BELT_CM, MAX_BELT_CM))
 }
 
+/// The settings key and stored belt length of the treadmill with this id.
+fn belt_for(
+    store: &impl crate::persistence::SettingsStore,
+    device_id: &str,
+) -> (String, Option<f32>) {
+    let key = belt_key_for(device_id);
+    let cm = decode_belt(store.get(&key).as_deref());
+    (key, cm)
+}
+
 /// Make the belt length the one stored for this treadmill. Called with
 /// DECK_PROFILE's switch (startup with the saved treadmill, each connection).
-pub fn switch_belt(app: &AppHandle, device_id: &str) {
-    let key = belt_key_for(device_id);
-    let cm = decode_belt(crate::persistence::read_setting(app, &key).as_deref());
+pub fn switch_belt(store: &impl crate::persistence::SettingsStore, device_id: &str) {
+    let (key, cm) = belt_for(store, device_id);
     with_belt(|b| {
         b.key = Some(key);
         b.cm = cm;
@@ -1988,5 +1997,18 @@ mod tests {
         s.advance(false).unwrap();
         s.mark_pending(2.0);
         assert_eq!(s.view().marks[0], SweepMark::Skipped);
+    }
+
+    #[test]
+    fn belt_length_follows_the_treadmill() {
+        use crate::persistence::SettingsStore;
+        let conn = crate::persistence::memory_db();
+        conn.put(&belt_key_for("AAAA"), "300").unwrap();
+        conn.put(&belt_key_for("BBBB"), "320").unwrap();
+        assert_eq!(belt_for(&conn, "AAAA"), (belt_key_for("AAAA"), Some(300.0)));
+        assert_eq!(belt_for(&conn, "BBBB"), (belt_key_for("BBBB"), Some(320.0)));
+        // A treadmill with none stored starts without one.
+        assert_eq!(belt_for(&conn, "CCCC"), (belt_key_for("CCCC"), None));
+        assert_eq!(belt_for(&conn, "AAAA").1, Some(300.0));
     }
 }

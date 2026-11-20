@@ -1167,6 +1167,54 @@ pub fn write_setting(app: &tauri::AppHandle, key: &str, value: &str) -> Result<(
     })
 }
 
+/// Where raw settings are kept. The app reads and writes its database; tests
+/// use an in-memory one, so logic that moves settings around can be checked.
+pub trait SettingsStore {
+    fn get(&self, key: &str) -> Option<String>;
+    fn put(&self, key: &str, value: &str) -> Result<(), String>;
+    fn remove(&self, key: &str) -> Result<(), String>;
+}
+
+impl SettingsStore for tauri::AppHandle {
+    fn get(&self, key: &str) -> Option<String> {
+        read_setting(self, key)
+    }
+    fn put(&self, key: &str, value: &str) -> Result<(), String> {
+        write_setting(self, key, value)
+    }
+    fn remove(&self, key: &str) -> Result<(), String> {
+        delete_setting(self, key)
+    }
+}
+
+/// Tests: an in-memory database with every migration applied.
+#[cfg(test)]
+pub(crate) fn memory_db() -> Connection {
+    let mut conn = Connection::open_in_memory().unwrap();
+    migrate(&mut conn).unwrap();
+    conn
+}
+
+#[cfg(test)]
+impl SettingsStore for Connection {
+    fn get(&self, key: &str) -> Option<String> {
+        get_setting_str(self, key)
+    }
+    fn put(&self, key: &str, value: &str) -> Result<(), String> {
+        self.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+            params![key, value],
+        )
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+    }
+    fn remove(&self, key: &str) -> Result<(), String> {
+        self.execute("DELETE FROM settings WHERE key = ?1", params![key])
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+}
+
 /// A raw setting parsed as `T`, ignoring surrounding whitespace and JSON quotes.
 pub fn parse_setting<T: std::str::FromStr>(raw: Option<&str>) -> Option<T> {
     raw?.trim().trim_matches('"').parse().ok()
