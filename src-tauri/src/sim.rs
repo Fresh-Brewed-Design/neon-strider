@@ -413,6 +413,31 @@ impl SimDeck {
         }
     }
 
+    /// One speed press on the deck's own buttons or remote (`up` or down),
+    /// 0.1 km/h, while running: the deck takes it as its own target and ramps
+    /// to it, as it does for a target the app sends.
+    #[cfg(test)]
+    pub(crate) fn press_speed(&mut self, up: bool, now: Instant) {
+        self.advance(now);
+        if self.phase == Phase::Running {
+            let byte = (self.target * 10.0).round() as i32 + if up { 1 } else { -1 };
+            self.target = byte.clamp(0, u8::MAX as i32) as f32 / 10.0;
+        }
+    }
+
+    /// One incline press on the deck's own buttons or remote, while running.
+    #[cfg(test)]
+    pub(crate) fn press_incline(&mut self, up: bool, now: Instant) {
+        self.advance(now);
+        if self.phase == Phase::Running {
+            self.incline = if up {
+                self.incline.saturating_add(1)
+            } else {
+                self.incline.saturating_sub(1)
+            };
+        }
+    }
+
     /// The screen goes off (standby), as it does by itself after idling.
     #[cfg(test)]
     pub(crate) fn enter_standby(&mut self, now: Instant) {
@@ -604,6 +629,22 @@ impl Rig {
     pub(crate) fn set_speed(&mut self, kmh: f32) {
         self.state.set_test_now(self.t);
         crate::bluetooth::apply_manual_intent(&mut self.state, Some(kmh), None);
+    }
+
+    /// `n` speed presses on the deck's remote, `up` or down, 0.3 s apart.
+    pub(crate) fn remote_speed(&mut self, up: bool, n: u32) {
+        for _ in 0..n {
+            self.deck.press_speed(up, self.t);
+            self.run(0.3);
+        }
+    }
+
+    /// `n` incline presses on the deck's remote, `up` or down, 0.3 s apart.
+    pub(crate) fn remote_incline(&mut self, up: bool, n: u32) {
+        for _ in 0..n {
+            self.deck.press_incline(up, self.t);
+            self.run(0.3);
+        }
     }
 
     pub(crate) fn run_program(&mut self, id: u32) {
@@ -1554,5 +1595,173 @@ mod tests {
         assert_eq!(eyes.rt.machine.end_seq(), 1, "a break came and went");
         assert_eq!(r.commands_since(mark), vec![]);
         assert_eq!(eyes.shown(), EyeBreakPhase::Idle);
+    }
+
+    /// A manual walk at 3.0 km/h, level, settled.
+    fn manual_walk_at_3() -> Rig {
+        let mut r = Rig::new();
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(5.0);
+        r.set_speed(3.0);
+        r.run(10.0);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+        r
+    }
+
+    fn deck_byte(r: &Rig) -> i32 {
+        (r.deck.target * 10.0).round() as i32
+    }
+
+    #[test]
+    fn a_speed_nudge_after_the_remote_steps_from_the_remote_speed() {
+        let mut r = manual_walk_at_3();
+        let mark = r.mark();
+        r.remote_speed(true, 10);
+        r.run(5.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(
+            r.commands_since(mark),
+            vec![],
+            "the app leaves the remote alone"
+        );
+        r.press(DeckAction::SpeedUp);
+        r.run(2.0);
+        assert_eq!(deck_byte(&r), 41, "up from the remote's 4.0");
+        assert!(r.deck.running_at(4.1), "{} km/h", r.deck.speed_kmh());
+        r.press(DeckAction::SpeedDown);
+        r.run(1.0);
+        r.press(DeckAction::SpeedDown);
+        r.run(2.0);
+        assert_eq!(deck_byte(&r), 39, "down from 4.1, twice");
+
+        // Down on the remote, then down on the HUD.
+        r.remote_speed(false, 5);
+        r.run(3.0);
+        assert!(r.deck.running_at(3.4), "{} km/h", r.deck.speed_kmh());
+        r.press(DeckAction::SpeedDown);
+        r.run(2.0);
+        assert_eq!(deck_byte(&r), 33, "down from the remote's 3.4");
+
+        // One up on the remote, one down on the HUD: back to the speed the
+        // app last sent, which still goes out.
+        r.remote_speed(true, 1);
+        r.run(3.0);
+        assert!(r.deck.running_at(3.4), "{} km/h", r.deck.speed_kmh());
+        r.press(DeckAction::SpeedDown);
+        r.run(2.0);
+        assert!(r.deck.running_at(3.3), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(r.controls_since(0, Control::Pause), 0);
+    }
+
+    #[test]
+    fn an_incline_nudge_after_the_remote_steps_from_the_remote_incline() {
+        let mut r = manual_walk_at_3();
+        let mark = r.mark();
+        r.remote_incline(true, 5);
+        r.run(3.0);
+        assert_eq!(r.deck.incline, 5);
+        assert_eq!(
+            r.commands_since(mark),
+            vec![],
+            "the app leaves the remote alone"
+        );
+        r.press(DeckAction::InclineUp);
+        r.run(2.0);
+        assert_eq!(r.deck.incline, 6, "up from the remote's 5");
+        r.press(DeckAction::InclineDown);
+        r.run(1.0);
+        r.press(DeckAction::InclineDown);
+        r.run(2.0);
+        assert_eq!(r.deck.incline, 4, "down from 6, twice");
+        assert!(r.deck.running_at(3.0), "the speed stays put");
+
+        r.remote_incline(false, 3);
+        r.run(2.0);
+        assert_eq!(r.deck.incline, 1);
+        r.press(DeckAction::InclineUp);
+        r.run(2.0);
+        assert_eq!(r.deck.incline, 2, "up from the remote's 1");
+    }
+
+    #[test]
+    fn a_nudge_of_one_keeps_what_the_remote_set_on_the_other() {
+        let mut r = manual_walk_at_3();
+        r.remote_speed(true, 5);
+        r.remote_incline(true, 4);
+        r.run(3.0);
+        assert!(r.deck.running_at(3.5), "{} km/h", r.deck.speed_kmh());
+        r.press(DeckAction::InclineUp);
+        r.run(2.0);
+        assert_eq!(r.deck.incline, 5);
+        assert!(
+            r.deck.running_at(3.5),
+            "an incline press keeps the remote's speed"
+        );
+        r.remote_incline(false, 2);
+        r.run(2.0);
+        r.press(DeckAction::SpeedUp);
+        r.run(2.0);
+        assert!(r.deck.running_at(3.6), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(
+            r.deck.incline, 3,
+            "a speed press keeps the remote's incline"
+        );
+    }
+
+    #[test]
+    fn a_nudge_during_a_program_steps_from_the_remote_speed() {
+        let mut r = post_meal_walking();
+        r.remote_speed(true, 5);
+        r.run(3.0);
+        assert!(r.deck.running_at(4.5), "{} km/h", r.deck.speed_kmh());
+        r.press(DeckAction::SpeedUp);
+        r.run(2.0);
+        assert!(r.deck.running_at(4.6), "{} km/h", r.deck.speed_kmh());
+        let a = r.program();
+        assert_eq!(
+            (a.phase, a.paused, a.step_index),
+            (ProgramPhase::Walking, false, 0)
+        );
+    }
+
+    #[test]
+    fn app_presses_mid_ramp_still_step_from_the_app_target() {
+        let mut r = manual_walk_at_3();
+        // A slider to 5.0, and + while the belt is still ramping up to it.
+        r.set_speed(5.0);
+        r.run(1.0);
+        assert!(r.deck.speed_kmh() < 4.5, "{} km/h", r.deck.speed_kmh());
+        r.press(DeckAction::SpeedUp);
+        r.run(8.0);
+        assert!(r.deck.running_at(5.1), "{} km/h", r.deck.speed_kmh());
+        // Quick presses before the deck reports any of them all count.
+        r.press(DeckAction::SpeedUp);
+        r.run(0.05);
+        r.press(DeckAction::SpeedUp);
+        r.run(0.05);
+        r.press(DeckAction::SpeedUp);
+        r.run(3.0);
+        assert!(r.deck.running_at(5.4), "{} km/h", r.deck.speed_kmh());
+        r.press(DeckAction::InclineUp);
+        r.run(0.05);
+        r.press(DeckAction::InclineUp);
+        r.run(3.0);
+        assert_eq!(r.deck.incline, 2);
+    }
+
+    #[test]
+    fn a_remote_press_against_an_app_ramp_is_the_base_once_the_deck_settles() {
+        let mut r = manual_walk_at_3();
+        r.set_speed(5.0);
+        r.run(1.0);
+        // Down on the remote while the belt ramps up to the app's 5.0: the
+        // deck still climbs, but stops at its own 4.9.
+        r.remote_speed(false, 1);
+        r.run(10.0);
+        assert!(r.deck.running_at(4.9), "{} km/h", r.deck.speed_kmh());
+        r.press(DeckAction::SpeedUp);
+        r.run(2.0);
+        assert_eq!(deck_byte(&r), 50, "up from the deck's 4.9");
     }
 }
