@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, Plus, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Plus, Trash2, X } from "lucide-react";
 import {
   dispatch,
   type CalibrationLimits,
@@ -13,7 +13,7 @@ import { useAppSnapshot } from "../../../state/useAppState";
 import { useTreadmillStore } from "../../../store/treadmillStore";
 import { useGuidedTask } from "../../guided/useGuidedTask";
 import { GhostButton, Hint, Label, NeonButton } from "../../ui";
-import { cx } from "../../util";
+import { cx, send } from "../../util";
 import { INPUT_CLASS } from "../fields";
 import {
   calibrationRows,
@@ -24,12 +24,19 @@ import {
   runRowFor,
   type CalibrationRow,
 } from "./guided";
+import { GuidePanel, TopSpeedQuestion } from "./GuidePanel";
 import { StepPanel } from "./StepPanel";
 
+/** Which way a run belongs to a walk: RUN ALL's sweep, the guided walk, or neither. */
+type Walk = "sweep" | "guide" | null;
+
 /**
- * Labs: GROUND_TRUTH, the guided calibration. The belt loop's length comes
- * first, asked once per treadmill (`snapshot.calibration.belt_cm`). Then one
- * row per speed: RUN (the user's press) sets the belt to it, and the user taps
+ * GROUND_TRUTH, the guided calibration. The belt loop's length comes first,
+ * asked once per treadmill (`snapshot.calibration.belt_cm`). Then one
+ * question, the fastest the user walks: Rust plans the guided walk
+ * (`snapshot.calibration.guide`) from the slowest speed to that one, with
+ * midpoint checks, and each speed waits for RUN. The target list and RUN ALL
+ * are the advanced way in. Each row is one speed: RUN (the user's press) sets the belt to it, and the user taps
  * as the belt mark passes (TAP, Space in the dashboard, Alt+Space anywhere).
  * Rust timestamps the taps and ends the run once they agree, with the point
  * it gives and saves it by itself, averaged into the saved point at that speed
@@ -53,9 +60,18 @@ export function GuidedCalibration() {
   const removeAction = useAction();
   // BELT_LOOP's form is open again after CHANGE.
   const [editingBelt, setEditingBelt] = useState(false);
+  // ADVANCED // TARGET_LIST is open (view state only).
+  const [advanced, setAdvanced] = useState(false);
+  const maxKmh = useTreadmillStore((s) => s.maxSpeed);
   const cal = snap?.calibration;
-  // The dashboard stays open and on top while a run or sweep is open (#139).
-  useGuidedTask("ground_truth", Boolean(cal?.run || cal?.sweep));
+  // The dashboard stays open and on top while a run, sweep or walk is open (#139).
+  const active = Boolean(cal?.run || cal?.sweep || cal?.guide);
+  useGuidedTask("ground_truth", active);
+  // A long walk outlasts the pin's half hour, so each new speed starts its clock again.
+  const runKmh = cal?.run?.target_kmh ?? null;
+  useEffect(() => {
+    if (active && runKmh !== null) send({ type: "guided_task_start", task: "ground_truth" });
+  }, [active, runKmh]);
   if (!cal) return null;
 
   const run = cal.run;
@@ -63,7 +79,10 @@ export function GuidedCalibration() {
   const rows = calibrationRows(points, [...cal.targets.map((t) => t.kmh), ...(run ? [run.target_kmh] : [])]);
   const runRow = run ? runRowFor(rows, run.target_kmh) : null;
   const sweep = cal.sweep;
+  const guide = cal.guide;
+  const walk: Walk = guide ? "guide" : sweep ? "sweep" : null;
   const beltSet = cal.belt_cm !== null;
+  const running = run !== null && run.phase !== "measured";
 
   const start = (row: CalibrationRow) => {
     setPressed(row.targetKmh);
@@ -95,34 +114,26 @@ export function GuidedCalibration() {
           Stick a strip of tape across the belt as a mark, press RUN, and tap each time the mark passes.
         </Hint>
       )}
-      {!beltSet ? null : sweep ? (
-        <SweepPanel sweep={sweep} running={run !== null && run.phase !== "measured"} />
-      ) : (
-        !run && (
-          <div>
-            <NeonButton
-              className="w-full py-2"
-              disabled={runAction.pending}
-              onClick={() => {
-                setPressed(-1);
-                void runAction.run(() =>
-                  dispatch({ type: "calibration_sweep_start" }),
-                );
-              }}
-            >
-              RUN ALL
-            </NeonButton>
-            <Hint className="mt-1">RUN ALL runs each target speed in turn, slowest first.</Hint>
-            {pressed === -1 && (
-              <ActionStatus
-                pending={runAction.pending && "Setting the belt speed…"}
-                error={runAction.error}
-                className="mt-1"
+      {beltSet && guide && (
+        <>
+          <GuidePanel guide={guide} running={running} stop={<StopButton />} />
+          {run && (
+            <div className="hacker-panel rounded-lg border-white/5 bg-white/[0.02] p-3">
+              <Readout label="DECK_VELOCITY" value={`${run.target_kmh.toFixed(1)} km/h`} className="text-neon-cyan" />
+              <RunPanel
+                run={run}
+                limits={cal.limits}
+                rawKmh={snap.deck.raw_speed_kmh}
+                walk="guide"
+                onClosed={() => runAction.reset()}
               />
-            )}
-          </div>
-        )
+            </div>
+          )}
+        </>
       )}
+      {beltSet && sweep && <SweepPanel sweep={sweep} running={running} />}
+      {beltSet && !guide && !sweep && !run && <TopSpeedQuestion maxKmh={maxKmh} />}
+      <Label>POINTS</Label>
       <div className="space-y-2">
         {rows.map((row) => {
           const listed = listedTarget(cal.targets, row.targetKmh);
@@ -150,7 +161,7 @@ export function GuidedCalibration() {
               <div className="flex shrink-0 items-center gap-1">
                 <NeonButton
                   onClick={() => start(row)}
-                  disabled={runAction.pending || sweep !== null || outOfRange || !beltSet}
+                  disabled={runAction.pending || walk !== null || outOfRange || !beltSet}
                   className="px-3 py-1.5"
                   tone={row.point ? "magenta" : "cyan"}
                 >
@@ -199,12 +210,12 @@ export function GuidedCalibration() {
             {removing === row.targetKmh && (
               <ActionStatus pending={removeAction.pending} error={removeAction.error} className="mt-2" />
             )}
-            {run && row === runRow && (
+            {run && row === runRow && walk !== "guide" && (
               <RunPanel
                 run={run}
                 limits={cal.limits}
                 rawKmh={snap.deck.raw_speed_kmh}
-                inSweep={sweep !== null}
+                walk={walk}
                 onClosed={() => {
                   setPressed(null);
                   runAction.reset();
@@ -215,7 +226,42 @@ export function GuidedCalibration() {
           );
         })}
       </div>
-      <AddSpeed />
+      <button
+        type="button"
+        aria-expanded={advanced}
+        onClick={() => setAdvanced((v) => !v)}
+        className="flex items-center gap-1 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-white/60 transition-colors hover:text-neon-cyan"
+      >
+        {advanced ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        ADVANCED // TARGET_LIST
+      </button>
+      {advanced && (
+        <div className="space-y-3 border-l border-white/10 pl-3">
+          <Hint>The target list picks the speeds by hand, and RUN ALL runs each one, slowest first.</Hint>
+          {beltSet && !walk && !run && (
+            <div>
+              <NeonButton
+                className="w-full py-2"
+                disabled={runAction.pending}
+                onClick={() => {
+                  setPressed(-1);
+                  void runAction.run(() => dispatch({ type: "calibration_sweep_start" }));
+                }}
+              >
+                RUN ALL
+              </NeonButton>
+              {pressed === -1 && (
+                <ActionStatus
+                  pending={runAction.pending && "Setting the belt speed…"}
+                  error={runAction.error}
+                  className="mt-1"
+                />
+              )}
+            </div>
+          )}
+          <AddSpeed />
+        </div>
+      )}
     </div>
   );
 }
@@ -338,15 +384,16 @@ function RunPanel({
   run,
   limits,
   rawKmh,
-  inSweep,
+  walk,
   onClosed,
 }: {
   run: CalibrationRunView;
   limits: CalibrationLimits;
   rawKmh: number;
-  inSweep: boolean;
+  walk: Walk;
   onClosed: () => void;
 }) {
+  const inSweep = walk !== null;
   const tap = useAction();
   const again = useAction();
   const undo = useAction();
@@ -370,11 +417,14 @@ function RunPanel({
     return () => window.removeEventListener("keydown", onKey);
   }, [keysListening, sendTap]);
 
-  // In a sweep, closing a run that has no saved point skips its speed.
+  // In a sweep or the walk, closing a run that has no saved point skips its speed.
   const close = () => {
-    const command = inSweep
-      ? ({ type: "calibration_sweep_next", saved: false } as const)
-      : ({ type: "calibration_run_close" } as const);
+    const command =
+      walk === "sweep"
+        ? ({ type: "calibration_sweep_next", saved: false } as const)
+        : walk === "guide"
+          ? ({ type: "calibration_guide_skip" } as const)
+          : ({ type: "calibration_run_close" } as const);
     void dispatch(command).finally(onClosed);
   };
 
@@ -479,7 +529,7 @@ function RunPanel({
             >
               TAP AGAIN
             </GhostButton>
-            {/* In a sweep, the sweep panel above has RUN and SKIP for the speed. */}
+            {/* In a sweep or the walk, the panel above has RUN and SKIP for the speed. */}
             {!inSweep && <GhostButton onClick={close}>Close</GhostButton>}
           </div>
           <ActionStatus pending={undo.pending} error={undo.error} />

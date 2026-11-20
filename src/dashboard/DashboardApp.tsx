@@ -12,6 +12,7 @@ import { ProgramsPage } from "./pages/ProgramsPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { HudPage } from "./pages/HudPage";
 import { SystemPage } from "./pages/SystemPage";
+import { CalibrateOffer } from "./system/calibration/CalibrateOffer";
 import { UpdateDot } from "./system/updates/UpdateDot";
 import { showUpdateBadge } from "./system/updates/updates";
 import { WhatsNewDialog } from "./system/updates/WhatsNewDialog";
@@ -30,6 +31,7 @@ const PAGE_KEY = "dashboard.page";
 /** The last HUD "open the notes" request this dashboard followed (`update.show_notes_at_ms`). */
 const NOTES_SHOWN_KEY = "dashboard.updateNotesShownAt";
 const UPDATES_SECTION_ID = "sys-updates";
+const CALIBRATION_SECTION_ID = "sys-calibration";
 
 function readPage(): PageId {
   const saved = readPref(PAGE_KEY);
@@ -141,8 +143,18 @@ export function DashboardApp() {
         </div>
       </nav>
 
-      <main className="min-w-0 flex-1">
-        <Current />
+      <main className="flex min-w-0 flex-1 flex-col">
+        {page !== "system" && (
+          <CalibrateOffer
+            onCalibrate={() => {
+              openPage("system");
+              setTimeout(() => document.getElementById(CALIBRATION_SECTION_ID)?.scrollIntoView({ block: "start" }), 80);
+            }}
+          />
+        )}
+        <div className="min-h-0 flex-1">
+          <Current />
+        </div>
       </main>
 
       <Toaster position="bottom-right" theme="dark" expand={false} richColors />

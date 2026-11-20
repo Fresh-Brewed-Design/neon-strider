@@ -22,7 +22,7 @@ const types = () => dispatched().map((c) => c.type);
 
 const saved = { speed: 3, stride_length_cm: 68, distance_scale: 0.9, runs: 1 };
 const belt: CalibrationResult = {
-  point: { speed: 3, stride_length_cm: 68, distance_scale: 3 / 2.82, runs: 1 },
+  point: { speed: 3, stride_length_cm: 68, distance_scale: 3 / 2.82, runs: 1, stride_runs: 0 },
   real_kmh: 2.82,
   reported_kmh: 3,
   real_m: 25,
@@ -68,7 +68,7 @@ function measuredRun(s: StepRunView | null): CalibrationRunView {
   };
 }
 
-const stepPoint = { speed: 3, stride_length_cm: 56.5, distance_scale: 0.9, runs: 1 };
+const stepPoint = { speed: 3, stride_length_cm: 56.5, distance_scale: 0.9, runs: 1, stride_runs: 1 };
 const stepResult: CalibrationResult = {
   ...belt,
   point: { ...belt.point, stride_length_cm: 45 },
@@ -80,7 +80,6 @@ const stepResult: CalibrationResult = {
 beforeEach(() => {
   vi.mocked(invoke).mockClear();
   const s = structuredClone(mock);
-  s.calibration.wizard_enabled = true;
   s.calibration.belt_cm = 280;
   s.calibration.belt_treadmill = true;
   current = s;

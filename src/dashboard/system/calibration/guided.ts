@@ -1,5 +1,6 @@
 // The guided calibration's rows. Rust does the math and keeps the target list
 // (calibration.rs); this only lays out which saved point each row is.
+import type { CalibrationGuideView, GuideCheck } from "../../../ipc";
 import type { CalibrationPoint } from "../../../store/types";
 
 export interface CalibrationRow {
@@ -71,4 +72,55 @@ export function deckVerdict(speedKmh: number, realKmh: number, reportedKmh: numb
 export function droppedLine(dropped: number): string | null {
   if (dropped <= 0) return null;
   return dropped === 1 ? "1 tap dropped as a miss or a double." : `${dropped} taps dropped as misses or doubles.`;
+}
+
+/** Speeds as plain words: "0.6, 2.8 and 5.0 km/h". */
+export function speedList(kmh: number[]): string {
+  const s = kmh.map((k) => k.toFixed(1));
+  if (s.length <= 1) return `${s.join("")} km/h`;
+  return `${s.slice(0, -1).join(", ")} and ${s[s.length - 1]} km/h`;
+}
+
+/** A percent for the walk's lines: one decimal. */
+function pct(v: number): string {
+  return `${v.toFixed(1)} %`;
+}
+
+/** One line per midpoint check of the guided walk, in plain words. */
+export function checkLine(c: GuideCheck, tolerancePct: number): string {
+  const span = `${c.lo_kmh.toFixed(1)} to ${c.hi_kmh.toFixed(1)} km/h`;
+  const at = c.mid_kmh.toFixed(1);
+  const off = c.error_pct === null ? "" : pct(c.error_pct);
+  switch (c.verdict) {
+    case "pending":
+      return `${span}: the check at ${at} km/h waits for RUN.`;
+    case "agreed":
+      return `${span}: ${off} off at ${at} km/h, within ${pct(tolerancePct)}.`;
+    case "split":
+      return `${span}: ${off} off at ${at} km/h, so ${at} km/h became a point and each half gets a check.`;
+    case "at_limit":
+      return `${span}: ${off} off at ${at} km/h after the last check level.`;
+    case "skipped":
+      return `${span}: the check at ${at} km/h was skipped, so the error there is unknown.`;
+  }
+}
+
+/** The walk's summary once every speed is done: what was calibrated, and how far off the curve still is. */
+export function guideSummary(g: CalibrationGuideView): string[] {
+  const saved = g.speeds.filter((s) => s.mark === "saved").map((s) => s.kmh);
+  const lines = [saved.length === 0 ? "No speed was calibrated." : `Calibrated ${speedList(saved)}.`];
+  const ended = g.checks.filter((c) => c.verdict === "agreed" || c.verdict === "at_limit");
+  if (g.remaining_error_pct !== null) {
+    const within = g.remaining_error_pct <= g.tolerance_pct;
+    lines.push(
+      within
+        ? `Between those speeds, distance is within ${pct(g.remaining_error_pct)} of the belt.`
+        : `Distance is still up to ${pct(g.remaining_error_pct)} off between some of those speeds.`,
+    );
+  } else if (saved.length >= 2 && g.checks.length === 0) {
+    lines.push("The deck has no speed between those two to check.");
+  }
+  if (g.checks.some((c) => c.verdict === "skipped")) lines.push("A skipped check leaves the error there unknown.");
+  if (ended.length > 0) lines.push("Each check run measured the error halfway between two calibrated speeds.");
+  return lines;
 }

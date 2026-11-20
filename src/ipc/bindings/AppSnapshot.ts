@@ -77,7 +77,8 @@ update: UpdateSnapshot,
  */
 traffic: TrafficSnapshot, 
 /**
- * The guided calibration (Labs): its switch, limits and any run.
+ * The guided calibration (GROUND_TRUTH): its limits, the first-connect
+ * offer, any run and any guided walk.
  */
 calibration: CalibrationSnapshot, 
 /**

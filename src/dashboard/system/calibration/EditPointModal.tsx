@@ -159,7 +159,15 @@ export function EditPointModal({
             <button
               disabled={refusal !== null}
               onClick={() => {
-                if (refusal === null) onSave({ ...point, stride_length_cm: stride, distance_scale: finalScale, runs: 1 });
+                // A stride typed in by hand counts as one measured stride, so GAIT_SYNC averages with it.
+                if (refusal === null)
+                  onSave({
+                    ...point,
+                    stride_length_cm: stride,
+                    distance_scale: finalScale,
+                    runs: 1,
+                    stride_runs: stride === point.stride_length_cm ? (point.stride_runs ?? 0) : 1,
+                  });
               }}
               className="flex-1 py-3 bg-neon-cyan text-black hover:bg-white rounded font-black text-[11px] tracking-widest shadow-[0_0_20px_rgba(0,243,255,0.4)] transition-all disabled:opacity-30 disabled:cursor-not-allowed"
             >

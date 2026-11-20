@@ -214,7 +214,7 @@ export const snapshot: AppSnapshot = {
   traffic: { recording: false, file_path: null, file_name: null, packets: 0, bytes: 0, elapsed_s: 0, stop_reason: null },
   // Same limits as src-tauri/src/calibration.rs.
   calibration: {
-    wizard_enabled: false,
+    offer: false,
     limits: {
       min_stride_cm: 20, max_stride_cm: 200, min_scale: 0.2, max_scale: 3, min_belt_cm: 50, max_belt_cm: 1000,
       min_agreeing: 8,
@@ -226,6 +226,7 @@ export const snapshot: AppSnapshot = {
     points_rev: 0,
     run: null,
     sweep: null,
+    guide: null,
   },
   guided_task: { pinned: false, tasks: [], unpin_in_s: null },
   ghost_pod: {

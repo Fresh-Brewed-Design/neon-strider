@@ -21,12 +21,14 @@ const dispatched = () =>
 
 const taps = () => dispatched().filter((c) => c.type === "calibration_tap");
 
+/** The target list and RUN ALL sit under ADVANCED // TARGET_LIST. */
+const openAdvanced = () => fireEvent.click(screen.getByText("ADVANCED // TARGET_LIST"));
+
 const saved = { speed: 3, stride_length_cm: 68, distance_scale: 0.9, runs: 1 };
 
-/** The mocked snapshot with the switch on and a 280 cm belt for this treadmill. */
+/** The mocked snapshot with a 280 cm belt for this treadmill. */
 function ready(): AppSnapshot {
   const s = structuredClone(mock);
-  s.calibration.wizard_enabled = true;
   s.calibration.belt_cm = 280;
   s.calibration.belt_treadmill = true;
   return s;
@@ -53,7 +55,7 @@ function runView(view: Partial<CalibrationRunView>): CalibrationRunView {
 
 function result(r: Partial<CalibrationResult> = {}): CalibrationResult {
   return {
-    point: { speed: 3, stride_length_cm: 68, distance_scale: 3 / 2.82, runs: 1 },
+    point: { speed: 3, stride_length_cm: 68, distance_scale: 3 / 2.82, runs: 1, stride_runs: 0 },
     real_kmh: 2.82,
     reported_kmh: 3,
     real_m: 25,
@@ -118,6 +120,7 @@ describe("GuidedCalibration", () => {
   it("Space typed into a field is not a tap", async () => {
     current!.calibration.run = runView({ phase: "tapping", passes: 2, kept: 1 });
     render(<GuidedCalibration />);
+    openAdvanced();
     await act(async () => fireEvent.keyDown(screen.getByLabelText("ADD_SPEED"), { key: " " }));
     expect(taps()).toHaveLength(0);
   });
@@ -178,6 +181,7 @@ describe("GuidedCalibration", () => {
 
   it("RUN ALL leaves the speeds to Rust's stored list", async () => {
     render(<GuidedCalibration />);
+    openAdvanced();
     await act(async () => fireEvent.click(screen.getByText("RUN ALL")));
     expect(dispatched()).toContainEqual({ type: "calibration_sweep_start" });
   });
@@ -221,6 +225,7 @@ describe("GuidedCalibration", () => {
 
   it("ADD sends the speed to Rust and shows the list Rust keeps", async () => {
     const { rerender } = render(<GuidedCalibration />);
+    openAdvanced();
     fireEvent.change(screen.getByLabelText("ADD_SPEED"), { target: { value: "3.5" } });
     await act(async () => fireEvent.click(screen.getByText("ADD")));
     expect(dispatched()).toContainEqual({ type: "calibration_target_add", kmh: 3.5 });
@@ -234,6 +239,7 @@ describe("GuidedCalibration", () => {
   it("shows Rust's refusal under ADD_SPEED", async () => {
     vi.mocked(invoke).mockRejectedValueOnce("4.0 km/h is already in the list.");
     render(<GuidedCalibration />);
+    openAdvanced();
     fireEvent.change(screen.getByLabelText("ADD_SPEED"), { target: { value: "4" } });
     await act(async () => fireEvent.click(screen.getByText("ADD")));
     expect(screen.getByText("4.0 km/h is already in the list.")).toBeTruthy();

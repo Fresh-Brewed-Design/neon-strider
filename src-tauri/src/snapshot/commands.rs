@@ -308,10 +308,7 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         }
         Command::DeckProfileSweepSet { on } => crate::profile_sweep::set_enabled(&app, on).await,
 
-        // ---- Guided calibration (Labs) ----
-        Command::CalibrationSetWizard { on } => {
-            blocking(move || calibration::set_wizard(&app, on)).await
-        }
+        // ---- Guided calibration (GROUND_TRUTH) ----
         Command::CalibrationRunStart { target_kmh } => {
             if !super::emitter::read_connection().await.0 {
                 return Err("Connect the treadmill first.".to_string());
@@ -403,6 +400,21 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             Ok(())
         }
         Command::CalibrationStepsSkip => calibration::steps_skip(),
+        Command::CalibrationOfferSkip => blocking(move || calibration::skip_offer(&app)).await,
+        Command::CalibrationGuideStart { top_kmh } => {
+            calibration::guide_start(&*ORCHESTRATOR.lock().await, top_kmh)
+        }
+        Command::CalibrationGuideRun => {
+            if !super::emitter::read_connection().await.0 {
+                return Err("Connect the treadmill first.".to_string());
+            }
+            calibration::guide_run(&mut *ORCHESTRATOR.lock().await)
+        }
+        Command::CalibrationGuideSkip => calibration::guide_skip(),
+        Command::CalibrationGuideEnd => {
+            calibration::close_all();
+            Ok(())
+        }
         Command::CalibrationStepsUndo => {
             let points = calibration::steps_undo(&mut *ORCHESTRATOR.lock().await)?;
             blocking(move || {

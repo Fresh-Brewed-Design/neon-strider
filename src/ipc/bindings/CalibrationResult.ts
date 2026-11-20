@@ -3,7 +3,7 @@
 /**
  * The point one run gives, with the numbers behind it.
  */
-export type CalibrationResult = { point: { speed: number, stride_length_cm: number, distance_scale: number, runs: number }, 
+export type CalibrationResult = { point: { speed: number, stride_length_cm: number, distance_scale: number, runs: number, stride_runs: number }, 
 /**
  * The speed the belt really ran, km/h.
  */
@@ -32,4 +32,4 @@ stride_measured: boolean,
  * The saved point at the run's speed with this run averaged in (ADD
  * RUN); none when the speed has no saved point yet.
  */
-averaged: { speed: number, stride_length_cm: number, distance_scale: number, runs: number } | null, };
+averaged: { speed: number, stride_length_cm: number, distance_scale: number, runs: number, stride_runs: number } | null, };
