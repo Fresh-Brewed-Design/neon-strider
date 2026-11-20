@@ -6,6 +6,9 @@
 //! the status text and the snapshot types. `heart_rate/worker.rs` owns the
 //! setting, the scan and the link, which is kept apart from the treadmill's.
 //!
+//! Each second of a walk saves the fresh reading with its sample
+//! (`current_bpm`), and the session row keeps the average and maximum.
+//!
 //! It only reads. Nothing here sends to the treadmill, so a heart rate can
 //! never start or move the belt.
 
@@ -13,8 +16,8 @@
 mod worker;
 
 pub use worker::{
-    forget_sensor, init, max_heart_rate, pick_sensor, scan, set_max_heart_rate, snapshot, spawn,
-    DEFAULT_MAX_BPM,
+    current_bpm, forget_sensor, init, max_heart_rate, pick_sensor, scan, set_max_heart_rate,
+    snapshot, spawn, DEFAULT_MAX_BPM,
 };
 
 use serde::{Deserialize, Serialize};

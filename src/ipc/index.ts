@@ -47,6 +47,7 @@ export type { ProgramWait } from "./bindings/ProgramWait";
 export type { ProgramStep } from "./bindings/ProgramStep";
 export type { SeatedSnapshot } from "./bindings/SeatedSnapshot";
 export type { EyeBreakSnapshot } from "./bindings/EyeBreakSnapshot";
+export type { BlinkStep } from "./bindings/BlinkStep";
 export type { SessionSnapshot } from "./bindings/SessionSnapshot";
 export type { SavedFile } from "./bindings/SavedFile";
 export type { StravaActivity } from "./bindings/StravaActivity";

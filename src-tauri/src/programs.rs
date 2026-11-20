@@ -642,12 +642,12 @@ impl OrchestratorState {
     fn step_intent(&self, step: &ProgramStep) -> ControlIntent {
         ControlIntent {
             speed: step.speed_kmh,
-            incline: incline_pct_to_level(
+            incline: self.snap_incline_level(incline_pct_to_level(
                 step.incline_pct,
                 self.tilt_multiplier,
                 self.incline_offset,
                 self.max_incline,
-            ),
+            )),
         }
     }
 

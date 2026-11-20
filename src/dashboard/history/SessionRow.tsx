@@ -239,6 +239,16 @@ export function SessionRow({
           <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 font-mono text-[11px] text-white/50">
             {s.steps > 0 && <div>Steps <span className="text-neon-magenta">{Math.floor(s.steps)}</span></div>}
             {s.avg_incline > 0 && <div>Avg incline <span className="text-white/80">{s.avg_incline.toFixed(1)}%</span></div>}
+            {s.avg_heart_rate !== null && (
+              <div>
+                Avg heart rate <span className="text-white/80">{s.avg_heart_rate} bpm</span>
+              </div>
+            )}
+            {s.max_heart_rate !== null && (
+              <div>
+                Max heart rate <span className="text-white/80">{s.max_heart_rate} bpm</span>
+              </div>
+            )}
             {rawDelta !== 0 && (
               <div>
                 Deck reported <span className="text-white/80">{km(s.raw_distance_meters)} km</span> ({rawDelta > 0 ? "+" : ""}

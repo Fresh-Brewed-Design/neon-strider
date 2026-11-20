@@ -35,6 +35,7 @@ mod platform;
 pub mod programs;
 pub mod protocol;
 pub mod secrets;
+pub mod wrist_link;
 // The simulated deck: tests, and the dev builds' "simulated treadmill"
 // choice (`sim_link`). Never in release builds.
 #[cfg(any(test, debug_assertions))]
@@ -214,7 +215,9 @@ async fn start_backend(app: tauri::AppHandle) {
     backup::spawn_daily(app.clone());
     let config = persistence::load_config(&app);
     bluetooth::init_from_config(&config).await;
-    bluetooth::load_deck_profile(&app).await;
+    if let Some(id) = &config.last_device_id {
+        bluetooth::switch_deck_profile(&app, id).await;
+    }
 
     // Once per database: earlier builds saved bad session averages.
     let (app_c, tilt, offset) = (app.clone(), config.tilt_multiplier, config.incline_offset);

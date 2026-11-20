@@ -5,6 +5,25 @@ export type MergedSession = Session & { mergedIds: number[] };
 
 const MINUTE_MS = 60_000;
 
+/** The higher of two optional values; null when both are. */
+function maxOf(a: number | null, b: number | null): number | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return Math.max(a, b);
+}
+
+/**
+ * Average heart rate of two joined walks, weighted by duration. A walk without
+ * heart rate doesn't count, so joining one keeps the other's average.
+ */
+function mergedAvgHeartRate(a: Session, b: Session): number | null {
+  const parts = [a, b].filter((s) => s.avg_heart_rate !== null);
+  if (parts.length === 0) return null;
+  const seconds = parts.reduce((sum, s) => sum + s.duration_seconds, 0);
+  if (seconds <= 0) return parts[0].avg_heart_rate;
+  return Math.round(parts.reduce((sum, s) => sum + (s.avg_heart_rate ?? 0) * s.duration_seconds, 0) / seconds);
+}
+
 /**
  * Fold sessions that start within `thresholdMinutes` of the previous session's
  * end into one. Rust applies the same rule when it groups walks for Strava.
@@ -22,6 +41,8 @@ export function mergeSessions(sessions: readonly Session[], thresholdMinutes: nu
     const last = merged[merged.length - 1];
 
     if (last && curr.start_time - last.end_time < thresholdMs) {
+      last.avg_heart_rate = mergedAvgHeartRate(last, curr);
+      last.max_heart_rate = maxOf(last.max_heart_rate, curr.max_heart_rate);
       const totalSeconds = last.duration_seconds + curr.duration_seconds;
       const hours = totalSeconds / 3600;
       last.avg_incline =

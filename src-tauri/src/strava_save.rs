@@ -129,6 +129,8 @@ mod tests {
             neural_ticks: 0,
             last_hardware_time: 0,
             hardware_time_offset: 0,
+            avg_heart_rate: None,
+            max_heart_rate: None,
         }
     }
 

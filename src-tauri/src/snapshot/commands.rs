@@ -35,7 +35,8 @@ pub(super) fn clamp_manual_speed(state: &OrchestratorState, kmh: f32) -> Result<
 }
 
 pub(super) fn clamp_incline_level(state: &OrchestratorState, level: u8) -> u8 {
-    level.min(state.max_incline)
+    // Snapped to a level the deck runs (DECK_PROFILE), then kept in bounds.
+    state.snap_incline_level(level.min(state.max_incline))
 }
 
 /// A button press, handled by the same code as the hotkeys.
@@ -300,11 +301,28 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             calibration::close();
             Ok(())
         }
-        Command::CalibrationSweepStart { targets_kmh } => {
+        Command::CalibrationTargetAdd { kmh } => {
+            let (min, max) = {
+                let state = ORCHESTRATOR.lock().await;
+                (state.min_speed, state.max_speed)
+            };
+            blocking(move || calibration::add_target(&app, kmh, min, max)).await
+        }
+        Command::CalibrationTargetRemove { kmh } => {
+            let points: Vec<f32> = ORCHESTRATOR
+                .lock()
+                .await
+                .calibration_points
+                .iter()
+                .map(|p| p.speed)
+                .collect();
+            blocking(move || calibration::remove_target(&app, kmh, &points)).await
+        }
+        Command::CalibrationSweepStart => {
             if !super::emitter::read_connection().await.0 {
                 return Err("Connect the treadmill first.".to_string());
             }
-            calibration::sweep_start(&mut *ORCHESTRATOR.lock().await, &targets_kmh)
+            calibration::sweep_start(&mut *ORCHESTRATOR.lock().await)
         }
         Command::CalibrationSweepRun => {
             if !super::emitter::read_connection().await.0 {
@@ -330,6 +348,9 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         }
         Command::GhostPodPowerSet { on } => {
             blocking(move || crate::ghost_pod::set_power(&app, on)).await
+        }
+        Command::WristLinkSet { on } => {
+            blocking(move || crate::ghost_pod::set_wrist_link(&app, on)).await
         }
     }
 }

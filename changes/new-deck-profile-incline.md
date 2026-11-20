@@ -1,0 +1,1 @@
+- DECK_PROFILE learns incline levels too: it files the incline the deck echoes or refuses, keeps the incline stepper, program steps and settings to levels the deck takes, and shows what it learned in System -> Diagnostics.

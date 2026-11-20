@@ -72,7 +72,18 @@ export const snapshot: AppSnapshot = {
     max_incline_level: 15,
     max_incline_pct: 18.75,
     speed_steps: [],
-    profile: { learned: 0, floor_kmh: null, ceiling_kmh: null, skipped_kmh: [] },
+    incline_steps: [],
+    profile: {
+      learned: 0,
+      floor_kmh: null,
+      ceiling_kmh: null,
+      floor_hw_kmh: null,
+      ceiling_hw_kmh: null,
+      skipped_kmh: [],
+      learned_levels: 0,
+      ceiling_level: null,
+      skipped_levels: [],
+    },
   },
   session: { active_id: 1, duration_s: 1934, distance_m: 1720, steps: 2412, calories: 103, daily_distance_m: 4310 },
   programs: [
@@ -188,6 +199,7 @@ export const snapshot: AppSnapshot = {
     at_rest: false,
     phase: "idle",
     remaining_s: 0,
+    blink: null,
     blink_seq: 0,
     end_seq: 0,
   },
@@ -215,8 +227,9 @@ export const snapshot: AppSnapshot = {
     wizard_enabled: false,
     limits: {
       min_stride_cm: 20, max_stride_cm: 200, min_scale: 0.2, max_scale: 3, min_belt_cm: 50, max_belt_cm: 1000,
-      min_run_s: 15, min_steps: 10, default_targets_kmh: [2, 3, 4, 5, 6],
+      min_run_s: 15, min_steps: 10,
     },
+    targets: [2, 3, 4, 5, 6].map((kmh) => ({ kmh, runnable: true })),
     run: null,
     sweep: null,
   },
@@ -230,6 +243,12 @@ export const snapshot: AppSnapshot = {
     power_enabled: false,
     power_watches: 0,
     power_w: 0,
+    wrist_link: {
+      enabled: false,
+      serving: false,
+      watches: 0,
+      message: "Switch it on to let the watch's data field read the belt.",
+    },
   },
   heart_rate: {
     sensor: null,
@@ -422,16 +441,29 @@ if (deskSyncFlag === "open") {
 }
 
 // ?deckprofile: DECK_PROFILE has learned the deck's floor (0.6), ceiling (4.0)
-// and a skipped 1.5 km/h, so the Live slider, the speed fields and the
+// and a skipped 1.5 km/h, plus its top incline level (12) and a skipped level 7, so the Live slider, the speed fields and the
 // program editor snap to it and System -> Diagnostics shows FORGET.
 if (params.has("deckprofile")) {
   const steps = [];
   for (let b = 6; b <= 40; b++) if (b !== 15) steps.push({ hw_kmh: b / 10, kmh: b / 10 });
   Object.assign(snapshot.deck, {
     speed_steps: steps,
+    incline_steps: [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12],
     max_speed_kmh: 4,
+    max_incline_level: 12,
+    max_incline_pct: 15,
     target_speed_kmh: 3.5,
-    profile: { learned: 9, floor_kmh: 0.6, ceiling_kmh: 4, skipped_kmh: [0.3, 1.5, 5] },
+    profile: {
+      learned: 9,
+      floor_kmh: 0.6,
+      ceiling_kmh: 4,
+      floor_hw_kmh: 0.6,
+      ceiling_hw_kmh: 4,
+      skipped_kmh: [0.3, 1.5, 5],
+      learned_levels: 6,
+      ceiling_level: 12,
+      skipped_levels: [7, 15],
+    },
   });
 }
 
@@ -454,8 +486,10 @@ if (weeklyFlag !== null) Object.assign(snapshot.weekly, { show_card: true }, WEE
 // ?eyebreak=upcoming|break|resume shows the eye-break (OCULAR_IMPLANT) HUD card: the
 // heads-up, the cooldown with the belt it paused, or the resume card after it
 // (RESUME / STAY STILL). ?eyebreak=still is the cooldown with the belt left alone,
-// ?eyebreak=rest the heads-up for a break set for the program's rest.
+// ?eyebreak=rest the heads-up for a break set for the program's rest. During the
+// cooldown, ?blink=squeeze|open picks the guided blink step (CLOSE by default).
 const eyeBreakFlag = params.get("eyebreak");
+const blinkFlag = params.get("blink");
 if (eyeBreakFlag === "upcoming" || eyeBreakFlag === "rest")
   Object.assign(snapshot.eye_break, {
     enabled: true,
@@ -464,7 +498,13 @@ if (eyeBreakFlag === "upcoming" || eyeBreakFlag === "rest")
     at_rest: eyeBreakFlag === "rest",
   });
 if (eyeBreakFlag === "break" || eyeBreakFlag === "still")
-  Object.assign(snapshot.eye_break, { enabled: true, phase: "break", remaining_s: 72, holds_belt: eyeBreakFlag === "break" });
+  Object.assign(snapshot.eye_break, {
+    enabled: true,
+    phase: "break",
+    remaining_s: 72,
+    holds_belt: eyeBreakFlag === "break",
+    blink: blinkFlag === "squeeze" || blinkFlag === "open" ? blinkFlag : "close",
+  });
 if (eyeBreakFlag === "resume") Object.assign(snapshot.eye_break, { enabled: true, phase: "complete", holds_belt: true });
 if (eyeBreakFlag === "break" || eyeBreakFlag === "resume") {
   // The break paused the walk: the program at its step, or the treadmill's pause.
@@ -760,6 +800,10 @@ if (calFlag !== null) {
   if (calFlag === "counting" || calFlag === "counted") Object.assign(snapshot.deck, { raw_speed_kmh: 3, speed_kmh: 3.3 });
   if (calFlag === "counting") calRun(3, "counting", 23);
   if (calFlag === "counted") calRun(3, "counted", 62.4);
+  // A stored 14.0 km/h the treadmill (12.0 max) can't run any more, and a 3.5 he added.
+  if (calFlag === "targets") {
+    snapshot.calibration.targets = [2, 3, 3.5, 4, 5, 6, 14].map((kmh) => ({ kmh, runnable: kmh <= 12 }));
+  }
   if (calFlag === "sweep" || calFlag === "sweeprun") {
     Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: 3, speed_kmh: 3.3 });
     snapshot.calibration.sweep = {
@@ -787,9 +831,27 @@ const CAL_COMMANDS: Partial<Record<Command["type"], (c: Command) => void>> = {
     snapshot.calibration.sweep = null;
     runBelt(c.target_kmh);
   },
-  calibration_sweep_start: (c) => {
-    if (c.type !== "calibration_sweep_start") return;
-    const targets_kmh = [...new Set(c.targets_kmh)].sort((a, b) => a - b);
+  calibration_target_add: (c) => {
+    if (c.type !== "calibration_target_add") return;
+    const t = snapshot.calibration.targets;
+    if (Math.abs(c.kmh * 10 - Math.round(c.kmh * 10)) > 1e-3) throw "Pick a speed in 0.1 km/h steps.";
+    if (c.kmh < 0.6) throw "Pick a speed of at least 0.6 km/h.";
+    if (c.kmh > 12) throw "The treadmill tops out at 12.0 km/h.";
+    if (t.some((x) => Math.abs(x.kmh - c.kmh) <= 0.05)) throw `${c.kmh.toFixed(1)} km/h is already in the list.`;
+    snapshot.calibration.targets = [...t, { kmh: Math.round(c.kmh * 10) / 10, runnable: true }].sort((a, b) => a.kmh - b.kmh);
+  },
+  calibration_target_remove: (c) => {
+    if (c.type !== "calibration_target_remove") return;
+    if (snapshot.calibration.run && Math.abs(snapshot.calibration.run.target_kmh - c.kmh) <= 0.05) {
+      throw `Close the run at ${c.kmh.toFixed(1)} km/h first.`;
+    }
+    snapshot.calibration.targets = snapshot.calibration.targets.filter((x) => Math.abs(x.kmh - c.kmh) > 0.05);
+  },
+  calibration_sweep_start: () => {
+    const listed = snapshot.calibration.targets.filter((t) => t.runnable).map((t) => t.kmh);
+    const targets_kmh = [...new Set([...listed, ...CAL_CONFIG.calibration_points.map((p) => p.speed)])].sort(
+      (a, b) => a - b,
+    );
     snapshot.calibration.sweep = { targets_kmh, marks: targets_kmh.map(() => "pending"), current: 0 };
     runBelt(targets_kmh[0]);
   },
@@ -939,6 +1001,37 @@ function switchGhostPod(on: boolean) {
     }, 3000);
   }
 }
+// Labs: WRIST_LINK. ?wristlink=waiting|connected shows it on (with GHOST_POD on);
+// switching it on in the preview waits for the field, which connects 3 s later.
+const WRIST_LINK_MESSAGES = {
+  off: "Switch it on to let the watch's data field read the belt.",
+  needpod: "Waiting for GHOST_POD: the watch keeps its foot pod link while the field reads the belt.",
+  waiting: "Waiting for the watch's data field to connect.",
+  connected: "The watch's data field is connected and reads the belt.",
+};
+let wristLinkTimer: ReturnType<typeof setTimeout> | null = null;
+function setWristLink(state: keyof typeof WRIST_LINK_MESSAGES) {
+  Object.assign(snapshot.ghost_pod.wrist_link, {
+    enabled: state !== "off",
+    serving: state === "waiting" || state === "connected",
+    watches: state === "connected" ? 1 : 0,
+    message: WRIST_LINK_MESSAGES[state],
+  });
+}
+function switchWristLink(on: boolean) {
+  if (wristLinkTimer) clearTimeout(wristLinkTimer);
+  wristLinkTimer = null;
+  if (!on) return setWristLink("off");
+  if (!snapshot.ghost_pod.enabled) return setWristLink("needpod");
+  setWristLink("waiting");
+  wristLinkTimer = setTimeout(() => {
+    setWristLink("connected");
+    publish();
+  }, 3000);
+}
+const wristLinkFlag = params.get("wristlink");
+if (wristLinkFlag === "waiting" || wristLinkFlag === "connected") setWristLink(wristLinkFlag);
+
 const ghostPodFlag = params.get("ghostpod");
 if (ghostPodFlag && ghostPodFlag in GHOST_POD) setGhostPod(ghostPodFlag as keyof typeof GHOST_POD);
 const ghostPowerFlag = params.get("ghostpower");
@@ -1048,6 +1141,8 @@ function setMaintenance(patch: Partial<MaintenanceSnapshot>) {
 if (params.has("due")) setMaintenance({ last_service_ms: Date.now() - 95 * 86_400_000, distance_since_km: 212.4, hours_since: 52.6 });
 resolveSeatedPrograms();
 
+const heartWalks = params.get("heart") === "on";
+
 /** A few weeks of fake walks for the History page. */
 function mockSessions() {
   const out = [];
@@ -1063,6 +1158,9 @@ function mockSessions() {
       distance_meters: dist, raw_distance_meters: dist, calories: dist * 0.06, steps: dist * 1.4,
       raw_steps: dist * 1.4, avg_speed: 3.2, raw_avg_speed: 3.6, avg_incline: 4,
       strava_id: d % 4 === 0 ? "123" : null, neural_heat: 0, neural_ticks: 0, last_hardware_time: dur,
+      // With ?heart=on, every other walk was saved with a watch linked.
+      avg_heart_rate: heartWalks && d % 2 === 0 ? 104 + (d % 9) : null,
+      max_heart_rate: heartWalks && d % 2 === 0 ? 121 + (d % 13) : null,
     });
   }
   return out;
@@ -1296,6 +1394,7 @@ const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) =>
   heart_rate_pick: (c) => pickHeartSensor({ id: c.id, name: c.name }),
   heart_rate_forget: () => pickHeartSensor(null),
   ghost_pod_power_set: (c) => setGhostPower(c.on),
+  wrist_link_set: (c) => switchWristLink(c.on),
   strava_set_credentials: () => (snapshot.strava.has_credentials = true),
   strava_connect: () => {
     Object.assign(snapshot.strava, { connected: true, athlete_name: "Preview Athlete" });
