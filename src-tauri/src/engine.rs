@@ -395,14 +395,24 @@ fn resumable(s: &Session, deck_time_s: u16, now_ms: i64, local_midnight_ms: i64)
 /// what fitness apps and Strava report. The equation is validated for roughly
 /// 1.9 to 6 km/h; it is applied outside that range too.
 fn walking_kcal(speed_kmh: f64, grade_pct: f64, body_mass_kg: f64, dt_s: f64) -> f64 {
-    // Written as negations so NaN counts as "not positive".
-    if !(speed_kmh > 0.0 && dt_s > 0.0 && body_mass_kg > 0.0) {
+    if dt_s.is_nan() || dt_s <= 0.0 {
+        return 0.0;
+    }
+    walking_kcal_per_min(speed_kmh, grade_pct, body_mass_kg) * dt_s / 60.0
+}
+
+/// The rate behind `walking_kcal`, kcal per minute: METABOLIC_BURN's
+/// estimate, which GHOST_POD's power also comes from. 0 when the speed or
+/// the weight isn't positive.
+pub(crate) fn walking_kcal_per_min(speed_kmh: f64, grade_pct: f64, body_mass_kg: f64) -> f64 {
+    // Written as a negation so NaN counts as "not positive".
+    if !(speed_kmh > 0.0 && body_mass_kg > 0.0) {
         return 0.0;
     }
     let s = speed_kmh * 1000.0 / 60.0; // m/min
     let g = (grade_pct / 100.0).max(0.0);
     let vo2 = 0.1 * s + 1.8 * s * g + 3.5;
-    vo2 * body_mass_kg / 1000.0 * 5.0 * dt_s / 60.0
+    vo2 * body_mass_kg / 1000.0 * 5.0
 }
 
 /// Linear interpolation of `y` over calibration points ordered by `x`.

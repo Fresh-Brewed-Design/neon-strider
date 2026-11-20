@@ -320,6 +320,9 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         Command::GhostPodSet { on } => {
             blocking(move || crate::ghost_pod::set_enabled(&app, on)).await
         }
+        Command::GhostPodPowerSet { on } => {
+            blocking(move || crate::ghost_pod::set_power(&app, on)).await
+        }
     }
 }
 
