@@ -1267,6 +1267,71 @@ mod tests {
         assert!(r.toasts.contains(&ProgramToast::deck_go("Hold then walk")));
     }
 
+    /// Post-meal walking at 4.0 km/h for a minute, then paused with the
+    /// treadmill's own button and left for 5 s.
+    fn post_meal_paused_at_the_treadmill() -> Rig {
+        let mut r = Rig::new();
+        r.run(1.0);
+        r.run_program(POST_MEAL);
+        r.run(60.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        let t = r.t;
+        r.deck.press_pause(t);
+        r.run(5.0);
+        assert_eq!(r.deck.status_code(), 10, "paused");
+        r
+    }
+
+    /// #158: a pause at the treadmill mid-step pauses the program with it.
+    /// Its step timer stops, and nothing restarts the belt by itself.
+    #[test]
+    fn a_pause_at_the_treadmill_mid_step_pauses_the_program() {
+        let mut r = post_meal_paused_at_the_treadmill();
+        let a = r.program();
+        assert_eq!((a.step_index, a.paused, a.wait), (0, true, None));
+        let left = a.seconds_remaining;
+        let mark = r.mark();
+        r.run(300.0);
+        assert_eq!(r.deck.status_code(), 10, "still paused");
+        let sent = r.commands_since(mark);
+        assert!(!moves_belt(&sent), "{sent:?}");
+        let a = r.program();
+        assert!(a.paused);
+        assert_eq!(a.seconds_remaining, left, "the step timer held");
+    }
+
+    /// #158: GO after a pause at the treadmill resumes the same step at its
+    /// speed, and its timer runs again.
+    #[test]
+    fn go_resumes_the_step_after_a_pause_at_the_treadmill() {
+        let mut r = post_meal_paused_at_the_treadmill();
+        let left = r.program().seconds_remaining.expect("timed step");
+        r.go();
+        r.run(15.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        let a = r.program();
+        assert_eq!((a.step_index, a.paused, a.wait), (0, false, None));
+        r.run(30.0);
+        let now_left = r.program().seconds_remaining.expect("timed step");
+        assert!(now_left < left, "the timer runs: {now_left} vs {left}");
+    }
+
+    /// #158: a start at the treadmill on a program paused there stays its GO.
+    #[test]
+    fn a_start_at_the_treadmill_after_its_pause_is_the_programs_go() {
+        let mut r = post_meal_paused_at_the_treadmill();
+        let mark = r.mark();
+        let t = r.t;
+        r.deck.press_start(t);
+        r.run(15.0);
+        let sent = r.commands_since(mark);
+        assert!(!app_starts(&sent), "the deck started it: {sent:?}");
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        let a = r.program();
+        assert_eq!((a.paused, a.wait), (false, None));
+        assert!(r.toasts.contains(&ProgramToast::deck_go("Post-meal")));
+    }
+
     #[test]
     fn engage_in_standby_is_refused_at_once_and_sends_no_start() {
         let mut r = Rig::new();

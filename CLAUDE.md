@@ -252,7 +252,8 @@ sticker on the deck gives 200 km (125 miles), which is the default.
   sets the hold again until GO (or Engage, which is GO on a paused program). A start at the
   treadmill is a press too: on a paused or waiting program it is GO (`watch_for_deck_start`:
   the deck reported the belt still since the pause, then moving for `DECK_GO_DEBOUNCE`, with
-  no app start in flight), and during a rest it becomes a manual walk. SKIP is a press and
+  no app start in flight), and during a rest it becomes a manual walk. A pause at the treadmill on a
+  walking program pauses the program with it (`notice_deck_pause`), so GO resumes the step. SKIP is a press and
   may start the belt; a step between two moving speeds stays automatic. A program that ends
   (END, SKIP on its last step, or into a rest) while the belt isn't moving leaves it still: the
   speed from before waits in `engage_speed` for the next Engage or RE-JACK. New calibration
