@@ -203,6 +203,8 @@ fn tick_each_second(
     let quiet = crate::snapshot::calls::quiet_active();
     state.update_neural_flow(keys, quiet, now, now_ms);
     crate::link::log_frame_flow();
+    state.heart_bpm = crate::heart_rate::snapshot().bpm;
+    state.max_heart_rate = u32::from(crate::heart_rate::max_heart_rate());
     state.tick_program(now)
 }
 

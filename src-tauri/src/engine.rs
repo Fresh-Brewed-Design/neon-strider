@@ -171,6 +171,11 @@ pub struct OrchestratorState {
     pub manual_intent: Option<ControlIntent>,
     pub last_manual_interaction: Instant,
     pub program_intent: Option<ControlIntent>,
+    /// Heart rate now (none without a fresh reading) and the maximum that
+    /// zones are a percentage of; set each second. Only programs read them,
+    /// and only to trim the speed of a belt already running.
+    pub heart_bpm: Option<u32>,
+    pub max_heart_rate: u32,
 
     // The deck's latest telemetry, raw.
     pub last_status: MachineStatus,
@@ -319,6 +324,8 @@ impl Default for OrchestratorState {
             manual_intent: None,
             last_manual_interaction: before(now, Duration::from_secs(3600)),
             program_intent: None,
+            heart_bpm: None,
+            max_heart_rate: 190,
             last_status: MachineStatus::Stopped,
             hardware_speed: 0.0,
             hardware_incline: 0,
@@ -3674,6 +3681,7 @@ mod tests {
                         duration_minutes: Some(10.0),
                         speed_kmh: 3.0,
                         incline_pct: 0.0,
+                        zone: None,
                     }],
                     repeat_every_minutes: None,
                     note: None,

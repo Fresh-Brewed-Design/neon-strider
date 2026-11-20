@@ -698,6 +698,11 @@ pub enum Command {
     },
     /// HEART_LINK: stop reading and forget the sensor (the default).
     HeartRateForget,
+    /// The maximum heart rate (bpm) that program heart rate zones are a
+    /// percentage of.
+    HeartRateMaxSet {
+        bpm: u16,
+    },
     /// Labs: GHOST_POD's power switch. On, the pod also serves running power
     /// (the Cycling Power service) while GHOST_POD is on.
     GhostPodPowerSet {
@@ -782,7 +787,8 @@ mod tests {
                     steps: vec![programs::ProgramStep {
                         duration_minutes: None,
                         speed_kmh: 2.5,
-                        incline_pct: 5.0
+                        incline_pct: 5.0,
+                        zone: None,
                     }],
                     repeat_every_minutes: None,
                     note: None

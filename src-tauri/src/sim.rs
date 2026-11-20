@@ -985,11 +985,13 @@ mod tests {
                     duration_minutes: Some(1.0),
                     speed_kmh: 0.0,
                     incline_pct: 0.0,
+                    zone: None,
                 },
                 ProgramStep {
                     duration_minutes: Some(2.0),
                     speed_kmh: 3.0,
                     incline_pct: 0.0,
+                    zone: None,
                 },
             ],
             repeat_every_minutes: None,

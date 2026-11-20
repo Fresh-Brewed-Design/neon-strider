@@ -12,7 +12,9 @@
 #[path = "heart_rate/worker.rs"]
 mod worker;
 
-pub use worker::{forget_sensor, init, pick_sensor, scan, snapshot, spawn};
+pub use worker::{
+    forget_sensor, init, max_heart_rate, pick_sensor, scan, set_max_heart_rate, snapshot, spawn,
+};
 
 use serde::{Deserialize, Serialize};
 
