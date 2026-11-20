@@ -133,9 +133,53 @@ cargo clippy --all-targets -- -D warnings   # in src-tauri/: lints, no warnings 
 
 Design without a treadmill: with a Vite server running, open `/hud-preview.html` or
 `/dashboard-preview.html`. Both run on a mocked backend (`src/dev/mockBackend.ts`); URL flags
-like `?idle`, `?offline`, `?daily=12.34` (today's km), `?noprogram`, `?toasts` (`?toasts=deck` for the deck-start GO toast), `?anchor=top_left`, `?neural=active`, `?engage=timeout`, `?status=9|countdown|stopping|standby`, `?walkaway=warning|paused|idle`, `?custom`, `?update=available|downloading|failed|whatsnew` (with `?autoinstall=off`), `?stasis=strip|hidden` (with `?deck=paused` for RE-JACK), `?minified` (the running strip; with `?program=resting|paused`, `?noprogram` or `?idle`), `?traffic=recording|saved`, `?sim` (the SIM tag), `?decknote=refused|adjusted` (the HUD note after the deck refuses or changes a target), `?lightsout` (LIGHTS_OUT on; on the HUD preview its toast), `?desksync=open|new|few` (History's DESK_SYNC card), `?ghostpod=advertising|connected|error` (System -> Labs GHOST_POD), `?ghostpower=waiting|linked` (its power switch on, no watch or a watch reading 135 W), `?calwizard` (the Labs guided calibration; `=counting|counted` mid-run, `=sweep|sweeprun` RUN ALL between speeds or counting, `=oldpoint` a point stored below the factor limit, `=targets` an added 3.5 km/h and a stored 14.0 km/h outside the range), `?eyebreak=upcoming|rest|break|still|resume` (the OCULAR_IMPLANT cards: heads-up, heads-up set for a program rest, cooldown with the belt paused or left alone, resume card; with `?blink=squeeze|open` for the guided blink step, CLOSE by default), `?deckprofile` (DECK_PROFILE learned: floor 0.6, ceiling 4.0, 1.5 skipped, top incline level 12, level 7 skipped; Diagnostics shows FORGET; `=sweep` with the LABS // DECK_SWEEP switch on and a sweep running), `?heart=on|waiting` (System -> Heart rate with a watch picked and reading, or not broadcasting yet; in History every other walk has an average and maximum heart rate) pick scenarios.
-`?program=ready|hold|still|resting|paused` shows a program waiting for GO after a rest, after a
-0 km/h step, or after a reconnect found the belt still; mid-rest; or paused by the user.
+pick scenarios (one per line, sorted by flag name; add a new flag in its place):
+
+- `?anchor=top_left` (or any corner): the HUD's corner
+- `?autoinstall=off`: "Install automatically" switched off (with `?update=...`)
+- `?blink=squeeze|open`: the guided blink step during an eye-break cooldown (CLOSE by default)
+- `?call`: on a call, the belt held at the quiet speed (the HUD preview also shows the toast)
+- `?calwizard`: the Labs guided calibration; `=counting|counted` mid-run, `=sweep|sweeprun` RUN ALL between speeds or counting, `=oldpoint` a point stored below the factor limit, `=targets` an added 3.5 km/h and a stored 14.0 km/h outside the range
+- `?connect=fail`: connecting from the connect dialog fails
+- `?custom`: the HUD sits where it was dragged
+- `?daily=12.34`: today's km (DAILY_TOTAL)
+- `?deck=paused`: with `?stasis=...`, the belt is paused (Engage reads RE-JACK)
+- `?decknote=refused|adjusted`: the HUD note after the deck refuses or changes a target
+- `?deckprofile`: DECK_PROFILE learned (floor 0.6, ceiling 4.0, 1.5 skipped, top incline level 12, level 7 skipped; Diagnostics shows FORGET); `=sweep` with the LABS // DECK_SWEEP switch on and a sweep running
+- `?desksync=open|new|few`: History's DESK_SYNC card
+- `?due`: the belt reminder well past its interval
+- `?engage=timeout`: the deck's screen is off, so Engage waits and fails
+- `?eyebreak=upcoming|rest|break|still|resume`: the OCULAR_IMPLANT cards: heads-up, heads-up set for a program rest, cooldown with the belt paused or left alone, resume card
+- `?ghostpod=advertising|connected|error`: System -> Labs GHOST_POD
+- `?ghostpower=waiting|linked`: GHOST_POD's power switch on, with no watch or a watch reading 135 W
+- `?heart=on|waiting`: System -> Heart rate with a watch picked and reading, or not broadcasting yet; in History every other walk has an average and maximum heart rate
+- `?hours`: the belt reminder counts belt hours
+- `?idle`: the belt stopped
+- `?lightsout`: LIGHTS_OUT on; on the HUD preview its toast
+- `?link=scanning|connecting|reconnecting|nodata|bt-off|failed`: each treadmill link state
+- `?minified`: the running strip; with `?program=resting|paused`, `?noprogram` or `?idle`
+- `?neural=active`: Neural flow easing the belt off while typing
+- `?noprogram`: no program running
+- `?nostrava`: no Strava credentials or account
+- `?offline`: no treadmill saved yet
+- `?onemonitor`: a single display
+- `?program=ready|hold|still|resting|paused`: a program waiting for GO after a rest, after a 0 km/h step, or after a reconnect found the belt still; mid-rest; or paused by the user
+- `?reconnect`: the Strava login needs a fresh grant
+- `?reject`: every command fails
+- `?saved`: a walk saved for a manual Strava upload
+- `?savefail`: saving a walk for Strava fails
+- `?scan=empty|error|bt-off`: the connect dialog's Bluetooth scan
+- `?seated`: the idle-nudge card (STASIS_ALERT); comma-separated variants `off`, `queued`, `long`, `none`, `one`, `many`
+- `?sim`: the SIM tag
+- `?stasis=strip|hidden`: "When the belt is still" set to that, with the belt stopped
+- `?status=9|countdown|stopping|standby`: an unknown status byte, the 3-2-1, the belt winding down, or the deck asleep
+- `?strava=authorizing|uploading|processing|checking|backoff|error|paused`: each Strava state
+- `?toasts`: the HUD toasts; `=deck` for the deck-start GO toast
+- `?traffic=recording|saved`: the Diagnostics traffic recorder
+- `?update=available|downloading|failed|whatsnew`: auto-update states
+- `?walkaway=warning|paused|idle`: the walk-away cards
+- `?weekly`: the last-week HUD card; `=long|new|down` variants
+- `?wristlink=waiting|connected`: WRIST_LINK on
 
 Tests stub the Tauri APIs (`@tauri-apps/api/event|core|window`) in `src/test/setup.ts`,
 since there's no Tauri runtime under jsdom.
