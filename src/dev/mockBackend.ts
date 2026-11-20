@@ -71,6 +71,8 @@ export const snapshot: AppSnapshot = {
     max_speed_kmh: 10.5,
     max_incline_level: 15,
     max_incline_pct: 18.75,
+    speed_steps: [],
+    profile: { learned: 0, floor_kmh: null, ceiling_kmh: null, skipped_kmh: [] },
   },
   session: { active_id: 1, duration_s: 1934, distance_m: 1720, steps: 2412, calories: 103, daily_distance_m: 4310 },
   programs: [
@@ -408,6 +410,20 @@ if (deskSyncFlag === "open") {
 } else if (deskSyncFlag === "few") {
   const days = snapshot.desk_sync.days.slice(-3);
   Object.assign(snapshot.desk_sync, { days, walked: days.filter((x) => x.walked).length, desk_days: days.length });
+}
+
+// ?deckprofile: DECK_PROFILE has learned the deck's floor (0.6), ceiling (4.0)
+// and a skipped 1.5 km/h, so the Live slider, the speed fields and the
+// program editor snap to it and System -> Diagnostics shows FORGET.
+if (params.has("deckprofile")) {
+  const steps = [];
+  for (let b = 6; b <= 40; b++) if (b !== 15) steps.push({ hw_kmh: b / 10, kmh: b / 10 });
+  Object.assign(snapshot.deck, {
+    speed_steps: steps,
+    max_speed_kmh: 4,
+    target_speed_kmh: 3.5,
+    profile: { learned: 9, floor_kmh: 0.6, ceiling_kmh: 4, skipped_kmh: [0.3, 1.5, 5] },
+  });
 }
 
 // ?weekly shows the last-week HUD card. Variants: ?weekly=long (123.4 km, 12h 05m,

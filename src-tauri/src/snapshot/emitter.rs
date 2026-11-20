@@ -153,6 +153,25 @@ impl Loop {
         programs::persist_active_run(&self.app, current, &mut self.last_run_save);
     }
 
+    /// Write DECK_PROFILE when the deck taught it something (or it was
+    /// forgotten), off the async threads.
+    async fn save_deck_profile(&mut self) {
+        let Some(json) = ORCHESTRATOR.lock().await.deck_profile.take_unsaved() else {
+            return;
+        };
+        let app = self.app.clone();
+        let _detached = tauri::async_runtime::spawn_blocking(move || {
+            let key = crate::deck_profile::KEY;
+            let result = match json {
+                Some(json) => crate::persistence::write_setting(&app, key, &json),
+                None => crate::persistence::delete_setting(&app, key),
+            };
+            if let Err(e) = result {
+                log::warn!("could not save the deck profile: {}", e);
+            }
+        });
+    }
+
     /// Displays change rarely; look every few seconds, off the async threads
     /// because the query goes through the main thread.
     async fn refresh_monitors(&mut self) {
@@ -239,6 +258,7 @@ impl Loop {
     async fn tick(&mut self) {
         let (connected, device_id) = self.connection().await;
         self.save_program_run().await;
+        self.save_deck_profile().await;
         self.refresh_monitors().await;
         let snapshot = assemble(connected, device_id).await;
         self.refresh_totals(snapshot.session.active_id);
