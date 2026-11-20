@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.41.9 (2026-11-20)
+
+### Changed
+
+- The install confirmation is now one short sentence naming the update, with the details on a smaller line below.
+
 ## 1.41.8 (2026-11-20)
 
 ### Fixed
