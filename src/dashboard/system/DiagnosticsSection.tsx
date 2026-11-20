@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
+import { dispatch } from "../../ipc";
+import { useAppState } from "../../state/useAppState";
 import { useTreadmillStore } from "../../store/treadmillStore";
 import { readPref, writePref } from "../localPrefs";
 import { Label, NeonButton } from "../ui";
@@ -70,6 +72,7 @@ export function DiagnosticsSection() {
         </NeonButton>
         <ActionStatus error={logs.error && `Could not open the log folder: ${logs.error}`} className="mt-1" />
       </div>
+      <LabsCalibrationSwitch />
       <button
         type="button"
         aria-expanded={open}
@@ -101,5 +104,23 @@ export function DiagnosticsSection() {
         </>
       )}
     </Section>
+  );
+}
+
+/** Labs: the guided calibration wizard (Rust-owned switch, off by default). */
+function LabsCalibrationSwitch() {
+  const on = useAppState((s) => s.calibration.wizard_enabled);
+  const toggle = useAction();
+  if (on === null) return null;
+  return (
+    <div>
+      <Toggle
+        label="LABS // GROUND_TRUTH: Guided calibration"
+        description="Try the new calibration wizard in place of the calibration panel. It walks you through several speeds and counts belt loops. Still being tested."
+        checked={on}
+        onChange={(next) => void toggle.run(() => dispatch({ type: "calibration_set_wizard", on: next }))}
+      />
+      <ActionStatus pending={toggle.pending} error={toggle.error && `Could not switch it: ${toggle.error}`} className="mt-1" />
+    </div>
   );
 }

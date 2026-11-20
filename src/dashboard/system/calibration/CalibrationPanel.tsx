@@ -1,12 +1,23 @@
 import { useState } from "react";
 import { Edit, Plus, Trash2 } from "lucide-react";
+import { useAppState } from "../../../state/useAppState";
 import { useTreadmillStore } from "../../../store/treadmillStore";
 import type { CalibrationPoint } from "../../../store/types";
 import { CalibrationWizard } from "./CalibrationWizard";
 import { EditPointModal } from "./EditPointModal";
+import { GuidedCalibration } from "./GuidedCalibration";
+
+/**
+ * The calibration points. With the Labs switch on (System -> Diagnostics) the
+ * guided wizard replaces this panel; off, it is the panel as it always was.
+ */
+export function CalibrationPanel() {
+  const guided = useAppState((s) => s.calibration.wizard_enabled) ?? false;
+  return guided ? <GuidedCalibration /> : <ClassicCalibrationPanel />;
+}
 
 /** The saved calibration points, with the wizard that measures a new one. */
-export function CalibrationPanel() {
+function ClassicCalibrationPanel() {
   const calibrationPoints = useTreadmillStore((s) => s.calibrationPoints);
   const addCalibrationPoint = useTreadmillStore((s) => s.addCalibrationPoint);
   const removeCalibrationPoint = useTreadmillStore((s) => s.removeCalibrationPoint);
