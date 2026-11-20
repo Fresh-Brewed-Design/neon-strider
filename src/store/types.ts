@@ -10,6 +10,8 @@ export interface CalibrationPoint {
   distance_scale: number;
   /** Timed runs this point averages; absent on points saved before runs were counted (one). */
   runs?: number;
+  /** Footstep runs (GAIT_SYNC) the stride averages; absent or 0 when the stride was never measured. */
+  stride_runs?: number;
 }
 
 /** What Rust keeps in its config file. Every change is pushed back to Rust as a whole. */

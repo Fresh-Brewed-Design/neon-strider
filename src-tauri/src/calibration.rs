@@ -116,7 +116,7 @@ impl Default for CalibrationLimits {
 pub struct CalibrationResult {
     // `CalibrationPoint` has serde aliases, which ts-rs can't parse.
     #[ts(
-        type = "{ speed: number, stride_length_cm: number, distance_scale: number, runs: number }"
+        type = "{ speed: number, stride_length_cm: number, distance_scale: number, runs: number, stride_runs: number }"
     )]
     pub point: CalibrationPoint,
     /// The speed the belt really ran, km/h.
@@ -134,7 +134,7 @@ pub struct CalibrationResult {
     /// The saved point at the run's speed with this run averaged in (ADD
     /// RUN); none when the speed has no saved point yet.
     #[ts(
-        type = "{ speed: number, stride_length_cm: number, distance_scale: number, runs: number } | null"
+        type = "{ speed: number, stride_length_cm: number, distance_scale: number, runs: number, stride_runs: number } | null"
     )]
     pub averaged: Option<CalibrationPoint>,
 }
@@ -147,6 +147,10 @@ const SAME_SPEED_KMH: f32 = 0.05;
 /// `saved` with one more run folded in, every run weighing the same. A run
 /// whose stride was borrowed from the calibration keeps the saved stride; one
 /// whose factor was borrowed (`factor_counted` false) keeps the saved factor.
+///
+/// Strides are counted apart from belt runs (`stride_runs`): a measured stride
+/// replaces a stride no footstep run ever measured (a count of 0), and after
+/// that it averages only with measured strides.
 pub fn averaged_point(
     saved: &CalibrationPoint,
     run: &CalibrationResult,
@@ -154,19 +158,24 @@ pub fn averaged_point(
 ) -> CalibrationPoint {
     let n = saved.runs.max(1);
     let mean = |old: f32, new: f32| (old * n as f32 + new) / (n + 1) as f32;
+    let (stride_length_cm, stride_runs) = if run.stride_measured {
+        let m = saved.stride_runs;
+        let stride =
+            (saved.stride_length_cm * m as f32 + run.point.stride_length_cm) / (m + 1) as f32;
+        (stride, m + 1)
+    } else {
+        (saved.stride_length_cm, saved.stride_runs)
+    };
     CalibrationPoint {
         speed: saved.speed,
-        stride_length_cm: if run.stride_measured {
-            mean(saved.stride_length_cm, run.point.stride_length_cm)
-        } else {
-            saved.stride_length_cm
-        },
+        stride_length_cm,
         distance_scale: if factor_counted {
             mean(saved.distance_scale, run.point.distance_scale)
         } else {
             saved.distance_scale
         },
         runs: n + 1,
+        stride_runs,
     }
 }
 
@@ -244,6 +253,7 @@ pub fn point_from_taps(
             stride_length_cm: stride_at(real_kmh).clamp(MIN_STRIDE_CM, MAX_STRIDE_CM),
             distance_scale: scale,
             runs: 1,
+            stride_runs: 0,
         },
         real_kmh,
         reported_kmh,
@@ -1335,6 +1345,7 @@ mod tests {
             stride_length_cm: 70.0,
             distance_scale: scale,
             runs: 1,
+            stride_runs: 0,
         }
     }
 
@@ -1643,6 +1654,7 @@ mod tests {
                 stride_length_cm: 70.0,
                 distance_scale: 0.8,
                 runs: 1,
+                stride_runs: 0,
             }],
             ..Default::default()
         });
@@ -1654,9 +1666,11 @@ mod tests {
 
     #[test]
     fn a_new_run_is_averaged_into_the_saved_point() {
-        // Two runs saved at 0.9 and 70 cm; a third at 1.2 and 76 cm.
+        // Two belt runs saved at 0.9, with 70 cm from two footstep runs; a
+        // third run at 1.2 and 76 cm.
         let saved = CalibrationPoint {
             runs: 2,
+            stride_runs: 2,
             ..pt(3.0, 0.9)
         };
         let mut r = point_from_taps(300.0, 4.0, 36.0, 3.0, NO_STRIDE).unwrap();
@@ -1664,18 +1678,19 @@ mod tests {
         r.point.stride_length_cm = 76.0;
         r.stride_measured = true;
         let p = averaged_point(&saved, &r, true);
-        assert_eq!(p.runs, 3);
+        assert_eq!((p.runs, p.stride_runs), (3, 3));
         assert_eq!(p.speed, 3.0);
         assert!((p.distance_scale - 1.0).abs() < 1e-5);
         assert!((p.stride_length_cm - 72.0).abs() < 1e-4);
-        // A belt run (no steps) keeps the saved stride; an old point is one run.
+        // A belt run (no steps) keeps the saved stride and its count; an old
+        // point is one run.
         r.stride_measured = false;
         let old = CalibrationPoint {
             runs: 0,
             ..pt(3.0, 0.9)
         };
         let p = averaged_point(&old, &r, true);
-        assert_eq!(p.runs, 2);
+        assert_eq!((p.runs, p.stride_runs), (2, 0));
         assert_eq!(p.stride_length_cm, 70.0);
         assert!((p.distance_scale - 1.05).abs() < 1e-5);
         // A stride-only run: the stride averages, the saved factor stays.
@@ -1684,6 +1699,52 @@ mod tests {
         assert_eq!(p.runs, 3);
         assert!((p.stride_length_cm - 72.0).abs() < 1e-4);
         assert_eq!(p.distance_scale, 0.9);
+    }
+
+    #[test]
+    fn the_first_measured_stride_replaces_a_borrowed_one() {
+        // Five belt runs, but the stride was only ever borrowed (count 0).
+        let saved = CalibrationPoint {
+            runs: 5,
+            stride_length_cm: 70.0,
+            ..pt(3.0, 0.9)
+        };
+        let mut r = point_from_taps(300.0, 4.0, 36.0, 3.0, NO_STRIDE).unwrap();
+        r.point.stride_length_cm = 46.0;
+        r.stride_measured = true;
+        let p = averaged_point(&saved, &r, false);
+        assert_eq!(p.stride_length_cm, 46.0, "full weight, not a sixth");
+        assert_eq!(p.stride_runs, 1);
+        // The second measured stride averages with the first only.
+        r.point.stride_length_cm = 50.0;
+        let p = averaged_point(&p, &r, false);
+        assert!((p.stride_length_cm - 48.0).abs() < 1e-4);
+        assert_eq!(p.stride_runs, 2);
+        // A belt run after that keeps both strides and their count.
+        r.stride_measured = false;
+        let p = averaged_point(&p, &r, true);
+        assert!((p.stride_length_cm - 48.0).abs() < 1e-4);
+        assert_eq!(p.stride_runs, 2);
+    }
+
+    #[test]
+    fn a_stored_point_without_a_stride_count_reads_as_never_measured() {
+        let p: CalibrationPoint = serde_json::from_str(
+            r#"{"speed":3.0,"stride_length_cm":70.0,"distance_scale":0.9,"runs":4}"#,
+        )
+        .unwrap();
+        assert_eq!((p.runs, p.stride_runs), (4, 0));
+        let p: CalibrationPoint =
+            serde_json::from_str(r#"{"speed":3.0,"strideLengthCm":70.0,"distanceScale":0.9}"#)
+                .unwrap();
+        assert_eq!((p.runs, p.stride_runs), (1, 0));
+        // And it round-trips with the count.
+        let back = serde_json::to_string(&CalibrationPoint {
+            stride_runs: 2,
+            ..p
+        })
+        .unwrap();
+        assert!(back.contains(r#""stride_runs":2"#));
     }
 
     /// The 3.0 km/h point a belt run saves over `stride` cm and a factor of
@@ -1749,7 +1810,11 @@ mod tests {
             "the factor stays"
         );
         assert_eq!(p.runs, 3, "the belt save already counted the run");
-        assert!((p.stride_length_cm - (70.0 * 3.0 + 45.0) / 4.0).abs() < 1e-3);
+        assert!(
+            (p.stride_length_cm - 45.0).abs() < 1e-3,
+            "the first measured stride replaces the borrowed one"
+        );
+        assert_eq!(p.stride_runs, 1);
         assert_eq!(state.calibration_points[1], pt(4.5, 0.887));
         let v = run.view(Instant::now()).steps.unwrap();
         assert!(v.saved && !v.undone);
@@ -1812,9 +1877,10 @@ mod tests {
         assert_eq!(state.calibration_points, belt_saved);
         footsteps(&mut run, &mut state).unwrap();
         assert!(
-            (state.calibration_points[0].stride_length_cm - (70.0 * 3.0 + 45.0) / 4.0).abs() < 1e-3,
+            (state.calibration_points[0].stride_length_cm - 45.0).abs() < 1e-3,
             "replaced, not averaged in twice"
         );
+        assert_eq!(state.calibration_points[0].stride_runs, 1);
     }
 
     #[test]

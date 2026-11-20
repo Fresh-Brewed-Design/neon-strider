@@ -184,6 +184,7 @@ impl StepRun {
             point: CalibrationPoint {
                 stride_length_cm: stride_cm,
                 runs: 1,
+                stride_runs: 1,
                 ..self.belt.point.clone()
             },
             real_kmh: self.belt.real_kmh,
@@ -299,6 +300,7 @@ mod tests {
             stride_length_cm: stride,
             distance_scale: scale,
             runs,
+            stride_runs: 0,
         }
     }
 
@@ -389,8 +391,22 @@ mod tests {
         let v = s.view(t);
         let p = v.result.unwrap().averaged.unwrap();
         assert_eq!(p.distance_scale, 0.9, "the factor stays");
-        assert!((p.stride_length_cm - (70.0 + 45.0) / 2.0).abs() < 1e-3);
+        assert!(
+            (p.stride_length_cm - 45.0).abs() < 1e-3,
+            "a stride never measured is replaced"
+        );
+        assert_eq!(p.stride_runs, 1);
         assert_eq!(p.runs, saved.runs, "the belt save counted the run");
+        // Over a stride measured once, the new one averages in.
+        let saved = CalibrationPoint {
+            stride_runs: 1,
+            ..saved
+        };
+        let mut s = StepRun::new(belt());
+        steps(&mut s, t, 0.6, 21, 3.0, &[saved]);
+        let p = s.view(t).result.unwrap().averaged.unwrap();
+        assert!((p.stride_length_cm - (70.0 + 45.0) / 2.0).abs() < 1e-3);
+        assert_eq!(p.stride_runs, 2);
     }
 
     #[test]

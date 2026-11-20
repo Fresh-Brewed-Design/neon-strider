@@ -19,6 +19,13 @@ pub struct CalibrationPoint {
     /// How many timed runs the point averages; older points count as one.
     #[serde(default = "one_run")]
     pub runs: u32,
+    /// How many footstep runs (GAIT_SYNC) the stride averages, counted apart
+    /// from the belt runs in `runs`. 0 means the stride was never measured:
+    /// it was borrowed from the curve when a belt run saved the point. A point
+    /// stored before strides were counted has no such field and reads as 0,
+    /// so its first measured stride replaces the stored one.
+    #[serde(default)]
+    pub stride_runs: u32,
 }
 
 fn one_run() -> u32 {
