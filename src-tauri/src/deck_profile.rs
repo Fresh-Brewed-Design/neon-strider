@@ -8,9 +8,14 @@
 //! floor and ceiling once they are seen.
 //!
 //! One profile per treadmill, by its saved Bluetooth identity: each is one JSON
-//! value in the settings table (`key_for`), since a map of at most 256 bytes is
-//! small, read when the connection switches to its treadmill and rewritten
-//! whole, so it needs no table of its own.
+//! value in the settings table (`key_for`), holding both the speed bytes and
+//! the incline levels, since two maps of at most 256 entries are small, read
+//! when the connection switches to its treadmill and rewritten whole, so they
+//! need no table of their own.
+//!
+//! Incline levels are learned the same way from the same replies (the echo's
+//! incline byte, a nack of a packet that changed only the incline), in a map
+//! of their own: level 0 is flat, a real level, and is never skipped.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -27,7 +32,8 @@ pub fn key_for(device_id: &str) -> String {
 
 /// A floor or ceiling is only read from a change of at least this many bytes:
 /// a deck that skips an in-between speed moves it to a neighbour, and taking
-/// that for its floor would hide every slower speed for good.
+/// that for its floor would hide every slower speed for good. Incline levels
+/// use the same rule for the top level, for the same reason.
 const LIMIT_JUMP: u8 = 2;
 
 /// What the deck did with one asked speed byte.
@@ -45,6 +51,9 @@ pub enum Outcome {
 pub struct DeckProfile {
     /// Asked speed byte -> what the deck did with it, the latest reply wins.
     bytes: BTreeMap<u8, Outcome>,
+    /// Asked incline level -> what the deck did with it, the latest reply wins.
+    #[serde(default)]
+    levels: BTreeMap<u8, Outcome>,
     /// Changed since the last save.
     #[serde(skip)]
     unsaved: bool,
@@ -66,8 +75,24 @@ impl DeckProfile {
         }
     }
 
+    /// Nothing learned, neither speeds nor incline levels.
     pub fn is_empty(&self) -> bool {
-        self.bytes.is_empty()
+        self.bytes.is_empty() && self.levels.is_empty()
+    }
+
+    /// At least one speed has a reply on file.
+    pub fn has_speeds(&self) -> bool {
+        !self.bytes.is_empty()
+    }
+
+    /// At least one incline level has a reply on file.
+    pub fn has_levels(&self) -> bool {
+        !self.levels.is_empty()
+    }
+
+    /// How many incline levels have a reply on file.
+    pub fn level_count(&self) -> usize {
+        self.levels.len()
     }
 
     /// How many speed bytes have a reply on file.
@@ -86,10 +111,18 @@ impl DeckProfile {
         }
     }
 
+    /// File the deck's reply to a target at incline `asked`.
+    pub fn learn_level(&mut self, asked: u8, outcome: Outcome) {
+        if self.levels.insert(asked, outcome) != Some(outcome) {
+            self.unsaved = true;
+        }
+    }
+
     /// Forget everything learned.
     pub fn clear(&mut self) {
-        if !self.bytes.is_empty() {
+        if !self.is_empty() {
             self.bytes.clear();
+            self.levels.clear();
             self.unsaved = true;
         }
     }
@@ -101,7 +134,7 @@ impl DeckProfile {
         if !std::mem::take(&mut self.unsaved) {
             return None;
         }
-        if self.bytes.is_empty() {
+        if self.is_empty() {
             return Some(None);
         }
         Some(serde_json::to_string(self).ok())
@@ -184,6 +217,67 @@ impl DeckProfile {
             .unwrap_or(byte)
     }
 
+    /// The deck's top incline level: its highest known running level, once a
+    /// level at least `LIMIT_JUMP` higher was asked and the deck took that one
+    /// instead. Level 0 is the floor and needs no learning.
+    pub fn incline_ceiling(&self) -> Option<u8> {
+        let highest = self.levels.values().filter_map(took).max()?;
+        self.levels
+            .iter()
+            .any(|(asked, o)| {
+                *asked >= highest.saturating_add(LIMIT_JUMP) && *o == Outcome::Took(highest)
+            })
+            .then_some(highest)
+    }
+
+    /// The deck is known not to run incline `level` as asked: it changed or
+    /// refused it, or the level lies above the ceiling. Level 0 never is.
+    pub fn skips_level(&self, level: u8) -> bool {
+        if level == 0 {
+            return false;
+        }
+        if self.incline_ceiling().is_some_and(|c| level > c) {
+            return true;
+        }
+        match self.levels.get(&level) {
+            Some(Outcome::Took(l)) => *l != level,
+            Some(Outcome::Refused) => true,
+            None => false,
+        }
+    }
+
+    /// The level to send for `level`: itself unless the deck is known to skip
+    /// it. Above the ceiling it is the ceiling; a level the deck changed is
+    /// what it changed it to; a refused one is the nearest level not skipped
+    /// (the lower one on a tie).
+    pub fn snap_level(&self, level: u8) -> u8 {
+        if !self.skips_level(level) {
+            return level;
+        }
+        if let Some(c) = self.incline_ceiling().filter(|c| level > *c) {
+            return c;
+        }
+        if let Some(Outcome::Took(l)) = self.levels.get(&level) {
+            if !self.skips_level(*l) {
+                return *l;
+            }
+        }
+        (1..=u8::MAX)
+            .flat_map(|d| [level.checked_sub(d), level.checked_add(d)])
+            .flatten()
+            .find(|l| !self.skips_level(*l))
+            .unwrap_or(level)
+    }
+
+    /// The incline levels the deck changed or refused, for Diagnostics.
+    pub fn skipped_levels(&self) -> Vec<u8> {
+        self.levels
+            .iter()
+            .filter(|(asked, o)| **o != Outcome::Took(**asked))
+            .map(|(asked, _)| *asked)
+            .collect()
+    }
+
     /// The bytes the deck changed or refused, for Diagnostics.
     pub fn skipped(&self) -> Vec<u8> {
         self.bytes
@@ -191,6 +285,13 @@ impl DeckProfile {
             .filter(|(asked, o)| **o != Outcome::Took(**asked))
             .map(|(asked, _)| *asked)
             .collect()
+    }
+}
+
+fn took(o: &Outcome) -> Option<u8> {
+    match o {
+        Outcome::Took(b) => Some(*b),
+        Outcome::Refused => None,
     }
 }
 
@@ -299,6 +400,44 @@ mod tests {
         );
         assert!(DeckProfile::from_stored(Some("not json")).is_empty());
         assert!(DeckProfile::from_stored(None).is_empty());
+    }
+
+    #[test]
+    fn incline_levels_are_learned_from_echoes_and_nacks() {
+        let mut p = DeckProfile::default();
+        p.learn_level(15, Outcome::Took(12));
+        p.learn_level(7, Outcome::Took(8));
+        p.learn_level(9, Outcome::Refused);
+        p.learn_level(8, Outcome::Took(8));
+        p.learn_level(0, Outcome::Took(0));
+        assert!(p.has_levels() && !p.has_speeds() && !p.is_empty());
+        assert_eq!(p.incline_ceiling(), Some(12));
+        assert_eq!(p.snap_level(15), 12, "above the ceiling");
+        assert_eq!(p.snap_level(7), 8, "changed by the deck");
+        assert_eq!(
+            p.snap_level(9),
+            8,
+            "refused: 8 and 10 are as near, lower wins"
+        );
+        assert_eq!(p.snap_level(3), 3, "never asked: allowed");
+        assert_eq!(p.snap_level(0), 0, "flat is never skipped");
+        assert_eq!(p.skipped_levels(), vec![7, 9, 15]);
+        assert_eq!(p.snap(9), 9, "speeds are not touched");
+    }
+
+    #[test]
+    fn a_refused_level_never_snaps_to_flat_wrongly_and_survives_a_round_trip() {
+        let mut p = DeckProfile::default();
+        p.learn_level(1, Outcome::Refused);
+        assert_eq!(p.snap_level(1), 0, "flat is the nearest level");
+        let json = p.take_unsaved().flatten().expect("json");
+        assert_eq!(DeckProfile::from_stored(Some(&json)), p);
+        // A profile saved before incline levels were learned still loads.
+        let old = DeckProfile::from_stored(Some(r#"{"bytes":{"3":{"took":6}}}"#));
+        assert_eq!(old.snap(4), 6);
+        assert!(!old.has_levels());
+        p.clear();
+        assert_eq!(p.take_unsaved(), Some(None));
     }
 
     #[test]

@@ -1,4 +1,4 @@
-import { deckLimitOffer, limitsText, snapToDeck } from "../../state/deckSpeeds";
+import { deckLimitOffer, limitsText, snapToDeck, snapToLevel } from "../../state/deckSpeeds";
 import { useAppState } from "../../state/useAppState";
 import { useTreadmillStore } from "../../store/treadmillStore";
 import { GhostButton, Hint } from "../ui";
@@ -58,7 +58,8 @@ export function TreadmillSection() {
           min={0}
           max={20}
           value={maxIncline}
-          hint="The treadmill's top incline step."
+          hint="The treadmill's top incline step, kept at or under the deck's own top level once DECK_PROFILE has seen it."
+          snap={(v) => snapToLevel(v, deck)}
           onCommit={(v) => updateSettings({ maxIncline: v })}
         />
         <NumberField

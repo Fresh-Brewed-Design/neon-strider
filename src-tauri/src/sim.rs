@@ -159,6 +159,10 @@ pub(crate) struct SimDeck {
     ceiling: u8,
     /// In-between speeds the deck skips: (asked byte, byte it runs instead).
     skips: Vec<(u8, u8)>,
+    /// The highest incline level a target is taken at, and in-between levels
+    /// the deck skips: (asked level, level it runs instead).
+    incline_ceiling: u8,
+    incline_skips: Vec<(u8, u8)>,
 }
 
 impl SimDeck {
@@ -182,6 +186,8 @@ impl SimDeck {
             floor: 0,
             ceiling: u8::MAX,
             skips: vec![],
+            incline_ceiling: u8::MAX,
+            incline_skips: vec![],
         }
     }
 
@@ -190,6 +196,18 @@ impl SimDeck {
     pub(crate) fn set_limits(&mut self, floor: u8, ceiling: u8) {
         self.floor = floor;
         self.ceiling = ceiling;
+    }
+
+    /// A deck whose top incline level is `ceiling`.
+    #[cfg(test)]
+    pub(crate) fn set_incline_ceiling(&mut self, ceiling: u8) {
+        self.incline_ceiling = ceiling;
+    }
+
+    /// A deck that runs incline `took` when asked for `asked`.
+    #[cfg(test)]
+    pub(crate) fn set_incline_skip(&mut self, asked: u8, took: u8) {
+        self.incline_skips.push((asked, took));
     }
 
     /// A deck that runs `took` when asked for `asked` (speed bytes).
@@ -342,6 +360,7 @@ impl SimDeck {
             return NACK.to_vec();
         };
         let mut echo_speed = None;
+        let mut echo_incline = None;
         let accepted = match (self.phase, control) {
             // Standby refuses every start; the countdown and the stop's
             // wind-down refuse everything but polls (docs/protocol.md).
@@ -359,8 +378,14 @@ impl SimDeck {
                     .find(|(asked, _)| *asked == speed)
                     .map_or(speed.clamp(self.floor, self.ceiling), |(_, took)| *took);
                 self.target = taken as f32 / 10.0;
-                self.incline = incline;
+                let took_incline = self
+                    .incline_skips
+                    .iter()
+                    .find(|(asked, _)| *asked == incline)
+                    .map_or(incline.min(self.incline_ceiling), |(_, took)| *took);
+                self.incline = took_incline;
                 echo_speed = Some(taken);
+                echo_incline = Some(took_incline);
                 true
             }
             (Running, Control::Pause) => {
@@ -390,9 +415,11 @@ impl SimDeck {
         }
         match control {
             Control::Ready => READY_ACK.to_vec(),
-            Control::Target => {
-                protocol::control_packet(Control::Target, echo_speed.unwrap_or(speed), incline)
-            }
+            Control::Target => protocol::control_packet(
+                Control::Target,
+                echo_speed.unwrap_or(speed),
+                echo_incline.unwrap_or(incline),
+            ),
             // `02 53 03 50 03` for a Stop (docs); the same shape assumed for the rest.
             other => protocol::raw_packet(&[0x53, other as u8]).expect("echo"),
         }
@@ -1295,6 +1322,39 @@ mod tests {
         r.run(2.0);
         assert!(r.state.deck_profile.is_empty());
         assert!(r.state.current_target_note().is_some(), "still noted");
+    }
+
+    /// Incline levels are learned from the echoes like speeds: the ceiling
+    /// and a skipped level, then the stepper and every send keep to them.
+    #[test]
+    fn the_deck_profile_learns_incline_levels_and_the_stepper_keeps_to_them() {
+        let mut r = walking_rig(6, 40);
+        r.deck.set_incline_ceiling(10);
+        r.deck.set_incline_skip(4, 5);
+        for level in [4, 15] {
+            r.state.set_intent(None, Some(level), true);
+            r.run(3.0);
+        }
+        assert!(r.state.deck_profile.skips_level(4));
+        assert_eq!(r.state.deck_profile.incline_ceiling(), Some(10));
+        assert_eq!(
+            r.state.deck_incline_levels(),
+            vec![0, 1, 2, 3, 5, 6, 7, 8, 9, 10]
+        );
+        assert_eq!(r.state.snap_incline_level(4), 5);
+        assert_eq!(r.state.snap_incline_level(14), 10);
+
+        // Up from 3 lands on 5, and a press at the top stays there.
+        r.state.set_intent(None, Some(3), true);
+        r.run(3.0);
+        r.press(DeckAction::InclineUp);
+        r.run(3.0);
+        assert_eq!(r.state.manual_intent.map(|i| i.incline), Some(5));
+        for _ in 0..8 {
+            r.press(DeckAction::InclineUp);
+            r.run(3.0);
+        }
+        assert_eq!(r.state.manual_intent.map(|i| i.incline), Some(10));
     }
 
     #[test]

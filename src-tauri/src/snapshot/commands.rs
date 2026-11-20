@@ -35,7 +35,8 @@ pub(super) fn clamp_manual_speed(state: &OrchestratorState, kmh: f32) -> Result<
 }
 
 pub(super) fn clamp_incline_level(state: &OrchestratorState, level: u8) -> u8 {
-    level.min(state.max_incline)
+    // Snapped to a level the deck runs (DECK_PROFILE), then kept in bounds.
+    state.snap_incline_level(level.min(state.max_incline))
 }
 
 /// A button press, handled by the same code as the hotkeys.

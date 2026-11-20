@@ -187,6 +187,8 @@ pub struct DeckSnapshot {
     pub min_speed_kmh: f32,
     /// Calibrated.
     pub max_speed_kmh: f32,
+    /// The highest incline level setting, or the deck's own top level once
+    /// DECK_PROFILE has seen it, whichever is lower.
     pub max_incline_level: u8,
     pub max_incline_pct: f32,
     /// incline_pct = level * incline_pct_per_level + incline_offset_pct.
@@ -200,6 +202,10 @@ pub struct DeckSnapshot {
     /// Empty until the deck has answered a target, and the controls then
     /// behave as before.
     pub speed_steps: Vec<DeckSpeedStep>,
+    /// The incline levels the controls may offer, lowest first: flat up to
+    /// the top level, without those DECK_PROFILE knows the deck skips. Empty
+    /// until the deck has answered an incline.
+    pub incline_steps: Vec<u8>,
     pub profile: DeckProfileSnapshot,
 }
 
@@ -228,6 +234,12 @@ pub struct DeckProfileSnapshot {
     pub ceiling_hw_kmh: Option<f32>,
     /// Speeds asked that the deck changed or refused, calibrated km/h.
     pub skipped_kmh: Vec<f32>,
+    /// Incline levels the deck has answered a target at.
+    pub learned_levels: u32,
+    /// The deck's top incline level, once seen.
+    pub ceiling_level: Option<u8>,
+    /// Incline levels asked that the deck changed or refused.
+    pub skipped_levels: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS)]

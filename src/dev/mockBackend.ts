@@ -72,7 +72,18 @@ export const snapshot: AppSnapshot = {
     max_incline_level: 15,
     max_incline_pct: 18.75,
     speed_steps: [],
-    profile: { learned: 0, floor_kmh: null, ceiling_kmh: null, floor_hw_kmh: null, ceiling_hw_kmh: null, skipped_kmh: [] },
+    incline_steps: [],
+    profile: {
+      learned: 0,
+      floor_kmh: null,
+      ceiling_kmh: null,
+      floor_hw_kmh: null,
+      ceiling_hw_kmh: null,
+      skipped_kmh: [],
+      learned_levels: 0,
+      ceiling_level: null,
+      skipped_levels: [],
+    },
   },
   session: { active_id: 1, duration_s: 1934, distance_m: 1720, steps: 2412, calories: 103, daily_distance_m: 4310 },
   programs: [
@@ -430,16 +441,29 @@ if (deskSyncFlag === "open") {
 }
 
 // ?deckprofile: DECK_PROFILE has learned the deck's floor (0.6), ceiling (4.0)
-// and a skipped 1.5 km/h, so the Live slider, the speed fields and the
+// and a skipped 1.5 km/h, plus its top incline level (12) and a skipped level 7, so the Live slider, the speed fields and the
 // program editor snap to it and System -> Diagnostics shows FORGET.
 if (params.has("deckprofile")) {
   const steps = [];
   for (let b = 6; b <= 40; b++) if (b !== 15) steps.push({ hw_kmh: b / 10, kmh: b / 10 });
   Object.assign(snapshot.deck, {
     speed_steps: steps,
+    incline_steps: [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12],
     max_speed_kmh: 4,
+    max_incline_level: 12,
+    max_incline_pct: 15,
     target_speed_kmh: 3.5,
-    profile: { learned: 9, floor_kmh: 0.6, ceiling_kmh: 4, floor_hw_kmh: 0.6, ceiling_hw_kmh: 4, skipped_kmh: [0.3, 1.5, 5] },
+    profile: {
+      learned: 9,
+      floor_kmh: 0.6,
+      ceiling_kmh: 4,
+      floor_hw_kmh: 0.6,
+      ceiling_hw_kmh: 4,
+      skipped_kmh: [0.3, 1.5, 5],
+      learned_levels: 6,
+      ceiling_level: 12,
+      skipped_levels: [7, 15],
+    },
   });
 }
 
