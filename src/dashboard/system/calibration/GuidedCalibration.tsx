@@ -55,8 +55,8 @@ export function GuidedCalibration() {
       </div>
       <Hint>
         Mark the belt, press RUN, then press COUNT as the mark passes once the belt is steady. Count loops for at least a
-        minute, and steps to measure your stride. No mark on the belt? Count steps alone: that sets the stride and leaves
-        the distance factor as it is.
+        minute, and steps to measure your stride. With no mark on the belt, steps alone set the stride and keep the
+        distance factor.
       </Hint>
       <NumberField
         label="BELT_LOOP"
@@ -288,7 +288,7 @@ function RunPanel({
           <Hint>
             Timed at {(run.reported_kmh ?? 0).toFixed(2)} km/h on the deck.{" "}
             {stepsOnly
-              ? `Enter the steps counted (at least ${limits.min_steps}). The distance factor stays as it is.`
+              ? `Enter the steps counted (at least ${limits.min_steps}); the distance factor stays the same.`
               : `Enter the loops counted; steps are optional (at least ${limits.min_steps}).`}
           </Hint>
           <label className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.15em] text-white/60">
@@ -327,8 +327,11 @@ function RunPanel({
                 className={cx(INPUT_CLASS, "mt-1 block w-24")}
               />
             </label>
-            <NeonButton className="px-3 py-1.5" disabled={tally.pending || (stepsOnly ? steps.trim() === "" : loops.trim() === "")}
-              onClick={compute}>
+            <NeonButton
+              className="px-3 py-1.5"
+              disabled={tally.pending || (stepsOnly ? steps.trim() === "" : loops.trim() === "")}
+              onClick={compute}
+            >
               COMPUTE
             </NeonButton>
           </div>

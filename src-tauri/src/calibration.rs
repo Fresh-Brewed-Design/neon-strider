@@ -674,7 +674,12 @@ pub(crate) fn count(state: &OrchestratorState, count: &CalibrationCount) -> Resu
         run.count(
             count,
             |kmh| state.calculate_stride_length(kmh),
-            |hw_kmh| hw_kmh / state.to_physical_speed(hw_kmh),
+            // The factor at the point's own speed (reported km/h in tenths, as
+            // the point is saved), so a steps-only point keeps it exactly.
+            |hw_kmh| {
+                let speed = (hw_kmh * 10.0).round() / 10.0;
+                speed / state.to_physical_speed(speed)
+            },
         )
     })
 }
