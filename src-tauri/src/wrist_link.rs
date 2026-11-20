@@ -18,6 +18,16 @@ pub const SERVICE: u128 = 0x00b165d6_40c2_4f94_8df9_0f69431f21af;
 /// phases that use them.
 pub const STATE: u128 = 0x00b165d6_40c2_4f94_8df9_0f69431f21b0;
 
+/// The beacon's manufacturer data: company 0xFFFF, which the Bluetooth SIG
+/// keeps for tests and devices with no company ID, so it belongs to nobody.
+/// Windows' advertisement publisher only takes manufacturer data (service
+/// data and UUID lists are reserved to the system), so this is the form left.
+pub const BEACON_COMPANY: u16 = 0xffff;
+/// After the company ID: "NSTR" plus a version byte. Other 0xFFFF beacons are
+/// test gear, and four letters make a clash with one of them unlikely.
+/// Keep in step with `watch/source/BeltLink.mc`.
+pub const BEACON_MARKER: [u8; 5] = [b'N', b'S', b'T', b'R', 1];
+
 /// `belt` byte of State.
 pub const BELT_STILL: u8 = 0;
 pub const BELT_MOVING: u8 = 1;

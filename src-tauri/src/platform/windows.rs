@@ -760,11 +760,17 @@ pub use peripheral::{peripheral_add, peripheral_notify, peripheral_remove, perip
 
 mod peripheral {
     use super::super::{
-        uuid_text, PeripheralCharacteristic, PeripheralEvent, PeripheralEvents, PeripheralService,
+        uuid_text, PeripheralBeacon, PeripheralCharacteristic, PeripheralEvent, PeripheralEvents,
+        PeripheralService,
     };
     use std::collections::HashMap;
     use std::sync::{Mutex, MutexGuard, PoisonError};
     use windows::core::{IInspectable, Ref, GUID};
+    use windows::Devices::Bluetooth::Advertisement::{
+        BluetoothLEAdvertisement, BluetoothLEAdvertisementPublisher,
+        BluetoothLEAdvertisementPublisherStatus,
+        BluetoothLEAdvertisementPublisherStatusChangedEventArgs, BluetoothLEManufacturerData,
+    };
     use windows::Devices::Bluetooth::GenericAttributeProfile::{
         GattCharacteristicProperties, GattLocalCharacteristic, GattLocalCharacteristicParameters,
         GattLocalService, GattProtectionLevel, GattReadRequestedEventArgs, GattServiceProvider,
@@ -784,6 +790,8 @@ mod peripheral {
         name: &'static str,
         provider: GattServiceProvider,
         chars: Vec<(u128, GattLocalCharacteristic)>,
+        /// The service's legacy beacon, while it runs.
+        beacon: Option<BluetoothLEAdvertisementPublisher>,
     }
 
     static SERVER: Mutex<Vec<Provided>> = Mutex::new(Vec::new());
@@ -975,11 +983,21 @@ mod peripheral {
         let mut chars = Vec::new();
         match serve(service, &events, &mut chars) {
             Ok(provider) => {
+                // The beacon is extra: if Windows refuses it, the service
+                // still serves the devices that find it the usual way.
+                let beacon = service.beacon.as_ref().and_then(|b| {
+                    start_beacon(service.name, b)
+                        .map_err(|why| {
+                            log::warn!("GHOST_POD: {} beacon not started: {}", service.name, why)
+                        })
+                        .ok()
+                });
                 server().push(Provided {
                     service: service.uuid,
                     name: service.name,
                     provider,
                     chars,
+                    beacon,
                 });
                 Ok(())
             }
@@ -1091,6 +1109,74 @@ mod peripheral {
             );
         }
         Ok(provider)
+    }
+
+    /// `BluetoothLEAdvertisementPublisherStatus` in words.
+    fn publisher_status_name(s: BluetoothLEAdvertisementPublisherStatus) -> String {
+        let name = match s {
+            BluetoothLEAdvertisementPublisherStatus::Created => "Created",
+            BluetoothLEAdvertisementPublisherStatus::Waiting => "Waiting",
+            BluetoothLEAdvertisementPublisherStatus::Started => "Started",
+            BluetoothLEAdvertisementPublisherStatus::Stopping => "Stopping",
+            BluetoothLEAdvertisementPublisherStatus::Stopped => "Stopped",
+            BluetoothLEAdvertisementPublisherStatus::Aborted => "Aborted",
+            other => return format!("status {}", other.0),
+        };
+        name.to_string()
+    }
+
+    fn hex(bytes: &[u8]) -> String {
+        bytes.iter().map(|b| format!("{b:02x}")).collect()
+    }
+
+    /// Start a legacy advertisement with `beacon`'s manufacturer data, next
+    /// to the service's own. A GATT server's advertisement can't be made
+    /// legacy (its parameters have no such setting), and on an adapter with
+    /// extended advertising a scanner that hears only legacy ones may miss it;
+    /// this one is legacy for certain. Windows chooses the address and whether
+    /// it is connectable (the publisher has no setting for either); it is not
+    /// anonymous, so the PC's address is in it.
+    fn start_beacon(
+        name: &'static str,
+        beacon: &PeripheralBeacon,
+    ) -> Result<BluetoothLEAdvertisementPublisher, String> {
+        let advertisement = BluetoothLEAdvertisement::new().map_err(win)?;
+        let section = BluetoothLEManufacturerData::Create(
+            beacon.company,
+            &buffer(&beacon.data).map_err(win)?,
+        )
+        .map_err(win)?;
+        advertisement
+            .ManufacturerData()
+            .map_err(win)?
+            .Append(&section)
+            .map_err(win)?;
+        let publisher = BluetoothLEAdvertisementPublisher::Create(&advertisement).map_err(win)?;
+        publisher.SetUseExtendedAdvertisement(false).map_err(win)?;
+        publisher
+            .StatusChanged(&TypedEventHandler::new(
+                move |_: Ref<BluetoothLEAdvertisementPublisher>,
+                      args: Ref<BluetoothLEAdvertisementPublisherStatusChangedEventArgs>| {
+                    let args = args.ok()?;
+                    log::info!(
+                        "GHOST_POD: {} beacon {} ({})",
+                        name,
+                        publisher_status_name(args.Status()?),
+                        bt_error_name(args.Error()?)
+                    );
+                    Ok(())
+                },
+            ))
+            .map_err(win)?;
+        log::info!(
+            "GHOST_POD: {} beacon starting: legacy advertisement, PC's address, manufacturer data {:04x} {} ({} of 31 bytes with the flags)",
+            name,
+            beacon.company,
+            hex(&beacon.data),
+            beacon.air_len()
+        );
+        publisher.Start().map_err(win)?;
+        Ok(publisher)
     }
 
     fn add_characteristic(
@@ -1237,7 +1323,25 @@ mod peripheral {
         Ok(())
     }
 
+    /// The status of service's beacon in words, or None without one.
+    #[cfg(test)]
+    pub(super) fn beacon_status(service: u128) -> Option<String> {
+        let guard = server();
+        let beacon = guard
+            .iter()
+            .find(|p| p.service == service)?
+            .beacon
+            .as_ref()?;
+        beacon.Status().ok().map(publisher_status_name)
+    }
+
     fn stop_one(p: &Provided) {
+        if let Some(beacon) = &p.beacon {
+            match beacon.Stop() {
+                Ok(()) => log::info!("GHOST_POD: {} beacon stopped", p.name),
+                Err(e) => log::warn!("GHOST_POD: {} beacon stop failed: {}", p.name, e.message()),
+            }
+        }
         if let Err(e) = p.provider.StopAdvertising() {
             log::warn!(
                 "GHOST_POD: {} ({}) stop advertising failed: {}",
@@ -1355,6 +1459,7 @@ mod tests {
             name,
             uuid,
             advertise,
+            beacon: None,
             characteristics: vec![PeripheralCharacteristic {
                 uuid: uuid + 1,
                 read: Some(vec![1]),
@@ -1416,6 +1521,96 @@ mod tests {
             "A is still served"
         );
         assert!(peripheral_notify(SERVED + 1, &[2]).is_err(), "B is gone");
+        peripheral_stop();
+    }
+
+    /// On this PC's real adapter: a served-only service with a legacy beacon
+    /// (a marker the app never sends) reports the beacon's status, and a
+    /// watcher prints every advertisement it hears at -60 dBm or stronger:
+    /// address, type, legacy or extended, connectable, and the raw sections.
+    /// A PC usually can't hear its own advertisements, so an empty list says
+    /// nothing; any line from this PC's address answers what it sends. Run with
+    /// `cargo test legacy_beacon_probe -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "needs a Bluetooth adapter with the peripheral role"]
+    fn legacy_beacon_probe() {
+        use crate::platform::{PeripheralBeacon, PeripheralCharacteristic, PeripheralService};
+        use std::time::Duration;
+        use windows::core::Ref;
+        use windows::Devices::Bluetooth::Advertisement::{
+            BluetoothLEAdvertisementReceivedEventArgs, BluetoothLEAdvertisementWatcher,
+            BluetoothLEScanningMode,
+        };
+        use windows::Foundation::TypedEventHandler;
+        use windows::Storage::Streams::DataReader;
+
+        let watcher = BluetoothLEAdvertisementWatcher::new().unwrap();
+        watcher
+            .SetScanningMode(BluetoothLEScanningMode::Active)
+            .unwrap();
+        watcher.SetAllowExtendedAdvertisements(true).unwrap();
+        watcher
+            .Received(&TypedEventHandler::new(
+                |_: Ref<BluetoothLEAdvertisementWatcher>,
+                 args: Ref<BluetoothLEAdvertisementReceivedEventArgs>| {
+                    let a = args.ok()?;
+                    let rssi = a.RawSignalStrengthInDBm()?;
+                    if rssi < -60 {
+                        return Ok(());
+                    }
+                    let mut sections = String::new();
+                    for s in a.Advertisement()?.DataSections()? {
+                        let r = DataReader::FromBuffer(&s.Data()?)?;
+                        let mut b = vec![0u8; r.UnconsumedBufferLength()? as usize];
+                        r.ReadBytes(&mut b)?;
+                        let hex: String = b.iter().map(|x| format!("{x:02x}")).collect();
+                        sections += &format!(" {:02x}:{}", s.DataType()?, hex);
+                    }
+                    println!(
+                        "heard {:012x} type {:?} rssi {} kind {:?} connectable {} scannable {} anonymous {} scan-response {} sections{}",
+                        a.BluetoothAddress()?,
+                        a.BluetoothAddressType()?,
+                        rssi,
+                        a.AdvertisementType()?,
+                        a.IsConnectable()?,
+                        a.IsScannable()?,
+                        a.IsAnonymous()?,
+                        a.IsScanResponse()?,
+                        sections
+                    );
+                    Ok(())
+                },
+            ))
+            .unwrap();
+        watcher.Start().unwrap();
+
+        let events: crate::platform::PeripheralEvents =
+            std::sync::Arc::new(|e| println!("event: {e:?}"));
+        let svc = PeripheralService {
+            name: "TEST_BEACON",
+            uuid: 0x5e1f7e57_0000_4000_8000_00000000b002,
+            advertise: false,
+            beacon: Some(PeripheralBeacon {
+                company: 0xffff,
+                data: b"TEST".to_vec(),
+            }),
+            characteristics: vec![PeripheralCharacteristic {
+                uuid: 0x5e1f7e57_0000_4000_8000_00000000b003,
+                read: Some(vec![1]),
+                notify: false,
+                indicate: false,
+                write: false,
+            }],
+        };
+        peripheral_add(&svc, events).expect("add");
+
+        // Long enough for several advertising intervals and the status event.
+        std::thread::sleep(Duration::from_secs(6));
+        println!(
+            "beacon status {}",
+            peripheral::beacon_status(svc.uuid).expect("beacon started")
+        );
+        watcher.Stop().unwrap();
         peripheral_stop();
     }
 }
