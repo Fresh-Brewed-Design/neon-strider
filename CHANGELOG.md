@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.24.0 (2026-11-20)
+
+### New
+
+- WRIST_LINK (Labs, off by default): the PC serves a second Bluetooth service next to GHOST_POD so a Connect IQ data field on the watch can read the belt state. This is the link test only; nothing the watch sends moves the belt yet.
+
 ## 1.23.0 (2026-11-20)
 
 ### New
