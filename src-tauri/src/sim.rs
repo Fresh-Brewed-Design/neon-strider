@@ -1121,16 +1121,86 @@ mod tests {
         r.run(20.0);
         r.press(DeckAction::Pause);
         r.run(10.0);
-        assert!(r.deck.belt_still());
+        assert_eq!(r.deck.status_code(), 10, "paused");
         let mark = r.mark();
         r.state.heart_bpm = Some(120);
         r.run(120.0);
-        assert!(r.deck.belt_still(), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(r.deck.status_code(), 10, "still paused");
         assert!(
             !moves_belt(&r.commands_since(mark)),
             "{:?}",
             r.commands_since(mark)
         );
+    }
+
+    /// The seeded VO2 max against the deck. With no heart rate reading its
+    /// climb runs the set 6.0 km/h. With a pulse above the zone the warm-up
+    /// (no zone) is left alone and the climb is trimmed down by targets alone;
+    /// paused at the treadmill mid-climb with a low pulse, the belt stays
+    /// paused until a start press.
+    #[test]
+    fn the_seeded_vo2_max_trims_its_climbs_and_never_starts_a_still_belt() {
+        let seeded = || {
+            crate::programs::seed_programs()
+                .into_iter()
+                .find(|p| p.name == "VO2 max")
+                .expect("seeded")
+        };
+        let rig = || {
+            let mut r = Rig::new();
+            r.state.programs.push(seeded());
+            r.state.max_heart_rate = 190; // The zone is 161.5 to 180.5 bpm.
+            r.run(1.0);
+            r.run_program(seeded().id);
+            r
+        };
+
+        // No reading: the climb holds its set speed.
+        let mut r = rig();
+        r.run(330.0);
+        assert_eq!(r.program().step_index, 1);
+        r.run(90.0);
+        assert!(r.deck.running_at(6.0), "{} km/h", r.deck.speed_kmh());
+
+        let mut r = rig();
+        r.run(20.0);
+        assert!(r.deck.running_at(4.5), "{} km/h", r.deck.speed_kmh());
+        r.state.heart_bpm = Some(185);
+        r.run(60.0);
+        assert!(
+            r.deck.running_at(4.5),
+            "warm-up: {} km/h",
+            r.deck.speed_kmh()
+        );
+
+        // Into the first climb (6.0 km/h at 10 %), still above the zone.
+        r.run(230.0);
+        assert_eq!(r.program().step_index, 1);
+        let mark = r.mark();
+        r.run(70.0);
+        let speed = r.deck.speed_kmh();
+        assert!((5.0..5.95).contains(&speed), "trimmed down: {} km/h", speed);
+        assert_eq!(controls(&r.commands_since(mark)), vec![]);
+
+        // Paused at the treadmill, a pulse below the zone never resumes it.
+        let t = r.t;
+        r.deck.press_pause(t);
+        r.run(10.0);
+        assert_eq!(r.deck.status_code(), 10, "paused");
+        let mark = r.mark();
+        r.state.heart_bpm = Some(120);
+        r.run(120.0);
+        assert_eq!(r.deck.status_code(), 10, "still paused");
+        assert!(
+            !moves_belt(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+
+        // A start press (Engage or RE-JACK) moves it again.
+        r.press(DeckAction::Start);
+        r.run(15.0);
+        assert!(r.deck.speed_kmh() > 4.0, "{} km/h", r.deck.speed_kmh());
     }
 
     #[test]

@@ -1,0 +1,3 @@
+- Set your max heart rate in System, Heart rate; program heart zones are a percentage of it (190 bpm until you set one).
+- The program editor can give any walking step a heart zone, typed as % of max or in bpm. The zone trims the step's speed by up to 1 km/h to hold your pulse and never starts the belt.
+- VO2 max now holds each 4-minute climb at 85 to 95 % of your max heart rate while a heart rate sensor is reading; without one the climbs run their set speed as before. A VO2 max you have edited is left as it is.
