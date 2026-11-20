@@ -123,6 +123,24 @@ fn in_range(v: f32, lo: f32, hi: f32) -> bool {
     v.is_finite() && v >= lo && v <= hi
 }
 
+/// Refuses a save that adds or changes a point to a factor outside the
+/// limits, whichever window sent it. A point already stored as it is stays,
+/// so an old out-of-range point does not block saving anything else.
+pub fn check_point_scales(
+    new: &[CalibrationPoint],
+    stored: &[CalibrationPoint],
+) -> Result<(), String> {
+    for p in new {
+        if !in_range(p.distance_scale, MIN_SCALE, MAX_SCALE) && !stored.contains(p) {
+            return Err(format!(
+                "Factor {:.2} at {:.1} km/h is outside {MIN_SCALE:.1} to {MAX_SCALE:.1}. Run the calibration again.",
+                p.distance_scale, p.speed
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// The deck's speeds sampled during a count: their mean, or why the count
 /// can't be used. A still belt (the treadmill stopped mid-count) and a speed
 /// that changed are refused.
@@ -495,6 +513,34 @@ pub fn snapshot(raw_kmh: f32) -> CalibrationSnapshot {
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    fn pt(speed: f32, scale: f32) -> CalibrationPoint {
+        CalibrationPoint {
+            speed,
+            stride_length_cm: 70.0,
+            distance_scale: scale,
+        }
+    }
+
+    #[test]
+    fn a_save_with_a_factor_outside_the_limits_is_refused() {
+        let err = check_point_scales(&[pt(3.0, 0.9), pt(4.0, 0.15)], &[]).unwrap_err();
+        assert_eq!(
+            err,
+            "Factor 0.15 at 4.0 km/h is outside 0.2 to 3.0. Run the calibration again."
+        );
+        assert!(check_point_scales(&[pt(3.0, 3.5)], &[]).is_err());
+        assert!(check_point_scales(&[pt(3.0, f32::NAN)], &[]).is_err());
+        assert!(check_point_scales(&[pt(3.0, 0.2), pt(4.0, 3.0)], &[]).is_ok());
+    }
+
+    #[test]
+    fn a_point_already_stored_out_of_range_does_not_block_a_save() {
+        let old = pt(3.0, 0.1);
+        assert!(check_point_scales(&[old.clone(), pt(5.0, 1.0)], std::slice::from_ref(&old)).is_ok());
+        // Changing that point to another bad factor is refused.
+        assert!(check_point_scales(&[pt(3.0, 0.12)], &[old]).is_err());
+    }
 
     fn m(elapsed_s: f32, reported_kmh: f32) -> Measurement {
         Measurement {

@@ -1,0 +1,1 @@
+- Calibration points outside the factor limits (0.2 to 3.0) are refused in the old wizard, the point editor and when saving, with the reason shown. A point stored outside the limits shows the value that is applied.
