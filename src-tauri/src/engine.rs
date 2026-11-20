@@ -820,6 +820,9 @@ impl OrchestratorState {
             neural_ticks: 0,
             last_hardware_time: self.hardware_time as i64,
             hardware_time_offset: self.session.hardware_time_offset.unwrap_or(0) as i64,
+            // Worked out from the samples when the row is written.
+            avg_heart_rate: None,
+            max_heart_rate: None,
         }
     }
 
@@ -967,6 +970,8 @@ impl OrchestratorState {
             steps: self.session.steps as f32,
             raw_steps: self.session.steps as f32,
             raw_speed: self.hardware_speed,
+            // Read only: heart rate never feeds back into the belt.
+            heart_rate: crate::heart_rate::current_bpm(),
         };
         let flush = self
             .session
@@ -2835,6 +2840,8 @@ mod tests {
             neural_ticks: 0,
             last_hardware_time: 0,
             hardware_time_offset: 0,
+            avg_heart_rate: None,
+            max_heart_rate: None,
         }
     }
 

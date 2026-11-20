@@ -137,14 +137,24 @@ fn drop_link(sensor: Option<HeartRateSensor>) {
     }
 }
 
+/// The latest reading while it is fresh, in beats per minute.
+fn fresh_bpm(rt: &Runtime) -> Option<u16> {
+    rt.bpm
+        .zip(rt.bpm_at)
+        .filter(|(_, at)| at.elapsed() < STALE_AFTER)
+        .map(|(b, _)| b)
+}
+
+/// The heart rate to save with this second's sample; `None` without a
+/// sensor or a fresh reading.
+pub fn current_bpm() -> Option<u16> {
+    with(|rt| fresh_bpm(rt))
+}
+
 /// Heart rate's part of the snapshot.
 pub fn snapshot() -> HeartRateSnapshot {
     with(|rt| {
-        let bpm = rt
-            .bpm
-            .zip(rt.bpm_at)
-            .filter(|(_, at)| at.elapsed() < STALE_AFTER)
-            .map(|(b, _)| u32::from(b));
+        let bpm = fresh_bpm(rt).map(u32::from);
         HeartRateSnapshot {
             sensor: rt.sensor.clone(),
             status: rt.status,

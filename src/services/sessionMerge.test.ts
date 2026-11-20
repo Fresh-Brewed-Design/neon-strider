@@ -22,6 +22,8 @@ function session(id: number, startMin: number, durationMin: number, extra: Parti
     neural_heat: 0,
     neural_ticks: 0,
     last_hardware_time: 0,
+    avg_heart_rate: null,
+    max_heart_rate: null,
     ...extra,
   };
 }

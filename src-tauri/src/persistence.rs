@@ -24,7 +24,8 @@ const BUSY_TIMEOUT: Duration = Duration::from_millis(5000);
 /// Explicit column list, so row mapping never depends on physical column order.
 const SESSION_COLS: &str = "id, start_time, end_time, duration_seconds, distance_meters, \
      raw_distance_meters, calories, steps, raw_steps, avg_speed, raw_avg_speed, avg_incline, \
-     strava_id, neural_heat, neural_ticks, last_hardware_time, hardware_time_offset";
+     strava_id, neural_heat, neural_ticks, last_hardware_time, hardware_time_offset, \
+     avg_heart_rate, max_heart_rate";
 
 /// Settings key: JSON array of the widgets pinned to the HUD.
 pub const KEY_PINNED_ELEMENTS: &str = "pinned_elements";
@@ -170,6 +171,26 @@ fn migration_5_desk_days(tx: &Transaction) -> rusqlite::Result<()> {
             first_input_ms INTEGER NOT NULL
         );",
     )
+}
+
+/// Migration 6: heart rate (roadmap #78, issue #114). Each sample keeps the
+/// HEART_LINK reading from that second, in beats per minute, and each session
+/// its average and maximum. All three stay NULL for a walk without a sensor or
+/// a fresh reading, so older walks and walks without a watch read as before.
+fn migration_6_heart_rate(tx: &Transaction) -> rusqlite::Result<()> {
+    for (table, column) in [
+        ("samples", "heart_rate"),
+        ("sessions", "avg_heart_rate"),
+        ("sessions", "max_heart_rate"),
+    ] {
+        if !has_column(tx, table, column)? {
+            tx.execute_batch(&format!(
+                "ALTER TABLE {} ADD COLUMN {} INTEGER DEFAULT NULL",
+                table, column
+            ))?;
+        }
+    }
+    Ok(())
 }
 
 /// Migration 3's change to the stored programs JSON. `None` when there is
@@ -336,6 +357,7 @@ const MIGRATIONS: &[Migration] = &[
     migration_3_research_programs,
     migration_4_vo2_max_program,
     migration_5_desk_days,
+    migration_6_heart_rate,
 ];
 
 fn schema_version(conn: &Connection) -> rusqlite::Result<u32> {
@@ -696,6 +718,14 @@ pub struct Session {
     pub neural_ticks: i64,
     pub last_hardware_time: i64,
     pub hardware_time_offset: i64,
+    /// Average heart rate over the samples that have one, in beats per
+    /// minute; `None` for a walk without a sensor. Rust works it out from the
+    /// samples on each save, so a value sent in an update is ignored.
+    #[serde(default)]
+    pub avg_heart_rate: Option<u16>,
+    /// Highest heart rate in the samples; `None` without any.
+    #[serde(default)]
+    pub max_heart_rate: Option<u16>,
 }
 
 /// One telemetry reading during a session, as stored in `samples`.
@@ -709,6 +739,10 @@ pub struct Sample {
     pub steps: f32,
     pub raw_steps: f32,
     pub raw_speed: f32,
+    /// Beats per minute from HEART_LINK in that second; `None` without a
+    /// fresh reading.
+    #[serde(default)]
+    pub heart_rate: Option<u16>,
 }
 
 /// Insert an empty session starting now and return its id.
@@ -726,9 +760,15 @@ pub fn db_create_session(app: &tauri::AppHandle) -> Result<i64, String> {
 /// Write a session's running totals; `end_time` becomes now.
 pub fn db_update_session(app: &tauri::AppHandle, id: i64, data: Session) -> Result<(), String> {
     let now = crate::util::now_ms();
-    with_conn(app, |conn| {
-        conn.execute(
-            "UPDATE sessions SET
+    with_conn(app, |conn| update_session(conn, id, &data, now))
+}
+
+/// `db_update_session` on a connection. The heart rate average and maximum
+/// come from the session's samples, so a resumed session or a reconnect
+/// never loses the earlier part of the walk.
+fn update_session(conn: &Connection, id: i64, data: &Session, now: i64) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE sessions SET
                 end_time = ?1,
                 duration_seconds = ?2,
                 distance_meters = ?3,
@@ -742,28 +782,30 @@ pub fn db_update_session(app: &tauri::AppHandle, id: i64, data: Session) -> Resu
                 neural_heat = ?11,
                 neural_ticks = ?12,
                 last_hardware_time = ?13,
-                hardware_time_offset = ?14
+                hardware_time_offset = ?14,
+                avg_heart_rate = (SELECT CAST(ROUND(AVG(heart_rate)) AS INTEGER)
+                                  FROM samples WHERE session_id = ?15),
+                max_heart_rate = (SELECT MAX(heart_rate) FROM samples WHERE session_id = ?15)
              WHERE id = ?15",
-            params![
-                now,
-                data.duration_seconds,
-                data.distance_meters,
-                data.raw_distance_meters,
-                data.calories,
-                data.steps,
-                data.raw_steps,
-                data.avg_speed,
-                data.raw_avg_speed,
-                data.avg_incline,
-                data.neural_heat,
-                data.neural_ticks,
-                data.last_hardware_time,
-                data.hardware_time_offset,
-                id
-            ],
-        )
-        .map(|_| ())
-    })
+        params![
+            now,
+            data.duration_seconds,
+            data.distance_meters,
+            data.raw_distance_meters,
+            data.calories,
+            data.steps,
+            data.raw_steps,
+            data.avg_speed,
+            data.raw_avg_speed,
+            data.avg_incline,
+            data.neural_heat,
+            data.neural_ticks,
+            data.last_hardware_time,
+            data.hardware_time_offset,
+            id
+        ],
+    )
+    .map(|_| ())
 }
 
 /// Append a sample to a session, stamped now.
@@ -773,24 +815,33 @@ pub fn db_add_sample(
     sample: Sample,
 ) -> Result<(), String> {
     let now = crate::util::now_ms();
-    with_conn(app, |conn| {
-        conn.execute(
-            "INSERT INTO samples (session_id, timestamp, speed, raw_speed, incline, distance, raw_distance, steps, raw_steps)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            params![
-                session_id,
-                now,
-                sample.speed,
-                sample.raw_speed,
-                sample.incline,
-                sample.distance,
-                sample.raw_distance,
-                sample.steps,
-                sample.raw_steps
-            ],
-        )
-        .map(|_| ())
-    })
+    with_conn(app, |conn| insert_sample(conn, session_id, &sample, now))
+}
+
+/// `db_add_sample` on a connection, stamped `now`.
+fn insert_sample(
+    conn: &Connection,
+    session_id: i64,
+    sample: &Sample,
+    now: i64,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO samples (session_id, timestamp, speed, raw_speed, incline, distance, raw_distance, steps, raw_steps, heart_rate)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params![
+            session_id,
+            now,
+            sample.speed,
+            sample.raw_speed,
+            sample.incline,
+            sample.distance,
+            sample.raw_distance,
+            sample.steps,
+            sample.raw_steps,
+            sample.heart_rate
+        ],
+    )
+    .map(|_| ())
 }
 
 fn session_from_row(row: &rusqlite::Row) -> rusqlite::Result<Session> {
@@ -812,6 +863,8 @@ fn session_from_row(row: &rusqlite::Row) -> rusqlite::Result<Session> {
         neural_ticks: row.get(14)?,
         last_hardware_time: row.get::<_, Option<i64>>(15)?.unwrap_or(0),
         hardware_time_offset: row.get::<_, Option<i64>>(16)?.unwrap_or(0),
+        avg_heart_rate: row.get(17)?,
+        max_heart_rate: row.get(18)?,
     })
 }
 
@@ -884,25 +937,29 @@ pub async fn get_samples(app: tauri::AppHandle, session_id: i64) -> Result<Vec<S
 
 /// A session's samples, oldest first.
 pub fn db_get_samples(app: &tauri::AppHandle, session_id: i64) -> Result<Vec<Sample>, String> {
-    with_conn(app, |conn| {
-        let mut stmt = conn.prepare(
-            "SELECT timestamp, speed, incline, distance, raw_distance, steps, raw_steps, raw_speed
-             FROM samples WHERE session_id = ?1 ORDER BY timestamp ASC",
-        )?;
-        let rows = stmt.query_map(params![session_id], |row| {
-            Ok(Sample {
-                timestamp: Some(row.get(0)?),
-                speed: row.get(1)?,
-                incline: row.get(2)?,
-                distance: row.get(3)?,
-                raw_distance: row.get(4)?,
-                steps: row.get(5)?,
-                raw_steps: row.get(6)?,
-                raw_speed: row.get(7)?,
-            })
-        })?;
-        rows.collect::<rusqlite::Result<Vec<_>>>()
-    })
+    with_conn(app, |conn| samples_of(conn, session_id))
+}
+
+/// `db_get_samples` on a connection.
+fn samples_of(conn: &Connection, session_id: i64) -> rusqlite::Result<Vec<Sample>> {
+    let mut stmt = conn.prepare(
+        "SELECT timestamp, speed, incline, distance, raw_distance, steps, raw_steps, raw_speed, heart_rate
+         FROM samples WHERE session_id = ?1 ORDER BY timestamp ASC",
+    )?;
+    let rows = stmt.query_map(params![session_id], |row| {
+        Ok(Sample {
+            timestamp: Some(row.get(0)?),
+            speed: row.get(1)?,
+            incline: row.get(2)?,
+            distance: row.get(3)?,
+            raw_distance: row.get(4)?,
+            steps: row.get(5)?,
+            raw_steps: row.get(6)?,
+            raw_speed: row.get(7)?,
+            heart_rate: row.get(8)?,
+        })
+    })?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
 }
 
 #[tauri::command]
@@ -1280,6 +1337,7 @@ pub fn backfill_session_averages(app: &AppHandle, tilt_multiplier: f32, incline_
                             steps: 0.0,
                             raw_steps: 0.0,
                             raw_speed: 0.0,
+                            heart_rate: None,
                         })
                     })?
                     .collect::<rusqlite::Result<_>>()?;
@@ -1511,6 +1569,141 @@ mod db_tests {
         for i in ["idx_samples_session", "idx_sessions_start_time"] {
             assert!(indexes.iter().any(|n| n == i), "missing index {}", i);
         }
+    }
+
+    #[test]
+    fn migration_6_adds_heart_rate_columns_that_old_rows_leave_empty() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        for (i, m) in MIGRATIONS[..5].iter().enumerate() {
+            let tx = conn.transaction().unwrap();
+            m(&tx).unwrap();
+            tx.execute_batch(&format!("PRAGMA user_version = {}", i + 1))
+                .unwrap();
+            tx.commit().unwrap();
+        }
+        conn.execute_batch(
+            "INSERT INTO sessions (id, start_time, end_time) VALUES (1, 0, 0);
+             INSERT INTO samples (session_id, timestamp, speed, incline) VALUES (1, 1000, 3.0, 0);",
+        )
+        .unwrap();
+        assert_eq!(migrate(&mut conn).unwrap(), latest());
+        // Running it again (a half-applied file) changes nothing.
+        let tx = conn.transaction().unwrap();
+        migration_6_heart_rate(&tx).unwrap();
+        tx.commit().unwrap();
+
+        let old = samples_of(&conn, 1).unwrap();
+        assert_eq!(old[0].heart_rate, None);
+        let row = conn
+            .query_row(
+                &format!("SELECT {} FROM sessions WHERE id = 1", SESSION_COLS),
+                [],
+                session_from_row,
+            )
+            .unwrap();
+        assert_eq!((row.avg_heart_rate, row.max_heart_rate), (None, None));
+    }
+
+    fn hr_sample(heart_rate: Option<u16>) -> Sample {
+        Sample {
+            timestamp: None,
+            speed: 3.0,
+            incline: 0.0,
+            distance: 0.0,
+            raw_distance: 0.0,
+            steps: 0.0,
+            raw_steps: 0.0,
+            raw_speed: 3.0,
+            heart_rate,
+        }
+    }
+
+    fn walk_row() -> Session {
+        Session {
+            id: None,
+            start_time: 0,
+            end_time: 0,
+            duration_seconds: 4,
+            distance_meters: 4.0,
+            raw_distance_meters: 4.0,
+            calories: 0.0,
+            steps: 0.0,
+            raw_steps: 0.0,
+            avg_speed: 3.0,
+            raw_avg_speed: 3.0,
+            avg_incline: 0.0,
+            strava_id: None,
+            neural_heat: 0.0,
+            neural_ticks: 0,
+            last_hardware_time: 0,
+            hardware_time_offset: 0,
+            // Ignored: the update works them out from the samples.
+            avg_heart_rate: Some(1),
+            max_heart_rate: Some(1),
+        }
+    }
+
+    fn saved_session(conn: &Connection, id: i64) -> Session {
+        conn.query_row(
+            &format!("SELECT {} FROM sessions WHERE id = ?1", SESSION_COLS),
+            params![id],
+            session_from_row,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn heart_rate_saves_per_second_and_the_session_keeps_its_average_and_maximum() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&mut conn).unwrap();
+        conn.execute_batch("INSERT INTO sessions (id, start_time, end_time) VALUES (1, 0, 0);")
+            .unwrap();
+        // A dropped reading in the middle stays empty and doesn't pull the average down.
+        for (t, bpm) in [
+            (1000, Some(100)),
+            (2000, None),
+            (3000, Some(111)),
+            (4000, Some(124)),
+        ] {
+            insert_sample(&conn, 1, &hr_sample(bpm), t).unwrap();
+        }
+        let back: Vec<Option<u16>> = samples_of(&conn, 1)
+            .unwrap()
+            .iter()
+            .map(|s| s.heart_rate)
+            .collect();
+        assert_eq!(back, vec![Some(100), None, Some(111), Some(124)]);
+
+        update_session(&conn, 1, &walk_row(), 5000).unwrap();
+        let row = saved_session(&conn, 1);
+        // (100 + 111 + 124) / 3 = 111.67, rounded.
+        assert_eq!(row.avg_heart_rate, Some(112));
+        assert_eq!(row.max_heart_rate, Some(124));
+
+        // A later flush folds in the newer seconds too.
+        insert_sample(&conn, 1, &hr_sample(Some(130)), 6000).unwrap();
+        update_session(&conn, 1, &walk_row(), 7000).unwrap();
+        let row = saved_session(&conn, 1);
+        assert_eq!(row.avg_heart_rate, Some(116));
+        assert_eq!(row.max_heart_rate, Some(130));
+    }
+
+    #[test]
+    fn a_walk_without_a_sensor_saves_no_heart_rate() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&mut conn).unwrap();
+        conn.execute_batch("INSERT INTO sessions (id, start_time, end_time) VALUES (1, 0, 0);")
+            .unwrap();
+        insert_sample(&conn, 1, &hr_sample(None), 1000).unwrap();
+        insert_sample(&conn, 1, &hr_sample(None), 2000).unwrap();
+        update_session(&conn, 1, &walk_row(), 3000).unwrap();
+        let row = saved_session(&conn, 1);
+        assert_eq!((row.avg_heart_rate, row.max_heart_rate), (None, None));
+        assert_eq!(row.duration_seconds, 4);
+        // The row goes to the windows with the fields as null.
+        let json = serde_json::to_value(&row).unwrap();
+        assert!(json["avg_heart_rate"].is_null());
+        assert!(json["max_heart_rate"].is_null());
     }
 
     /// The programs JSON v1.6 seeded, as `persist` wrote it.
@@ -1813,6 +2006,8 @@ mod averages_tests {
             neural_ticks: 0,
             last_hardware_time: 0,
             hardware_time_offset: 0,
+            avg_heart_rate: None,
+            max_heart_rate: None,
         }
     }
 
@@ -1826,6 +2021,7 @@ mod averages_tests {
             steps: 0.0,
             raw_steps: 0.0,
             raw_speed: 0.0,
+            heart_rate: None,
         }
     }
 
