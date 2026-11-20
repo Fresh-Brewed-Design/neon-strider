@@ -1,4 +1,0 @@
-- GROUND_TRUTH's RUN now resumes a belt paused at the treadmill, even at the speed it paused at, and starts a stopped one.
-- A calibration run the treadmill ran at another speed than RUN asked is saved at the speed it ran, and the guided walk moves its slowest or top speed there and says so.
-- While a calibration run is open, its card with TAP and STOP sits at the top of the Calibration section and scrolls into view at each new phase.
-- During a guided walk, the walk's RUN is the one button on; the point rows hide their own RUN and ADD RUN.
