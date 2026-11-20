@@ -14,8 +14,8 @@ use super::{
 use crate::bluetooth::ORCHESTRATOR;
 use crate::persistence;
 use crate::platform::{
-    self, sig_uuid, uuid_text, PeripheralCharacteristic, PeripheralEvent, PeripheralEvents,
-    PeripheralService,
+    self, sig_uuid, uuid_text, PeripheralBeacon, PeripheralCharacteristic, PeripheralEvent,
+    PeripheralEvents, PeripheralService,
 };
 use crate::wrist_link;
 use std::sync::{Arc, LazyLock, Mutex, PoisonError};
@@ -337,6 +337,7 @@ fn service(part: Part) -> PeripheralService {
             name: "RSC",
             uuid: part.uuid(),
             advertise: true,
+            beacon: None,
             characteristics: vec![
                 PeripheralCharacteristic {
                     notify: true,
@@ -357,6 +358,7 @@ fn service(part: Part) -> PeripheralService {
             name: "POWER",
             uuid: part.uuid(),
             advertise: true,
+            beacon: None,
             characteristics: vec![
                 PeripheralCharacteristic {
                     notify: true,
@@ -376,10 +378,19 @@ fn service(part: Part) -> PeripheralService {
         // advertisement next to the foot pod's was aborted on the first
         // hardware test, and the field finds the PC through the foot pod's
         // RSC advertisement anyway (docs/wrist-link.md).
+        //
+        // Its beacon is a legacy advertisement with the Neon Strider marker:
+        // the field's scan never reported the foot pod's advertisement
+        // (hardware test, 2026-11-20), and a legacy one is what the watch's
+        // Connect IQ scan is known to hear.
         Part::Wrist => PeripheralService {
             name: "WRIST_LINK",
             uuid: part.uuid(),
             advertise: false,
+            beacon: Some(PeripheralBeacon {
+                company: wrist_link::BEACON_COMPANY,
+                data: wrist_link::BEACON_MARKER.to_vec(),
+            }),
             characteristics: vec![PeripheralCharacteristic {
                 uuid: wrist_link::STATE,
                 read: Some(wrist_link::WristState::default().encode()),
@@ -639,6 +650,18 @@ mod tests {
     fn the_foot_pod_and_power_services_carry_their_characteristics() {
         assert_eq!(sig(Part::Pod), (0x1814, vec![0x2A53, 0x2A54, 0x2A55]));
         assert_eq!(sig(Part::Power), (0x1818, vec![0x2A63, 0x2A65, 0x2A5D]));
+    }
+
+    #[test]
+    fn only_wrist_link_has_a_beacon_and_it_fits_a_legacy_advertisement() {
+        let beacon = service(Part::Wrist).beacon.expect("WRIST_LINK beacon");
+        assert_eq!(beacon.company, 0xffff);
+        assert_eq!(beacon.data, b"NSTR\x01".to_vec());
+        // Flags (3) + length, type, company (4) + "NSTR" and the version.
+        assert_eq!(beacon.air_len(), 12);
+        assert!(beacon.air_len() <= 31);
+        assert!(service(Part::Pod).beacon.is_none());
+        assert!(service(Part::Power).beacon.is_none());
     }
 
     #[test]

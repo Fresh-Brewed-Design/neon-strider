@@ -127,7 +127,27 @@ pub struct PeripheralService {
     /// served and connectable, and a device finds it after connecting to the
     /// PC through another service's advertisement.
     pub advertise: bool,
+    /// A second, legacy (31-byte) advertisement that runs while the service
+    /// is served, carrying this manufacturer data. For a scanner that hears
+    /// only legacy advertisements or can't read the service's own one.
+    pub beacon: Option<PeripheralBeacon>,
     pub characteristics: Vec<PeripheralCharacteristic>,
+}
+
+/// Manufacturer data (AD type 0xFF) for a service's legacy beacon: the
+/// company ID and the bytes after it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PeripheralBeacon {
+    pub company: u16,
+    pub data: Vec<u8>,
+}
+
+impl PeripheralBeacon {
+    /// Bytes on air: the flags Windows adds (3) plus this section's length,
+    /// type and company ID (4) and the data. A legacy advertisement holds 31.
+    pub fn air_len(&self) -> usize {
+        3 + 4 + self.data.len()
+    }
 }
 
 /// What the peripheral reports, from a Bluetooth thread. `service` is the
@@ -147,7 +167,9 @@ pub enum PeripheralEvent {
 
 pub type PeripheralEvents = std::sync::Arc<dyn Fn(PeripheralEvent) + Send + Sync>;
 
-/// Serve `service` and start advertising it. Blocking (a second or so).
+/// Serve `service` and start advertising it, plus its legacy beacon when it
+/// has one (a beacon that fails is logged and leaves the service up).
+/// Blocking (a second or so).
 /// Adding a service that is already served replaces only that one. The error
 /// is one plain sentence (no adapter, no peripheral role, Bluetooth off).
 pub fn peripheral_add(service: &PeripheralService, events: PeripheralEvents) -> Result<(), String> {
