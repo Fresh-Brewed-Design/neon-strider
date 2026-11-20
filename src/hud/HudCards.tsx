@@ -141,8 +141,9 @@ export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
 
 /**
  * Eye break (OCULAR_IMPLANT): a quiet heads-up a minute ahead, then the
- * cooldown with its countdown and SKIP. A walking belt is paused for it (with
- * "Pause the belt" on); after the break, while that pause holds, the card asks
+ * cooldown with its countdown and SKIP. A break set for a running program's
+ * rest (`at_rest`) waits for it and pauses nothing. Otherwise a walking belt is
+ * paused for it (with "Pause the belt" on); after the break, while that pause holds, the card asks
  * RESUME (a press: GO or the treadmill's resume) or STAY STILL. Nothing here
  * starts the belt by itself. Rust counts the time and owns the pause; the tones
  * are played by the HUD (`useEyeBreakTones`).
@@ -182,7 +183,12 @@ export function EyeBreakCard({ snapshot }: { snapshot: AppSnapshot }) {
           <span className="hud-label">OCULAR_IMPLANT</span>
           <span className="hud-toast-message">IMPLANT COOLDOWN IN {e.remaining_s} S</span>
           <span className="hud-sub">
-            Finish what you are typing, then look away.{e.pause_belt && walking ? " The belt will pause." : ""}
+            Finish what you are typing, then look away.
+            {e.at_rest
+              ? " The break starts at the program's rest."
+              : e.pause_belt && walking
+                ? " The belt will pause."
+                : ""}
           </span>
         </div>
       )}

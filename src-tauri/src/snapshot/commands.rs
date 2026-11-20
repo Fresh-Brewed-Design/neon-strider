@@ -74,7 +74,10 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
     match command {
         Command::Start => press("start").await,
         Command::Pause => press("pause").await,
-        Command::Stop => press("stop").await,
+        Command::Stop => {
+            calibration::on_stop();
+            press("stop").await
+        }
         Command::ToggleStart => press("toggle-start").await,
         Command::NudgeSpeed { up } => press(if up { "speed-up" } else { "speed-down" }).await,
         Command::NudgeIncline { up } => press(if up { "incline-up" } else { "incline-down" }).await,
@@ -207,6 +210,7 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             seconds,
             sound,
             pause_belt,
+            fit_rests,
         } => {
             let cfg = eyebreak::Config {
                 enabled,
@@ -214,6 +218,7 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
                 seconds,
                 sound,
                 pause_belt,
+                fit_rests,
             };
             blocking(move || eyebreak::set_config(&app, cfg)).await
         }
@@ -293,6 +298,23 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         }
         Command::CalibrationRunClose => {
             calibration::close();
+            Ok(())
+        }
+        Command::CalibrationSweepStart { targets_kmh } => {
+            if !super::emitter::read_connection().await.0 {
+                return Err("Connect the treadmill first.".to_string());
+            }
+            calibration::sweep_start(&mut *ORCHESTRATOR.lock().await, &targets_kmh)
+        }
+        Command::CalibrationSweepRun => {
+            if !super::emitter::read_connection().await.0 {
+                return Err("Connect the treadmill first.".to_string());
+            }
+            calibration::sweep_run(&mut *ORCHESTRATOR.lock().await)
+        }
+        Command::CalibrationSweepNext { saved } => calibration::sweep_next(saved),
+        Command::CalibrationSweepEnd => {
+            calibration::close_all();
             Ok(())
         }
         Command::GhostPodSet { on } => {

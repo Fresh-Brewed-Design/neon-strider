@@ -64,10 +64,15 @@ function WalkAwaySettings() {
   );
 }
 
-/** Eye breaks (OCULAR_IMPLANT): off by default; with them on, a break pauses a walking belt unless turned off. */
+/**
+ * Eye breaks (OCULAR_IMPLANT): off by default; with them on, a break pauses a
+ * walking belt unless turned off, and moves to a running program's rest when
+ * one is near (`fit_rests`).
+ */
 function EyeBreakSettings() {
   const s = useAppSnapshot();
   const pauseAction = useAction();
+  const restsAction = useAction();
   if (!s) return null;
   const e = s.eye_break;
   const config = (patch: {
@@ -76,6 +81,7 @@ function EyeBreakSettings() {
     seconds?: number;
     sound?: boolean;
     pause_belt?: boolean;
+    fit_rests?: boolean;
   }) => ({
     type: "eye_break_set_config" as const,
     enabled: e.enabled,
@@ -83,6 +89,7 @@ function EyeBreakSettings() {
     seconds: e.seconds,
     sound: e.sound,
     pause_belt: e.pause_belt,
+    fit_rests: e.fit_rests,
     ...patch,
   });
   const save = (patch: Parameters<typeof config>[0]) => send(config(patch));
@@ -133,6 +140,16 @@ function EyeBreakSettings() {
               description="A break pauses a walking belt, and the HUD then offers RESUME or STAY STILL."
             />
             <ActionStatus pending={pauseAction.pending} error={pauseAction.error} className="mt-1" />
+          </div>
+          <div>
+            <Toggle
+              label="Take breaks at program rests"
+              tone="cyan"
+              checked={e.fit_rests}
+              onChange={(fit_rests) => void restsAction.run(() => dispatch(config({ fit_rests })))}
+              description="A break due near a program's rest moves to that rest, so the walk carries on."
+            />
+            <ActionStatus pending={restsAction.pending} error={restsAction.error} className="mt-1" />
           </div>
         </>
       )}

@@ -17,9 +17,10 @@ permissions:
   issues: read
   id-token: write # the Claude GitHub App's token, so its PRs run CI
 
-# One build at a time; a second label waits instead of racing the first.
+# One build per issue at a time, so several labelled issues build side by side.
+# A single shared group made GitHub cancel every queued run but the newest.
 concurrency:
-  group: build-roadmap-issue
+  group: build-roadmap-issue-${{ github.event.issue.number }}
   cancel-in-progress: false
 
 env:

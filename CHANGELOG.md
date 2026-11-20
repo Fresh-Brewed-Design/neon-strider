@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.17.0 (2026-11-20)
+
+### New
+
+- OCULAR_IMPLANT eye breaks fit into a running program's rests (the rest between cycles, a 0 km/h step, or a wait for GO). A break due while a program walks waits for its next rest when that rest is near, and a short rest takes a break that is nearly due, so a walk is paused less often. Switch it under System -> Desk with "Take breaks at program rests" (on by default).
+- Eye breaks also stop counting while the PC's display is off.
+
+## 1.16.0 (2026-11-20)
+
+### New
+
+- Labs, GROUND_TRUTH: RUN ALL walks every calibration speed in turn with a progress strip, and each speed waits for your RUN. The run panel has its own STOP.
+
+## 1.15.3 (2026-11-20)
+
+### Fixed
+
+- After a speed or incline change on the treadmill's remote or its own buttons, the HUD, shortcut and dashboard + and - now step from what the deck is running, and a press of one no longer puts the other back to the value from before the remote.
+
+## 1.15.2 (2026-11-20)
+
+### Fixed
+
+- Calibration points outside the factor limits (0.2 to 3.0) are refused in the old wizard, the point editor and when saving, with the reason shown. A point stored outside the limits shows the value that is applied.
+
 ## 1.15.1 (2026-11-20)
 
 ### Fixed

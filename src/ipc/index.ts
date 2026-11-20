@@ -16,6 +16,8 @@ export type { CalibrationPhase } from "./bindings/CalibrationPhase";
 export type { CalibrationResult } from "./bindings/CalibrationResult";
 export type { CalibrationRunView } from "./bindings/CalibrationRunView";
 export type { CalibrationSnapshot } from "./bindings/CalibrationSnapshot";
+export type { CalibrationSweepView } from "./bindings/CalibrationSweepView";
+export type { SweepMark } from "./bindings/SweepMark";
 export type { Change } from "./bindings/Change";
 export type { ConnectionSnapshot } from "./bindings/ConnectionSnapshot";
 export type { DeckSnapshot } from "./bindings/DeckSnapshot";

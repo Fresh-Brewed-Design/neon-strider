@@ -232,6 +232,65 @@ impl ProgramRun {
             }
         }
     }
+
+    /// Walking, on a 0 km/h step: the program holds the belt still.
+    pub fn on_hold_step(&self) -> bool {
+        self.phase == ProgramPhase::Walking
+            && self
+                .program
+                .steps
+                .get(self.step_index)
+                .is_some_and(|s| s.speed_kmh < MOVING_KMH)
+    }
+
+    /// The next time the program holds the belt still while it walks: the
+    /// seconds of walking until then, and how long the still stretch lasts
+    /// (None: until ended). A 0 km/h step is one, and so is the rest after
+    /// this cycle when the rest leaves the belt still (nothing was walking
+    /// before the program). On a 0 km/h step it is (0, what is left of it).
+    /// None while not walking, when an open-ended step comes first, or when
+    /// the program just ends (its end is not a rest). The step timer runs only
+    /// while the belt walks, so this is walking time.
+    pub fn next_still_s(&self) -> Option<(f64, Option<f64>)> {
+        if self.phase != ProgramPhase::Walking {
+            return None;
+        }
+        let left_here = self
+            .phase_len_s()
+            .map(|len| (len - self.elapsed_s).max(0.0));
+        if self.on_hold_step() {
+            return Some((0.0, left_here));
+        }
+        let mut walk = left_here?;
+        let steps = &self.program.steps;
+        for step in steps.get(self.step_index + 1..).unwrap_or(&[]) {
+            let len = step.duration_minutes.map(|m| m as f64 * 60.0);
+            if step.speed_kmh < MOVING_KMH {
+                return Some((walk, len));
+            }
+            walk += len?;
+        }
+        let repeat = self.program.repeat_every_minutes? as f64;
+        let rest_s = (repeat - total_minutes(&self.program) as f64) * 60.0;
+        (rest_s >= 1.0 && self.previous.moving.is_none()).then_some((walk, Some(rest_s)))
+    }
+
+    /// While the program holds the belt still: how long until it wants the
+    /// belt moving again. None while waiting for GO or on an open-ended
+    /// 0 km/h step (until a press), and when it doesn't hold the belt still.
+    pub fn still_left_s(&self) -> Option<f64> {
+        if self.wait.is_some() {
+            return None;
+        }
+        let left = self
+            .phase_len_s()
+            .map(|len| (len - self.elapsed_s).max(0.0));
+        match self.phase {
+            ProgramPhase::Resting => left,
+            ProgramPhase::Walking if self.on_hold_step() => left,
+            ProgramPhase::Walking => None,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1609,6 +1668,66 @@ mod tests {
         s.set_test_now(t0 + secs(10));
         s.resume_program(t0 + secs(10)).unwrap();
         assert_eq!(s.handshake_step, crate::protocol::HandshakeStep::Priming);
+    }
+
+    #[test]
+    fn next_still_finds_a_hold_step_or_a_still_rest() {
+        let step = |m: Option<f32>, kmh: f32| ProgramStep {
+            duration_minutes: m,
+            speed_kmh: kmh,
+            incline_pct: 0.0,
+        };
+        let mut s = state();
+        s.programs.push(Program {
+            id: 4,
+            name: "Stand".to_string(),
+            steps: vec![
+                step(Some(2.0), 3.0),
+                step(Some(3.0), 4.0),
+                step(Some(1.0), 0.0),
+                step(Some(2.0), 3.0),
+            ],
+            repeat_every_minutes: Some(20.0),
+            note: None,
+        });
+        let t0 = Instant::now();
+        s.last_status = MachineStatus::Stopped;
+        s.run_program(4, t0).unwrap();
+        s.last_status = MachineStatus::Running;
+        run_ticks(&mut s, t0, 0, 60);
+        let run = s.program.as_ref().unwrap();
+        // One minute of step 1 left, then 3 minutes, then the 1-minute hold.
+        assert_eq!(run.next_still_s(), Some((240.0, Some(60.0))));
+        assert_eq!(run.still_left_s(), None);
+        run_ticks(&mut s, t0, 60, 330);
+        let run = s.program.as_ref().unwrap();
+        assert!(run.on_hold_step());
+        assert_eq!(run.next_still_s(), Some((0.0, Some(30.0))));
+        assert_eq!(run.still_left_s(), Some(30.0));
+
+        // Workday from a still deck: the 25-minute rest is next.
+        let mut s = state();
+        s.last_status = MachineStatus::Stopped;
+        s.run_program(2, t0).unwrap();
+        s.last_status = MachineStatus::Running;
+        run_ticks(&mut s, t0, 0, 100);
+        let run = s.program.as_ref().unwrap();
+        assert_eq!(run.next_still_s(), Some((200.0, Some(1500.0))));
+        let s = workday_resting_on_a_still_belt(t0);
+        let run = s.program.as_ref().unwrap();
+        assert_eq!(run.next_still_s(), None);
+        assert_eq!(run.still_left_s(), Some(1500.0));
+
+        // Over a manual walk the rest carries the walk on: not a still rest.
+        let mut s = state();
+        moving(&mut s, 2.0, 0);
+        s.run_program(2, t0).unwrap();
+        assert_eq!(s.program.as_ref().unwrap().next_still_s(), None);
+        // Nor is the end of a program that doesn't repeat.
+        let mut s = state();
+        s.last_status = MachineStatus::Stopped;
+        s.run_program(1, t0).unwrap();
+        assert_eq!(s.program.as_ref().unwrap().next_still_s(), None);
     }
 
     #[test]

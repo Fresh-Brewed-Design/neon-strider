@@ -574,14 +574,16 @@ pub enum Command {
     /// SNOOZE 15 MIN on the card: hide it for 15 minutes; the idle time is kept.
     SeatedSnooze,
     /// Eye-break settings: on or off, minutes of screen use between breaks (10 to
-    /// 120), seconds a break lasts (20 to 300), whether the HUD plays tones and
-    /// whether a break pauses a walking belt.
+    /// 120), seconds a break lasts (20 to 300), whether the HUD plays tones,
+    /// whether a break pauses a walking belt and whether breaks fit into a
+    /// running program's rests.
     EyeBreakSetConfig {
         enabled: bool,
         minutes: u32,
         seconds: u32,
         sound: bool,
         pause_belt: bool,
+        fit_rests: bool,
     },
     /// SKIP on an eye-break card: no break now, and the count starts again. A
     /// belt the break paused stays paused, and the resume card shows.
@@ -663,6 +665,20 @@ pub enum Command {
     },
     /// Close the run (after saving its point, or to cancel). The belt keeps going.
     CalibrationRunClose,
+    /// RUN ALL: walk `targets_kmh` (deck km/h) slowest first, running the
+    /// first now. The press is his.
+    CalibrationSweepStart {
+        targets_kmh: Vec<f32>,
+    },
+    /// RUN on the sweep's current speed. The press is his.
+    CalibrationSweepRun,
+    /// SAVE (`saved`) or SKIP the sweep's current speed and close its run.
+    /// The belt keeps its speed until the next RUN.
+    CalibrationSweepNext {
+        saved: bool,
+    },
+    /// End the sweep and any run. The belt keeps going.
+    CalibrationSweepEnd,
     /// Labs: GHOST_POD on (`on`) or off. On, the PC advertises as a Bluetooth
     /// foot pod and sends the belt speed to a paired watch once a second.
     GhostPodSet {
