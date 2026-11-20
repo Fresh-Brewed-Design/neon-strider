@@ -1,0 +1,1 @@
+- The install confirmation is now one short sentence naming the update, with the details on a smaller line below.

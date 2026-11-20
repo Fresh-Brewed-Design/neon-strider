@@ -33,23 +33,21 @@ export function installProgress(u: UpdateSnapshot): string | null {
  * keeps going by itself while the app is closed, and the walk (or the program,
  * at the same step) carries on after the reconnect. The app never starts a
  * still belt by itself after a restart, so a resting program's next step waits
- * for GO.
+ * for GO. The message is one sentence naming the update; the hint carries the detail.
  */
-export function installConfirmText(s: AppSnapshot, version: string): string {
-  const base = `Neon Strider closes, installs v${version} and opens again by itself, usually in under a minute.`;
+export function installConfirmText(s: AppSnapshot, version: string): { message: string; hint?: string } {
+  const message = `Neon Strider closes, installs v${version} and opens again, usually in under a minute.`;
   const moving = s.deck.status === "Running" || s.deck.status === "Starting";
   const program = s.active_program;
   const resting = program?.phase === "resting";
   if (!moving) {
-    return resting
-      ? `${base} ${program.name} keeps resting; its next step waits for GO on the HUD, as the app never starts the belt by itself after a restart.`
-      : base;
+    return resting ? { message, hint: `${program.name} keeps resting and the next step waits for GO on the HUD.` } : { message };
   }
   const carriesOn =
     program && !resting
       ? `The belt keeps going and ${program.name} carries on at the same step.`
       : `The belt keeps going and the walk carries on as the same session${resting ? `, with ${program.name} still resting` : ""}.`;
-  return `${base} ${carriesOn} For the few seconds the app is closed, the HUD and shortcuts don't work: use the treadmill's own controls if you need to.`;
+  return { message, hint: `${carriesOn} The HUD and shortcuts stop working for a few seconds, so use the treadmill's own controls.` };
 }
 
 /** "14 Nov 2026" for an RFC 3339 time, or null. */
