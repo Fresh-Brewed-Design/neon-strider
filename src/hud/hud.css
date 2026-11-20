@@ -658,21 +658,14 @@ body,
   font-variant-numeric: tabular-nums;
 }
 
-/* The guided blink step and the countdown share a row; the step leads. */
-.hud-eyebreak-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-}
-
+/* The guided blink step, above the countdown. One line: the step names are short. */
 .hud-eyebreak-cue {
   font-family: var(--hud-font-display);
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 700;
   line-height: 1.1;
   color: var(--hud-magenta);
-  letter-spacing: 0.04em;
+  white-space: nowrap;
 }
 
 /* Buttons take the width of their name and wrap onto a new row when the row is

@@ -181,10 +181,8 @@ export function EyeBreakCard({ snapshot }: { snapshot: AppSnapshot }) {
       {onBreak ? (
         <div className="hud-toast-body">
           <span className="hud-toast-message">OCULAR_IMPLANT // COOLDOWN</span>
-          <div className="hud-eyebreak-row">
-            {e.blink && <span className="hud-eyebreak-cue">SHUTTER // {e.blink.toUpperCase()}</span>}
-            <span className="hud-eyebreak-count">{e.remaining_s} S</span>
-          </div>
+          {e.blink && <span className="hud-eyebreak-cue">SHUTTER // {e.blink.toUpperCase()}</span>}
+          <span className="hud-eyebreak-count">{e.remaining_s} S</span>
           <span className="hud-sub">
             {e.blink ? BLINK_HINT[e.blink] : "Look away from the screen."}
             {e.holds_belt ? " The belt is paused." : ""}
