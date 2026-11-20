@@ -40,8 +40,8 @@ export function DeckProfile() {
       <ActionStatus pending={forget.pending} error={forget.error && `Could not forget: ${forget.error}`} className="mt-1" />
       <div className="mt-3">
         <Toggle
-          label="LABS // DECK_SWEEP: Sweep the deck's speeds"
-          description="DECK_SWEEP steps a moving belt through each unlearned speed up to Top speed, then back to your speed."
+          label="LABS // DECK_SWEEP: Sweep the deck's speeds and incline levels"
+          description="DECK_SWEEP steps a moving belt through each unlearned speed up to Top speed, or each incline level up to Highest incline level, then back."
           checked={profile.sweep_enabled}
           onChange={(on) => void toggle.run(() => dispatch({ type: "deck_profile_sweep_set", on }))}
         />
@@ -52,12 +52,14 @@ export function DeckProfile() {
         />
         {profile.sweep_enabled && (
           <>
-            <Hint className="mt-1">Stopping the belt, a new speed or a program ends DECK_SWEEP at once.</Hint>
+            <Hint className="mt-1">Stopping the belt, a new speed or incline, or a program ends DECK_SWEEP at once.</Hint>
             <div className="mt-2 flex flex-wrap items-center gap-3">
               {profile.sweep ? (
                 <>
                   <span className="font-mono text-[11px] text-white/70">
-                    {profile.sweep.done} / {profile.sweep.total} speeds, now {profile.sweep.kmh.toFixed(1)} km/h
+                    {profile.sweep.level == null
+                      ? `${profile.sweep.done} / ${profile.sweep.total} speeds, now ${profile.sweep.kmh.toFixed(1)} km/h`
+                      : `${profile.sweep.done} / ${profile.sweep.total} incline levels, now level ${profile.sweep.level}`}
                   </span>
                   <GhostButton
                     onClick={() => void sweep.run(() => dispatch({ type: "deck_profile_sweep_stop" }))}
@@ -67,15 +69,23 @@ export function DeckProfile() {
                   </GhostButton>
                 </>
               ) : (
-                <GhostButton
-                  onClick={() => void sweep.run(() => dispatch({ type: "deck_profile_sweep_start" }))}
-                  disabled={sweep.pending || !running}
-                >
-                  Sweep speeds
-                </GhostButton>
+                <>
+                  <GhostButton
+                    onClick={() => void sweep.run(() => dispatch({ type: "deck_profile_sweep_start" }))}
+                    disabled={sweep.pending || !running}
+                  >
+                    Sweep speeds
+                  </GhostButton>
+                  <GhostButton
+                    onClick={() => void sweep.run(() => dispatch({ type: "deck_profile_sweep_incline_start" }))}
+                    disabled={sweep.pending || !running}
+                  >
+                    Sweep incline levels
+                  </GhostButton>
+                </>
               )}
               {!profile.sweep && !running && (
-                <span className="text-[11px] text-white/50">Start the belt to sweep its speeds.</span>
+                <span className="text-[11px] text-white/50">Start the belt to sweep its speeds or incline levels.</span>
               )}
             </div>
             <ActionStatus pending={sweep.pending} error={sweep.error && `Could not sweep: ${sweep.error}`} className="mt-1" />

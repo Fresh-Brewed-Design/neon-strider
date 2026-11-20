@@ -5,10 +5,16 @@
  */
 export type ProfileSweepView = { 
 /**
- * Speeds asked so far, and in all.
+ * Speeds or incline levels asked so far, and in all.
  */
 done: number, total: number, 
 /**
- * The speed being asked, calibrated km/h.
+ * The speed being asked, calibrated km/h; on an incline sweep, the
+ * belt's speed, which that sweep leaves alone.
  */
-kmh: number, };
+kmh: number, 
+/**
+ * The incline level being asked, on an incline sweep; None on a speed
+ * sweep.
+ */
+level: number | null, };

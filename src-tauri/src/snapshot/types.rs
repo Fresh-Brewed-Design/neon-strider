@@ -731,7 +731,12 @@ pub enum Command {
     /// Labs: DECK_SWEEP steps the moving belt through every speed the profile
     /// has no reply for. A press; refused on a still belt or a program.
     DeckProfileSweepStart,
-    /// End DECK_SWEEP. The belt keeps going.
+    /// Labs: DECK_SWEEP steps the moving belt through every incline level the
+    /// profile has no reply for, up to the top level, then back to its
+    /// incline. A press; refused on a still belt or a program.
+    DeckProfileSweepInclineStart,
+    /// End DECK_SWEEP. The belt keeps going, back at the speed or incline
+    /// from before the sweep.
     DeckProfileSweepStop,
     /// Labs: the DECK_SWEEP switch on or off (persisted, off by default). Off
     /// also ends a sweep; the belt keeps going.
