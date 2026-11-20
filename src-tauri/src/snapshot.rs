@@ -146,6 +146,7 @@ fn profile_snapshot(state: &OrchestratorState) -> DeckProfileSnapshot {
         ceiling_kmh: p.ceiling().map(kmh),
         skipped_kmh: p.skipped().into_iter().map(kmh).collect(),
         sweep: state.profile_sweep_view(),
+        sweep_enabled: state.profile_sweep_enabled,
     }
 }
 

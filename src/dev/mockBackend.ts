@@ -72,7 +72,7 @@ export const snapshot: AppSnapshot = {
     max_incline_level: 15,
     max_incline_pct: 18.75,
     speed_steps: [],
-    profile: { learned: 0, floor_kmh: null, ceiling_kmh: null, skipped_kmh: [], sweep: null },
+    profile: { learned: 0, floor_kmh: null, ceiling_kmh: null, skipped_kmh: [], sweep: null, sweep_enabled: false },
   },
   session: { active_id: 1, duration_s: 1934, distance_m: 1720, steps: 2412, calories: 103, daily_distance_m: 4310 },
   programs: [
@@ -415,7 +415,7 @@ if (deskSyncFlag === "open") {
 // ?deckprofile: DECK_PROFILE has learned the deck's floor (0.6), ceiling (4.0)
 // and a skipped 1.5 km/h, so the Live slider, the speed fields and the
 // program editor snap to it and System -> Diagnostics shows FORGET.
-// ?deckprofile=sweep shows DECK_SWEEP running.
+// ?deckprofile=sweep shows DECK_SWEEP switched on and running.
 if (params.has("deckprofile")) {
   const steps = [];
   for (let b = 6; b <= 40; b++) if (b !== 15) steps.push({ hw_kmh: b / 10, kmh: b / 10 });
@@ -423,7 +423,7 @@ if (params.has("deckprofile")) {
     speed_steps: steps,
     max_speed_kmh: 4,
     target_speed_kmh: 3.5,
-    profile: { learned: 9, floor_kmh: 0.6, ceiling_kmh: 4, skipped_kmh: [0.3, 1.5, 5], sweep: params.get("deckprofile") === "sweep" ? { done: 12, total: 30, kmh: 1.8 } : null },
+    profile: { learned: 9, floor_kmh: 0.6, ceiling_kmh: 4, skipped_kmh: [0.3, 1.5, 5], sweep: params.get("deckprofile") === "sweep" ? { done: 12, total: 30, kmh: 1.8 } : null, sweep_enabled: params.get("deckprofile") === "sweep" },
   });
 }
 

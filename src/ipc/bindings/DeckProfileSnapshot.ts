@@ -20,4 +20,8 @@ skipped_kmh: Array<number>,
 /**
  * DECK_SWEEP, while it runs.
  */
-sweep: ProfileSweepView | null, };
+sweep: ProfileSweepView | null, 
+/**
+ * The DECK_SWEEP Labs switch.
+ */
+sweep_enabled: boolean, };

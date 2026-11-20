@@ -1553,6 +1553,7 @@ mod tests {
         let mut r = walking_rig(8, 30);
         r.deck.set_skip(15, 16);
         r.state.max_speed = 3.5;
+        r.state.profile_sweep_enabled = true;
         r.run(3.0);
         let mark = r.mark();
         r.state.profile_sweep_start().unwrap();
@@ -1578,6 +1579,7 @@ mod tests {
         assert!(r.deck.belt_still());
 
         let mut r = walking_rig(0, u8::MAX);
+        r.state.profile_sweep_enabled = true;
         r.state.profile_sweep_start().unwrap();
         r.run(6.0);
         assert!(r.state.profile_sweep.is_some());
@@ -1592,6 +1594,96 @@ mod tests {
         r.run(10.0);
         assert!(r.state.profile_sweep.is_none());
         assert!(r.deck.belt_still(), "nothing restarts the belt");
+    }
+
+    /// A walking rig with the DECK_SWEEP switch on and a sweep running.
+    fn sweeping_rig() -> Rig {
+        let mut r = walking_rig(0, u8::MAX);
+        r.state.max_speed = 6.0;
+        r.state.profile_sweep_enabled = true;
+        r.state.profile_sweep_start().unwrap();
+        r.run(9.0);
+        assert!(r.state.profile_sweep.is_some());
+        r
+    }
+
+    /// A pause at the treadmill mid-sweep: the next sweep step lands before
+    /// the deck's paused status arrives, and still nothing resumes the belt.
+    /// The speed goes back to the one from before the sweep, and GO resumes
+    /// the belt there.
+    #[test]
+    fn a_pause_at_the_treadmill_mid_sweep_is_never_resumed_by_the_sweep() {
+        let mut r = sweeping_rig();
+        let mark = r.mark();
+        r.deck.press_pause(r.t);
+        // Force the next step at once, while the engine still reads Running.
+        assert!(r.state.last_status.is_moving());
+        let before = r.state.manual_intent.expect("an intent").speed;
+        r.state.profile_sweep_step_due_for_test();
+        r.state.tick_profile_sweep(r.t);
+        let stepped = r.state.manual_intent.expect("an intent").speed;
+        assert!(
+            stepped > before,
+            "the sweep stepped up: {before} -> {stepped}"
+        );
+        // Then the paused status arrives before the engine sends that step.
+        let frame = r.deck.current_frame();
+        r.rx(&frame);
+        assert_eq!(r.state.last_status, protocol::MachineStatus::Paused);
+        // The engine runs before the next once-a-second sweep tick.
+        r.last_second = r.t;
+        r.run(30.0);
+        assert!(r.state.profile_sweep.is_none(), "the pause ends the sweep");
+        assert!(!r.deck.running_at(0.1), "{} km/h", r.deck.speed_kmh());
+        assert!(!app_starts(&r.commands_since(mark)), "no start or resume");
+        assert_eq!(r.controls_since(mark, Control::Start), 0);
+        assert!(
+            r.state.hold_auto_start,
+            "automatic starts held until a press"
+        );
+        let back = r.state.manual_intent.expect("an intent").speed;
+        assert!((back - 2.0).abs() < 0.06, "back at the start speed: {back}");
+
+        r.press(DeckAction::Start);
+        r.run(10.0);
+        assert!(
+            r.deck.running_at(2.0),
+            "GO resumes at {} km/h",
+            r.deck.speed_kmh()
+        );
+    }
+
+    /// A speed press on the deck's own remote takes the belt: the sweep ends
+    /// and the remote's speed stands.
+    #[test]
+    fn a_remote_speed_press_ends_the_deck_sweep() {
+        let mut r = sweeping_rig();
+        r.remote_speed(true, 2);
+        let deck_speed = r.deck.speed_kmh();
+        r.run(5.0);
+        assert!(r.state.profile_sweep.is_none(), "the remote ends it");
+        r.run(10.0);
+        assert!(
+            (r.deck.speed_kmh() - deck_speed).abs() < 0.15,
+            "{} km/h after {deck_speed}",
+            r.deck.speed_kmh()
+        );
+    }
+
+    /// DECK_SWEEP stays off until its Labs switch is on.
+    #[test]
+    fn a_deck_sweep_is_refused_while_its_switch_is_off() {
+        let mut r = walking_rig(0, u8::MAX);
+        let mark = r.mark();
+        let err = r.state.profile_sweep_start().unwrap_err();
+        assert!(err.contains("DECK_SWEEP"), "{err}");
+        r.run(10.0);
+        assert!(r.state.profile_sweep.is_none());
+        assert!(r
+            .commands_since(mark)
+            .iter()
+            .all(|k| *k != PacketKind::ControlSet));
+        assert!(r.deck.running_at(2.0));
     }
 
     #[test]

@@ -226,6 +226,8 @@ pub struct DeckProfileSnapshot {
     pub skipped_kmh: Vec<f32>,
     /// DECK_SWEEP, while it runs.
     pub sweep: Option<crate::profile_sweep::ProfileSweepView>,
+    /// The DECK_SWEEP Labs switch.
+    pub sweep_enabled: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS)]
@@ -648,6 +650,11 @@ pub enum Command {
     DeckProfileSweepStart,
     /// End DECK_SWEEP. The belt keeps going.
     DeckProfileSweepStop,
+    /// Labs: the DECK_SWEEP switch on or off (persisted, off by default). Off
+    /// also ends a sweep; the belt keeps going.
+    DeckProfileSweepSet {
+        on: bool,
+    },
     /// Lights out: a full Stop (any program ends) when the PC's
     /// display turns off.
     LightsOutSetConfig {

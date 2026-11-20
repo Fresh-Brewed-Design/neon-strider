@@ -215,6 +215,7 @@ async fn start_backend(app: tauri::AppHandle) {
     let config = persistence::load_config(&app);
     bluetooth::init_from_config(&config).await;
     bluetooth::load_deck_profile(&app).await;
+    profile_sweep::init(&app).await;
 
     // Once per database: earlier builds saved bad session averages.
     let (app_c, tilt, offset) = (app.clone(), config.tilt_multiplier, config.incline_offset);

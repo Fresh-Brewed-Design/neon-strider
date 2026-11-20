@@ -195,6 +195,9 @@ pub struct OrchestratorState {
     pub(crate) profile_learning: bool,
     /// DECK_SWEEP in progress (`profile_sweep.rs`).
     pub(crate) profile_sweep: Option<crate::profile_sweep::ProfileSweep>,
+    /// The DECK_SWEEP Labs switch (persisted, off by default): a sweep starts
+    /// only while it is on.
+    pub profile_sweep_enabled: bool,
 
     pub handshake_step: HandshakeStep,
     /// Whether the handshake under way is a pause (true) or a start. Decided
@@ -362,6 +365,7 @@ impl Default for OrchestratorState {
             deck_profile: Default::default(),
             profile_learning: true,
             profile_sweep: None,
+            profile_sweep_enabled: false,
             deck_standby: false,
             hold_auto_start: true,
             engage_speed: None,
@@ -2096,12 +2100,15 @@ impl ProtocolEngine {
             // Not after an unanswered Engage (`start_blocked`): the deck is
             // asleep, and sending start again does nothing. Not on a
             // connection that hasn't seen the belt move or a user start
-            // (`hold_auto_start`): a stale intent never starts the belt.
+            // (`hold_auto_start`): a stale intent never starts the belt. Not
+            // while DECK_SWEEP runs (`profile_sweep`): its speeds are timed
+            // steps, not presses, so a belt stopped mid-sweep stays still.
             MachineStatus::Stopped
                 if has_target
                     && target_speed > AUTO_START_MIN_KMH
                     && !state.start_blocked
-                    && !state.hold_auto_start =>
+                    && !state.hold_auto_start
+                    && state.profile_sweep.is_none() =>
             {
                 // A speed set by hand on a deck in standby: it would only
                 // refuse the start, so say so instead.
@@ -2110,11 +2117,14 @@ impl ProtocolEngine {
                     None => state.handshake_step = HandshakeStep::Priming,
                 }
             }
+            // The same holds for an automatic resume: a sweep step that lands
+            // just after a pause at the treadmill never resumes the belt.
             MachineStatus::Paused
                 if target_speed > self.last_physical_speed + STILL_KMH
                     && has_target
                     && !state.start_blocked
-                    && !state.hold_auto_start =>
+                    && !state.hold_auto_start
+                    && state.profile_sweep.is_none() =>
             {
                 state.handshake_step = HandshakeStep::Priming;
             }

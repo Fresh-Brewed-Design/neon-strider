@@ -281,6 +281,7 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             ORCHESTRATOR.lock().await.profile_sweep_stop();
             Ok(())
         }
+        Command::DeckProfileSweepSet { on } => crate::profile_sweep::set_enabled(&app, on).await,
 
         Command::CalibrationSetWizard { on } => {
             blocking(move || calibration::set_wizard(&app, on)).await
