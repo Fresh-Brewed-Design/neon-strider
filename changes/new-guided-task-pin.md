@@ -1,1 +1,0 @@
-- During a GROUND_TRUTH run or sweep the dashboard stays open and on top, even when you click another window, so you can tap and watch it while walking. A LOCKED ON TOP marker shows while it holds, with UNPIN to let it go; it lets go by itself when the run ends, after 30 minutes, or when the app restarts.
