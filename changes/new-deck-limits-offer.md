@@ -1,0 +1,1 @@
+- System -> Treadmill offers DECK_PROFILE's floor and ceiling in place of looser min and max speed settings (USE DECK LIMITS), and has a new Slowest speed field. A limit you tightened yourself stays as you set it.

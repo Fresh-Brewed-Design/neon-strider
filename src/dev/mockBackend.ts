@@ -72,7 +72,7 @@ export const snapshot: AppSnapshot = {
     max_incline_level: 15,
     max_incline_pct: 18.75,
     speed_steps: [],
-    profile: { learned: 0, floor_kmh: null, ceiling_kmh: null, skipped_kmh: [] },
+    profile: { learned: 0, floor_kmh: null, ceiling_kmh: null, floor_hw_kmh: null, ceiling_hw_kmh: null, skipped_kmh: [] },
   },
   session: { active_id: 1, duration_s: 1934, distance_m: 1720, steps: 2412, calories: 103, daily_distance_m: 4310 },
   programs: [
@@ -439,7 +439,7 @@ if (params.has("deckprofile")) {
     speed_steps: steps,
     max_speed_kmh: 4,
     target_speed_kmh: 3.5,
-    profile: { learned: 9, floor_kmh: 0.6, ceiling_kmh: 4, skipped_kmh: [0.3, 1.5, 5] },
+    profile: { learned: 9, floor_kmh: 0.6, ceiling_kmh: 4, floor_hw_kmh: 0.6, ceiling_hw_kmh: 4, skipped_kmh: [0.3, 1.5, 5] },
   });
 }
 

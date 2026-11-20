@@ -1,10 +1,12 @@
-import { snapToDeck } from "../../state/deckSpeeds";
+import { deckLimitOffer, limitsText, snapToDeck } from "../../state/deckSpeeds";
 import { useAppState } from "../../state/useAppState";
 import { useTreadmillStore } from "../../store/treadmillStore";
+import { GhostButton, Hint } from "../ui";
 import { NumberField, Section, SliderField } from "./fields";
 
 /** Speed and incline limits, incline scaling and body weight. Saved by Rust as part of its config. */
 export function TreadmillSection() {
+  const minSpeed = useTreadmillStore((s) => s.minSpeed);
   const maxSpeed = useTreadmillStore((s) => s.maxSpeed);
   const deck = useAppState((s) => s.deck);
   const maxIncline = useTreadmillStore((s) => s.maxIncline);
@@ -12,6 +14,7 @@ export function TreadmillSection() {
   const inclineOffset = useTreadmillStore((s) => s.inclineOffset);
   const bodyMassKg = useTreadmillStore((s) => s.bodyMassKg);
   const { updateSettings } = useTreadmillStore.getState();
+  const offer = deck ? deckLimitOffer(deck.profile, minSpeed, maxSpeed) : null;
 
   return (
     <Section
@@ -19,7 +22,25 @@ export function TreadmillSection() {
       title="Treadmill"
       description="Limits and scaling for this machine. Changes apply as soon as you make them."
     >
+      {deck && offer && (
+        <div className="flex flex-wrap items-center gap-3">
+          <Hint>DECK_PROFILE saw the treadmill run {limitsText(deck.profile)}, inside your speed limits.</Hint>
+          <GhostButton onClick={() => updateSettings(offer)}>Use deck limits</GhostButton>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-4">
+        {/* 0.1 km/h is one deck speed step, the slowest the deck can be asked
+            for; 25 km/h matches Top speed's range. */}
+        <NumberField
+          label="Slowest speed"
+          unit="km/h"
+          min={0.1}
+          max={25}
+          step={0.1}
+          value={minSpeed}
+          hint="The lowest running speed the controls will request, raised to the deck's own floor once DECK_PROFILE has seen it."
+          onCommit={(v) => updateSettings({ minSpeed: Math.min(v, maxSpeed) })}
+        />
         <NumberField
           label="Top speed"
           unit="km/h"
