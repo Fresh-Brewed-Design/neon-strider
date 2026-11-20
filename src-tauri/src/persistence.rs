@@ -416,6 +416,9 @@ fn vo2_max_zones_v7(raw: &str) -> Option<String> {
 ///   its 2 minutes every 20, so a card, a last run or a saved run that points
 ///   at its id still finds it. Copies the user edited stay as they are, and
 ///   nothing changes if a program is already called Desk breaks.
+/// - Interval walk (#161) is added after the user's programs, unless the
+///   list is empty (they deleted every program), unreadable, or one has that
+///   name already.
 ///
 /// "Untouched" is the name, the plan and the note exactly as migration 3 or
 /// `seed_programs` wrote them: a save that changes the plan drops the note,
@@ -520,6 +523,18 @@ fn seeded_programs_v8(
 ) -> Option<(String, u32)> {
     use serde_json::{json, Value};
     let mut list: Vec<Value> = serde_json::from_str(raw).ok()?;
+    let was_empty = list.is_empty();
+    // Taken before anything is removed, so a removed id is never handed out
+    // again.
+    let max_id = list
+        .iter()
+        .filter_map(|p| p["id"].as_u64())
+        .max()
+        .unwrap_or(0) as u32;
+    let mut next = next_id
+        .and_then(|s| s.trim().trim_matches('"').parse::<u32>().ok())
+        .unwrap_or(0)
+        .max(max_id + 1);
     let mut changed = false;
 
     // Desk breaks (#160).
@@ -549,18 +564,29 @@ fn seeded_programs_v8(
         }
     }
 
+    // Interval walk (#161): added after the user's programs, unless the list
+    // was empty (they deleted every program) or one has that name already.
+    if !was_empty && !list.iter().any(|p| p["name"] == "Interval walk") {
+        let step = |minutes: f64, speed: f64, incline: f64| json!({ "duration_minutes": minutes, "speed_kmh": speed, "incline_pct": incline });
+        let mut steps = vec![step(5.0, 4.0, 0.0)];
+        for _ in 0..5 {
+            steps.push(step(3.0, 6.0, 5.0));
+            steps.push(step(3.0, 3.5, 0.0));
+        }
+        list.push(json!({
+            "id": next,
+            "name": "Interval walk",
+            "steps": steps,
+            "repeat_every_minutes": null,
+            "note": "Five rounds alternate three brisk minutes with three easy ones.",
+        }));
+        next += 1;
+        changed = true;
+    }
+
     if !changed {
         return None;
     }
-    let max_id = list
-        .iter()
-        .filter_map(|p| p["id"].as_u64())
-        .max()
-        .unwrap_or(0) as u32;
-    let next = next_id
-        .and_then(|s| s.trim().trim_matches('"').parse::<u32>().ok())
-        .unwrap_or(0)
-        .max(max_id + 1);
     Some((serde_json::to_string(&list).ok()?, next))
 }
 
@@ -2085,7 +2111,7 @@ mod db_tests {
         assert_eq!(stored_programs(&conn), crate::programs::seed_programs());
         assert_eq!(
             get_setting_str(&conn, "program_next_id").as_deref(),
-            Some("7")
+            Some("8")
         );
         assert_eq!(
             get_setting_str(&conn, "seated_minutes").as_deref(),
@@ -2237,6 +2263,13 @@ mod db_tests {
         conn
     }
 
+    /// The stored programs but the Interval walk migration 8 adds.
+    fn without_interval_walk(conn: &Connection) -> Vec<crate::programs::Program> {
+        let mut list = stored_programs(conn);
+        list.retain(|p| p.name != "Interval walk");
+        list
+    }
+
     fn rerun_from_7(conn: &mut Connection) {
         conn.execute_batch("PRAGMA user_version = 7").unwrap();
         migrate(conn).unwrap();
@@ -2290,25 +2323,17 @@ mod db_tests {
             .find(|p| p.name == "Micro-break")
             .unwrap()
             .name = "Tiny walks".to_string();
-        let raw = serde_json::to_string(&list).unwrap();
-        set(&conn, "programs", &raw);
+        set(&conn, "programs", &serde_json::to_string(&list).unwrap());
         rerun_from_7(&mut conn);
-        assert_eq!(
-            get_setting_str(&conn, "programs").as_deref(),
-            Some(raw.as_str())
-        );
+        assert_eq!(without_interval_walk(&conn), list);
 
         // A program already called Desk breaks leaves both seeds alone.
         let mut conn = seeds_at_v7();
         let mut list = stored_programs(&conn);
         list[0].name = "Desk breaks".to_string();
-        let raw = serde_json::to_string(&list).unwrap();
-        set(&conn, "programs", &raw);
+        set(&conn, "programs", &serde_json::to_string(&list).unwrap());
         rerun_from_7(&mut conn);
-        assert_eq!(
-            get_setting_str(&conn, "programs").as_deref(),
-            Some(raw.as_str())
-        );
+        assert_eq!(without_interval_walk(&conn), list);
     }
 
     #[test]
@@ -2350,6 +2375,49 @@ mod db_tests {
             (kept.name.as_str(), kept.repeat_every_minutes),
             ("Desk breaks", Some(20.0))
         );
+    }
+
+    #[test]
+    fn migration_8_adds_interval_walk_once_and_keeps_a_namesake() {
+        let mut conn = seeds_at_v7();
+        set(&conn, "program_next_id", "12");
+        rerun_from_7(&mut conn);
+        let list = stored_programs(&conn);
+        let walk = list.last().unwrap();
+        assert_eq!((walk.name.as_str(), walk.id), ("Interval walk", 12));
+        assert_eq!(walk.steps.len(), 11);
+        let minutes: f32 = walk.steps.iter().filter_map(|s| s.duration_minutes).sum();
+        assert_eq!(minutes, 35.0);
+        assert!(walk
+            .steps
+            .iter()
+            .all(|s| s.speed_kmh > 0.0 && s.zone.is_none()));
+        assert_eq!(walk.repeat_every_minutes, None);
+        assert_eq!(
+            get_setting_str(&conn, "program_next_id").as_deref(),
+            Some("13")
+        );
+        // Forced to run again, nothing changes.
+        let raw = get_setting_str(&conn, "programs");
+        rerun_from_7(&mut conn);
+        assert_eq!(get_setting_str(&conn, "programs"), raw);
+
+        // A program of their own with that name is kept as it is.
+        let mut conn = migrated_to_v2();
+        let own = r#"[{"id":1,"name":"Interval walk","steps":[{"duration_minutes":20.0,"speed_kmh":5.0,"incline_pct":0.0}],"repeat_every_minutes":null}]"#;
+        set(&conn, "programs", own);
+        migrate(&mut conn).unwrap();
+        let l = stored_programs(&conn);
+        assert_eq!(l.iter().filter(|p| p.name == "Interval walk").count(), 1);
+        assert_eq!(l[0].steps.len(), 1);
+
+        // An empty or unreadable list stays as it is.
+        for raw in ["[]", "not json"] {
+            let mut conn = migrated_to_v2();
+            set(&conn, "programs", raw);
+            migrate(&mut conn).unwrap();
+            assert_eq!(get_setting_str(&conn, "programs").as_deref(), Some(raw));
+        }
     }
 
     #[test]

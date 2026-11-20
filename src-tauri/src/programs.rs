@@ -484,6 +484,7 @@ pub fn seed_programs() -> Vec<Program> {
         program(3, "Focus", step(None, 2.0, 0.0), None, NOTE_FOCUS),
         program(5, "Brisk", step(Some(30.0), 5.0, 0.0), None, NOTE_BRISK),
         vo2_max_program(6),
+        interval_walk_program(7),
     ]
 }
 
@@ -536,11 +537,59 @@ fn vo2_max_program(id: u32) -> Program {
     }
 }
 
+/// Interval walking training (IWT, "Japanese walking"; Nemoto et al. 2007):
+/// a warm-up, then five rounds of 3 brisk minutes and 3 easy ones, 35 minutes
+/// in all. Every step moves the belt and nothing repeats, so no step starts a
+/// still belt: running it is the one press, like VO2 max. Existing installs
+/// get it from `persistence::migration_8_seeded_programs`,
+/// which keeps its own copy.
+fn interval_walk_program(id: u32) -> Program {
+    let step = |minutes: f32, speed_kmh: f32, incline_pct: f32| ProgramStep {
+        duration_minutes: Some(minutes),
+        speed_kmh,
+        incline_pct,
+        zone: None,
+    };
+    let mut steps = vec![step(INTERVAL_WARMUP_MINUTES, INTERVAL_WARMUP_KMH, 0.0)];
+    for _ in 0..INTERVAL_ROUNDS {
+        steps.push(step(
+            INTERVAL_MINUTES,
+            INTERVAL_BRISK_KMH,
+            INTERVAL_BRISK_INCLINE_PCT,
+        ));
+        steps.push(step(INTERVAL_MINUTES, INTERVAL_EASY_KMH, 0.0));
+    }
+    Program {
+        id,
+        name: "Interval walk".to_string(),
+        steps,
+        repeat_every_minutes: None,
+        note: Some(NOTE_INTERVAL_WALK.to_string()),
+    }
+}
+
+/// A short warm-up at an ordinary walking pace before the first brisk round.
+const INTERVAL_WARMUP_MINUTES: f32 = 5.0;
+const INTERVAL_WARMUP_KMH: f32 = 4.0;
+/// IWT asks for 5 or more rounds a day; five is the trial's minimum dose.
+const INTERVAL_ROUNDS: usize = 5;
+/// Equal 3 minute blocks, brisk then easy, as in the trial.
+const INTERVAL_MINUTES: f32 = 3.0;
+/// Brisk: about 6.4 METs by the ACSM equation, inside the 6 to 7 METs aimed
+/// at for a fast walk and well under VO2 max's 9. The deck tops out at
+/// 8 km/h, so a fast walk gets its effort from a moderate incline.
+const INTERVAL_BRISK_KMH: f32 = 6.0;
+const INTERVAL_BRISK_INCLINE_PCT: f32 = 5.0;
+/// Easy: about 2.7 METs, flat, a slow walk to recover.
+const INTERVAL_EASY_KMH: f32 = 3.5;
+
 pub const NOTE_VO2_MAX: &str = "Four hard 4-minute climbs with easy walks between train VO2 max.";
 pub const NOTE_POST_MEAL: &str = "A walk soon after eating blunts the rise in blood sugar.";
 pub const NOTE_DESK_BREAKS: &str = "Short easy walks on a timer break up long hours at the desk.";
 pub const NOTE_FOCUS: &str = "Slow and flat, so typing and thinking stay steady.";
 pub const NOTE_BRISK: &str = "Moderate walking toward the weekly 150 minutes.";
+pub const NOTE_INTERVAL_WALK: &str =
+    "Five rounds alternate three brisk minutes with three easy ones.";
 
 /// Test fixture: the three programs v1.6 seeded (Post-meal 10 min at 4.0 km/h
 /// and 10 %, Workday 5 min every 30 at 3.0 km/h and 5 %, Focus at 2.5 km/h and
@@ -2304,7 +2353,7 @@ mod tests {
         let l = initial_programs(None, None);
         assert!(l.seeded);
         assert_eq!(l.programs, seed_programs());
-        assert_eq!(l.next_id, 7);
+        assert_eq!(l.next_id, 8);
 
         // Present (even empty) is never reseeded.
         let l = initial_programs(Some("[]"), None);

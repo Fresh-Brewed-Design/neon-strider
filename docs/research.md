@@ -151,6 +151,52 @@ intensity the 4x4 studies prescribe.
 
 **In the app:** "Four hard 4-minute climbs with easy walks between train VO2 max."
 
+## Interval walk (new)
+
+**New:** 5 min at 4.0 km/h, then five times (3 min at 6.0 km/h and 5 % incline, 3 min at
+3.5 km/h flat). 35 minutes in all.
+
+- Interval walking training (IWT, often called Japanese walking) alternates 3 minutes of fast
+  walking with 3 minutes of slow walking. In Nemoto et al. (2007), 246 middle-aged and older
+  adults (mean age 63) were assigned to no training, continuous walking at about 50 % of their
+  peak aerobic capacity, or IWT: 5 or more sets a day of 3 minutes above 70 % of peak aerobic
+  capacity for walking and 3 minutes at about 40 %, on 4 or more days a week, for 5 months.
+  The IWT group gained more thigh strength and peak aerobic capacity than the continuous
+  group, and its resting systolic blood pressure fell more (P = .01).
+- How it differs from VO2 max: the effort is lower (about 6 to 7 METs on the brisk steps
+  against about 9 on VO2 max's climbs), the blocks are equal (3 minutes brisk, 3 minutes easy,
+  against 4 hard and 3 easy), it is meant for 4 or more days a week (VO2 max: two or three),
+  and it was tested in middle-aged and older adults. It suits anyone who finds VO2 max too
+  hard, or who wants a harder walk than Brisk on more days of the week.
+- On the deck: by the ACSM equation, 6.0 km/h at 5 % is about 6.4 METs and 3.5 km/h flat about
+  2.7 METs. The trial set each person's fast pace from their own peak aerobic capacity, which
+  the app can't measure, so judge the brisk steps by effort: a fast walk where talking takes
+  effort. A fitter walker can raise the speed or incline (edit the program), and a beginner
+  can lower them.
+- Every step moves the belt and nothing repeats, so no step starts a still belt: like VO2 max,
+  starting the program is the one press.
+
+**Blood pressure.** Trials found lower resting blood pressure after months of training, both
+for walking in general and for interval walking. A trial result is an average, not a promise
+for one person, and Neon Strider shows no blood pressure figures or claims.
+
+- A Cochrane review of 73 trials (5,763 people) found that walking probably lowers systolic
+  blood pressure (moderate certainty) and may lower diastolic blood pressure (low certainty;
+  Lee et al. 2021). Brisk is that kind of training.
+- A network meta-analysis of 270 trials (15,827 people) found that aerobic training, interval
+  training, resistance training and isometric training all lowered resting blood pressure;
+  isometric training ranked first for systolic pressure (Edwards et al. 2023).
+- IWT lowered resting systolic blood pressure more than continuous walking at a moderate
+  pace (Nemoto et al. 2007, above).
+- Desk breaks: in Duran et al. (2023) every break dose lowered systolic blood pressure over
+  one 8-hour day of sitting, against sitting through (see Desk breaks). That is a one-day lab
+  result, not a training effect.
+- Not cited: the press coverage of Nemoto et al. gives the IWT group's drop as 9 and 5 mmHg
+  (systolic and diastolic). The abstract doesn't state those figures and the full paper could
+  not be checked, so they are left out.
+
+**In the app:** "Five rounds alternate three brisk minutes with three easy ones."
+
 ## Idle nudge
 
 **Was:** after 60 minutes of PC use without walking. **Now:** 30 minutes.
@@ -269,6 +315,9 @@ exercise inside a screen break, so this follows the trial's dose, not a tested b
   sitting to improve cardiometabolic risk: dose-response analysis of a randomized crossover
   trial. *Medicine & Science in Sports & Exercise* 55(5): 847–855.
   https://doi.org/10.1249/MSS.0000000000003109
+- Edwards JJ, Deenmamode AHP, Griffiths M, et al. (2023). Exercise training and resting blood
+  pressure: a large-scale pairwise and network meta-analysis of randomised controlled trials.
+  *British Journal of Sports Medicine* 57(20): 1317–1326. https://doi.org/10.1136/bjsports-2022-106503
 - Engeroff T, Groneberg DA, Wilke J (2023). After dinner rest a while, after supper walk a mile?
   A systematic review with meta-analysis on the acute postprandial response to exercise before
   and after meal ingestion in healthy subjects and patients with impaired glucose tolerance.
@@ -281,9 +330,15 @@ exercise inside a screen break, so this follows the trial's dose, not a tested b
 - Kim AD, Muntz A, Lee J, Wang MTM, Craig JP (2021). Therapeutic benefits of blinking exercises in
   dry eye disease. *Contact Lens and Anterior Eye* 44(3): 101329.
   https://doi.org/10.1016/j.clae.2020.04.014
+- Lee LL, Mulvaney CA, Wong YKY, Chan ES, Watson MC, Lin HH (2021). Walking for hypertension.
+  *Cochrane Database of Systematic Reviews* 2: CD008823.
+  https://doi.org/10.1002/14651858.CD008823.pub2
 - Levine JA, Miller JM (2007). The energy expenditure of using a "walk-and-work" desk for office
   workers with obesity. *British Journal of Sports Medicine* 41(9): 558–561.
   https://pmc.ncbi.nlm.nih.gov/articles/PMC2465387/
+- Nemoto K, Gen-no H, Masuki S, Okazaki K, Nose H (2007). Effects of high-intensity interval
+  walking training on physical fitness and blood pressure in middle-aged and older people.
+  *Mayo Clinic Proceedings* 82(7): 803–811. https://doi.org/10.4065/82.7.803
 - Ojo SO, Bailey DP, Chater AM, Hewson DJ (2018). The impact of active workstations on workplace
   productivity and performance: a systematic review. *International Journal of Environmental
   Research and Public Health* 15(3): 417. https://doi.org/10.3390/ijerph15030417
