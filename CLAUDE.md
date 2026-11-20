@@ -255,8 +255,10 @@ sticker on the deck gives 200 km (125 miles), which is the default.
   no app start in flight), and during a rest it becomes a manual walk. SKIP is a press and
   may start the belt; a step between two moving speeds stays automatic. A program that ends
   (END, SKIP on its last step, or into a rest) while the belt isn't moving leaves it still: the
-  speed from before waits in `engage_speed` for the next Engage or RE-JACK. Tests in
-  `engine.rs` and `programs.rs` pin it.
+  speed from before waits in `engage_speed` for the next Engage or RE-JACK. New calibration
+  points (a settings sync, a point saved or deleted) never move a running belt: the deck keeps
+  its byte (`CurveHold`) until the next speed change or step. Tests in `engine.rs`,
+  `programs.rs` and `sim.rs` pin it.
 - After editing any Rust file, run `cargo check` in `src-tauri/`.
 - The Rust version is pinned in `rust-toolchain.toml`; bump it there and in the workflows together, and fix any new clippy lints in the same PR.
 - Packet decoding and speed/calibration scaling belong in **Rust**, not JS.
