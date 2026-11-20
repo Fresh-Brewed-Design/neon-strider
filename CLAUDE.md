@@ -61,6 +61,7 @@ whole app runs with no hardware; `connection.simulated` shows a SIM tag on the H
 Its walks stay in memory (no History, odometer or Strava) and it is never saved as the treadmill
 to reconnect to, since dev and release builds share the database. Both modules are behind
 `cfg(debug_assertions)`, so release builds never list it and `simulated` is always false.
+Guided tasks (`guided_task.rs`): a window asks Rust to hold the dashboard open and on top while a task runs (`guided_task_start`/`_end`, UNPIN is `guided_task_cancel`); `dashboard.rs` keeps it through blurs, it ends by itself after 30 min and never survives a restart. The GROUND_TRUTH run pins it while a run or sweep is open (`useGuidedTask`).
 Neural flow (typing-aware pace) is pure logic in `neural.rs`; key-press counting is switched by Rust (`neural_monitor_wanted`, 1 Hz tick), not by a window.
 Status is visible, not silent. `link.rs` (treadmill link state, plain-English BLE errors) and
 `strava_status.rs` (Strava activity/steps, `describe()` turns Strava's JSON errors into one
@@ -159,6 +160,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?eyebreak=upcoming|rest|break|still|resume`: the OCULAR_IMPLANT cards: heads-up, heads-up set for a program rest, cooldown with the belt paused or left alone, resume card
 - `?ghostpod=advertising|connected|error`: System -> Labs GHOST_POD
 - `?ghostpower=waiting|linked`: GHOST_POD's power switch on, with no watch or a watch reading 135 W
+- `?guided`: a guided task (GROUND_TRUTH) holding the dashboard open and on top, with UNPIN
 - `?heart=on|waiting`: System -> Heart rate with a watch picked and reading, or not broadcasting yet; in History every other walk has an average and maximum heart rate
 - `?hours`: the belt reminder counts belt hours
 - `?idle`: the belt stopped

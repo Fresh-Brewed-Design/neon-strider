@@ -3,6 +3,7 @@ import { Activity, History, LayoutDashboard, ListChecks, Pin, PinOff, Settings2 
 import { toast, Toaster } from "sonner";
 import { subscribeAppSnapshot, useAppState } from "../state/useAppState";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { GuidedPinMarker } from "./guided/GuidedPinMarker";
 import { LinkControl } from "./link/LinkControl";
 import { readPref, writePref } from "./localPrefs";
 import { cx, send } from "./util";
@@ -121,6 +122,7 @@ export function DashboardApp() {
         </ul>
 
         <div className="mt-auto flex flex-col gap-1 border-t border-white/5 p-2">
+          <GuidedPinMarker />
           <button
             type="button"
             onClick={() => send({ type: "dashboard_set_pinned", pinned: !pinned })}
