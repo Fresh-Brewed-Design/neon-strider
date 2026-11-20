@@ -34,6 +34,9 @@ function normalize(patch: Partial<Settings>): Partial<Settings> {
   return out;
 }
 
+/** A point at speed 0 or with a scale of 0 would corrupt every distance, so it is never stored. */
+const validPoint = (p: { speed: number; distance_scale: number }) => p.speed > 0 && p.distance_scale > 0;
+
 export const createSettingsSlice: StateCreator<TreadmillStore, [], [], SettingsSlice> = (set) => ({
   ...DEFAULT_SETTINGS,
   isHydrated: false,
@@ -42,11 +45,22 @@ export const createSettingsSlice: StateCreator<TreadmillStore, [], [], SettingsS
   updateSettings: (patch) => set(normalize(patch)),
 
   addCalibrationPoint: (point) =>
-    set((s) => ({
-      calibrationPoints: bySpeed([...s.calibrationPoints.filter((p) => Math.abs(p.speed - point.speed) > 0.05), point]),
-    })),
+    set((s) =>
+      validPoint(point)
+        ? {
+            calibrationPoints: bySpeed([
+              ...s.calibrationPoints.filter((p) => Math.abs(p.speed - point.speed) > 0.05),
+              point,
+            ]),
+          }
+        : s,
+    ),
   updateCalibrationPoint: (index, point) =>
-    set((s) => ({ calibrationPoints: bySpeed(s.calibrationPoints.map((p, i) => (i === index ? point : p))) })),
+    set((s) =>
+      validPoint(point)
+        ? { calibrationPoints: bySpeed(s.calibrationPoints.map((p, i) => (i === index ? point : p))) }
+        : s,
+    ),
   removeCalibrationPoint: (index) =>
     set((s) => ({ calibrationPoints: s.calibrationPoints.filter((_, i) => i !== index) })),
 });
