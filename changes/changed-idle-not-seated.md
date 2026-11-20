@@ -1,1 +1,0 @@
-- The HUD nudge now says how long the belt has been idle (for example 32 MIN IDLE) instead of assuming you are seated, and its setting is called Idle nudge.
