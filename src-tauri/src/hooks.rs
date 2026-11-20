@@ -127,9 +127,15 @@ pub(crate) fn shortcut_pressed(shortcut: Shortcut) {
         let at = Instant::now();
         std::thread::spawn(move || {
             tauri::async_runtime::block_on(async move {
-                let state = crate::bluetooth::ORCHESTRATOR.lock().await;
-                if let Err(e) = crate::calibration::tap(&state, at) {
-                    log::info!("calibration tap ignored: {e}");
+                let tapped = {
+                    let mut state = crate::bluetooth::ORCHESTRATOR.lock().await;
+                    crate::calibration::tap(&mut state, at)
+                };
+                match tapped {
+                    // The tap that finished the run saved its point.
+                    Ok(Some(points)) => crate::calibration::persist_points(app, &points),
+                    Ok(None) => {}
+                    Err(e) => log::info!("calibration tap ignored: {e}"),
                 }
             });
         });

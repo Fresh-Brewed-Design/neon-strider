@@ -148,13 +148,13 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?autoinstall=off`: "Install automatically" switched off (with `?update=...`)
 - `?blink=squeeze|open`: the guided blink step during an eye-break cooldown (CLOSE by default)
 - `?call`: on a call, the belt held at the quiet speed (the HUD preview also shows the toast)
-- `?calwizard`: the Labs guided calibration (GROUND_TRUTH) with a 280 cm belt loop; `=belt` the BELT_LOOP step, `=tapping|dropped` a tap run five passes in or with a dropped tap and a restart note, `=measured` the plain-words result, `=sweep|sweeprun` RUN ALL between speeds or tapping, `=oldpoint` a point stored below the factor limit, `=targets` an added 3.5 km/h and a stored 14.0 km/h outside the range
+- `?calwizard`: the Labs guided calibration (GROUND_TRUTH) with a 280 cm belt loop; `=belt` the BELT_LOOP step, `=tapping|dropped` a tap run five passes in or with a dropped tap and a restart note, `=measured` the plain-words result with the point already saved (UNDO, TAP AGAIN), `=sweep|sweeprun` RUN ALL between speeds or tapping, `=oldpoint` a point stored below the factor limit, `=targets` an added 3.5 km/h and a stored 14.0 km/h outside the range
 - `?connect=fail`: connecting from the connect dialog fails
 - `?custom`: the HUD sits where it was dragged
 - `?daily=12.34`: today's km (DAILY_TOTAL)
 - `?deck=paused`: with `?stasis=...`, the belt is paused (Engage reads RE-JACK)
 - `?decknote=refused|adjusted`: the HUD note after the deck refuses or changes a target
-- `?deckprofile`: DECK_PROFILE learned (floor 0.6, ceiling 4.0, 1.5 skipped, top incline level 12, level 7 skipped; Diagnostics shows FORGET); `=sweep` with the LABS // DECK_SWEEP switch on and a sweep running
+- `?deckprofile`: DECK_PROFILE learned (floor 0.6, ceiling 4.0, 1.5 skipped, top incline level 12, level 7 skipped; Diagnostics shows FORGET); `=sweep` with the LABS // DECK_SWEEP switch on and a speed sweep running, `=inclinesweep` an incline sweep running, `=sweepon` the switch on with no sweep running
 - `?desksync=open|new|few`: History's DESK_SYNC card
 - `?due`: the belt reminder well past its interval
 - `?engage=timeout`: the deck's screen is off, so Engage waits and fails
@@ -164,6 +164,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?guided`: a guided task (GROUND_TRUTH) holding the dashboard open and on top, with UNPIN
 - `?heart=on|waiting`: System -> Heart rate with a watch picked and reading, or not broadcasting yet; in History every other walk has an average and maximum heart rate
 - `?hours`: the belt reminder counts belt hours
+- `?hrspark=steady|climb|gap`: PULSE_RATE's spark chart with a watch reading: a steady walk, a climb into a heart rate zone step (its band shows), or a minute with no reading
 - `?idle`: the belt stopped
 - `?lightsout`: LIGHTS_OUT on; on the HUD preview its toast
 - `?link=scanning|connecting|reconnecting|nodata|bt-off|failed`: each treadmill link state

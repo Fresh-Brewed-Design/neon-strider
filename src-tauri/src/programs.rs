@@ -1336,6 +1336,21 @@ impl OrchestratorState {
         })
     }
 
+    /// The current step's heart rate zone in bpm while it is a walking step
+    /// with a zone (paused or not), for the PULSE_RATE chart's band.
+    pub fn zone_band(&self) -> Option<crate::heart_rate::ZoneBand> {
+        let run = self.program.as_ref()?;
+        if run.phase != ProgramPhase::Walking {
+            return None;
+        }
+        let zone = run.program.steps.get(run.step_index)?.zone?;
+        let (low, high) = zone.bounds_bpm(self.max_heart_rate);
+        Some(crate::heart_rate::ZoneBand {
+            low_bpm: low.round() as u32,
+            high_bpm: high.round() as u32,
+        })
+    }
+
     /// Create (id 0) or replace a program after validating it.
     pub fn save_program(&mut self, mut program: Program) -> Result<(), String> {
         program.name = program.name.trim().to_string();
@@ -3445,6 +3460,27 @@ mod tests {
         moving(&mut s, 3.0, 0);
         s.run_program(9, t0).unwrap();
         s
+    }
+
+    #[test]
+    fn the_chart_band_is_the_running_zone_in_bpm() {
+        let t0 = Instant::now();
+        assert_eq!(state().zone_band(), None);
+        let mut s = zone_state(t0);
+        assert_eq!(
+            s.zone_band(),
+            Some(crate::heart_rate::ZoneBand {
+                low_bpm: 170,
+                high_bpm: 190,
+            })
+        );
+        // A step without a zone has no band.
+        s.program.as_mut().unwrap().program.steps[0].zone = None;
+        assert_eq!(s.zone_band(), None);
+        // Nor does a rest between cycles.
+        let mut s = zone_state(t0);
+        s.program.as_mut().unwrap().phase = ProgramPhase::Resting;
+        assert_eq!(s.zone_band(), None);
     }
 
     fn program_speed(s: &OrchestratorState) -> f32 {

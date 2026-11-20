@@ -31,10 +31,11 @@ import {
  * row per speed: RUN (the user's press) sets the belt to it, and the user taps
  * as the belt mark passes (TAP, Space in the dashboard, Alt+Space anywhere).
  * Rust timestamps the taps and ends the run once they agree, with the point
- * it gives. ADD RUN times a saved point again, and Rust averages the new run
- * in with the earlier ones (`result.averaged`). RUN ALL walks every row as a
- * sweep (`snapshot.calibration.sweep`): saving or skipping one speed leaves
- * the belt alone, and the next waits for RUN. The run panel follows
+ * it gives and saves it by itself, averaged into the saved point at that speed
+ * if there is one. UNDO puts the points back as they were before the run, until
+ * the next run starts or the panel closes. ADD RUN times a saved point again.
+ * RUN ALL walks every row as a sweep (`snapshot.calibration.sweep`): a saved
+ * or skipped speed leaves the belt alone, and the next waits for RUN. The run panel follows
  * `snapshot.calibration.run`, so it is back where it was when the dashboard
  * reopens mid-run. STOP is never disabled. The target list is a Rust setting
  * (`snapshot.calibration.targets`): ADD_SPEED and remove go through Rust.
@@ -94,7 +95,7 @@ export function GuidedCalibration() {
         </Hint>
       )}
       {!beltSet ? null : sweep ? (
-        <SweepPanel sweep={sweep} running={run !== null} />
+        <SweepPanel sweep={sweep} running={run !== null && run.phase !== "measured"} />
       ) : (
         !run && (
           <div>
@@ -200,7 +201,6 @@ export function GuidedCalibration() {
             {run && row === runRow && (
               <RunPanel
                 run={run}
-                row={row}
                 limits={cal.limits}
                 rawKmh={snap.deck.raw_speed_kmh}
                 inSweep={sweep !== null}
@@ -335,14 +335,12 @@ function typingInto(target: EventTarget | null): boolean {
 /** One run: SPIN_UP, TAPPING until Rust's taps agree, then MEASURED and the point it gives. */
 function RunPanel({
   run,
-  row,
   limits,
   rawKmh,
   inSweep,
   onClosed,
 }: {
   run: CalibrationRunView;
-  row: CalibrationRow;
   limits: CalibrationLimits;
   rawKmh: number;
   inSweep: boolean;
@@ -350,8 +348,7 @@ function RunPanel({
 }) {
   const tap = useAction();
   const again = useAction();
-  const addPoint = useTreadmillStore((s) => s.addCalibrationPoint);
-  const updatePoint = useTreadmillStore((s) => s.updateCalibrationPoint);
+  const undo = useAction();
   const listening = run.phase !== "measured";
   const sendTap = tap.run;
 
@@ -370,19 +367,12 @@ function RunPanel({
     return () => window.removeEventListener("keydown", onKey);
   }, [listening, sendTap]);
 
-  // In a sweep, closing a run marks its speed saved or skipped.
-  const close = (saved = false) => {
+  // In a sweep, closing a run that has no saved point skips its speed.
+  const close = () => {
     const command = inSweep
-      ? ({ type: "calibration_sweep_next", saved } as const)
+      ? ({ type: "calibration_sweep_next", saved: false } as const)
       : ({ type: "calibration_run_close" } as const);
     void dispatch(command).finally(onClosed);
-  };
-  const save = () => {
-    const result = run.result;
-    if (!result) return;
-    if (row.index !== null) updatePoint(row.index, result.averaged ?? result.point);
-    else addPoint(result.point);
-    close(true);
   };
 
   const phaseLabel = { settling: "SPIN_UP", tapping: "TAPPING", measured: "MEASURED" }[run.phase];
@@ -452,7 +442,7 @@ function RunPanel({
           {dropped && <Hint>{dropped}</Hint>}
           {run.note && <div className="font-mono text-[11px] text-neon-yellow">{run.note}</div>}
           <div className="flex justify-end">
-            <GhostButton onClick={() => close()}>{inSweep ? "SKIP" : "Close"}</GhostButton>
+            <GhostButton onClick={close}>{inSweep ? "SKIP" : "Close"}</GhostButton>
           </div>
         </div>
       )}
@@ -460,7 +450,7 @@ function RunPanel({
       {r && (
         <div className="space-y-3">
           <div className="font-digital text-sm text-white">
-            {deckVerdict(r.point.speed, r.real_kmh, r.reported_kmh)}
+            {deckVerdict(r.point.speed, r.real_kmh, r.reported_kmh, run.saved ? "saved" : "undone")}
           </div>
           <div className="flex flex-wrap gap-4 rounded border border-white/5 bg-white/5 p-2">
             <Readout label="TRUE_VELOCITY" value={`${r.real_kmh.toFixed(2)} km/h`} className="text-neon-cyan" />
@@ -469,23 +459,27 @@ function RunPanel({
             <Readout label="PASSES" value={String(run.passes)} className="text-white" />
           </div>
           {dropped && <Hint>{dropped}</Hint>}
-          <Hint>
-            {row.index !== null
-              ? `AVERAGE IN folds the run into the saved ${row.targetKmh.toFixed(1)} km/h point.`
-              : `SAVE POINT corrects distances at ${r.point.speed.toFixed(1)} km/h.`}
-          </Hint>
           <div className="flex gap-2">
-            <NeonButton tone="green" className="flex-1 py-2" onClick={save}>
-              {row.index !== null ? "AVERAGE IN" : "SAVE POINT"}
-            </NeonButton>
+            {run.saved && (
+              <NeonButton
+                tone="magenta"
+                className="flex-1 py-2"
+                disabled={undo.pending}
+                onClick={() => void undo.run(() => dispatch({ type: "calibration_undo" }))}
+              >
+                UNDO
+              </NeonButton>
+            )}
             <GhostButton
               disabled={again.pending}
               onClick={() => void again.run(() => dispatch({ type: "calibration_tap_reset" }))}
             >
               TAP AGAIN
             </GhostButton>
-            <GhostButton onClick={() => close()}>{inSweep ? "SKIP" : "Discard"}</GhostButton>
+            {/* In a sweep, the sweep panel above has RUN and SKIP for the speed. */}
+            {!inSweep && <GhostButton onClick={close}>Close</GhostButton>}
           </div>
+          <ActionStatus pending={undo.pending} error={undo.error} />
           <ActionStatus pending={again.pending} error={again.error} />
         </div>
       )}

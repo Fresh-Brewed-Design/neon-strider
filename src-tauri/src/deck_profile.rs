@@ -116,6 +116,11 @@ impl DeckProfile {
         self.bytes.contains_key(&byte)
     }
 
+    /// The deck has answered a target at incline `level`.
+    pub fn knows_level(&self, level: u8) -> bool {
+        self.levels.contains_key(&level)
+    }
+
     /// File the deck's reply to a target at incline `asked`.
     pub fn learn_level(&mut self, asked: u8, outcome: Outcome) {
         if self.levels.insert(asked, outcome) != Some(outcome) {

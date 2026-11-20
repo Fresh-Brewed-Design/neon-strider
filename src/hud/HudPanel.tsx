@@ -1,6 +1,7 @@
 import type { AppSnapshot, Command, HudWidget } from "../ipc";
 import { describeActive, describePlan, waitHeadline, waitReason } from "../dashboard/programs/format";
 import { statWidget } from "../widgets/registry";
+import { Sparkline } from "../widgets/Sparkline";
 import { HudNote } from "./HudNote";
 import { isMoving, startFailure } from "../state/linkStatus";
 import { SmallButton } from "./SmallButton";
@@ -12,6 +13,7 @@ export function StatCell({ id, snapshot }: { id: HudWidget; snapshot: AppSnapsho
   const def = statWidget(id);
   if (!def) return null;
   const { value, unit } = def.read(snapshot);
+  const spark = def.spark?.(snapshot);
   return (
     <div className={`hud-stat accent-${def.accent}`}>
       <span className="hud-label">{def.label}</span>
@@ -19,6 +21,7 @@ export function StatCell({ id, snapshot }: { id: HudWidget; snapshot: AppSnapsho
         {value}
         {unit && <span className="hud-unit">{unit}</span>}
       </span>
+      {spark && <Sparkline data={spark} className="hud-spark" />}
     </div>
   );
 }

@@ -3,6 +3,7 @@
 //! and the link, which is separate from the treadmill's. A 1 s tick
 //! (re)connects while a sensor is picked.
 
+use super::history::History;
 use super::{
     describe_failure, parse_measurement, status_label, status_message, HeartRateSensor,
     HeartRateSnapshot, HeartStatus, Step, HR_MEASUREMENT, HR_SERVICE, NOT_FOUND, NO_MEASUREMENT,
@@ -73,7 +74,12 @@ struct Runtime {
     failures: u32,
     scanning: bool,
     found: Vec<HeartRateSensor>,
+    /// The PULSE_RATE chart's rolling window.
+    history: History,
 }
+
+/// The chart's monotonic clock, so a change to the PC's time can't shift it.
+static CLOCK: LazyLock<Instant> = LazyLock::new(Instant::now);
 
 static RT: LazyLock<Mutex<Runtime>> = LazyLock::new(|| Mutex::new(Runtime::default()));
 
@@ -169,6 +175,7 @@ fn drop_link(sensor: Option<HeartRateSensor>) {
         rt.failed_at = None;
         rt.failures = 0;
         rt.connecting = false;
+        rt.history.clear();
         rt.link.take()
     });
     if let Some(p) = old {
@@ -202,6 +209,13 @@ pub fn snapshot() -> HeartRateSnapshot {
             label: status_label(rt.status).to_string(),
             message: status_message(rt.status, rt.error.as_deref(), bpm.is_some()),
             bpm,
+            // No sensor, no chart.
+            history: if rt.sensor.is_some() {
+                rt.history.points()
+            } else {
+                Vec::new()
+            },
+            zone: None,
             scanning: rt.scanning,
             found: rt.found.clone(),
             max_bpm: u32::from(max_heart_rate()),
@@ -270,7 +284,19 @@ pub fn spawn(_app: AppHandle) {
         every.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             every.tick().await;
+            record_history();
             tick().await;
+        }
+    });
+}
+
+/// Add this second's reading (or a gap) to the chart while a sensor is picked.
+fn record_history() {
+    let at_ms = u64::try_from(CLOCK.elapsed().as_millis()).unwrap_or(u64::MAX);
+    with(|rt| {
+        if rt.sensor.is_some() {
+            let bpm = fresh_bpm(rt);
+            rt.history.record(at_ms, bpm);
         }
     });
 }

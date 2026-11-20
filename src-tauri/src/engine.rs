@@ -48,7 +48,7 @@ const STOP_REISSUE_INTERVAL: Duration = Duration::from_secs(1);
 /// ...for at most this long, if the deck never reports the belt at rest.
 const STOP_TIMEOUT: Duration = Duration::from_secs(20);
 /// Incline levels above this are never sent, whatever the settings say.
-const INCLINE_LEVEL_LIMIT: u8 = 20;
+pub(crate) const INCLINE_LEVEL_LIMIT: u8 = 20;
 /// A sample is recorded at most this often...
 const SAMPLE_EVERY: Duration = Duration::from_secs(1);
 /// ...and the session row rewritten at most this often, so a crash loses little.
@@ -589,6 +589,14 @@ impl OrchestratorState {
         self.neural_floor_pct = crate::neural::clamp_floor_pct(config.neural_floor_pct);
         self.neural_sensitivity = config.neural_sensitivity;
 
+        self.sorted_points = sorted_by_hw_speed(&self.calibration_points);
+        self.rebuild_lookup_table();
+    }
+
+    /// Use `points` for every speed and distance from here on, as a settings
+    /// sync does for the points it carries. The caller saves them.
+    pub fn set_calibration_points(&mut self, points: Vec<CalibrationPoint>) {
+        self.calibration_points = points;
         self.sorted_points = sorted_by_hw_speed(&self.calibration_points);
         self.rebuild_lookup_table();
     }
