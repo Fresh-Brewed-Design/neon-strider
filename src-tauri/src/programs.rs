@@ -1324,18 +1324,16 @@ impl OrchestratorState {
     }
 
     /// The current step's heart rate zone in bpm while it is a walking step
-    /// with a zone (paused or not), for the PULSE_RATE chart's band.
-    pub fn zone_band(&self) -> Option<crate::heart_rate::ZoneBand> {
+    /// with a zone (paused or not), for PULSE_RATE: the chart's band, and
+    /// whether `bpm` is under, in or over it, by the same bounds the trim uses.
+    pub fn zone_band(&self, bpm: Option<u32>) -> Option<crate::heart_rate::ZoneBand> {
         let run = self.program.as_ref()?;
         if run.phase != ProgramPhase::Walking {
             return None;
         }
         let zone = run.program.steps.get(run.step_index)?.zone?;
         let (low, high) = zone.bounds_bpm(self.max_heart_rate);
-        Some(crate::heart_rate::ZoneBand {
-            low_bpm: low.round() as u32,
-            high_bpm: high.round() as u32,
-        })
+        Some(crate::heart_rate::zone_band(low, high, bpm))
     }
 
     /// Create (id 0) or replace a program after validating it.
@@ -3452,22 +3450,45 @@ mod tests {
     #[test]
     fn the_chart_band_is_the_running_zone_in_bpm() {
         let t0 = Instant::now();
-        assert_eq!(state().zone_band(), None);
+        assert_eq!(state().zone_band(Some(150)), None);
         let mut s = zone_state(t0);
-        assert_eq!(
-            s.zone_band(),
-            Some(crate::heart_rate::ZoneBand {
-                low_bpm: 170,
-                high_bpm: 190,
-            })
-        );
+        let band = s.zone_band(None).expect("band");
+        assert_eq!((band.low_bpm, band.high_bpm), (170, 190));
+        assert_eq!(band.position, None);
         // A step without a zone has no band.
         s.program.as_mut().unwrap().program.steps[0].zone = None;
-        assert_eq!(s.zone_band(), None);
+        assert_eq!(s.zone_band(Some(150)), None);
         // Nor does a rest between cycles.
         let mut s = zone_state(t0);
         s.program.as_mut().unwrap().phase = ProgramPhase::Resting;
-        assert_eq!(s.zone_band(), None);
+        assert_eq!(s.zone_band(Some(150)), None);
+    }
+
+    #[test]
+    fn the_zone_position_agrees_with_the_trim() {
+        use crate::heart_rate::ZonePosition;
+        let t0 = Instant::now();
+        // 85 to 95 % of 190 is 161.5 to 180.5 bpm: 161 is under, 181 over.
+        let mut s = zone_state(t0);
+        s.max_heart_rate = 190;
+        let at = |s: &OrchestratorState, bpm| s.zone_band(Some(bpm)).and_then(|b| b.position);
+        assert_eq!(at(&s, 161), Some(ZonePosition::Under));
+        assert_eq!(at(&s, 162), Some(ZonePosition::In));
+        assert_eq!(at(&s, 180), Some(ZonePosition::In));
+        assert_eq!(at(&s, 181), Some(ZonePosition::Over));
+        // The trim slows the belt exactly when the HUD says over.
+        s.heart_bpm = Some(181);
+        run_ticks(&mut s, t0, 0, 21);
+        assert!(program_speed(&s) < 5.0, "over trims the speed down");
+        // And holds it in the zone.
+        let held = program_speed(&s);
+        s.heart_bpm = Some(180);
+        run_ticks(&mut s, t0, 21, 80);
+        assert_eq!(program_speed(&s), held);
+        // A paused step still shows where the pulse is.
+        let mut s = zone_state(t0);
+        s.program.as_mut().unwrap().paused = true;
+        assert_eq!(at(&s, 150), Some(ZonePosition::Under));
     }
 
     fn program_speed(s: &OrchestratorState) -> f32 {

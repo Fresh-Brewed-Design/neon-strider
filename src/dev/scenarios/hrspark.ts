@@ -2,6 +2,7 @@
 // =climb a climb into a heart rate zone step (its band shows), =gap a sensor
 // that dropped out for a minute and came back for one reading in between.
 import { params, snapshot } from "../mockState";
+import { mockZone } from "./hrzone";
 import type { Scenario } from "./types";
 
 /** Rust's window: 10 minutes at one point per 5 s. */
@@ -47,7 +48,7 @@ export const hrSpark: Scenario = {
       message: "Reading heart rate from the sensor.",
       bpm: last,
       history,
-      zone: params.get("hrspark") === "climb" ? { low_bpm: 133, high_bpm: 152 } : null,
+      zone: params.get("hrspark") === "climb" ? mockZone(133, 152, last) : null,
     });
   },
 };

@@ -96,7 +96,12 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     snapshot.calibration.offer &= snapshot.connection.connected;
     snapshot.ghost_pod = crate::ghost_pod::snapshot();
     snapshot.heart_rate = crate::heart_rate::snapshot();
-    snapshot.heart_rate.zone = state.zone_band();
+    // The zone shows on PULSE_RATE only with a sensor picked: without one
+    // there is no reading to place in it and the zone trims nothing.
+    snapshot.heart_rate.zone = match snapshot.heart_rate.sensor {
+        Some(_) => state.zone_band(snapshot.heart_rate.bpm),
+        None => None,
+    };
     snapshot.guided_task = crate::guided_task::snapshot();
     // Recomputed every tick, so the end of the grace after a stop reaches the
     // HUD with the next on-change emit (within a tick).

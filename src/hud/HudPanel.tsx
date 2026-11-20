@@ -1,7 +1,8 @@
-import type { AppSnapshot, Command, HudWidget } from "../ipc";
+import type { AppSnapshot, Command, HudWidget, ZoneBand } from "../ipc";
 import { describeActive, describePlan, waitHeadline, waitReason } from "../dashboard/programs/format";
 import { statWidget } from "../widgets/registry";
 import { Sparkline } from "../widgets/Sparkline";
+import { ZONE_ACCENT, zoneRange } from "../widgets/zone";
 import { HudNote } from "./HudNote";
 import { isMoving, startFailure } from "../state/linkStatus";
 import { SmallButton } from "./SmallButton";
@@ -14,6 +15,7 @@ export function StatCell({ id, snapshot }: { id: HudWidget; snapshot: AppSnapsho
   if (!def) return null;
   const { value, unit } = def.read(snapshot);
   const spark = def.spark?.(snapshot);
+  const zone = def.zone?.(snapshot);
   return (
     <div className={`hud-stat accent-${def.accent}`}>
       <span className="hud-label">{def.label}</span>
@@ -22,6 +24,22 @@ export function StatCell({ id, snapshot }: { id: HudWidget; snapshot: AppSnapsho
         {unit && <span className="hud-unit">{unit}</span>}
       </span>
       {spark && <Sparkline data={spark} className="hud-spark" />}
+      {zone && <ZoneLine zone={zone} />}
+    </div>
+  );
+}
+
+/** The heart rate zone under PULSE_RATE: Rust's word for under, in or over,
+ *  then the range. Rust's sentence is the tooltip. */
+function ZoneLine({ zone }: { zone: ZoneBand }) {
+  const accent = zone.position ? ZONE_ACCENT[zone.position] : null;
+  return (
+    <div className="hud-zone" title={zone.message} data-testid="hud-zone">
+      <span className={accent ? `hud-zone-label is-placed accent-${accent}` : "hud-zone-label"}>{zone.label}</span>
+      <span className="hud-sub">
+        {zoneRange(zone)}
+        <span className="hud-unit"> BPM</span>
+      </span>
     </div>
   );
 }

@@ -1,0 +1,1 @@
+- PULSE_RATE shows a program step's heart rate zone on the HUD and the Live page: the range in bpm, and whether your pulse is under, in or over it.
