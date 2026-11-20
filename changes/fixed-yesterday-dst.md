@@ -1,0 +1,1 @@
+- Fixed history showing the wrong "Yesterday" label for an hour after a daylight-saving clock change.
