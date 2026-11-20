@@ -59,6 +59,35 @@ mod util;
 pub(crate) use display::current_monitors;
 pub(crate) use hud::{ensure_hud_native, position_hud};
 
+/// The release app's bundle identifier, as in `tauri.conf.json`. Its data,
+/// logs, WebView data, Credential Manager entries and single-instance lock
+/// are all keyed by it.
+pub const RELEASE_IDENTIFIER: &str = "com.freshbreweddesign.neonstrider";
+/// Dev builds (`cfg(debug_assertions)`) run under their own identifier, so
+/// `npm run tauri dev` gets its own folders, credentials and single-instance
+/// lock and never opens the real database.
+pub const DEV_IDENTIFIER: &str = "com.freshbreweddesign.neonstrider.dev";
+/// The identifier this build runs under.
+pub const IDENTIFIER: &str = if cfg!(debug_assertions) {
+    DEV_IDENTIFIER
+} else {
+    RELEASE_IDENTIFIER
+};
+
+/// The app's Tauri context. Release builds use `tauri.conf.json` as it is;
+/// dev builds swap in [`DEV_IDENTIFIER`] before anything resolves a path.
+#[cfg(not(debug_assertions))]
+fn app_context() -> tauri::Context {
+    tauri::generate_context!()
+}
+
+#[cfg(debug_assertions)]
+fn app_context() -> tauri::Context {
+    let mut context = tauri::generate_context!();
+    context.config_mut().identifier = DEV_IDENTIFIER.to_string();
+    context
+}
+
 /// Argument the autostart entry passes, so a login launch can be told apart.
 const AUTOSTART_ARG: &str = "--autostart";
 const TRAY_MENU_QUIT: &str = "quit";
@@ -95,12 +124,14 @@ fn dashboard_just_closed() -> bool {
         .is_some_and(|t| t.elapsed() < TRAY_CLICK_DEBOUNCE)
 }
 
+#[cfg(not(debug_assertions))]
 #[tauri::command]
 fn get_launch_at_login(app: tauri::AppHandle) -> Result<bool, String> {
     use tauri_plugin_autostart::ManagerExt;
     app.autolaunch().is_enabled().map_err(|e| e.to_string())
 }
 
+#[cfg(not(debug_assertions))]
 #[tauri::command]
 fn set_launch_at_login(app: tauri::AppHandle, enabled: bool) -> Result<bool, String> {
     use tauri_plugin_autostart::ManagerExt;
@@ -111,6 +142,24 @@ fn set_launch_at_login(app: tauri::AppHandle, enabled: bool) -> Result<bool, Str
         launcher.disable().map_err(|e| e.to_string())?;
     }
     launcher.is_enabled().map_err(|e| e.to_string())
+}
+
+/// Dev builds never launch at login: the autostart entry is named after the
+/// product, so a dev build would replace the release app's own entry.
+#[cfg(debug_assertions)]
+#[tauri::command]
+fn get_launch_at_login() -> Result<bool, String> {
+    Ok(false)
+}
+
+#[cfg(debug_assertions)]
+#[tauri::command]
+fn set_launch_at_login(enabled: bool) -> Result<bool, String> {
+    if enabled {
+        Err("Dev builds never launch at login.".to_string())
+    } else {
+        Ok(false)
+    }
 }
 
 /// Close the windows down to the tray: the dashboard unless pinned, the HUD
@@ -328,7 +377,7 @@ pub fn run() {
             export::export_sessions_csv
         ])
         .on_window_event(on_window_event)
-        .build(tauri::generate_context!())
+        .build(app_context())
         // Nothing can run without it; the panic hook logs why.
         .expect("error building tauri application");
     app.run(|_app, event| {
@@ -341,4 +390,23 @@ pub fn run() {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Release builds run under `tauri.conf.json`'s identifier, unchanged;
+    /// dev and test builds run under their own.
+    #[test]
+    fn identifiers() {
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        assert_eq!(conf["identifier"], RELEASE_IDENTIFIER);
+        assert_ne!(DEV_IDENTIFIER, RELEASE_IDENTIFIER);
+        #[cfg(debug_assertions)]
+        assert_eq!(IDENTIFIER, DEV_IDENTIFIER);
+        #[cfg(not(debug_assertions))]
+        assert_eq!(IDENTIFIER, RELEASE_IDENTIFIER);
+    }
 }

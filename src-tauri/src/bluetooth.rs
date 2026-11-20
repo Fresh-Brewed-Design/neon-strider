@@ -723,8 +723,9 @@ async fn connect_to(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
 }
 
 /// Link the dev builds' simulated treadmill and start the connection's tasks,
-/// as `subscribe_and_start` does for a real one. It is not saved as the
-/// treadmill to reconnect to: dev and release builds share the database.
+/// as `subscribe_and_start` does for a real one, and save it as the treadmill
+/// to reconnect to. Dev builds have their own database (`IDENTIFIER`), so
+/// this never touches the release app's saved treadmill.
 #[cfg(debug_assertions)]
 async fn connect_sim(app: &tauri::AppHandle) {
     begin_new_link().await;
@@ -741,6 +742,17 @@ async fn connect_sim(app: &tauri::AppHandle) {
     let deck = DeckLink::Sim(link);
     tokio::spawn(spawn_protocol_worker(app.clone(), deck.clone()));
     *CONNECTED_DECK.lock().await = Some(deck);
+
+    let app_b = app.clone();
+    let saved = crate::util::blocking(move || {
+        let mut config = crate::persistence::load_config(&app_b);
+        config.last_device_id = Some(crate::sim_link::SIM_DECK_ID.to_string());
+        crate::persistence::save_config(&app_b, &config)
+    })
+    .await;
+    if let Err(e) = saved {
+        log::warn!("Could not remember the simulated treadmill: {}", e);
+    }
 }
 
 /// Up to `link::CONNECT_TRIES` full cycles of disconnect, connect, discover
