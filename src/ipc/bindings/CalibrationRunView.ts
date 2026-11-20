@@ -11,14 +11,35 @@ export type CalibrationRunView = {
  */
 target_kmh: number, phase: CalibrationPhase, 
 /**
- * The count's time so far (counting) or in all (counted), s, from Rust's clock.
+ * Taps taken since the tapping last started over.
+ */
+passes: number, 
+/**
+ * Times between taps that agree with the median.
+ */
+kept: number, 
+/**
+ * Times between taps dropped as a missed or doubled tap.
+ */
+dropped: number, 
+/**
+ * Seconds since the first tap (to the last tap once measured), from
+ * Rust's clock.
  */
 elapsed_s: number, 
 /**
- * Mean deck-reported speed over the count, once it is timed.
+ * The belt's real speed from the taps so far, km/h.
+ */
+measured_kmh: number | null, 
+/**
+ * The deck's mean reported speed over the taps so far, km/h.
  */
 reported_kmh: number | null, 
 /**
- * The point, once he entered his count.
+ * Why the tapping started over, or why a tap was not taken.
+ */
+note: string | null, 
+/**
+ * The point, once the taps agree.
  */
 result: CalibrationResult | null, };

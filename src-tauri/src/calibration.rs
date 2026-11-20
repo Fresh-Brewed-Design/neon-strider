@@ -1,24 +1,32 @@
-//! The guided calibration (a Labs switch, off by default): the limits a
-//! calibration point must stay inside (shared with the engine and the UI), the
-//! math that turns one timed run into a point, and the run Rust keeps while he
-//! walks it.
+//! GROUND_TRUTH, the guided calibration (a Labs switch, off by default): the
+//! limits a calibration point must stay inside (shared with the engine and
+//! the UI), the tap run Rust keeps while the user walks it, and the point it
+//! gives.
 //!
 //! A point is `(speed, stride_length_cm, distance_scale)`: `speed` is what the
 //! deck reports (hardware km/h) and `distance_scale` is reported distance over
 //! real distance, so physical km/h = hardware km/h / scale (see `engine.rs`).
 //!
-//! One run per target speed: RUN (his press) sets the belt to the target; once
-//! it is steady he presses COUNT and counts belt loops (and steps if he can)
-//! until DONE. Rust times the run itself and samples the deck's reported speed
-//! while he counts, so a belt that stopped or changed speed during the count
-//! is refused instead of saved as a 0 km/h point.
+//! One run per target speed: RUN (the user's press) sets the belt to the
+//! target; then the user taps (Space, Alt+Space anywhere, or the TAP button)
+//! each time the mark on the belt passes. Rust timestamps every tap; the real
+//! speed is the belt loop's length over the median time between taps
+//! (`tap.rs`), and the run finishes by itself once enough of those times
+//! agree. Rust also samples the deck's reported speed while the user taps,
+//! so a belt that stops or changes speed starts the tapping over instead of
+//! giving a wrong point. Tapping never sends anything to the treadmill.
+//!
+//! The belt loop's length is asked once and kept per treadmill, by the same
+//! Bluetooth identity as DECK_PROFILE (`belt_key_for`).
 //!
 //! RUN ALL walks the whole list as a sweep: Rust keeps which speeds are saved,
 //! skipped or still to do. Saving or skipping one never touches the belt; the
-//! next speed waits for his RUN.
+//! next speed waits for the user's RUN.
 //!
-//! The list of target speeds is a setting he edits (ADD_SPEED and remove):
-//! kept in the settings table, checked here, and read by RUN ALL.
+//! The list of target speeds is a setting the user edits (ADD_SPEED and
+//! remove): kept in the settings table, checked here, and read by RUN ALL.
+
+mod tap;
 
 use crate::engine::OrchestratorState;
 use crate::protocol::CalibrationPoint;
@@ -35,18 +43,17 @@ pub const MAX_STRIDE_CM: f32 = 200.0;
 /// Distance scale a point may have (reported over real distance).
 pub const MIN_SCALE: f32 = 0.2;
 pub const MAX_SCALE: f32 = 3.0;
-/// The belt loop length he can enter, cm.
+/// The belt loop length the user can enter, cm: from the shortest walking
+/// pad loop (about 2 m) with room to spare, to well past a running deck's.
 pub const MIN_BELT_CM: f32 = 50.0;
 pub const MAX_BELT_CM: f32 = 1000.0;
-/// A count shorter than this is too coarse to trust.
-pub const MIN_RUN_S: f32 = 15.0;
-/// Fewest steps that give a stride.
-pub const MIN_STEPS: u32 = 10;
-/// The speeds the wizard offers until he edits the list, in deck km/h.
+/// The speeds the wizard offers until the user edits the list, in deck km/h.
 pub const DEFAULT_TARGETS_KMH: [f32; 5] = [2.0, 3.0, 4.0, 5.0, 6.0];
 /// A reported speed below this is a still belt.
 const STOPPED_BELOW_KMH: f32 = 0.05;
-/// Reported speeds during one count may differ by at most this much.
+/// Reported speeds during one run may differ by at most this much: the deck
+/// reports tenths and wobbles by one, while a real change is a step of 0.5 or
+/// more from a press or a program.
 const MAX_SPREAD_KMH: f32 = 0.25;
 
 const KEY_WIZARD: &str = "labs_calibration_wizard";
@@ -54,8 +61,11 @@ const KEY_WIZARD: &str = "labs_calibration_wizard";
 const KEY_TARGETS: &str = "labs_calibration_targets";
 static WIZARD_ON: AtomicBool = AtomicBool::new(false);
 static RUN: Mutex<Option<Run>> = Mutex::new(None);
+/// A run is open and still taking taps: the input hook reads this to know
+/// whether Alt+Space is a tap, without taking a lock.
+static TAP_LISTENING: AtomicBool = AtomicBool::new(false);
 static SWEEP: Mutex<Option<Sweep>> = Mutex::new(None);
-/// The stored target list; None until he edits it (the defaults apply).
+/// The stored target list; None until the user edits it (the defaults apply).
 static TARGETS: Mutex<Option<Vec<f32>>> = Mutex::new(None);
 /// Targets this close together are one speed.
 const SAME_TARGET_KMH: f32 = 0.05;
@@ -70,8 +80,8 @@ pub struct CalibrationLimits {
     pub max_scale: f32,
     pub min_belt_cm: f32,
     pub max_belt_cm: f32,
-    pub min_run_s: f32,
-    pub min_steps: u32,
+    /// Agreeing times between taps a run needs (`tap::MIN_AGREEING`).
+    pub min_agreeing: u32,
 }
 
 impl Default for CalibrationLimits {
@@ -83,37 +93,9 @@ impl Default for CalibrationLimits {
             max_scale: MAX_SCALE,
             min_belt_cm: MIN_BELT_CM,
             max_belt_cm: MAX_BELT_CM,
-            min_run_s: MIN_RUN_S,
-            min_steps: MIN_STEPS,
+            min_agreeing: tap::MIN_AGREEING as u32,
         }
     }
-}
-
-/// What he counted during one run.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS)]
-#[serde(tag = "method", rename_all = "snake_case")]
-#[ts(export, export_to = "../../src/ipc/bindings/")]
-pub enum CalibrationCount {
-    /// Passes of a mark on the belt, each one belt loop; steps too if he
-    /// counted them (for the stride).
-    Loops {
-        loops: f32,
-        belt_length_cm: f32,
-        steps: Option<u32>,
-    },
-    /// Steps of a stride he already knows.
-    Steps { steps: u32, stride_cm: f32 },
-    /// Steps alone, for a belt with no mark to count. The distance factor
-    /// stays what the calibration already has at this speed; the stride is the
-    /// distance that factor gives, over the steps.
-    StepsOnly { steps: u32 },
-}
-
-/// A timed count: how long it ran and the deck's mean reported speed.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Measurement {
-    pub elapsed_s: f32,
-    pub reported_kmh: f32,
 }
 
 /// The point one run gives, with the numbers behind it.
@@ -125,15 +107,17 @@ pub struct CalibrationResult {
         type = "{ speed: number, stride_length_cm: number, distance_scale: number, runs: number }"
     )]
     pub point: CalibrationPoint,
-    /// The speed he really walked, km/h.
+    /// The speed the belt really ran, km/h.
     pub real_kmh: f32,
-    /// The distance he really walked, m.
+    /// The deck's mean reported speed over the taps, km/h.
+    pub reported_kmh: f32,
+    /// The distance the belt really ran between the first and last tap, m.
     pub real_m: f32,
     /// The distance the deck reported for the same time, m.
     pub reported_m: f32,
-    /// Steps a minute, when he counted steps.
+    /// Steps a minute, when steps were timed (none for a belt-only run).
     pub cadence_spm: Option<f32>,
-    /// False when the stride came from the current calibration (loops only).
+    /// False when the stride came from the current calibration.
     pub stride_measured: bool,
     /// The saved point at the run's speed with this run averaged in (ADD
     /// RUN); none when the speed has no saved point yet.
@@ -149,9 +133,8 @@ pub struct CalibrationResult {
 const SAME_SPEED_KMH: f32 = 0.05;
 
 /// `saved` with one more run folded in, every run weighing the same. A run
-/// whose stride was borrowed from the calibration (no steps) keeps the saved
-/// stride; one whose factor was borrowed (steps only, `factor_counted` false)
-/// keeps the saved factor.
+/// whose stride was borrowed from the calibration keeps the saved stride; one
+/// whose factor was borrowed (`factor_counted` false) keeps the saved factor.
 pub fn averaged_point(
     saved: &CalibrationPoint,
     run: &CalibrationResult,
@@ -197,119 +180,65 @@ pub fn check_point_scales(
     Ok(())
 }
 
-/// The deck's speeds sampled during a count: their mean, or why the count
-/// can't be used. A still belt (the treadmill stopped mid-count) and a speed
-/// that changed are refused.
+/// The deck's speeds sampled during a run: their mean, or why the run can't
+/// be used. A still belt (the treadmill stopped) and a speed that changed are
+/// refused.
 pub fn summarize_samples(samples: &[f32]) -> Result<f32, String> {
     if samples.is_empty() {
-        return Err("No speed was read during the count. Run the speed again.".into());
+        return Err("No speed was read during the run. Run the speed again.".into());
     }
     let (min, max) = samples
         .iter()
         .fold((f32::MAX, f32::MIN), |(lo, hi), &s| (lo.min(s), hi.max(s)));
     if min < STOPPED_BELOW_KMH {
-        return Err("The belt stopped during the count. Run the speed again.".into());
+        return Err("The belt stopped, so tapping starts again.".into());
     }
     if max - min > MAX_SPREAD_KMH {
         return Err(format!(
-            "The speed changed during the count ({min:.1} to {max:.1} km/h). Run the speed again."
+            "The speed changed ({min:.1} to {max:.1} km/h), so tapping starts again."
         ));
     }
     Ok(samples.iter().sum::<f32>() / samples.len() as f32)
 }
 
-/// The point from one run. `stride_at` gives the current calibration's stride
-/// at a real speed, used when he counted loops but no steps. `scale_at` gives
-/// its distance factor at a reported speed, used when he counted steps only.
-pub fn point_from_count(
-    m: Measurement,
-    count: &CalibrationCount,
+/// The point from a settled tap run: `median_s` between passes of a
+/// `belt_cm` loop over `elapsed_s`, while the deck reported `reported_kmh`.
+/// `stride_at` gives the current calibration's stride at a real speed, since
+/// a belt run times no steps.
+pub fn point_from_taps(
+    belt_cm: f32,
+    median_s: f64,
+    elapsed_s: f32,
+    reported_kmh: f32,
     stride_at: impl Fn(f32) -> f32,
-    scale_at: impl Fn(f32) -> f32,
 ) -> Result<CalibrationResult, String> {
-    if !m.elapsed_s.is_finite() || m.elapsed_s < MIN_RUN_S {
-        return Err(format!(
-            "Count for at least {MIN_RUN_S:.0} s. The count ran {:.1} s.",
-            m.elapsed_s
-        ));
+    if !(median_s.is_finite() && median_s > 0.0) {
+        return Err("Tap each time the mark passes.".into());
     }
-    if !m.reported_kmh.is_finite() || m.reported_kmh < STOPPED_BELOW_KMH {
+    if !reported_kmh.is_finite() || reported_kmh < STOPPED_BELOW_KMH {
         return Err("The belt was not moving. Run the speed again.".into());
     }
-    let reported_m = m.reported_kmh / 3.6 * m.elapsed_s;
-    let (real_m, steps) = match *count {
-        CalibrationCount::Loops {
-            loops,
-            belt_length_cm,
-            steps,
-        } => {
-            if !(loops.is_finite() && loops > 0.0) {
-                return Err("Enter how many loops you counted.".into());
-            }
-            if !in_range(belt_length_cm, MIN_BELT_CM, MAX_BELT_CM) {
-                return Err(format!(
-                    "Belt length must be {MIN_BELT_CM:.0} to {MAX_BELT_CM:.0} cm."
-                ));
-            }
-            (loops * belt_length_cm / 100.0, steps)
-        }
-        CalibrationCount::Steps { steps, stride_cm } => {
-            if !in_range(stride_cm, MIN_STRIDE_CM, MAX_STRIDE_CM) {
-                return Err(format!(
-                    "Stride must be {MIN_STRIDE_CM:.0} to {MAX_STRIDE_CM:.0} cm."
-                ));
-            }
-            (steps as f32 * stride_cm / 100.0, Some(steps))
-        }
-        CalibrationCount::StepsOnly { steps } => {
-            let scale = scale_at(m.reported_kmh);
-            if !in_range(scale, MIN_SCALE, MAX_SCALE) {
-                return Err(format!(
-                    "The current distance factor is {scale:.2}, outside {MIN_SCALE} to {MAX_SCALE}. Fix it in the calibration points first."
-                ));
-            }
-            (reported_m / scale, Some(steps))
-        }
-    };
-    if let Some(n) = steps {
-        if n < MIN_STEPS {
-            return Err(format!("Count at least {MIN_STEPS} steps."));
-        }
-    }
-    let real_kmh = real_m / m.elapsed_s * 3.6;
-    let scale = reported_m / real_m;
+    let real_kmh = (belt_cm as f64 / 100.0 / median_s * 3.6) as f32;
+    let scale = reported_kmh / real_kmh;
     if !in_range(scale, MIN_SCALE, MAX_SCALE) {
         return Err(format!(
-            "The loop count gives a factor of {scale:.2}, outside {MIN_SCALE} to {MAX_SCALE}. Check the loop count and run the speed again."
+            "The taps give a factor of {scale:.2}, outside {MIN_SCALE} to {MAX_SCALE}. Check the belt length and tap each pass of one mark."
         ));
     }
-    let measured_stride = match count {
-        CalibrationCount::Loops { .. } => steps.map(|n| real_m / n as f32 * 100.0),
-        CalibrationCount::Steps { stride_cm, .. } => Some(*stride_cm),
-        CalibrationCount::StepsOnly { steps } => Some(real_m / *steps as f32 * 100.0),
-    };
-    let stride_cm = match measured_stride {
-        Some(cm) if !in_range(cm, MIN_STRIDE_CM, MAX_STRIDE_CM) => {
-            return Err(format!(
-                "The step count gives a {cm:.0} cm stride, outside {MIN_STRIDE_CM:.0} to {MAX_STRIDE_CM:.0} cm. Check the step count."
-            ));
-        }
-        Some(cm) => cm,
-        None => stride_at(real_kmh).clamp(MIN_STRIDE_CM, MAX_STRIDE_CM),
-    };
     Ok(CalibrationResult {
         point: CalibrationPoint {
             // The deck reports tenths of km/h.
-            speed: (m.reported_kmh * 10.0).round() / 10.0,
-            stride_length_cm: stride_cm,
+            speed: (reported_kmh * 10.0).round() / 10.0,
+            stride_length_cm: stride_at(real_kmh).clamp(MIN_STRIDE_CM, MAX_STRIDE_CM),
             distance_scale: scale,
             runs: 1,
         },
         real_kmh,
-        real_m,
-        reported_m,
-        cadence_spm: steps.map(|n| n as f32 / m.elapsed_s * 60.0),
-        stride_measured: measured_stride.is_some(),
+        reported_kmh,
+        real_m: real_kmh / 3.6 * elapsed_s,
+        reported_m: reported_kmh / 3.6 * elapsed_s,
+        cadence_spm: None,
+        stride_measured: false,
         averaged: None,
     })
 }
@@ -319,108 +248,148 @@ pub fn point_from_count(
 #[serde(rename_all = "snake_case")]
 #[ts(export, export_to = "../../src/ipc/bindings/")]
 pub enum CalibrationPhase {
-    /// The belt is on its way to the target; COUNT when it is steady.
+    /// The belt is on its way to the target, or no tap has come yet.
     Settling,
-    /// He is counting; DONE stops the clock.
-    Counting,
-    /// The count is timed; he enters what he counted.
-    Counted,
+    /// Taps are coming in; the run finishes by itself once they agree.
+    Tapping,
+    /// The taps agreed: the result is ready to save.
+    Measured,
 }
 
 /// One run, kept by Rust from RUN until it is saved or closed.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Run {
     pub target_kmh: f32,
-    phase: CalibrationPhase,
-    started: Option<Instant>,
+    belt_cm: f32,
+    /// When each tap came, since the tapping last started over.
+    taps: Vec<Instant>,
+    /// The deck's reported speed, read while the user taps.
     samples: Vec<f32>,
-    measurement: Option<Measurement>,
+    /// Why the tapping started over, or why a tap was not taken.
+    note: Option<String>,
     result: Option<CalibrationResult>,
 }
 
 impl Run {
-    pub fn new(target_kmh: f32) -> Self {
+    pub fn new(target_kmh: f32, belt_cm: f32) -> Self {
         Self {
             target_kmh,
-            phase: CalibrationPhase::Settling,
-            started: None,
+            belt_cm,
+            taps: vec![],
             samples: vec![],
-            measurement: None,
+            note: None,
             result: None,
         }
     }
 
-    /// COUNT: start the clock. Refused while the belt is still.
-    pub fn start_count(&mut self, now: Instant, raw_kmh: f32) -> Result<(), String> {
-        if self.phase == CalibrationPhase::Counting {
-            return Ok(());
+    fn phase(&self) -> CalibrationPhase {
+        match (self.result.is_some(), self.taps.is_empty()) {
+            (true, _) => CalibrationPhase::Measured,
+            (false, true) => CalibrationPhase::Settling,
+            (false, false) => CalibrationPhase::Tapping,
+        }
+    }
+
+    /// Still taking taps.
+    pub fn listening(&self) -> bool {
+        self.result.is_none()
+    }
+
+    /// The taps as seconds since the first.
+    fn tap_seconds(&self) -> Vec<f64> {
+        let Some(first) = self.taps.first() else {
+            return vec![];
+        };
+        self.taps
+            .iter()
+            .map(|t| t.duration_since(*first).as_secs_f64())
+            .collect()
+    }
+
+    /// Start the tapping over, saying why.
+    fn restart(&mut self, why: impl Into<String>) {
+        self.taps.clear();
+        self.samples.clear();
+        self.result = None;
+        self.note = Some(why.into());
+    }
+
+    /// TAP AGAIN: clear the taps and any result. The belt keeps going.
+    pub fn retap(&mut self) {
+        self.taps.clear();
+        self.samples.clear();
+        self.result = None;
+        self.note = None;
+    }
+
+    /// One tap at `now`, with the deck reporting `raw_kmh`. Never touches the
+    /// belt. `stride_at` gives the current calibration's stride at a real
+    /// speed, for the point once the taps agree.
+    pub fn tap(&mut self, now: Instant, raw_kmh: f32, stride_at: impl Fn(f32) -> f32) {
+        if self.result.is_some() {
+            self.note = Some("The run is measured. TAP AGAIN starts it over.".into());
+            return;
         }
         if raw_kmh < STOPPED_BELOW_KMH {
-            return Err(
-                "The belt is not moving. Press RUN, then COUNT once it is up to speed.".into(),
-            );
+            self.restart("The belt is not moving. Press RUN, then tap once it is up to speed.");
+            return;
         }
-        self.phase = CalibrationPhase::Counting;
-        self.started = Some(now);
-        self.samples = vec![raw_kmh];
-        self.measurement = None;
-        self.result = None;
-        Ok(())
-    }
-
-    /// The deck's reported speed, read while counting (each snapshot tick).
-    pub fn sample(&mut self, raw_kmh: f32) {
-        if self.phase == CalibrationPhase::Counting {
+        if let Some(last) = self.taps.last() {
+            if now.duration_since(*last).as_secs_f64() < tap::DOUBLE_TAP_S {
+                return;
+            }
+        }
+        if self.taps.len() == 1 {
+            // The second tap is the first sign the restart's reason is past.
+            self.note = None;
+        }
+        self.taps.push(now);
+        self.samples.push(raw_kmh);
+        if let Err(why) = summarize_samples(&self.samples) {
+            // This tap stands as the first of a fresh start at the new speed.
+            self.restart(why);
+            self.taps.push(now);
             self.samples.push(raw_kmh);
+            return;
         }
+        self.try_finish(stride_at);
     }
 
-    /// DONE: stop the clock. A count the samples refuse goes back to settling.
-    pub fn stop_count(&mut self, now: Instant, raw_kmh: f32) -> Result<(), String> {
-        let Some(started) = self
-            .started
-            .filter(|_| self.phase == CalibrationPhase::Counting)
-        else {
-            return Err("Press COUNT first.".into());
-        };
-        // Too early: the clock keeps running, so he can carry on counting.
-        let elapsed = now.duration_since(started).as_secs_f32();
-        if elapsed < MIN_RUN_S {
-            return Err(format!(
-                "Keep counting: at least {MIN_RUN_S:.0} s, so far {elapsed:.0} s."
-            ));
+    /// The deck's reported speed, read each snapshot tick while tapping. A
+    /// belt that stopped or changed speed starts the tapping over.
+    pub fn sample(&mut self, raw_kmh: f32) {
+        if self.taps.is_empty() || self.result.is_some() {
+            return;
         }
         self.samples.push(raw_kmh);
-        let summary = summarize_samples(&self.samples);
-        self.samples.clear();
-        self.started = None;
-        match summary {
-            Ok(reported_kmh) => {
-                self.measurement = Some(Measurement {
-                    elapsed_s: now.duration_since(started).as_secs_f32(),
-                    reported_kmh,
-                });
-                self.phase = CalibrationPhase::Counted;
-                Ok(())
-            }
-            Err(e) => {
-                self.phase = CalibrationPhase::Settling;
-                Err(e)
-            }
+        if let Err(why) = summarize_samples(&self.samples) {
+            self.restart(why);
         }
     }
 
-    /// What he counted: work out the point.
-    pub fn count(
-        &mut self,
-        count: &CalibrationCount,
-        stride_at: impl Fn(f32) -> f32,
-        scale_at: impl Fn(f32) -> f32,
-    ) -> Result<(), String> {
-        let m = self.measurement.ok_or("Time a count first.")?;
-        let result = point_from_count(m, count, stride_at, scale_at);
-        self.result = result.as_ref().ok().cloned();
-        result.map(|_| ())
+    fn try_finish(&mut self, stride_at: impl Fn(f32) -> f32) {
+        let secs = self.tap_seconds();
+        let stats = tap::analyse(&secs);
+        let (true, Some(median_s)) = (stats.settled, stats.median_s) else {
+            return;
+        };
+        let elapsed_s = secs.last().copied().unwrap_or(0.0) as f32;
+        let reported = summarize_samples(&self.samples);
+        match reported
+            .and_then(|kmh| point_from_taps(self.belt_cm, median_s, elapsed_s, kmh, stride_at))
+        {
+            Ok(r) => {
+                log::info!(
+                    "Calibration run at {:.1} km/h measured: {:.2} km/h real over {} passes",
+                    self.target_kmh,
+                    r.real_kmh,
+                    self.taps.len()
+                );
+                self.result = Some(r);
+                self.note = None;
+            }
+            Err(why) => self.restart(why),
+        }
     }
 
     /// Average the result into the saved point at the run's target, if any.
@@ -435,15 +404,25 @@ impl Run {
     }
 
     pub fn view(&self, now: Instant) -> CalibrationRunView {
+        let secs = self.tap_seconds();
+        let stats = tap::analyse(&secs);
+        let elapsed_s = match (self.taps.first(), self.result.is_some()) {
+            (Some(_), true) => secs.last().copied().unwrap_or(0.0) as f32,
+            (Some(first), false) => now.duration_since(*first).as_secs_f32(),
+            (None, _) => 0.0,
+        };
         CalibrationRunView {
             target_kmh: self.target_kmh,
-            phase: self.phase,
-            elapsed_s: match (self.started, self.measurement) {
-                (Some(t), _) => now.duration_since(t).as_secs_f32(),
-                (None, Some(m)) => m.elapsed_s,
-                _ => 0.0,
-            },
-            reported_kmh: self.measurement.map(|m| m.reported_kmh),
+            phase: self.phase(),
+            passes: self.taps.len() as u32,
+            kept: stats.kept as u32,
+            dropped: stats.dropped as u32,
+            elapsed_s,
+            measured_kmh: stats
+                .median_s
+                .map(|m| (self.belt_cm as f64 / 100.0 / m * 3.6) as f32),
+            reported_kmh: summarize_samples(&self.samples).ok(),
+            note: self.note.clone(),
             result: self.result.clone(),
         }
     }
@@ -456,11 +435,22 @@ pub struct CalibrationRunView {
     /// Deck km/h the run asked for.
     pub target_kmh: f32,
     pub phase: CalibrationPhase,
-    /// The count's time so far (counting) or in all (counted), s, from Rust's clock.
+    /// Taps taken since the tapping last started over.
+    pub passes: u32,
+    /// Times between taps that agree with the median.
+    pub kept: u32,
+    /// Times between taps dropped as a missed or doubled tap.
+    pub dropped: u32,
+    /// Seconds since the first tap (to the last tap once measured), from
+    /// Rust's clock.
     pub elapsed_s: f32,
-    /// Mean deck-reported speed over the count, once it is timed.
+    /// The belt's real speed from the taps so far, km/h.
+    pub measured_kmh: Option<f32>,
+    /// The deck's mean reported speed over the taps so far, km/h.
     pub reported_kmh: Option<f32>,
-    /// The point, once he entered his count.
+    /// Why the tapping started over, or why a tap was not taken.
+    pub note: Option<String>,
+    /// The point, once the taps agree.
     pub result: Option<CalibrationResult>,
 }
 
@@ -471,7 +461,12 @@ pub struct CalibrationSnapshot {
     /// Labs switch: the guided wizard replaces the old calibration panel.
     pub wizard_enabled: bool,
     pub limits: CalibrationLimits,
-    /// The target speeds he keeps, slowest first.
+    /// The belt loop's length for this treadmill, cm; none until entered.
+    pub belt_cm: Option<f32>,
+    /// A treadmill is known (connected or saved), so a belt length can be
+    /// kept for it.
+    pub belt_treadmill: bool,
+    /// The target speeds the user keeps, slowest first.
     pub targets: Vec<CalibrationTarget>,
     pub run: Option<CalibrationRunView>,
     /// RUN ALL: the list being walked, if any.
@@ -737,7 +732,83 @@ pub fn remove_target(app: &AppHandle, kmh: f32, point_speeds: &[f32]) -> Result<
 }
 
 fn with_run<T>(f: impl FnOnce(&mut Option<Run>) -> T) -> T {
-    f(&mut RUN.lock().unwrap_or_else(|e| e.into_inner()))
+    let mut run = RUN.lock().unwrap_or_else(|e| e.into_inner());
+    let out = f(&mut run);
+    TAP_LISTENING.store(run.as_ref().is_some_and(Run::listening), Ordering::Relaxed);
+    out
+}
+
+/// A run is open and taking taps, so Alt+Space is a tap (read by the input
+/// hook on every key press, so an atomic and no lock).
+pub fn tap_listening() -> bool {
+    TAP_LISTENING.load(Ordering::Relaxed)
+}
+
+/// The settings key the belt loop length of the treadmill with this device
+/// id (as DECK_PROFILE normalizes it) is stored under, in cm.
+pub fn belt_key_for(device_id: &str) -> String {
+    format!("beltLoop:{device_id}")
+}
+
+/// The belt loop of the treadmill in use: its settings key and the length.
+struct Belt {
+    key: Option<String>,
+    cm: Option<f32>,
+}
+
+static BELT: Mutex<Belt> = Mutex::new(Belt {
+    key: None,
+    cm: None,
+});
+
+fn with_belt<T>(f: impl FnOnce(&mut Belt) -> T) -> T {
+    f(&mut BELT.lock().unwrap_or_else(|e| e.into_inner()))
+}
+
+/// A stored belt length, if it is a number inside the limits.
+fn decode_belt(raw: Option<&str>) -> Option<f32> {
+    raw.and_then(|r| r.trim().parse::<f32>().ok())
+        .filter(|cm| in_range(*cm, MIN_BELT_CM, MAX_BELT_CM))
+}
+
+/// Make the belt length the one stored for this treadmill. Called with
+/// DECK_PROFILE's switch (startup with the saved treadmill, each connection).
+pub fn switch_belt(app: &AppHandle, device_id: &str) {
+    let key = belt_key_for(device_id);
+    let cm = decode_belt(crate::persistence::read_setting(app, &key).as_deref());
+    with_belt(|b| {
+        b.key = Some(key);
+        b.cm = cm;
+    });
+}
+
+/// BELT_LOOP: the length of this treadmill's belt loop, kept for it.
+pub fn set_belt(app: &AppHandle, cm: f32) -> Result<(), String> {
+    if !in_range(cm, MIN_BELT_CM, MAX_BELT_CM) {
+        return Err(format!(
+            "Belt length must be {MIN_BELT_CM:.0} to {MAX_BELT_CM:.0} cm."
+        ));
+    }
+    let key = with_belt(|b| b.key.clone())
+        .ok_or("Connect the treadmill first, so the belt length is kept for it.")?;
+    crate::persistence::write_setting(app, &key, &format!("{cm}"))?;
+    with_belt(|b| b.cm = Some(cm));
+    log::info!("Belt loop set to {cm:.0} cm");
+    Ok(())
+}
+
+/// The belt length in use, cm.
+pub fn belt_cm() -> Option<f32> {
+    with_belt(|b| b.cm)
+}
+
+/// Tests: a treadmill with this belt length, without a database.
+#[cfg(test)]
+pub(crate) fn set_belt_for_test(cm: Option<f32>) {
+    with_belt(|b| {
+        b.key = Some(belt_key_for("TEST"));
+        b.cm = cm;
+    });
 }
 
 /// Read the Labs switch. Call once after the database is initialised.
@@ -785,9 +856,10 @@ fn with_sweep<T>(f: impl FnOnce(&mut Option<Sweep>) -> T) -> T {
 }
 
 fn open_run(state: &mut OrchestratorState, target_hw_kmh: f32) -> Result<(), String> {
+    let belt_cm = belt_cm().ok_or("Enter the belt loop length first.")?;
     begin_run(state, target_hw_kmh)?;
     log::info!("Calibration run at {target_hw_kmh:.1} km/h");
-    with_run(|r| *r = Some(Run::new(target_hw_kmh)));
+    with_run(|r| *r = Some(Run::new(target_hw_kmh, belt_cm)));
     Ok(())
 }
 
@@ -848,14 +920,12 @@ pub(crate) fn close_all() {
     with_sweep(|s| *s = None);
 }
 
-/// STOP was pressed: a run still settling or counting can't go on, so it
-/// closes (a sweep stays on its speed for the next RUN). A timed count
-/// waiting for his tally stays open.
+/// STOP was pressed: a run still settling or tapping can't go on, so it
+/// closes (a sweep stays on its speed for the next RUN). A measured run
+/// waiting to be saved stays open.
 pub(crate) fn on_stop() {
     with_run(|r| {
-        if r.as_ref()
-            .is_some_and(|run| run.phase != CalibrationPhase::Counted)
-        {
+        if r.as_ref().is_some_and(Run::listening) {
             *r = None;
         }
     });
@@ -869,32 +939,23 @@ fn on_run<T>(f: impl FnOnce(&mut Run) -> Result<T, String>) -> Result<T, String>
     })
 }
 
-pub(crate) fn count_start(raw_kmh: f32) -> Result<(), String> {
-    on_run(|run| run.start_count(Instant::now(), raw_kmh))
-}
-
-pub(crate) fn count_stop(raw_kmh: f32) -> Result<(), String> {
-    on_run(|run| run.stop_count(Instant::now(), raw_kmh))
-}
-
-pub(crate) fn count(state: &OrchestratorState, count: &CalibrationCount) -> Result<(), String> {
+/// TAP: the belt mark passed at `at` (taken as the press arrived, before any
+/// lock). Only reads the deck's speed; never sends anything to the belt.
+pub(crate) fn tap(state: &OrchestratorState, at: Instant) -> Result<(), String> {
     on_run(|run| {
-        run.count(
-            count,
-            |kmh| state.calculate_stride_length(kmh),
-            // The factor at the point's own speed (reported km/h in tenths, as
-            // the point is saved), so a steps-only point keeps it exactly.
-            |hw_kmh| {
-                let speed = (hw_kmh * 10.0).round() / 10.0;
-                speed / state.to_physical_speed(speed)
-            },
-        )?;
-        // Steps alone borrow the factor from the calibration: nothing to average.
-        let factor_counted = match count {
-            CalibrationCount::Loops { .. } | CalibrationCount::Steps { .. } => true,
-            CalibrationCount::StepsOnly { .. } => false,
-        };
-        run.average_into(&state.calibration_points, factor_counted);
+        run.tap(at, state.hardware_speed, |kmh| {
+            state.calculate_stride_length(kmh)
+        });
+        // A belt run times the belt alone: the factor is measured, the stride kept.
+        run.average_into(&state.calibration_points, true);
+        Ok(())
+    })
+}
+
+/// TAP AGAIN: clear the run's taps and result. The belt keeps going.
+pub(crate) fn retap() -> Result<(), String> {
+    on_run(|run| {
+        run.retap();
         Ok(())
     })
 }
@@ -904,7 +965,7 @@ pub(crate) fn close() {
     with_run(|r| *r = None);
 }
 
-/// Each snapshot tick: sample the deck's speed into a count and build the view.
+/// Each snapshot tick: sample the deck's speed into the taps and build the view.
 pub fn snapshot(state: &OrchestratorState) -> CalibrationSnapshot {
     let raw_kmh = state.hardware_speed;
     let targets = targets()
@@ -923,6 +984,8 @@ pub fn snapshot(state: &OrchestratorState) -> CalibrationSnapshot {
     CalibrationSnapshot {
         wizard_enabled: wizard_enabled(),
         limits: CalibrationLimits::default(),
+        belt_cm: belt_cm(),
+        belt_treadmill: with_belt(|b| b.key.is_some()),
         targets,
         run,
         sweep: with_sweep(|s| s.as_ref().map(Sweep::view)),
@@ -965,146 +1028,51 @@ mod tests {
         assert!(check_point_scales(&[pt(3.0, 0.12)], &[old]).is_err());
     }
 
-    fn m(elapsed_s: f32, reported_kmh: f32) -> Measurement {
-        Measurement {
-            elapsed_s,
-            reported_kmh,
-        }
-    }
-
-    fn loops(loops: f32, steps: Option<u32>) -> CalibrationCount {
-        CalibrationCount::Loops {
-            loops,
-            belt_length_cm: 300.0,
-            steps,
-        }
-    }
-
     const NO_STRIDE: fn(f32) -> f32 = |_| 74.0;
-    const NO_SCALE: fn(f32) -> f32 = |_| 1.0;
 
-    #[test]
-    fn loops_give_the_scale_and_steps_the_stride() {
-        // 3.6 km/h reported for 60 s is 60 m; 25 loops of 3 m is 75 m really.
-        let r =
-            point_from_count(m(60.0, 3.6), &loops(25.0, Some(100)), NO_STRIDE, NO_SCALE).unwrap();
-        assert!((r.reported_m - 60.0).abs() < 1e-3);
-        assert!((r.real_m - 75.0).abs() < 1e-3);
-        assert!((r.point.distance_scale - 0.8).abs() < 1e-4);
-        assert!((r.real_kmh - 4.5).abs() < 1e-3);
-        assert!((r.point.stride_length_cm - 75.0).abs() < 1e-3);
-        assert_eq!(r.point.speed, 3.6);
-        assert_eq!(r.cadence_spm, Some(100.0));
-        assert!(r.stride_measured);
+    /// A run at 3.0 km/h on a 300 cm belt.
+    fn run_at_3() -> Run {
+        Run::new(3.0, 300.0)
+    }
+
+    /// Tap `run` every `gap_s` s, `n` times from `t`, with the deck at `kmh`.
+    fn tap_n(run: &mut Run, t: Instant, gap_s: f64, n: usize, kmh: f32) -> Instant {
+        let mut at = t;
+        for i in 0..n {
+            at = t + Duration::from_secs_f64(i as f64 * gap_s);
+            run.tap(at, kmh, NO_STRIDE);
+        }
+        at
     }
 
     #[test]
-    fn loops_without_steps_keep_the_current_stride_at_the_real_speed() {
-        let seen = std::cell::Cell::new(0.0);
-        let r = point_from_count(
-            m(60.0, 3.6),
-            &loops(20.0, None),
-            |kmh| {
-                seen.set(kmh);
-                66.0
-            },
-            NO_SCALE,
-        )
-        .unwrap();
-        // 60 m really: scale 1.0, real speed 3.6 km/h.
-        assert!((r.point.distance_scale - 1.0).abs() < 1e-4);
-        assert!((seen.get() - 3.6).abs() < 1e-3);
-        assert_eq!(r.point.stride_length_cm, 66.0);
+    fn taps_give_the_real_speed_and_the_factor() {
+        // 300 cm every 4 s is 0.75 m/s, 2.7 km/h; the deck says 3.0.
+        let r = point_from_taps(300.0, 4.0, 36.0, 3.0, NO_STRIDE).unwrap();
+        assert!((r.real_kmh - 2.7).abs() < 1e-4);
+        assert!((r.point.distance_scale - 3.0 / 2.7).abs() < 1e-4);
+        assert_eq!(r.point.speed, 3.0);
+        assert!((r.real_m - 27.0).abs() < 1e-3);
+        assert!((r.reported_m - 30.0).abs() < 1e-3);
+        assert_eq!(r.point.stride_length_cm, 74.0);
         assert!(!r.stride_measured);
         assert_eq!(r.cadence_spm, None);
-    }
-
-    #[test]
-    fn steps_alone_set_the_stride_and_keep_the_factor() {
-        // The calibration says 0.8 at 3.6 km/h: 60 m reported is 75 m really,
-        // and 100 steps over 75 m is a 75 cm stride.
-        let c = CalibrationCount::StepsOnly { steps: 100 };
-        let r = point_from_count(m(60.0, 3.6), &c, NO_STRIDE, |_| 0.8).unwrap();
-        assert!((r.point.distance_scale - 0.8).abs() < 1e-4);
-        assert!((r.point.stride_length_cm - 75.0).abs() < 1e-3);
-        assert!((r.real_m - 75.0).abs() < 1e-3);
-        assert_eq!(r.cadence_spm, Some(100.0));
-        assert!(r.stride_measured);
-        // Too few steps, or a stride outside the limits, is refused.
-        let few = CalibrationCount::StepsOnly { steps: 5 };
-        assert!(point_from_count(m(60.0, 3.6), &few, NO_STRIDE, NO_SCALE).is_err());
-        let wild = CalibrationCount::StepsOnly { steps: 10 };
-        assert!(point_from_count(m(60.0, 3.6), &wild, NO_STRIDE, NO_SCALE).is_err());
-        // A stored factor outside the limits is not carried into a new point.
-        assert!(point_from_count(m(60.0, 3.6), &c, NO_STRIDE, |_| 0.0).is_err());
-    }
-
-    #[test]
-    fn steps_of_a_known_stride_give_the_scale() {
-        // 80 steps of 75 cm = 60 m; the deck said 3.0 km/h for 60 s = 50 m.
-        let c = CalibrationCount::Steps {
-            steps: 80,
-            stride_cm: 75.0,
-        };
-        let r = point_from_count(m(60.0, 3.0), &c, NO_STRIDE, NO_SCALE).unwrap();
-        assert!((r.point.distance_scale - 50.0 / 60.0).abs() < 1e-4);
-        assert_eq!(r.point.stride_length_cm, 75.0);
-    }
-
-    #[test]
-    fn the_point_speed_is_the_reported_speed_in_tenths() {
-        let r = point_from_count(m(30.0, 2.96), &loops(8.0, None), NO_STRIDE, NO_SCALE).unwrap();
+        // The point's speed is the reported speed in tenths.
+        let r = point_from_taps(300.0, 4.0, 36.0, 2.96, NO_STRIDE).unwrap();
         assert_eq!(r.point.speed, 3.0);
     }
 
     #[test]
-    fn short_still_or_miscounted_runs_are_refused() {
-        assert!(point_from_count(m(10.0, 3.0), &loops(4.0, None), NO_STRIDE, NO_SCALE).is_err());
-        assert!(point_from_count(m(60.0, 0.0), &loops(20.0, None), NO_STRIDE, NO_SCALE).is_err());
-        assert!(point_from_count(m(60.0, 3.0), &loops(0.0, None), NO_STRIDE, NO_SCALE).is_err());
-        assert!(
-            point_from_count(m(60.0, 3.0), &loops(f32::NAN, None), NO_STRIDE, NO_SCALE).is_err()
-        );
-        // 50 m reported against 1 loop (3 m): factor 16.7.
-        assert!(point_from_count(m(60.0, 3.0), &loops(1.0, None), NO_STRIDE, NO_SCALE).is_err());
-        // Five steps are too few for a stride.
-        assert!(
-            point_from_count(m(60.0, 3.0), &loops(17.0, Some(5)), NO_STRIDE, NO_SCALE).is_err()
-        );
-        // 50 m in 20 steps is a 250 cm stride.
-        assert!(
-            point_from_count(m(60.0, 3.0), &loops(17.0, Some(20)), NO_STRIDE, NO_SCALE).is_err()
-        );
-        let bad_belt = CalibrationCount::Loops {
-            loops: 17.0,
-            belt_length_cm: 10.0,
-            steps: None,
-        };
-        assert!(point_from_count(m(60.0, 3.0), &bad_belt, NO_STRIDE, NO_SCALE).is_err());
-        let bad_stride = CalibrationCount::Steps {
-            steps: 80,
-            stride_cm: 10.0,
-        };
-        assert!(point_from_count(m(60.0, 3.0), &bad_stride, NO_STRIDE, NO_SCALE).is_err());
-    }
-
-    #[test]
-    fn the_relaxed_limits_take_short_and_long_strides() {
-        // A 30 cm shuffle and a 150 cm stride: both outside the old 40 to 130.
-        for (steps, stride) in [(250u32, 30.0f32), (50, 150.0)] {
-            let real_m = steps as f32 * stride / 100.0;
-            let c = CalibrationCount::Loops {
-                loops: real_m / 3.0,
-                belt_length_cm: 300.0,
-                steps: Some(steps),
-            };
-            let reported = real_m / 60.0 * 3.6;
-            let r = point_from_count(m(60.0, reported), &c, NO_STRIDE, NO_SCALE).unwrap();
-            assert!((r.point.stride_length_cm - stride).abs() < 0.01, "{stride}");
-        }
-        // And a factor of 0.31, as seen on a real deck (issue #62).
-        // 3.1 km/h for 60 s is 51.67 m reported; 166.67 m really is 55.56 loops.
-        let r = point_from_count(m(60.0, 3.1), &loops(55.5556, None), NO_STRIDE, NO_SCALE).unwrap();
+    fn taps_that_give_a_factor_outside_the_limits_are_refused() {
+        // 300 cm every 60 s is 0.18 km/h against 3.0 reported: factor 16.7.
+        let e = point_from_taps(300.0, 60.0, 600.0, 3.0, NO_STRIDE).unwrap_err();
+        assert!(e.contains("belt length"), "{e}");
+        assert!(point_from_taps(300.0, 4.0, 36.0, 0.0, NO_STRIDE).is_err());
+        assert!(point_from_taps(300.0, f64::NAN, 36.0, 3.0, NO_STRIDE).is_err());
+        // A factor of 0.31, as seen on a real deck (issue #62), is fine.
+        let real_kmh: f64 = 3.1 / 0.31;
+        let gap = 3.0 / (real_kmh / 3.6);
+        let r = point_from_taps(300.0, gap, 30.0, 3.1, NO_STRIDE).unwrap();
         assert!((r.point.distance_scale - 0.31).abs() < 1e-3);
     }
 
@@ -1120,74 +1088,119 @@ mod tests {
     }
 
     #[test]
-    fn a_run_times_with_its_own_clock_and_refuses_a_still_belt() {
+    fn a_run_finishes_by_itself_once_the_taps_agree() {
         let t = Instant::now();
-        let mut run = Run::new(3.0);
-        assert!(
-            run.start_count(t, 0.0).is_err(),
-            "never counts a still belt"
-        );
+        let mut run = run_at_3();
         assert_eq!(run.view(t).phase, CalibrationPhase::Settling);
-        assert!(run.stop_count(t, 3.0).is_err(), "DONE before COUNT");
-
-        run.start_count(t, 3.0).unwrap();
-        run.sample(3.0);
-        let early = run
-            .stop_count(t + Duration::from_secs(10), 3.0)
-            .unwrap_err();
-        assert!(early.contains("Keep counting"), "{early}");
-        assert_eq!(
-            run.view(t).phase,
-            CalibrationPhase::Counting,
-            "DONE too early keeps counting"
-        );
-        run.sample(3.0);
-        let later = t + Duration::from_secs(40);
-        assert_eq!(run.view(t + Duration::from_secs(5)).elapsed_s, 5.0);
-        run.stop_count(later, 3.0).unwrap();
-        let v = run.view(later + Duration::from_secs(99));
-        assert_eq!(v.phase, CalibrationPhase::Counted);
-        assert_eq!(v.elapsed_s, 40.0, "the clock stops at DONE");
+        assert!(run.listening());
+        // Eight taps are seven gaps: not yet.
+        tap_n(&mut run, t, 4.0, 8, 3.0);
+        let v = run.view(t + Duration::from_secs(30));
+        assert_eq!(v.phase, CalibrationPhase::Tapping);
+        assert_eq!((v.passes, v.kept, v.dropped), (8, 7, 0));
+        assert!((v.measured_kmh.unwrap() - 2.7).abs() < 1e-3, "live speed");
         assert_eq!(v.reported_kmh, Some(3.0));
-
-        // 3.0 km/h for 40 s = 33.3 m reported; 10 loops of 3 m = 30 m.
-        run.count(&loops(10.0, Some(45)), NO_STRIDE, NO_SCALE)
-            .unwrap();
-        let p = run.view(later).result.unwrap().point;
-        assert!((p.distance_scale - 33.333 / 30.0).abs() < 1e-3);
-        assert_eq!(p.speed, 3.0);
-
-        // A bad count keeps no result.
-        assert!(run.count(&loops(0.0, None), NO_STRIDE, NO_SCALE).is_err());
-        assert_eq!(run.view(later).result, None);
-    }
-
-    #[test]
-    fn a_belt_that_stops_mid_count_goes_back_to_settling() {
-        let t = Instant::now();
-        let mut run = Run::new(4.0);
-        run.start_count(t, 4.0).unwrap();
-        run.sample(4.0);
-        run.sample(0.0);
-        let e = run
-            .stop_count(t + Duration::from_secs(30), 0.0)
-            .unwrap_err();
-        assert!(e.contains("stopped"), "{e}");
+        assert_eq!(v.elapsed_s, 30.0, "from the first tap, Rust's clock");
+        // The ninth settles it.
+        run.tap(t + Duration::from_secs(32), 3.0, NO_STRIDE);
+        let v = run.view(t + Duration::from_secs(99));
+        assert_eq!(v.phase, CalibrationPhase::Measured);
+        assert_eq!(v.elapsed_s, 32.0, "the clock stops at the last tap");
+        let r = v.result.unwrap();
+        assert!((r.real_kmh - 2.7).abs() < 1e-3);
+        assert!(!run.listening());
+        // More taps change nothing and say why.
+        run.tap(t + Duration::from_secs(36), 3.0, NO_STRIDE);
         let v = run.view(t);
-        assert_eq!(v.phase, CalibrationPhase::Settling);
-        assert_eq!(v.reported_kmh, None, "nothing at 0 km/h to save");
-        assert!(run.count(&loops(10.0, None), NO_STRIDE, NO_SCALE).is_err());
+        assert_eq!(v.passes, 9);
+        assert!(v.note.unwrap().contains("TAP AGAIN"));
+        // TAP AGAIN clears it.
+        run.retap();
+        let v = run.view(t);
+        assert_eq!(
+            (v.phase, v.passes, v.result),
+            (CalibrationPhase::Settling, 0, None)
+        );
     }
 
     #[test]
-    fn samples_only_count_while_counting() {
+    fn a_missed_pass_is_dropped_and_the_run_still_finishes() {
         let t = Instant::now();
-        let mut run = Run::new(3.0);
-        run.sample(0.0); // the belt ramping up before COUNT
-        run.start_count(t, 3.0).unwrap();
-        run.stop_count(t + Duration::from_secs(20), 3.0).unwrap();
-        run.sample(0.0); // he stopped the belt after DONE
-        assert_eq!(run.view(t).reported_kmh, Some(3.0));
+        let mut run = run_at_3();
+        // Passes every 4 s; the one at 16 s was never tapped.
+        for i in (0..=10).filter(|i| *i != 4) {
+            run.tap(t + Duration::from_secs(i * 4), 3.0, NO_STRIDE);
+        }
+        let v = run.view(t);
+        assert_eq!((v.kept, v.dropped), (8, 1));
+        assert!((v.result.unwrap().real_kmh - 2.7).abs() < 1e-3);
+    }
+
+    #[test]
+    fn a_bounced_tap_is_one_tap() {
+        let t = Instant::now();
+        let mut run = run_at_3();
+        run.tap(t, 3.0, NO_STRIDE);
+        run.tap(t + Duration::from_millis(120), 3.0, NO_STRIDE);
+        assert_eq!(run.view(t).passes, 1);
+        run.tap(t + Duration::from_secs(4), 3.0, NO_STRIDE);
+        assert_eq!(run.view(t).passes, 2);
+    }
+
+    #[test]
+    fn a_still_belt_takes_no_taps() {
+        let t = Instant::now();
+        let mut run = run_at_3();
+        run.tap(t, 0.0, NO_STRIDE);
+        let v = run.view(t);
+        assert_eq!(v.passes, 0);
+        assert!(v.note.unwrap().contains("not moving"));
+    }
+
+    #[test]
+    fn a_belt_that_stops_or_changes_speed_starts_the_tapping_over() {
+        let t = Instant::now();
+        let mut run = run_at_3();
+        tap_n(&mut run, t, 4.0, 5, 3.0);
+        run.sample(3.0);
+        run.sample(0.0);
+        let v = run.view(t);
+        assert_eq!((v.phase, v.passes), (CalibrationPhase::Settling, 0));
+        assert!(v.note.unwrap().contains("stopped"));
+
+        // A tap at a new speed starts over from that tap.
+        tap_n(&mut run, t, 4.0, 5, 3.0);
+        run.tap(t + Duration::from_secs(20), 3.5, NO_STRIDE);
+        let v = run.view(t);
+        assert_eq!(v.passes, 1);
+        assert!(v.note.as_deref().unwrap().contains("changed"));
+        assert_eq!(v.reported_kmh, Some(3.5));
+        // The next tap clears the note.
+        run.tap(t + Duration::from_secs(24), 3.5, NO_STRIDE);
+        assert_eq!(run.view(t).note, None);
+    }
+
+    #[test]
+    fn samples_only_count_while_tapping() {
+        let t = Instant::now();
+        let mut run = run_at_3();
+        run.sample(0.0); // the belt ramping up before the first tap
+        tap_n(&mut run, t, 4.0, 9, 3.0);
+        run.sample(0.0); // the user stopped the belt after the run was measured
+        let v = run.view(t);
+        assert_eq!(v.phase, CalibrationPhase::Measured);
+        assert_eq!(v.reported_kmh, Some(3.0));
+    }
+
+    #[test]
+    fn a_stored_belt_length_must_be_a_number_inside_the_limits() {
+        assert_eq!(decode_belt(Some("280")), Some(280.0));
+        assert_eq!(decode_belt(Some(" 312.5 ")), Some(312.5));
+        assert_eq!(decode_belt(Some("10")), None);
+        assert_eq!(decode_belt(Some("long")), None);
+        assert_eq!(decode_belt(None), None);
+        assert_ne!(belt_key_for("AABB"), belt_key_for("CCDD"));
+        assert!(belt_key_for("AABB").ends_with("AABB"));
     }
 
     #[test]
@@ -1314,17 +1327,16 @@ mod tests {
             runs: 2,
             ..pt(3.0, 0.9)
         };
-        let run =
-            point_from_count(m(60.0, 3.6), &loops(25.0, Some(100)), NO_STRIDE, NO_SCALE).unwrap();
-        let mut r = run.clone();
+        let mut r = point_from_taps(300.0, 4.0, 36.0, 3.0, NO_STRIDE).unwrap();
         r.point.distance_scale = 1.2;
         r.point.stride_length_cm = 76.0;
+        r.stride_measured = true;
         let p = averaged_point(&saved, &r, true);
         assert_eq!(p.runs, 3);
         assert_eq!(p.speed, 3.0);
         assert!((p.distance_scale - 1.0).abs() < 1e-5);
         assert!((p.stride_length_cm - 72.0).abs() < 1e-4);
-        // A run with no steps keeps the saved stride; an old point is one run.
+        // A belt run (no steps) keeps the saved stride; an old point is one run.
         r.stride_measured = false;
         let old = CalibrationPoint {
             runs: 0,
@@ -1334,7 +1346,7 @@ mod tests {
         assert_eq!(p.runs, 2);
         assert_eq!(p.stride_length_cm, 70.0);
         assert!((p.distance_scale - 1.05).abs() < 1e-5);
-        // Steps alone: the stride averages, the saved factor stays.
+        // A stride-only run: the stride averages, the saved factor stays.
         r.stride_measured = true;
         let p = averaged_point(&saved, &r, false);
         assert_eq!(p.runs, 3);
@@ -1345,10 +1357,8 @@ mod tests {
     #[test]
     fn a_run_averages_into_the_point_at_its_target_only() {
         let t = Instant::now();
-        let mut run = Run::new(3.0);
-        run.start_count(t, 3.0).unwrap();
-        run.stop_count(t + Duration::from_secs(40), 3.0).unwrap();
-        run.count(&loops(10.0, None), NO_STRIDE, NO_SCALE).unwrap();
+        let mut run = run_at_3();
+        tap_n(&mut run, t, 4.0, 9, 3.0);
         run.average_into(&[pt(4.0, 0.8)], true);
         assert_eq!(run.view(t).result.unwrap().averaged, None);
         run.average_into(&[pt(4.0, 0.8), pt(3.0, 0.9)], true);

@@ -5,11 +5,15 @@
  */
 export type CalibrationResult = { point: { speed: number, stride_length_cm: number, distance_scale: number, runs: number }, 
 /**
- * The speed he really walked, km/h.
+ * The speed the belt really ran, km/h.
  */
 real_kmh: number, 
 /**
- * The distance he really walked, m.
+ * The deck's mean reported speed over the taps, km/h.
+ */
+reported_kmh: number, 
+/**
+ * The distance the belt really ran between the first and last tap, m.
  */
 real_m: number, 
 /**
@@ -17,11 +21,11 @@ real_m: number,
  */
 reported_m: number, 
 /**
- * Steps a minute, when he counted steps.
+ * Steps a minute, when steps were timed (none for a belt-only run).
  */
 cadence_spm: number | null, 
 /**
- * False when the stride came from the current calibration (loops only).
+ * False when the stride came from the current calibration.
  */
 stride_measured: boolean, 
 /**

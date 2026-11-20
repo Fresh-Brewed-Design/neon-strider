@@ -712,6 +712,13 @@ async fn connect_to(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
 async fn connect_sim(app: &tauri::AppHandle) {
     begin_new_link().await;
     log::info!("Linking the simulated treadmill (dev build).");
+    // Its own belt length, under an id no real Bluetooth address can have.
+    let app_b = app.clone();
+    let _ = crate::util::blocking(move || {
+        crate::calibration::switch_belt(&app_b, "SIMDECK");
+        Ok::<_, String>(())
+    })
+    .await;
     let link = crate::sim_link::SimLink::connect();
     tokio::spawn(listen_for_status(app.clone(), link.notifications(), true));
     let deck = DeckLink::Sim(link);
@@ -848,7 +855,15 @@ fn load_profile_for(app: &tauri::AppHandle, key: &str) -> crate::deck_profile::D
 /// previous treadmill taught it is saved first. Does nothing when it already
 /// is. Called at startup with the saved treadmill and on every connection.
 pub async fn switch_deck_profile(app: &tauri::AppHandle, raw_id: &str) {
-    let key = crate::deck_profile::key_for(&profile_device_id(raw_id));
+    let device_id = profile_device_id(raw_id);
+    // GROUND_TRUTH's belt length is kept per treadmill by the same identity.
+    let (app_b, id_b) = (app.clone(), device_id.clone());
+    let _ = crate::util::blocking(move || {
+        crate::calibration::switch_belt(&app_b, &id_b);
+        Ok::<_, String>(())
+    })
+    .await;
+    let key = crate::deck_profile::key_for(&device_id);
     let pending = {
         let mut state = ORCHESTRATOR.lock().await;
         if state.deck_profile_key.as_deref() == Some(&key) {

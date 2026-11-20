@@ -749,13 +749,16 @@ pub enum Command {
     CalibrationRunStart {
         target_kmh: f32,
     },
-    /// COUNT: start the run's clock (refused while the belt is still).
-    CalibrationCountStart,
-    /// DONE: stop the clock (refused if the belt stopped or changed speed).
-    CalibrationCountStop,
-    /// What he counted; the point appears in `calibration.run.result`.
-    CalibrationRunCount {
-        count: crate::calibration::CalibrationCount,
+    /// TAP: the belt mark passed now (the TAP button or Space in a window;
+    /// Alt+Space anywhere comes through the input hook). Rust timestamps it;
+    /// the point appears in `calibration.run.result` once the taps agree.
+    /// Never moves the belt.
+    CalibrationTap,
+    /// TAP AGAIN: clear the run's taps and result. The belt keeps going.
+    CalibrationTapReset,
+    /// BELT_LOOP: the belt loop's length in cm, kept for this treadmill.
+    CalibrationBeltSet {
+        cm: f32,
     },
     /// Close the run (after saving its point, or to cancel). The belt keeps going.
     CalibrationRunClose,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calibrationRows, chrono, listedTarget, runRowFor } from "./guided";
+import { calibrationRows, chrono, deckVerdict, droppedLine, listedTarget, runRowFor } from "./guided";
 
 const point = (speed: number) => ({ speed, stride_length_cm: 70, distance_scale: 0.9 });
 
@@ -44,5 +44,21 @@ describe("listedTarget", () => {
     const targets = [{ kmh: 2, runnable: true }, { kmh: 14, runnable: false }];
     expect(listedTarget(targets, 14.02)).toEqual({ kmh: 14, runnable: false });
     expect(listedTarget(targets, 3)).toBeNull();
+  });
+});
+
+describe("deckVerdict", () => {
+  it("says how far the deck is from the belt, in plain words", () => {
+    expect(deckVerdict(3, 2.82, 3)).toBe("At 3.0 km/h the deck runs 6.0 % slow.");
+    expect(deckVerdict(4, 4.6, 4)).toBe("At 4.0 km/h the deck runs 15 % fast.");
+    expect(deckVerdict(3, 3.01, 3)).toBe("At 3.0 km/h the deck matches the belt.");
+  });
+});
+
+describe("droppedLine", () => {
+  it("names dropped taps only when there are some", () => {
+    expect(droppedLine(0)).toBeNull();
+    expect(droppedLine(1)).toBe("1 tap dropped as a miss or a double.");
+    expect(droppedLine(3)).toBe("3 taps dropped as misses or doubles.");
   });
 });

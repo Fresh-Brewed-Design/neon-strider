@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Plus, Trash2, X } from "lucide-react";
 import {
   dispatch,
@@ -14,26 +14,34 @@ import { useTreadmillStore } from "../../../store/treadmillStore";
 import { useGuidedTask } from "../../guided/useGuidedTask";
 import { GhostButton, Hint, Label, NeonButton } from "../../ui";
 import { cx } from "../../util";
-import { INPUT_CLASS, NumberField } from "../fields";
-import { calibrationRows, chrono, listedTarget, runRowFor, type CalibrationRow } from "./guided";
+import { INPUT_CLASS } from "../fields";
+import {
+  calibrationRows,
+  chrono,
+  deckVerdict,
+  droppedLine,
+  listedTarget,
+  runRowFor,
+  type CalibrationRow,
+} from "./guided";
 
 /**
- * Labs: the guided calibration. One row per speed; RUN (his press) sets the
- * belt to it, COUNT and DONE time a count of belt loops in Rust, and Rust
- * works out the point from what he counted. ADD RUN times a saved point again,
- * and Rust averages the new run in with the earlier ones (`result.averaged`).
- * RUN ALL walks every row as a sweep (`snapshot.calibration.sweep`): saving
- * or skipping one speed leaves the belt alone, and the next waits for RUN.
- * The run panel follows `snapshot.calibration.run`, so it is back where it was
- * when the dashboard reopens mid-run. STOP is never disabled.
- * The target list is a Rust setting (`snapshot.calibration.targets`): ADD_SPEED
- * and remove go through Rust, which checks them, and RUN ALL reads it there.
+ * Labs: GROUND_TRUTH, the guided calibration. The belt loop's length comes
+ * first, asked once per treadmill (`snapshot.calibration.belt_cm`). Then one
+ * row per speed: RUN (the user's press) sets the belt to it, and the user taps
+ * as the belt mark passes (TAP, Space in the dashboard, Alt+Space anywhere).
+ * Rust timestamps the taps and ends the run once they agree, with the point
+ * it gives. ADD RUN times a saved point again, and Rust averages the new run
+ * in with the earlier ones (`result.averaged`). RUN ALL walks every row as a
+ * sweep (`snapshot.calibration.sweep`): saving or skipping one speed leaves
+ * the belt alone, and the next waits for RUN. The run panel follows
+ * `snapshot.calibration.run`, so it is back where it was when the dashboard
+ * reopens mid-run. STOP is never disabled. The target list is a Rust setting
+ * (`snapshot.calibration.targets`): ADD_SPEED and remove go through Rust.
  */
 export function GuidedCalibration() {
   const snap = useAppSnapshot();
   const points = useTreadmillStore((s) => s.calibrationPoints);
-  const beltLength = useTreadmillStore((s) => s.beltLength);
-  const updateSettings = useTreadmillStore((s) => s.updateSettings);
   const removePoint = useTreadmillStore((s) => s.removeCalibrationPoint);
   // Which RUN was pressed, only for its status line; the open run itself is Rust's.
   const [pressed, setPressed] = useState<number | null>(null);
@@ -41,6 +49,8 @@ export function GuidedCalibration() {
   // Which remove was pressed, for its status line under that row.
   const [removing, setRemoving] = useState<number | null>(null);
   const removeAction = useAction();
+  // BELT_LOOP's form is open again after CHANGE.
+  const [editingBelt, setEditingBelt] = useState(false);
   const cal = snap?.calibration;
   // The dashboard stays open and on top while a run or sweep is open (#139).
   useGuidedTask("ground_truth", Boolean(cal?.run || cal?.sweep));
@@ -51,6 +61,7 @@ export function GuidedCalibration() {
   const rows = calibrationRows(points, [...cal.targets.map((t) => t.kmh), ...(run ? [run.target_kmh] : [])]);
   const runRow = run ? runRowFor(rows, run.target_kmh) : null;
   const sweep = cal.sweep;
+  const beltSet = cal.belt_cm !== null;
 
   const start = (row: CalibrationRow) => {
     setPressed(row.targetKmh);
@@ -62,21 +73,27 @@ export function GuidedCalibration() {
       <div className="font-digital text-xs font-bold uppercase tracking-[0.18em] text-neon-cyan">
         NEON STRIDER // GROUND_TRUTH
       </div>
-      <Hint>
-        Mark the belt, press RUN, then press COUNT as the mark passes once the belt is steady. Count loops for at least a
-        minute, and steps to measure your stride. With no mark on the belt, steps alone set the stride and keep the
-        distance factor.
-      </Hint>
-      <NumberField
-        label="BELT_LOOP"
-        hint="The whole belt's length, once around."
-        value={beltLength}
-        min={cal.limits.min_belt_cm}
-        max={cal.limits.max_belt_cm}
-        unit="cm"
-        onCommit={(v) => updateSettings({ beltLength: v })}
-      />
-      {sweep ? (
+      {!beltSet || editingBelt ? (
+        <BeltLoopStep
+          limits={cal.limits}
+          current={cal.belt_cm}
+          treadmillKnown={cal.belt_treadmill}
+          onSaved={() => setEditingBelt(false)}
+        />
+      ) : (
+        <div className="flex items-center justify-between gap-3">
+          <Readout label="BELT_LOOP" value={`${(cal.belt_cm ?? 0).toFixed(0)} cm`} className="text-white" />
+          <GhostButton disabled={run !== null} onClick={() => setEditingBelt(true)}>
+            CHANGE
+          </GhostButton>
+        </div>
+      )}
+      {beltSet && (
+        <Hint>
+          Stick a strip of tape across the belt as a mark, press RUN, and tap each time the mark passes.
+        </Hint>
+      )}
+      {!beltSet ? null : sweep ? (
         <SweepPanel sweep={sweep} running={run !== null} />
       ) : (
         !run && (
@@ -131,7 +148,7 @@ export function GuidedCalibration() {
               <div className="flex shrink-0 items-center gap-1">
                 <NeonButton
                   onClick={() => start(row)}
-                  disabled={runAction.pending || sweep !== null || outOfRange}
+                  disabled={runAction.pending || sweep !== null || outOfRange || !beltSet}
                   className="px-3 py-1.5"
                   tone={row.point ? "magenta" : "cyan"}
                 >
@@ -186,7 +203,6 @@ export function GuidedCalibration() {
                 row={row}
                 limits={cal.limits}
                 rawKmh={snap.deck.raw_speed_kmh}
-                beltLength={beltLength}
                 inSweep={sweep !== null}
                 onClosed={() => {
                   setPressed(null);
@@ -199,6 +215,66 @@ export function GuidedCalibration() {
         })}
       </div>
       <AddSpeed />
+    </div>
+  );
+}
+
+/** The old app-wide belt length's default: a stored value other than it was typed in, so it can prefill the form. */
+const OLD_DEFAULT_BELT_CM = 120;
+
+/** BELT_LOOP: asked once per treadmill, with a short guide. Rust checks and keeps it. */
+function BeltLoopStep({
+  limits,
+  current,
+  treadmillKnown,
+  onSaved,
+}: {
+  limits: CalibrationLimits;
+  current: number | null;
+  treadmillKnown: boolean;
+  onSaved: () => void;
+}) {
+  const oldBelt = useTreadmillStore((s) => s.beltLength);
+  const prefill = current ?? (oldBelt !== OLD_DEFAULT_BELT_CM ? oldBelt : null);
+  const [value, setValue] = useState(prefill === null ? "" : String(prefill));
+  const save = useAction();
+  const submit = () => {
+    if (value.trim() === "" || save.pending) return;
+    void save.run(() => dispatch({ type: "calibration_belt_set", cm: Number(value) })).then((r) => {
+      if (r !== undefined) onSaved();
+    });
+  };
+  return (
+    <div className="hacker-panel space-y-2 rounded-lg border-neon-cyan/20 bg-white/[0.02] p-3">
+      <Label className="text-neon-yellow">BELT_LOOP</Label>
+      <Hint>GROUND_TRUTH times the belt, so it needs the belt loop's length once for each treadmill.</Hint>
+      <ol className="list-decimal space-y-1 pl-5 font-mono text-[11px] text-white/70">
+        <li>With the treadmill off, stick a strip of tape across the belt as a mark.</li>
+        <li>Measure along the top from the mark, pushing the belt round by hand until the mark comes back.</li>
+        <li>Enter the whole loop in cm, a little over twice the deck's length.</li>
+      </ol>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="block">
+          <Label>LOOP_LENGTH</Label>
+          <input
+            type="number"
+            min={limits.min_belt_cm}
+            max={limits.max_belt_cm}
+            step={1}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submit()}
+            className={cx(INPUT_CLASS, "mt-1 block w-28")}
+            aria-label="Belt loop length in cm"
+          />
+        </label>
+        <span className="pb-2 font-mono text-[11px] text-white/50">cm</span>
+        <NeonButton className="px-3 py-1.5" disabled={save.pending || value.trim() === ""} onClick={submit}>
+          SAVE
+        </NeonButton>
+      </div>
+      <ActionStatus pending={save.pending} error={save.error} />
+      {!treadmillKnown && <Hint>Connect the treadmill first, so the belt length is kept for that treadmill.</Hint>}
     </div>
   );
 }
@@ -250,13 +326,18 @@ function Readout({ label, value, className }: { label: string; value: string; cl
   );
 }
 
-/** One run: SPIN_UP, COUNT_WINDOW, then TALLY and the point it gives. */
+/** Space in a field types a space; anywhere else in the window it is a tap. */
+function typingInto(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+}
+
+/** One run: SPIN_UP, TAPPING until Rust's taps agree, then MEASURED and the point it gives. */
 function RunPanel({
   run,
   row,
   limits,
   rawKmh,
-  beltLength,
   inSweep,
   onClosed,
 }: {
@@ -264,18 +345,30 @@ function RunPanel({
   row: CalibrationRow;
   limits: CalibrationLimits;
   rawKmh: number;
-  beltLength: number;
   inSweep: boolean;
   onClosed: () => void;
 }) {
-  const step = useAction();
-  const tally = useAction();
-  const [loops, setLoops] = useState("");
-  const [steps, setSteps] = useState("");
-  // No mark on the belt to count: steps alone set the stride, the factor stays.
-  const [stepsOnly, setStepsOnly] = useState(false);
+  const tap = useAction();
+  const again = useAction();
   const addPoint = useTreadmillStore((s) => s.addCalibrationPoint);
   const updatePoint = useTreadmillStore((s) => s.updateCalibrationPoint);
+  const listening = run.phase !== "measured";
+  const sendTap = tap.run;
+
+  // Space taps while the dashboard has focus; Alt+Space reaches Rust's input
+  // hook from any window, so the two never count one press twice.
+  useEffect(() => {
+    if (!listening) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== " " || e.altKey || e.ctrlKey || e.metaKey || typingInto(e.target)) return;
+      // Also keeps a focused button from treating Space as its own click.
+      e.preventDefault();
+      if (e.repeat) return;
+      void sendTap(() => dispatch({ type: "calibration_tap" }));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [listening, sendTap]);
 
   // In a sweep, closing a run marks its speed saved or skipped.
   const close = (saved = false) => {
@@ -291,24 +384,11 @@ function RunPanel({
     else addPoint(result.point);
     close(true);
   };
-  const compute = () => {
-    if (stepsOnly) {
-      void tally.run(() =>
-        dispatch({ type: "calibration_run_count", count: { method: "steps_only", steps: Math.round(Number(steps)) } }),
-      );
-      return;
-    }
-    const stepCount = steps.trim() === "" ? null : Math.round(Number(steps));
-    void tally.run(() =>
-      dispatch({
-        type: "calibration_run_count",
-        count: { method: "loops", loops: Number(loops), belt_length_cm: beltLength, steps: stepCount },
-      }),
-    );
-  };
 
-  const phaseLabel = { settling: "SPIN_UP", counting: "COUNT_WINDOW", counted: "TALLY" }[run.phase];
+  const phaseLabel = { settling: "SPIN_UP", tapping: "TAPPING", measured: "MEASURED" }[run.phase];
   const r = run.result;
+  const dropped = droppedLine(run.dropped);
+  const progress = Math.min(1, run.kept / limits.min_agreeing);
 
   return (
     <div className="mt-3 space-y-3 border-t border-white/10 pt-3">
@@ -317,122 +397,96 @@ function RunPanel({
         <div className="flex items-start gap-4">
           <Readout label="DECK_NOW" value={`${rawKmh.toFixed(1)} km/h`} className="text-neon-cyan" />
           <Readout
+            label="TRUE_VELOCITY"
+            value={run.measured_kmh === null ? "--" : `${run.measured_kmh.toFixed(2)} km/h`}
+            className="text-neon-magenta"
+          />
+          <Readout label="PASSES" value={String(run.passes)} className="text-white" />
+          <Readout
             label="CHRONO"
             value={chrono(run.elapsed_s)}
-            className={run.phase === "counting" ? "text-neon-yellow" : "text-white"}
+            className={run.phase === "tapping" ? "text-neon-yellow" : "text-white"}
           />
           <StopButton />
         </div>
       </div>
 
-      {run.phase === "settling" && (
-        <div>
-          <Hint>When the belt is steady at {run.target_kmh.toFixed(1)} km/h, press COUNT as the mark passes.</Hint>
-          <div className="mt-2 flex gap-2">
-            <NeonButton
-              className="flex-1 py-2"
-              disabled={step.pending}
-              onClick={() => void step.run(() => dispatch({ type: "calibration_count_start" }))}
-            >
-              COUNT
-            </NeonButton>
-            <GhostButton onClick={() => close()}>{inSweep ? "SKIP" : "Close"}</GhostButton>
-          </div>
-          <ActionStatus pending={step.pending} error={step.error} className="mt-1" />
-        </div>
-      )}
-
-      {run.phase === "counting" && (
-        <div>
+      {listening && (
+        <div className="space-y-2">
           <Hint>
-            Count each pass of the mark. Press DONE as it passes on your last loop, after at least{" "}
-            {limits.min_run_s.toFixed(0)} s.
+            {run.phase === "settling"
+              ? `When the belt is steady at ${run.target_kmh.toFixed(1)} km/h, tap each time the mark passes.`
+              : "Keep tapping each pass of the mark; the run ends by itself once the times agree."}
           </Hint>
-          <NeonButton
-            tone="magenta"
-            className="mt-2 w-full py-3"
-            disabled={step.pending}
-            onClick={() => void step.run(() => dispatch({ type: "calibration_count_stop" }))}
+          <button
+            type="button"
+            onPointerDown={(e) => {
+              // The press, not the release, is the moment the mark passed.
+              if (e.button !== 0) return;
+              void tap.run(() => dispatch({ type: "calibration_tap" }));
+            }}
+            className="w-full select-none rounded-lg border-2 border-neon-cyan/70 bg-neon-cyan/10 py-6 font-digital text-2xl font-bold tracking-[0.3em] text-neon-cyan transition-colors active:bg-neon-cyan/30"
           >
-            DONE
-          </NeonButton>
-          <ActionStatus pending={step.pending} error={step.error} className="mt-1" />
-        </div>
-      )}
-
-      {run.phase === "counted" && (
-        <div className="space-y-3">
-          <Hint>
-            Timed at {(run.reported_kmh ?? 0).toFixed(2)} km/h on the deck.{" "}
-            {stepsOnly
-              ? `Enter the steps counted (at least ${limits.min_steps}); the distance factor stays the same.`
-              : `Enter the loops counted; steps are optional (at least ${limits.min_steps}).`}
-          </Hint>
-          <label className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.15em] text-white/60">
-            <input
-              type="checkbox"
-              checked={stepsOnly}
-              onChange={(e) => {
-                setStepsOnly(e.target.checked);
-                tally.reset();
-              }}
-            />
-            NO_MARK // steps only
-          </label>
-          <div className="flex flex-wrap items-end gap-3">
-            {!stepsOnly && (
-              <label className="block">
-                <Label>BELT_LOOPS</Label>
-                <input
-                  type="number"
-                  min={0}
-                  step={0.5}
-                  value={loops}
-                  onChange={(e) => setLoops(e.target.value)}
-                  className={cx(INPUT_CLASS, "mt-1 block w-24")}
-                />
-              </label>
-            )}
-            <label className="block">
-              <Label>STEP_COUNT</Label>
-              <input
-                type="number"
-                min={0}
-                step={1}
-                value={steps}
-                onChange={(e) => setSteps(e.target.value)}
-                className={cx(INPUT_CLASS, "mt-1 block w-24")}
-              />
-            </label>
-            <NeonButton
-              className="px-3 py-1.5"
-              disabled={tally.pending || (stepsOnly ? steps.trim() === "" : loops.trim() === "")}
-              onClick={compute}
-            >
-              COMPUTE
-            </NeonButton>
+            TAP
+          </button>
+          <ActionStatus pending={false} error={tap.error} />
+          <Hint>Space taps in the dashboard, and Alt+Space taps from any window.</Hint>
+          <div
+            className="h-1.5 overflow-hidden rounded bg-white/10"
+            role="progressbar"
+            aria-label="Agreeing passes"
+            aria-valuemin={0}
+            aria-valuemax={limits.min_agreeing}
+            aria-valuenow={Math.min(run.kept, limits.min_agreeing)}
+          >
+            <div className="h-full bg-neon-cyan transition-all" style={{ width: `${progress * 100}%` }} />
           </div>
-          <ActionStatus pending={tally.pending} error={tally.error} />
-          {r && (
-            <div className="space-y-2">
-              <div className="flex flex-wrap gap-4 rounded border border-white/5 bg-white/5 p-2">
-                <Readout label="FACTOR" value={`${r.point.distance_scale.toFixed(3)}x`} className="text-neon-magenta" />
-                <Readout label="STRIDE" value={`${r.point.stride_length_cm.toFixed(1)} cm`} className="text-white" />
-                <Readout label="TRUE_VELOCITY" value={`${r.real_kmh.toFixed(2)} km/h`} className="text-neon-cyan" />
-                <Readout label="DISPLACEMENT" value={`${r.real_m.toFixed(1)} m`} className="text-white" />
-                {r.cadence_spm !== null && (
-                  <Readout label="CADENCE" value={`${r.cadence_spm.toFixed(0)} /min`} className="text-white" />
-                )}
-              </div>
-              {!r.stride_measured && <Hint>No steps counted, so the calibrated stride is kept.</Hint>}
+          <div className="font-mono text-[11px] text-white/60">
+            {run.kept} of {limits.min_agreeing} agreeing times between passes.
+          </div>
+          {run.reported_kmh !== null && run.measured_kmh !== null && (
+            <div className="font-mono text-[11px] text-white/60">
+              The deck shows {run.reported_kmh.toFixed(1)} km/h; the belt measures {run.measured_kmh.toFixed(2)} km/h.
             </div>
           )}
+          {dropped && <Hint>{dropped}</Hint>}
+          {run.note && <div className="font-mono text-[11px] text-neon-yellow">{run.note}</div>}
+          <div className="flex justify-end">
+            <GhostButton onClick={() => close()}>{inSweep ? "SKIP" : "Close"}</GhostButton>
+          </div>
+        </div>
+      )}
+
+      {r && (
+        <div className="space-y-3">
+          <div className="font-digital text-sm text-white">
+            {deckVerdict(r.point.speed, r.real_kmh, r.reported_kmh)}
+          </div>
+          <div className="flex flex-wrap gap-4 rounded border border-white/5 bg-white/5 p-2">
+            <Readout label="TRUE_VELOCITY" value={`${r.real_kmh.toFixed(2)} km/h`} className="text-neon-cyan" />
+            <Readout label="DECK_VELOCITY" value={`${r.reported_kmh.toFixed(2)} km/h`} className="text-white" />
+            <Readout label="FACTOR" value={`${r.point.distance_scale.toFixed(3)}x`} className="text-neon-magenta" />
+            <Readout label="PASSES" value={String(run.passes)} className="text-white" />
+          </div>
+          {dropped && <Hint>{dropped}</Hint>}
+          <Hint>
+            {row.index !== null
+              ? `AVERAGE IN folds the run into the saved ${row.targetKmh.toFixed(1)} km/h point.`
+              : `SAVE POINT corrects distances at ${r.point.speed.toFixed(1)} km/h.`}
+          </Hint>
           <div className="flex gap-2">
-            <NeonButton tone="green" className="flex-1 py-2" disabled={!r} onClick={save}>
+            <NeonButton tone="green" className="flex-1 py-2" onClick={save}>
               {row.index !== null ? "AVERAGE IN" : "SAVE POINT"}
             </NeonButton>
+            <GhostButton
+              disabled={again.pending}
+              onClick={() => void again.run(() => dispatch({ type: "calibration_tap_reset" }))}
+            >
+              TAP AGAIN
+            </GhostButton>
             <GhostButton onClick={() => close()}>{inSweep ? "SKIP" : "Discard"}</GhostButton>
           </div>
+          <ActionStatus pending={again.pending} error={again.error} />
         </div>
       )}
     </div>
