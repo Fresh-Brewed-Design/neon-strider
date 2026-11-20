@@ -665,6 +665,11 @@ pub enum Command {
     },
     /// HEART_LINK: stop reading and forget the sensor (the default).
     HeartRateForget,
+    /// Labs: GHOST_POD's power switch. On, the pod also serves running power
+    /// (the Cycling Power service) while GHOST_POD is on.
+    GhostPodPowerSet {
+        on: bool,
+    },
 }
 
 #[cfg(test)]
@@ -941,6 +946,9 @@ mod tests {
         );
         let c: Command = serde_json::from_str(r#"{"type":"heart_rate_forget"}"#).unwrap();
         assert_eq!(c, Command::HeartRateForget);
+        let c: Command =
+            serde_json::from_str(r#"{"type":"ghost_pod_power_set","on":true}"#).unwrap();
+        assert_eq!(c, Command::GhostPodPowerSet { on: true });
         let c: Command = serde_json::from_str(r#"{"type":"traffic_open_folder"}"#).unwrap();
         assert_eq!(c, Command::TrafficOpenFolder);
 

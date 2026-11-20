@@ -5,20 +5,23 @@ import { dispatch } from "../../ipc";
 import { useAppSnapshot } from "../../state/useAppState";
 import { Hint } from "../ui";
 import { Section, Toggle } from "./fields";
-import { ghostPodPill, ghostPodReading, ghostPodTone } from "./ghostPod";
+import { ghostPodPill, ghostPodPowerReading, ghostPodReading, ghostPodTone } from "./ghostPod";
 
 /**
  * System -> Labs: experiments that are off until switched on. GHOST_POD makes
  * the PC a Bluetooth foot pod for a watch (`snapshot.ghost_pod`, Rust's
- * `ghost_pod.rs`). It only reports the belt; nothing from the watch moves it.
+ * `ghost_pod.rs`). Its power switch, shown while GHOST_POD is on, adds running
+ * power for the watch. It only reports the belt; nothing from the watch moves it.
  */
 export function LabsSection() {
   const pod = useAppSnapshot()?.ghost_pod;
   const change = useAction();
+  const power = useAction();
   if (!pod) return null;
 
   const tone = ghostPodTone(pod);
   const reading = ghostPodReading(pod);
+  const powerReading = ghostPodPowerReading(pod);
 
   return (
     <Section
@@ -52,6 +55,38 @@ export function LabsSection() {
           )
         )}
         <Hint className="mt-0.5">Pausing on the watch can't pause the belt yet: a foot pod has no way to hear it.</Hint>
+        {pod.enabled && (
+          <div className="mt-3 border-l border-white/10 pl-3">
+            <Toggle
+              label="GHOST_POD power: Send running power to my watch"
+              description="Your watch reads running power from the PC, rising with the incline; a paused belt sends 0 W."
+              checked={pod.power_enabled}
+              onChange={(on) => void power.run(() => dispatch({ type: "ghost_pod_power_set", on }))}
+            />
+            {power.pending || power.error ? (
+              <ActionStatus
+                pending={power.pending}
+                error={
+                  power.error &&
+                  `Could not switch GHOST_POD power ${pod.power_enabled ? "off" : "on"}: ${power.error}`
+                }
+                className="mt-1"
+              />
+            ) : (
+              powerReading && (
+                <ActionStatus
+                  ambient
+                  pending={pod.power_watches > 0 ? null : powerReading}
+                  done={pod.power_watches > 0 ? powerReading : null}
+                  className="mt-1"
+                />
+              )
+            )}
+            <Hint className="mt-0.5">
+              Watts come from the METABOLIC_BURN estimate and your weight. Switching power restarts GHOST_POD; the watch reconnects.
+            </Hint>
+          </div>
+        )}
       </div>
     </Section>
   );
