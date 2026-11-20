@@ -132,8 +132,10 @@ cargo clippy --all-targets -- -D warnings   # in src-tauri/: lints, no warnings 
 ```
 
 Design without a treadmill: with a Vite server running, open `/hud-preview.html` or
-`/dashboard-preview.html`. Both run on a mocked backend (`src/dev/mockBackend.ts`); URL flags
-pick scenarios (one per line, sorted by flag name; add a new flag in its place):
+`/dashboard-preview.html`. Both run on a mocked backend (`src/dev/mockBackend.ts`, with the
+shared snapshot in `src/dev/mockState.ts`). Each feature's URL flags, commands and queries are one
+file in `src/dev/scenarios/`, listed in `scenarios/index.ts`; a new feature adds its own file
+there. URL flags pick scenarios (one per line, sorted by flag name; add a new flag in its place):
 
 - `?anchor=top_left` (or any corner): the HUD's corner
 - `?autoinstall=off`: "Install automatically" switched off (with `?update=...`)
