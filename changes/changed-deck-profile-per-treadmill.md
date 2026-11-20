@@ -1,0 +1,1 @@
+- DECK_PROFILE is now kept per treadmill: each deck's learned speeds are saved under its Bluetooth identity and switch with the connection, so a second treadmill no longer starts from the first one's speeds. The profile learned so far goes to the treadmill you connect first.
