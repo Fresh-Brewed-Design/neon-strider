@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.24.0 (2026-11-20)
+
+### New
+
+- WRIST_LINK (Labs, off by default): the PC serves a second Bluetooth service next to GHOST_POD so a Connect IQ data field on the watch can read the belt state. This is the link test only; nothing the watch sends moves the belt yet.
+
+## 1.23.0 (2026-11-20)
+
+### New
+
+- OCULAR_IMPLANT breaks now guide full blinks: close and hold, squeeze gently, open, 2 seconds each, 15 times in a 90-second break. The HUD card shows each step as `SHUTTER // CLOSE`, `SQUEEZE` and `OPEN`, and with Tones on each step has its own soft beep. The timing comes from a blinking-exercise trial; the sources are in docs/research.md.
+
+## 1.22.0 (2026-11-20)
+
+### New
+
+- Heart rate (HEART_LINK): pick a Bluetooth heart rate sensor, such as a Garmin watch with Broadcast Heart Rate on, in System -> Heart rate. It is off until you pick one and runs apart from the treadmill link. Heart rate shows as a new stat, PULSE_RATE, on the HUD and dashboard. It is not saved with sessions or sent to Strava yet, and it never moves the belt.
+
+## 1.21.0 (2026-11-20)
+
+### New
+
+- DECK_PROFILE: the app learns which speeds the treadmill runs from its replies while you walk. The HUD stepper, the Live slider, the program editor and the speed settings then keep to speeds the deck takes, and its real slowest and fastest speeds. System -> Diagnostics can forget what it learned.
+
 ## 1.20.0 (2026-11-20)
 
 ### Changed

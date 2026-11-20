@@ -26,3 +26,17 @@ describe("ODOMETER widget", () => {
     expect(lifetimeKm(12345.6)).toBe("12346");
   });
 });
+
+describe("HEART_RATE widget", () => {
+  it("is a stat widget called PULSE_RATE", () => {
+    expect(statWidget("HEART_RATE")?.label).toBe("HR");
+    expect(widgetName("HEART_RATE")).toBe("PULSE_RATE");
+  });
+
+  it("shows dashes until the sensor sends, then the bpm", () => {
+    const w = statWidget("HEART_RATE");
+    expect(w?.read(snapshot)).toEqual({ value: "--", unit: "BPM" });
+    const live = { ...snapshot, heart_rate: { ...snapshot.heart_rate, bpm: 112 } };
+    expect(w?.read(live)).toEqual({ value: "112", unit: "BPM" });
+  });
+});

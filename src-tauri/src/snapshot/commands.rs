@@ -337,8 +337,16 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         Command::GhostPodSet { on } => {
             blocking(move || crate::ghost_pod::set_enabled(&app, on)).await
         }
+        Command::HeartRateScan => crate::heart_rate::scan().await,
+        Command::HeartRatePick { id, name } => {
+            blocking(move || crate::heart_rate::pick_sensor(&app, id, name)).await
+        }
+        Command::HeartRateForget => blocking(move || crate::heart_rate::forget_sensor(&app)).await,
         Command::GhostPodPowerSet { on } => {
             blocking(move || crate::ghost_pod::set_power(&app, on)).await
+        }
+        Command::WristLinkSet { on } => {
+            blocking(move || crate::ghost_pod::set_wrist_link(&app, on)).await
         }
     }
 }

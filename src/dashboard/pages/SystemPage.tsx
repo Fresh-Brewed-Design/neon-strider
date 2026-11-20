@@ -2,6 +2,7 @@ import { useAppState } from "../../state/useAppState";
 import { CalibrationPanel } from "../system/calibration/CalibrationPanel";
 import { DeskSection } from "../system/DeskSection";
 import { DiagnosticsSection } from "../system/DiagnosticsSection";
+import { HeartRateSection } from "../system/HeartRateSection";
 import { LabsSection } from "../system/LabsSection";
 import { Section } from "../system/fields";
 import { MaintenanceSection } from "../system/MaintenanceSection";
@@ -19,6 +20,7 @@ const SECTIONS = [
   { id: "sys-treadmill", label: "Treadmill" },
   { id: "sys-calibration", label: "Calibration" },
   { id: "sys-strava", label: "Strava" },
+  { id: "sys-heart", label: "Heart rate" },
   { id: "sys-neural", label: "Neural flow" },
   { id: "sys-sessions", label: "Sessions" },
   { id: "sys-desk", label: "Desk" },
@@ -66,6 +68,7 @@ export function SystemPage() {
           <CalibrationPanel />
         </Section>
         <StravaSection />
+        <HeartRateSection />
         <NeuralSection />
         <SessionsSection />
         <DeskSection />
