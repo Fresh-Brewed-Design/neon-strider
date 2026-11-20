@@ -1,1 +1,0 @@
-- History CSV export now has average and maximum heart rate columns (bpm) at the end, empty for walks without a heart rate reading.
