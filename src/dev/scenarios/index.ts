@@ -16,6 +16,7 @@ import { ghostPod } from "./ghostpod";
 import { guided } from "./guided";
 import { heartRate } from "./heart";
 import { history } from "./history";
+import { hrSpark } from "./hrspark";
 import { hud } from "./hud";
 import { lightsOut } from "./lightsout";
 import { link } from "./link";
@@ -56,4 +57,5 @@ export const SCENARIOS: Scenario[] = [
   maintenance,
   history,
   guided,
+  hrSpark,
 ];

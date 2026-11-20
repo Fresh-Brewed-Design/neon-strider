@@ -1,5 +1,6 @@
 import { formatClock, km, lifetimeKm } from "../format";
 import type { AppSnapshot, HudWidget } from "../ipc";
+import type { SparkData } from "./spark";
 
 export type Accent = "cyan" | "magenta" | "yellow" | "green";
 
@@ -16,6 +17,8 @@ export interface StatWidget {
   codename: string;
   accent: Accent;
   read: (s: AppSnapshot) => StatReading;
+  /** A spark chart under the value, drawn from the snapshot; null shows none. */
+  spark?: (s: AppSnapshot) => SparkData | null;
 }
 
 /**
@@ -96,6 +99,8 @@ export const STAT_WIDGETS: StatWidget[] = [
     accent: "magenta",
     // "--" until a sensor is picked and sending.
     read: (s) => ({ value: s.heart_rate.bpm === null ? "--" : s.heart_rate.bpm.toString(), unit: "BPM" }),
+    // Rust sends no history while no sensor is picked: no chart.
+    spark: (s) => (s.heart_rate.history.length > 0 ? { points: s.heart_rate.history, zone: s.heart_rate.zone } : null),
   },
 ];
 
