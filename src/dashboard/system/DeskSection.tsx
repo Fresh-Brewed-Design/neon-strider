@@ -91,7 +91,7 @@ function EyeBreakSettings() {
         tone="cyan"
         checked={e.enabled}
         onChange={(enabled) => save({ enabled })}
-        description="Eye breaks: look away from the screen now and then. The HUD warns a minute ahead, then asks you to look into the distance and blink, with a tone every 10 seconds and one at the end. Typing or clicking with the PC unlocked counts as screen time; only the time of the last input is kept."
+        description="The HUD reminds you to look away from the screen, with a minute's warning."
       />
       {e.enabled && (
         <>
@@ -128,7 +128,7 @@ function EyeBreakSettings() {
               tone="cyan"
               checked={e.pause_belt}
               onChange={(pause_belt) => void pauseAction.run(() => dispatch(config({ pause_belt })))}
-              description="A break that starts while you walk pauses the belt, a running program too. It never restarts by itself: after the break the HUD asks you to resume or stay still. Off, you keep walking while you look away."
+              description="A break pauses a walking belt, and the HUD then offers RESUME or STAY STILL."
             />
             <ActionStatus pending={pauseAction.pending} error={pauseAction.error} className="mt-1" />
           </div>
