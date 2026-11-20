@@ -703,6 +703,11 @@ pub enum Command {
     GhostPodPowerSet {
         on: bool,
     },
+    /// Labs: WRIST_LINK on (`on`) or off. On, the PC also serves the service
+    /// the watch's Connect IQ data field reads the belt from. Needs GHOST_POD.
+    WristLinkSet {
+        on: bool,
+    },
 }
 
 #[cfg(test)]

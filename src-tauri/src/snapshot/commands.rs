@@ -328,6 +328,9 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         Command::GhostPodPowerSet { on } => {
             blocking(move || crate::ghost_pod::set_power(&app, on)).await
         }
+        Command::WristLinkSet { on } => {
+            blocking(move || crate::ghost_pod::set_wrist_link(&app, on)).await
+        }
     }
 }
 

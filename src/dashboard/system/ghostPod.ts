@@ -21,6 +21,15 @@ export function ghostPodPill(p: GhostPodSnapshot): string {
   return `GHOST_POD // ${p.label}`;
 }
 
+/** The pill tone for WRIST_LINK: cyan with a field connected, yellow while it waits. */
+export function wristLinkTone(p: GhostPodSnapshot): StatusTone {
+  const w = p.wrist_link;
+  if (!w.enabled) return "idle";
+  if (p.status === "error") return "problem";
+  if (w.watches > 0) return "ok";
+  return "working";
+}
+
 /** What the pod sends now, while a watch reads it. */
 export function ghostPodReading(p: GhostPodSnapshot): string | null {
   if (p.status !== "connected") return null;

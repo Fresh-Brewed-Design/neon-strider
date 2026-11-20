@@ -231,6 +231,12 @@ export const snapshot: AppSnapshot = {
     power_enabled: false,
     power_watches: 0,
     power_w: 0,
+    wrist_link: {
+      enabled: false,
+      serving: false,
+      watches: 0,
+      message: "Switch it on to let the watch's data field read the belt.",
+    },
   },
   heart_rate: {
     sensor: null,
@@ -948,6 +954,37 @@ function switchGhostPod(on: boolean) {
     }, 3000);
   }
 }
+// Labs: WRIST_LINK. ?wristlink=waiting|connected shows it on (with GHOST_POD on);
+// switching it on in the preview waits for the field, which connects 3 s later.
+const WRIST_LINK_MESSAGES = {
+  off: "Switch it on to let the watch's data field read the belt.",
+  needpod: "Waiting for GHOST_POD: the watch keeps its foot pod link while the field reads the belt.",
+  waiting: "Waiting for the watch's data field to connect.",
+  connected: "The watch's data field is connected and reads the belt.",
+};
+let wristLinkTimer: ReturnType<typeof setTimeout> | null = null;
+function setWristLink(state: keyof typeof WRIST_LINK_MESSAGES) {
+  Object.assign(snapshot.ghost_pod.wrist_link, {
+    enabled: state !== "off",
+    serving: state === "waiting" || state === "connected",
+    watches: state === "connected" ? 1 : 0,
+    message: WRIST_LINK_MESSAGES[state],
+  });
+}
+function switchWristLink(on: boolean) {
+  if (wristLinkTimer) clearTimeout(wristLinkTimer);
+  wristLinkTimer = null;
+  if (!on) return setWristLink("off");
+  if (!snapshot.ghost_pod.enabled) return setWristLink("needpod");
+  setWristLink("waiting");
+  wristLinkTimer = setTimeout(() => {
+    setWristLink("connected");
+    publish();
+  }, 3000);
+}
+const wristLinkFlag = params.get("wristlink");
+if (wristLinkFlag === "waiting" || wristLinkFlag === "connected") setWristLink(wristLinkFlag);
+
 const ghostPodFlag = params.get("ghostpod");
 if (ghostPodFlag && ghostPodFlag in GHOST_POD) setGhostPod(ghostPodFlag as keyof typeof GHOST_POD);
 const ghostPowerFlag = params.get("ghostpower");
@@ -1305,6 +1342,7 @@ const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) =>
   heart_rate_pick: (c) => pickHeartSensor({ id: c.id, name: c.name }),
   heart_rate_forget: () => pickHeartSensor(null),
   ghost_pod_power_set: (c) => setGhostPower(c.on),
+  wrist_link_set: (c) => switchWristLink(c.on),
   strava_set_credentials: () => (snapshot.strava.has_credentials = true),
   strava_connect: () => {
     Object.assign(snapshot.strava, { connected: true, athlete_name: "Preview Athlete" });
