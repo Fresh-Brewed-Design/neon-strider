@@ -222,6 +222,7 @@ export const snapshot: AppSnapshot = {
     belt_cm: null,
     belt_treadmill: false,
     targets: [2, 3, 4, 5, 6].map((kmh) => ({ kmh, runnable: true })),
+    points_rev: 0,
     run: null,
     sweep: null,
   },

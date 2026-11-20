@@ -593,6 +593,14 @@ impl OrchestratorState {
         self.rebuild_lookup_table();
     }
 
+    /// Use `points` for every speed and distance from here on, as a settings
+    /// sync does for the points it carries. The caller saves them.
+    pub fn set_calibration_points(&mut self, points: Vec<CalibrationPoint>) {
+        self.calibration_points = points;
+        self.sorted_points = sorted_by_hw_speed(&self.calibration_points);
+        self.rebuild_lookup_table();
+    }
+
     /// Every field `sync_config` sets, for tests that compare two states.
     #[cfg(test)]
     pub(crate) fn config_fingerprint(&self) -> String {

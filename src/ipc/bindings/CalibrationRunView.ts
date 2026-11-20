@@ -42,4 +42,12 @@ note: string | null,
 /**
  * The point, once the taps agree.
  */
-result: CalibrationResult | null, };
+result: CalibrationResult | null, 
+/**
+ * The result is saved, and UNDO can put the points back.
+ */
+saved: boolean, 
+/**
+ * UNDO was pressed: the result is not saved.
+ */
+undone: boolean, };

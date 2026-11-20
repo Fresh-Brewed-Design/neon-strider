@@ -44,6 +44,8 @@ function runView(view: Partial<CalibrationRunView>): CalibrationRunView {
     reported_kmh: null,
     note: null,
     result: null,
+    saved: false,
+    undone: false,
     ...view,
   };
 }
@@ -132,25 +134,30 @@ describe("GuidedCalibration", () => {
     expect(screen.getByText(/so tapping starts again/)).toBeTruthy();
   });
 
-  it("a measured run says the result in plain words and saves the point", async () => {
-    useTreadmillStore.setState({ calibrationPoints: [] });
-    current!.calibration.run = runView({ phase: "measured", passes: 9, kept: 8, result: result() });
+  it("a measured run says in plain words that Rust saved the point, and offers UNDO and TAP AGAIN", async () => {
+    current!.calibration.run = runView({ phase: "measured", passes: 9, kept: 8, saved: true, result: result() });
     render(<GuidedCalibration />);
-    expect(screen.getByText("At 3.0 km/h the deck runs 6.0 % slow.")).toBeTruthy();
+    expect(screen.getByText("At 3.0 km/h the deck runs 6.0 % slow; saved.")).toBeTruthy();
     expect(screen.queryByText("TAP")).toBeNull();
+    for (const gone of ["SAVE POINT", "AVERAGE IN", "Discard"]) expect(screen.queryByText(gone)).toBeNull();
+    expect(screen.getByText("STOP")).toBeTruthy();
+    expect(screen.getByText("TAP AGAIN")).toBeTruthy();
     await act(async () => fireEvent.keyDown(window, { key: " " }));
     expect(taps()).toHaveLength(0);
-    await act(async () => fireEvent.click(screen.getByText("SAVE POINT")));
-    expect(useTreadmillStore.getState().calibrationPoints).toEqual([result().point]);
-    expect(dispatched()).toContainEqual({ type: "calibration_run_close" });
+    // The card sends nothing to the store or to the saved points: Rust saved them.
+    expect(useTreadmillStore.getState().calibrationPoints).toEqual([saved]);
+    expect(dispatched().filter((c) => c.type.startsWith("calibration_"))).toEqual([]);
+    await act(async () => fireEvent.click(screen.getByText("UNDO")));
+    expect(dispatched()).toContainEqual({ type: "calibration_undo" });
   });
 
-  it("a repeated point saves Rust's average of the runs", async () => {
-    const averaged = { speed: 3, stride_length_cm: 68, distance_scale: 0.98, runs: 2 };
-    current!.calibration.run = runView({ phase: "measured", passes: 9, kept: 8, result: result({ averaged }) });
+  it("after UNDO the card says the run is undone and offers no UNDO", () => {
+    current!.calibration.run = runView({ phase: "measured", passes: 9, kept: 8, undone: true, result: result() });
     render(<GuidedCalibration />);
-    await act(async () => fireEvent.click(screen.getByText("AVERAGE IN")));
-    expect(useTreadmillStore.getState().calibrationPoints).toEqual([averaged]);
+    expect(screen.getByText("At 3.0 km/h the deck runs 6.0 % slow; undone.")).toBeTruthy();
+    expect(screen.queryByText("UNDO")).toBeNull();
+    expect(screen.getByText("TAP AGAIN")).toBeTruthy();
+    expect(screen.getByText("Close")).toBeTruthy();
   });
 
   it("TAP AGAIN asks Rust to clear the taps", async () => {
@@ -187,14 +194,22 @@ describe("GuidedCalibration", () => {
     expect(dispatched()).toContainEqual({ type: "stop" });
   });
 
-  it("in a sweep, saving marks the speed saved and the run panel has a STOP", async () => {
-    current!.calibration.sweep = { targets_kmh: [3, 4], marks: ["pending", "pending"], current: 0 };
-    current!.calibration.run = runView({ phase: "measured", passes: 9, kept: 8, result: result() });
+  it("in a sweep, a saved run offers UNDO and RUN on the next speed", async () => {
+    current!.calibration.sweep = { targets_kmh: [3, 4], marks: ["saved", "pending"], current: 1 };
+    current!.calibration.run = runView({ phase: "measured", passes: 9, kept: 8, saved: true, result: result() });
     render(<GuidedCalibration />);
-    expect(screen.getByText("STOP")).toBeTruthy();
-    await act(async () => fireEvent.click(screen.getByText("AVERAGE IN")));
-    expect(dispatched()).toContainEqual({ type: "calibration_sweep_next", saved: true });
-    expect(dispatched()).not.toContainEqual({ type: "calibration_run_close" });
+    expect(screen.getByText("UNDO")).toBeTruthy();
+    await act(async () => fireEvent.click(screen.getByText("RUN 4.0 km/h")));
+    expect(dispatched()).toContainEqual({ type: "calibration_sweep_run" });
+  });
+
+  it("in a sweep, an undone speed is up again, with RUN and SKIP", async () => {
+    current!.calibration.sweep = { targets_kmh: [3, 4], marks: ["pending", "pending"], current: 0 };
+    current!.calibration.run = runView({ phase: "measured", passes: 9, kept: 8, undone: true, result: result() });
+    render(<GuidedCalibration />);
+    expect(screen.queryByText("UNDO")).toBeNull();
+    await act(async () => fireEvent.click(screen.getByText("SKIP")));
+    expect(dispatched()).toContainEqual({ type: "calibration_sweep_next", saved: false });
   });
 
   it("STOP in the run panel is never disabled", () => {

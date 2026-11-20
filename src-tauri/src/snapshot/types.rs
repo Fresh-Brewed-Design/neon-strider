@@ -759,8 +759,12 @@ pub enum Command {
     /// the point appears in `calibration.run.result` once the taps agree.
     /// Never moves the belt.
     CalibrationTap,
-    /// TAP AGAIN: clear the run's taps and result. The belt keeps going.
+    /// The point a finished run measures is saved by itself. TAP AGAIN: take
+    /// that point back, clear the run's taps and result. The belt keeps going.
     CalibrationTapReset,
+    /// UNDO: put the saved points back as they were before this run. Stays
+    /// available until the next run starts or the run closes.
+    CalibrationUndo,
     /// BELT_LOOP: the belt loop's length in cm, kept for this treadmill.
     CalibrationBeltSet {
         cm: f32,
