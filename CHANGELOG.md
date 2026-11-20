@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.41.3 (2026-11-20)
+
+### Changed
+
+- Shorter, clearer text across the dashboard: each setting has a one-line description, with the details in a second line under it.
+- Messages from Strava, GHOST_POD, WRIST_LINK, heart rate and calibration now name what they talk about.
+
 ## 1.41.2 (2026-11-20)
 
 ### Fixed

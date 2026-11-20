@@ -1,3 +1,4 @@
+import { SETTING_LIMITS as L } from "../../ipc";
 import { deckLimitOffer, limitsText, snapToDeck, snapToLevel } from "../../state/deckSpeeds";
 import { useAppState } from "../../state/useAppState";
 import { useTreadmillStore } from "../../store/treadmillStore";
@@ -20,7 +21,7 @@ export function TreadmillSection() {
     <Section
       id="sys-treadmill"
       title="Treadmill"
-      description="Limits and scaling for this machine. Changes apply as soon as you make them."
+      description="Limits and scaling for the treadmill, applied as soon as they change."
     >
       {deck && offer && (
         <div className="flex flex-wrap items-center gap-3">
@@ -29,13 +30,12 @@ export function TreadmillSection() {
         </div>
       )}
       <div className="grid grid-cols-2 gap-4">
-        {/* 0.1 km/h is one deck speed step, the slowest the deck can be asked
-            for; 25 km/h matches Top speed's range. */}
+        {/* Ranges from Rust (persistence.rs), which holds stored values to them too. */}
         <NumberField
           label="Slowest speed"
           unit="km/h"
-          min={0.1}
-          max={25}
+          min={L.min_speed_kmh.min}
+          max={L.min_speed_kmh.max}
           step={0.1}
           value={minSpeed}
           hint="The lowest running speed the controls will request, raised to the deck's own floor once DECK_PROFILE has seen it."
@@ -44,8 +44,8 @@ export function TreadmillSection() {
         <NumberField
           label="Top speed"
           unit="km/h"
-          min={1}
-          max={25}
+          min={L.max_speed_kmh.min}
+          max={L.max_speed_kmh.max}
           step={0.5}
           value={maxSpeed}
           hint="The highest speed the controls will request, kept under the deck's own top speed once DECK_PROFILE has seen it."
@@ -55,8 +55,8 @@ export function TreadmillSection() {
         <NumberField
           label="Highest incline level"
           unit="levels"
-          min={0}
-          max={20}
+          min={L.max_incline_level.min}
+          max={L.max_incline_level.max}
           value={maxIncline}
           hint="The treadmill's top incline step, kept at or under the deck's own top level once DECK_PROFILE has seen it."
           snap={(v) => snapToLevel(v, deck)}
@@ -65,8 +65,8 @@ export function TreadmillSection() {
         <NumberField
           label="Body weight"
           unit="kg"
-          min={30}
-          max={250}
+          min={L.body_mass_kg.min}
+          max={L.body_mass_kg.max}
           step={0.5}
           value={bodyMassKg}
           hint="Used to estimate calories burned. Stays on this PC."
@@ -76,23 +76,23 @@ export function TreadmillSection() {
       <SliderField
         label="Incline per level"
         tone="magenta"
-        min={0.1}
-        max={5}
+        min={L.tilt_multiplier.min}
+        max={L.tilt_multiplier.max}
         step={0.1}
         value={tiltMultiplier}
         format={(v) => `1 level = ${v.toFixed(1)}%`}
-        hint="The treadmill reports whole incline steps. Set how many percent of grade each step is."
+        hint="Percent of grade for each whole incline step the treadmill reports."
         onCommit={(v) => updateSettings({ tiltMultiplier: v })}
       />
       <SliderField
         label="Incline offset"
         tone="magenta"
-        min={-5}
-        max={10}
+        min={L.incline_offset_pct.min}
+        max={L.incline_offset_pct.max}
         step={0.5}
         value={inclineOffset}
         format={(v) => `${v > 0 ? "+" : ""}${v.toFixed(1)}%`}
-        hint="Added to every incline reading to account for adjustable feet or a sloping floor. It does not move the motor's zero point."
+        hint="Corrects incline readings for adjustable feet or a sloping floor without moving the motor's zero point."
         onCommit={(v) => updateSettings({ inclineOffset: v })}
       />
     </Section>

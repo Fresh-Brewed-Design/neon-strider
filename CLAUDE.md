@@ -7,7 +7,7 @@ an always-on-top HUD overlay, saved programs, session history, and Strava export
 
 - **Tauri 2** (Rust backend) + **React 19** + **TypeScript** + **Vite 7**
 - **Tailwind CSS 4**, **framer-motion**, **lucide-react**, **sonner**; Orbitron bundled via `@fontsource/orbitron`
-- **ts-rs** generates TypeScript types for the IPC layer into `src/ipc/bindings/` (run `cargo test`).
+- **ts-rs** generates TypeScript types for the IPC layer into `src/ipc/bindings/` (run `cargo test`); the same test run writes `SETTING_LIMITS.ts` there from `limits.rs`, the one source for the ranges dashboard fields offer.
   They are marked generated in `.gitattributes`. Regenerate, don't hand-merge: on a conflict there,
   take either side and run `cargo test` in `src-tauri/`. CI exports them afresh and fails if the
   committed files differ (changed, missing or stale).

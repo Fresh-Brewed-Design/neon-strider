@@ -274,7 +274,7 @@ export function GuidedCalibration() {
 }
 
 /** The old app-wide belt length's default: a stored value other than it was typed in, so it can prefill the form. */
-const OLD_DEFAULT_BELT_CM = 120;
+const OLD_DEFAULT_BELT_CM = 120; // `AppConfig::default().belt_length` in persistence.rs
 
 /** BELT_LOOP: asked once per treadmill, with a short guide. Rust checks and keeps it. */
 function BeltLoopStep({
@@ -340,7 +340,7 @@ function AddSpeed() {
   const submit = () => {
     if (value.trim() === "" || add.pending) return;
     void add
-      .run(() => dispatch({ type: "calibration_target_add", kmh: Number(value) }), { done: "Added to the list." })
+      .run(() => dispatch({ type: "calibration_target_add", kmh: Number(value) }), { done: "Added to the target list." })
       .then((r) => {
         if (r !== undefined) setValue("");
       });

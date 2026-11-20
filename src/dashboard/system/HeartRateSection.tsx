@@ -1,15 +1,12 @@
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
-import { dispatch } from "../../ipc";
+import { dispatch, SETTING_LIMITS } from "../../ipc";
 import { useAppSnapshot } from "../../state/useAppState";
 import { StatusPill } from "../StatusPill";
 import { GhostButton, Hint, NeonButton } from "../ui";
 import { NumberField, Section } from "./fields";
 import { heartRatePill, heartRateTone } from "./heartRate";
 
-/** Rust accepts 120 to 230 bpm (`heart_rate/worker.rs` `valid_max`): outside that is a typing slip. */
-const MAX_BPM_MIN = 120;
-const MAX_BPM_MAX = 230;
 
 /**
  * System -> Heart rate: pick a Bluetooth heart rate sensor, such as a watch
@@ -91,8 +88,8 @@ export function HeartRateSection() {
           label="Max heart rate"
           unit="bpm"
           value={heart.max_bpm}
-          min={MAX_BPM_MIN}
-          max={MAX_BPM_MAX}
+          min={SETTING_LIMITS.max_heart_rate_bpm.min}
+          max={SETTING_LIMITS.max_heart_rate_bpm.max}
           hint={
             heart.max_bpm_set
               ? "Program heart zones are a percentage of the max heart rate."

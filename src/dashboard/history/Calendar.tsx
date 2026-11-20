@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { cx } from "../util";
 import { dayKey, km } from "../../format";
 
+/** A year of weeks: 52 plus the one in progress. */
 const WEEKS = 53;
 
 function opacityFor(meters: number): number {

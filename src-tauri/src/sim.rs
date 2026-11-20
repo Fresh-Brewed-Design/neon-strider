@@ -852,6 +852,27 @@ mod tests {
         }
     }
 
+    /// A top speed stored past the setting's range (40 km/h, which the dashboard
+    /// can't type) loads as 25 km/h, so a speed asked for by hand runs the belt
+    /// at 25, never 40, on a deck that would take either.
+    #[test]
+    fn a_stored_top_speed_past_its_range_holds_the_belt_to_the_range() {
+        let mut r = Rig::new();
+        let stored = |key: &str| match key {
+            "maxSpeed" => Some("40".to_string()),
+            _ => None,
+        };
+        let config = crate::persistence::config_from_settings(stored);
+        assert_eq!(config.max_speed, crate::persistence::MAX_SPEED_SETTING_KMH);
+        r.state.sync_config(&config);
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(6.0);
+        r.set_speed(40.0);
+        r.run(120.0);
+        assert!(r.deck.running_at(25.0), "{} km/h", r.deck.speed_kmh());
+    }
+
     /// Fixture: Post-meal run from a still deck, walking at 4.0 km/h.
     fn post_meal_walking() -> Rig {
         let mut r = Rig::new();

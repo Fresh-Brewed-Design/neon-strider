@@ -469,6 +469,8 @@ mod mic {
     /// exe path with `\` written as `#`. Store apps are listed directly.
     const DESKTOP_APPS: &str = "NonPackaged";
     /// FILETIME ticks (100 ns) in 6 hours.
+    /// An entry still marked in use after 6 hours is an app that exited without
+    /// closing the mic; no call runs that long at a desk.
     const STALE_AFTER_TICKS: u64 = 6 * 3600 * 10_000_000;
     /// Milliseconds from the FILETIME epoch (1601) to the Unix epoch.
     const FILETIME_UNIX_OFFSET_MS: u64 = 11_644_473_600_000;

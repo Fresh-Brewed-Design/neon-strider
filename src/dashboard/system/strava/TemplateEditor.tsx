@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ActionStatus } from "../../../components/ActionStatus";
 import { useAction } from "../../../components/useAction";
-import type { StravaSnapshot } from "../../../ipc";
+import { SETTING_LIMITS, type StravaSnapshot } from "../../../ipc";
 import { GhostButton, Hint, Label } from "../../ui";
 import { cx, post } from "../../util";
 import { INPUT_CLASS } from "../fields";
@@ -37,7 +37,7 @@ export function TemplateEditor({ strava }: { strava: StravaSnapshot }) {
       invoke<Preview>("strava_template_preview", { title, rollupTitle: rollup, description })
         .then((p) => !stale && setPreview(p))
         .catch(() => !stale && setPreview(null));
-    }, 150);
+    }, 150); // a pause in typing, so the preview isn't asked for on every key
     return () => {
       stale = true;
       clearTimeout(timer);
@@ -73,7 +73,7 @@ export function TemplateEditor({ strava }: { strava: StravaSnapshot }) {
         <span className="font-mono text-[11px] text-white/60">Title</span>
         <input
           type="text"
-          maxLength={300}
+          maxLength={SETTING_LIMITS.title_template_chars}
           value={title}
           onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
           onBlur={commit}
@@ -85,7 +85,7 @@ export function TemplateEditor({ strava }: { strava: StravaSnapshot }) {
           <span className="font-mono text-[11px] text-white/60">Daily rollup title</span>
           <input
             type="text"
-            maxLength={300}
+            maxLength={SETTING_LIMITS.title_template_chars}
             value={rollup}
             onChange={(e) => setDraft((d) => ({ ...d, rollup: e.target.value }))}
             onBlur={commit}
@@ -97,7 +97,7 @@ export function TemplateEditor({ strava }: { strava: StravaSnapshot }) {
         <span className="font-mono text-[11px] text-white/60">Description</span>
         <textarea
           rows={3}
-          maxLength={2000}
+          maxLength={SETTING_LIMITS.description_template_chars}
           value={description}
           onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
           onBlur={commit}
@@ -106,7 +106,7 @@ export function TemplateEditor({ strava }: { strava: StravaSnapshot }) {
       </label>
 
       <Hint>
-        Placeholders: {PLACEHOLDERS.join(" ")}. Anything else in braces is left as typed. Titles stop at 100
+        Placeholders: {PLACEHOLDERS.join(" ")}. Anything else in braces is left as typed. Titles stop at {SETTING_LIMITS.title_chars}
         characters.
       </Hint>
 

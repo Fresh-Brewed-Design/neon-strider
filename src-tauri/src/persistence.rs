@@ -19,6 +19,7 @@ use tauri::{AppHandle, Manager};
 static DB: Mutex<Option<Connection>> = Mutex::new(None);
 
 /// How long SQLite waits on a locked database before giving up.
+/// Every write is milliseconds long, so 5 s only runs out on a stuck connection.
 const BUSY_TIMEOUT: Duration = Duration::from_millis(5000);
 
 /// Explicit column list, so row mapping never depends on physical column order.
@@ -534,9 +535,27 @@ fn get_setting_str(conn: &Connection, key: &str) -> Option<String> {
     .ok()
 }
 
+/// About the average adult weight; the range covers adults and catches typos.
 pub const DEFAULT_BODY_MASS_KG: f32 = 75.0;
 pub const MIN_BODY_MASS_KG: f32 = 30.0;
 pub const MAX_BODY_MASS_KG: f32 = 250.0;
+
+/// The ranges of the treadmill settings (System, Treadmill), held at load like
+/// the body weight, so a value the dashboard can't type never reaches the engine.
+/// 0.1 km/h is the deck's smallest step. 25 km/h is past the fastest home
+/// running deck (about 20 km/h); DECK_PROFILE narrows both to the deck's own.
+pub const MIN_SPEED_SETTING_KMH: f32 = 0.1;
+/// Top speed starts at 1 km/h, so a slip can't make the belt unusable.
+pub const MIN_TOP_SPEED_KMH: f32 = 1.0;
+pub const MAX_SPEED_SETTING_KMH: f32 = 25.0;
+/// Percent of grade per incline level: decks step about 0.5 to 2 % a level, and
+/// 0.1 to 5 covers any of them without a zero that would hide the incline.
+pub const MIN_TILT_MULTIPLIER: f32 = 0.1;
+pub const MAX_TILT_MULTIPLIER: f32 = 5.0;
+/// Adjustable feet or a sloping floor shift the grade by a few percent at most;
+/// the range leans uphill because front feet are raised more often than lowered.
+pub const MIN_INCLINE_OFFSET_PCT: f32 = -5.0;
+pub const MAX_INCLINE_OFFSET_PCT: f32 = 10.0;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppConfig {
@@ -567,7 +586,11 @@ impl Default for AppConfig {
         Self {
             last_device_id: None,
             calibration_points: Vec::new(),
+            // The old app-wide belt length; GuidedCalibration reads 120 as never set.
             belt_length: 120.0,
+            // The slowest speed of the FitShow decks the app was built on, and a
+            // mid-range deck's top speed and incline; the first walk's DECK_PROFILE
+            // offers the deck's real ones. The engine starts from the same numbers.
             min_speed: 0.6,
             max_speed: 12.0,
             max_incline: 15,
@@ -644,7 +667,7 @@ const KEY_LAST_DEVICE_ID: &str = "lastDeviceId";
 const KEY_CALIBRATION_POINTS: &str = "calibrationPoints";
 
 /// `AppConfig` from stored settings; `read` returns the raw value of a key.
-fn config_from_settings(read: impl Fn(&str) -> Option<String>) -> AppConfig {
+pub(crate) fn config_from_settings(read: impl Fn(&str) -> Option<String>) -> AppConfig {
     let mut config = AppConfig {
         last_device_id: read(KEY_LAST_DEVICE_ID).map(|s| s.trim_matches('"').to_string()),
         ..AppConfig::default()
@@ -663,8 +686,48 @@ fn config_from_settings(read: impl Fn(&str) -> Option<String>) -> AppConfig {
     config.body_mass_kg = config
         .body_mass_kg
         .clamp(MIN_BODY_MASS_KG, MAX_BODY_MASS_KG);
+    clamp_treadmill_ranges(&mut config);
     (config.neural_floor_pct, config.neural_sensitivity) = neural_from_settings(&read);
     config
+}
+
+/// Hold the treadmill settings to the ranges the dashboard offers. A value that
+/// doesn't parse already kept its default; one outside goes to the nearest end,
+/// and the slowest speed never passes the top speed.
+fn clamp_treadmill_ranges(config: &mut AppConfig) {
+    let fix = |v: f32, lo: f32, hi: f32, default: f32| {
+        if v.is_finite() {
+            v.clamp(lo, hi)
+        } else {
+            default
+        }
+    };
+    let d = AppConfig::default();
+    config.max_speed = fix(
+        config.max_speed,
+        MIN_TOP_SPEED_KMH,
+        MAX_SPEED_SETTING_KMH,
+        d.max_speed,
+    );
+    config.min_speed = fix(
+        config.min_speed,
+        MIN_SPEED_SETTING_KMH,
+        config.max_speed,
+        d.min_speed.min(config.max_speed),
+    );
+    config.max_incline = config.max_incline.min(crate::engine::INCLINE_LEVEL_LIMIT);
+    config.tilt_multiplier = fix(
+        config.tilt_multiplier,
+        MIN_TILT_MULTIPLIER,
+        MAX_TILT_MULTIPLIER,
+        d.tilt_multiplier,
+    );
+    config.incline_offset = fix(
+        config.incline_offset,
+        MIN_INCLINE_OFFSET_PCT,
+        MAX_INCLINE_OFFSET_PCT,
+        d.incline_offset,
+    );
 }
 
 /// Neural flow's floor and sensitivity. A database that lacks either key is
@@ -2310,6 +2373,31 @@ mod settings_tests {
         assert_eq!(c.body_mass_kg, DEFAULT_BODY_MASS_KG);
         assert_eq!(c.neural_floor_pct, d.neural_floor_pct);
         assert_eq!(c.neural_sensitivity, d.neural_sensitivity);
+    }
+
+    #[test]
+    fn treadmill_settings_outside_their_ranges_load_at_the_nearest_end() {
+        let c = load(&stored(&[
+            ("maxSpeed", "40"),
+            ("minSpeed", "30"),
+            ("maxIncline", "60"),
+            ("tiltMultiplier", "0"),
+            ("inclineOffset", "-20"),
+        ]));
+        assert_eq!(c.max_speed, MAX_SPEED_SETTING_KMH);
+        assert_eq!(
+            c.min_speed, MAX_SPEED_SETTING_KMH,
+            "never above the top speed"
+        );
+        assert_eq!(c.max_incline, crate::engine::INCLINE_LEVEL_LIMIT);
+        assert_eq!(c.tilt_multiplier, MIN_TILT_MULTIPLIER);
+        assert_eq!(c.incline_offset, MIN_INCLINE_OFFSET_PCT);
+        let low = load(&stored(&[("maxSpeed", "0.2"), ("minSpeed", "0")]));
+        assert_eq!(low.max_speed, MIN_TOP_SPEED_KMH);
+        assert_eq!(low.min_speed, MIN_SPEED_SETTING_KMH);
+        let nan = load(&stored(&[("maxSpeed", "NaN"), ("tiltMultiplier", "inf")]));
+        assert_eq!(nan.max_speed, AppConfig::default().max_speed);
+        assert_eq!(nan.tilt_multiplier, AppConfig::default().tilt_multiplier);
     }
 
     #[test]
