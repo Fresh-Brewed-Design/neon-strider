@@ -1,7 +1,8 @@
-//! GROUND_TRUTH, the guided calibration (a Labs switch, off by default): the
-//! limits a calibration point must stay inside (shared with the engine and
-//! the UI), the tap run Rust keeps while the user walks it, and the point it
-//! gives.
+//! GROUND_TRUTH, the guided calibration (always on in System, Calibration):
+//! the limits a calibration point must stay inside (shared with the engine
+//! and the UI), the tap run Rust keeps while the user walks it, and the point
+//! it gives. A treadmill that connects with no calibration gets an offer to
+//! calibrate it, which SKIP turns off for that treadmill.
 //!
 //! A point is `(speed, stride_length_cm, distance_scale)`: `speed` is what the
 //! deck reports (hardware km/h) and `distance_scale` is reported distance over
@@ -29,10 +30,14 @@
 //!
 //! The list of target speeds is a setting the user edits (ADD_SPEED and
 //! remove): kept in the settings table, checked here, and read by RUN ALL.
+//! It is the advanced way in. The guided walk (`guide.rs`) picks the speeds
+//! from one answer, the fastest the user walks, and checks the midpoints.
 
+mod guide;
 mod steps;
 mod tap;
 
+pub use guide::{CalibrationGuideView, CheckVerdict};
 pub use steps::StepRunView;
 
 use crate::engine::OrchestratorState;
@@ -63,10 +68,8 @@ const STOPPED_BELOW_KMH: f32 = 0.05;
 /// more from a press or a program.
 const MAX_SPREAD_KMH: f32 = 0.25;
 
-const KEY_WIZARD: &str = "labs_calibration_wizard";
 /// The edited list of target speeds, a JSON array of deck km/h.
 const KEY_TARGETS: &str = "labs_calibration_targets";
-static WIZARD_ON: AtomicBool = AtomicBool::new(false);
 static RUN: Mutex<Option<Run>> = Mutex::new(None);
 /// A run is open and still taking taps: the input hook reads this to know
 /// whether Alt+Space is a tap, without taking a lock.
@@ -74,6 +77,12 @@ static TAP_LISTENING: AtomicBool = AtomicBool::new(false);
 /// Bumped when Rust changes the saved points itself; see `points_rev`.
 static POINTS_REV: AtomicU32 = AtomicU32::new(0);
 static SWEEP: Mutex<Option<Sweep>> = Mutex::new(None);
+/// The guided walk from the slowest speed to the user's top speed, if open.
+static GUIDE: Mutex<Option<guide::Guide>> = Mutex::new(None);
+/// Tests that drive the shared run, sweep and walk hold this, so they don't
+/// run into one another.
+#[cfg(test)]
+pub(crate) static TEST_GLOBALS: Mutex<()> = Mutex::new(());
 /// The stored target list; None until the user edits it (the defaults apply).
 static TARGETS: Mutex<Option<Vec<f32>>> = Mutex::new(None);
 /// Targets this close together are one speed.
@@ -497,7 +506,7 @@ impl Run {
         }
         let result = self.result.as_ref()?;
         let (points, saved) = with_result_saved(&state.calibration_points, result);
-        state.set_calibration_points(points.clone());
+        Self::keep_points(self.target_kmh, state, points.clone());
         log::info!(
             "Calibration point at {:.1} km/h saved ({} runs)",
             saved.written.speed,
@@ -519,13 +528,29 @@ impl Run {
         self.undo_steps(state);
         self.steps = None;
         let points = with_save_undone(&state.calibration_points, &saved);
-        state.set_calibration_points(points.clone());
+        Self::keep_points(self.target_kmh, state, points.clone());
         self.undone = true;
         log::info!(
             "Calibration point at {:.1} km/h undone",
             saved.written.speed
         );
         Ok(points)
+    }
+
+    /// Use `points` from here on, keeping the deck at the run's speed. The
+    /// belt's intent is in calibrated km/h, so a point saved at the run's
+    /// speed would otherwise move the deck off it by itself (and restart the
+    /// footstep taps). Only a moving belt's intent is re-set, to the same deck
+    /// speed; this never starts the belt.
+    fn keep_points(target_kmh: f32, state: &mut OrchestratorState, points: Vec<CalibrationPoint>) {
+        state.set_calibration_points(points);
+        if state.hardware_speed < STOPPED_BELOW_KMH || state.active_program().is_some() {
+            return;
+        }
+        let speed = intent_for_target(state, target_kmh);
+        if let Some(intent) = state.manual_intent.as_mut() {
+            intent.speed = speed;
+        }
     }
 
     pub fn view(&self, now: Instant) -> CalibrationRunView {
@@ -614,7 +639,7 @@ impl Run {
         }
         let result = s.result()?.clone();
         let (points, saved) = with_result_saved(&state.calibration_points, &result);
-        state.set_calibration_points(points.clone());
+        Self::keep_points(target, state, points.clone());
         log::info!(
             "Calibration stride at {:.1} km/h saved: {:.1} cm",
             saved.written.speed,
@@ -628,7 +653,7 @@ impl Run {
     fn undo_steps(&mut self, state: &mut OrchestratorState) -> Option<Vec<CalibrationPoint>> {
         let saved = self.steps.as_mut()?.take_saved()?;
         let points = with_save_undone(&state.calibration_points, &saved);
-        state.set_calibration_points(points.clone());
+        Self::keep_points(self.target_kmh, state, points.clone());
         log::info!(
             "Calibration stride at {:.1} km/h undone",
             saved.written.speed
@@ -688,8 +713,10 @@ pub struct CalibrationRunView {
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, ts_rs::TS)]
 #[ts(export, export_to = "../../src/ipc/bindings/")]
 pub struct CalibrationSnapshot {
-    /// Labs switch: the guided wizard replaces the old calibration panel.
-    pub wizard_enabled: bool,
+    /// Offer "Calibrate this treadmill": a treadmill is known, it has no belt
+    /// length and there are no points (never calibrated), and SKIP was not
+    /// pressed for it. The emitter also needs it connected.
+    pub offer: bool,
     pub limits: CalibrationLimits,
     /// The belt loop's length for this treadmill, cm; none until entered.
     pub belt_cm: Option<f32>,
@@ -704,6 +731,8 @@ pub struct CalibrationSnapshot {
     pub run: Option<CalibrationRunView>,
     /// RUN ALL: the list being walked, if any.
     pub sweep: Option<CalibrationSweepView>,
+    /// The guided walk from the top speed, if open.
+    pub guide: Option<CalibrationGuideView>,
 }
 
 /// One speed in the target list.
@@ -972,7 +1001,6 @@ fn edit_targets(
 
 /// ADD_SPEED, checked against the treadmill's `min_kmh..=max_kmh`.
 pub fn add_target(app: &AppHandle, kmh: f32, min_kmh: f32, max_kmh: f32) -> Result<(), String> {
-    require_wizard()?;
     edit_targets(app, |t| with_target_added(t, kmh, min_kmh, max_kmh))?;
     log::info!("Calibration target {kmh:.1} km/h added");
     Ok(())
@@ -980,7 +1008,6 @@ pub fn add_target(app: &AppHandle, kmh: f32, min_kmh: f32, max_kmh: f32) -> Resu
 
 /// Remove one speed; `point_speeds` are the saved points' speeds.
 pub fn remove_target(app: &AppHandle, kmh: f32, point_speeds: &[f32]) -> Result<(), String> {
-    require_wizard()?;
     let run_kmh = with_run(|r| r.as_ref().map(|run| run.target_kmh));
     edit_targets(app, |t| with_target_removed(t, kmh, point_speeds, run_kmh))?;
     log::info!("Calibration target {kmh:.1} km/h removed");
@@ -1006,15 +1033,26 @@ pub fn belt_key_for(device_id: &str) -> String {
     format!("beltLoop:{device_id}")
 }
 
-/// The belt loop of the treadmill in use: its settings key and the length.
+/// The settings key that remembers SKIP on the first-connect offer for the
+/// treadmill with this device id.
+pub fn offer_skip_key_for(device_id: &str) -> String {
+    format!("calibrationOfferSkipped:{device_id}")
+}
+
+/// The belt loop of the treadmill in use: its settings key and the length,
+/// and whether SKIP turned the first-connect offer off for it.
 struct Belt {
     key: Option<String>,
     cm: Option<f32>,
+    device_id: Option<String>,
+    offer_skipped: bool,
 }
 
 static BELT: Mutex<Belt> = Mutex::new(Belt {
     key: None,
     cm: None,
+    device_id: None,
+    offer_skipped: false,
 });
 
 fn with_belt<T>(f: impl FnOnce(&mut Belt) -> T) -> T {
@@ -1032,10 +1070,37 @@ fn decode_belt(raw: Option<&str>) -> Option<f32> {
 pub fn switch_belt(app: &AppHandle, device_id: &str) {
     let key = belt_key_for(device_id);
     let cm = decode_belt(crate::persistence::read_setting(app, &key).as_deref());
+    let skipped = crate::persistence::parse_setting(
+        crate::persistence::read_setting(app, &offer_skip_key_for(device_id)).as_deref(),
+    )
+    .unwrap_or(false);
     with_belt(|b| {
         b.key = Some(key);
         b.cm = cm;
+        b.device_id = Some(device_id.to_string());
+        b.offer_skipped = skipped;
     });
+}
+
+/// SKIP on "Calibrate this treadmill": the offer stays off for this
+/// treadmill. Calibration stays in System, Calibration.
+pub fn skip_offer(app: &AppHandle) -> Result<(), String> {
+    let id = with_belt(|b| b.device_id.clone()).ok_or("Connect the treadmill first.")?;
+    crate::persistence::write_setting(app, &offer_skip_key_for(&id), "true")?;
+    with_belt(|b| b.offer_skipped = true);
+    log::info!("Calibration offer skipped for this treadmill");
+    Ok(())
+}
+
+/// A treadmill that was never calibrated: no belt length for it and no
+/// points. With a known treadmill and no SKIP for it, it gets the offer.
+pub fn offer_wanted(
+    treadmill_known: bool,
+    belt_cm: Option<f32>,
+    points: &[CalibrationPoint],
+    skipped: bool,
+) -> bool {
+    treadmill_known && belt_cm.is_none() && points.is_empty() && !skipped
 }
 
 /// BELT_LOOP: the length of this treadmill's belt loop, kept for it.
@@ -1064,51 +1129,29 @@ pub(crate) fn set_belt_for_test(cm: Option<f32>) {
     with_belt(|b| {
         b.key = Some(belt_key_for("TEST"));
         b.cm = cm;
+        b.device_id = Some("TEST".into());
+        b.offer_skipped = false;
     });
 }
 
-/// Read the Labs switch. Call once after the database is initialised.
+/// Tests: SKIP on the offer, without a database.
+#[cfg(test)]
+pub(crate) fn skip_offer_for_test() {
+    with_belt(|b| b.offer_skipped = true);
+}
+
+/// Read the stored target list. Call once after the database is initialised.
 pub fn init(app: &AppHandle) {
-    let on = crate::persistence::parse_setting(
-        crate::persistence::read_setting(app, KEY_WIZARD).as_deref(),
-    )
-    .unwrap_or(false);
-    WIZARD_ON.store(on, Ordering::Relaxed);
     let raw = crate::persistence::read_setting(app, KEY_TARGETS);
     with_targets(|t| *t = raw.map(|r| decode_targets(Some(&r))));
 }
 
-/// Tests: the Labs switch without a database.
-#[cfg(test)]
-pub(crate) fn set_wizard_for_test(on: bool) {
-    WIZARD_ON.store(on, Ordering::Relaxed);
-}
-
-pub fn wizard_enabled() -> bool {
-    WIZARD_ON.load(Ordering::Relaxed)
-}
-
-/// The Labs switch (System -> Diagnostics). Off also drops any run.
-pub fn set_wizard(app: &AppHandle, on: bool) -> Result<(), String> {
-    crate::persistence::write_setting(app, KEY_WIZARD, if on { "true" } else { "false" })?;
-    WIZARD_ON.store(on, Ordering::Relaxed);
-    if !on {
-        close_all();
-    }
-    log::info!("Guided calibration {}", if on { "on" } else { "off" });
-    Ok(())
-}
-
-fn require_wizard() -> Result<(), String> {
-    if wizard_enabled() {
-        Ok(())
-    } else {
-        Err("Turn on the guided calibration in System, Diagnostics first.".into())
-    }
-}
-
 fn with_sweep<T>(f: impl FnOnce(&mut Option<Sweep>) -> T) -> T {
     f(&mut SWEEP.lock().unwrap_or_else(|e| e.into_inner()))
+}
+
+fn with_guide<T>(f: impl FnOnce(&mut Option<guide::Guide>) -> T) -> T {
+    f(&mut GUIDE.lock().unwrap_or_else(|e| e.into_inner()))
 }
 
 fn open_run(state: &mut OrchestratorState, target_hw_kmh: f32) -> Result<(), String> {
@@ -1122,9 +1165,9 @@ fn open_run(state: &mut OrchestratorState, target_hw_kmh: f32) -> Result<(), Str
 /// RUN: a new run at `target_hw_kmh` (also "repeat this point"). A single
 /// run leaves any sweep.
 pub(crate) fn run_start(state: &mut OrchestratorState, target_hw_kmh: f32) -> Result<(), String> {
-    require_wizard()?;
     open_run(state, target_hw_kmh)?;
     with_sweep(|s| *s = None);
+    with_guide(|g| *g = None);
     Ok(())
 }
 
@@ -1141,7 +1184,6 @@ pub(crate) fn sweep_start_over(
     state: &mut OrchestratorState,
     targets_kmh: &[f32],
 ) -> Result<(), String> {
-    require_wizard()?;
     let sweep = Sweep::new(targets_kmh)?;
     for &t in &sweep.targets {
         check_target(state, t)?;
@@ -1149,12 +1191,12 @@ pub(crate) fn sweep_start_over(
     open_run(state, sweep.targets[0])?;
     log::info!("Calibration sweep over {} speeds", sweep.targets.len());
     with_sweep(|s| *s = Some(sweep));
+    with_guide(|g| *g = None);
     Ok(())
 }
 
 /// RUN on the sweep's current speed, his press.
 pub(crate) fn sweep_run(state: &mut OrchestratorState) -> Result<(), String> {
-    require_wizard()?;
     let target = with_sweep(|s| s.as_ref().map(Sweep::current_target))
         .ok_or("Press RUN ALL first.")?
         .ok_or("Every speed is done.")?;
@@ -1164,16 +1206,60 @@ pub(crate) fn sweep_run(state: &mut OrchestratorState) -> Result<(), String> {
 /// SAVE or SKIP in a sweep: mark the current speed and close its run. The
 /// belt keeps its speed; the next one waits for RUN.
 pub(crate) fn sweep_next(saved: bool) -> Result<(), String> {
-    require_wizard()?;
     with_sweep(|s| s.as_mut().ok_or("Press RUN ALL first.")?.advance(saved))?;
     with_run(|r| *r = None);
     Ok(())
 }
 
-/// End the sweep and any run. The belt keeps going.
+/// End the sweep, the guided walk and any run. The belt keeps going.
 pub(crate) fn close_all() {
     with_run(|r| *r = None);
     with_sweep(|s| *s = None);
+    with_guide(|g| *g = None);
+}
+
+/// The slowest speed the deck runs, in tenths (rounded up, so the deck can
+/// run it).
+fn slowest(state: &OrchestratorState) -> f32 {
+    (state.min_speed.max(0.1) * 10.0 - 1e-3).ceil() / 10.0
+}
+
+/// "What's the fastest you'll walk?": open the guided walk from the deck's
+/// slowest speed to `top_kmh`. Plans the speeds only: the belt is not
+/// touched, and the first speed waits for the user's RUN.
+pub(crate) fn guide_start(state: &OrchestratorState, top_kmh: f32) -> Result<(), String> {
+    belt_cm().ok_or("Enter the belt loop length first.")?;
+    if !top_kmh.is_finite() {
+        return Err("Enter your top speed in km/h.".into());
+    }
+    if top_kmh > state.max_speed {
+        return Err(format!(
+            "The treadmill tops out at {:.1} km/h.",
+            state.max_speed
+        ));
+    }
+    let walk = guide::Guide::new(slowest(state), top_kmh)?;
+    log::info!("Calibration walk to {top_kmh:.1} km/h");
+    with_run(|r| *r = None);
+    with_sweep(|s| *s = None);
+    with_guide(|g| *g = Some(walk));
+    Ok(())
+}
+
+/// RUN on the walk's next speed, the user's press: it sets the belt there.
+pub(crate) fn guide_run(state: &mut OrchestratorState) -> Result<(), String> {
+    let next = with_guide(|g| g.as_ref().map(guide::Guide::next))
+        .ok_or("Pick your top speed first.")?
+        .ok_or("Every speed is done.")?;
+    open_run(state, next)
+}
+
+/// SKIP on the walk's next speed: no run there. Closes its run; the belt
+/// keeps its speed.
+pub(crate) fn guide_skip() -> Result<(), String> {
+    with_guide(|g| g.as_mut().ok_or("Pick your top speed first.")?.skip_next())?;
+    with_run(|r| *r = None);
+    Ok(())
 }
 
 /// STOP was pressed: a run still settling or tapping can't go on, so it
@@ -1189,7 +1275,6 @@ pub(crate) fn on_stop() {
 }
 
 fn on_run<T>(f: impl FnOnce(&mut Run) -> Result<T, String>) -> Result<T, String> {
-    require_wizard()?;
     with_run(|r| match r.as_mut() {
         Some(run) => f(run),
         None => Err("Press RUN on a speed first.".into()),
@@ -1223,10 +1308,20 @@ pub(crate) fn tap(
         if was_measured {
             return Ok(None);
         }
-        Ok(run.autosave(state).map(|points| (run.target_kmh, points)))
+        let measured = run
+            .result
+            .as_ref()
+            .map(|r| (r.point.speed, r.point.distance_scale));
+        Ok(run
+            .autosave(state)
+            .map(|points| (run.target_kmh, measured, points)))
     })?;
-    Ok(saved.map(|(target, points)| {
+    Ok(saved.map(|(target, measured, points)| {
         with_sweep(|s| s.iter_mut().for_each(|s| s.mark_saved(target)));
+        if let Some((at_kmh, scale)) = measured {
+            // The walk reads the run's own measurement, not the average.
+            with_guide(|g| g.iter_mut().for_each(|g| g.record(target, at_kmh, scale)));
+        }
         points_changed();
         points
     }))
@@ -1238,6 +1333,7 @@ pub(crate) fn tap(
 pub(crate) fn undo(state: &mut OrchestratorState) -> Result<Vec<CalibrationPoint>, String> {
     let (target, points) = on_run(|run| run.undo(state).map(|p| (run.target_kmh, p)))?;
     with_sweep(|s| s.iter_mut().for_each(|s| s.mark_pending(target)));
+    with_guide(|g| g.iter_mut().for_each(|g| g.forget(target)));
     points_changed();
     Ok(points)
 }
@@ -1255,6 +1351,7 @@ pub(crate) fn retap(
     })?;
     Ok(undone.map(|(target, points)| {
         with_sweep(|s| s.iter_mut().for_each(|s| s.mark_pending(target)));
+        with_guide(|g| g.iter_mut().for_each(|g| g.forget(target)));
         points_changed();
         points
     }))
@@ -1322,15 +1419,22 @@ pub fn snapshot(state: &OrchestratorState) -> CalibrationSnapshot {
             run.view(Instant::now())
         })
     });
+    let (belt_treadmill, offer_skipped) = with_belt(|b| (b.key.is_some(), b.offer_skipped));
     CalibrationSnapshot {
-        wizard_enabled: wizard_enabled(),
+        offer: offer_wanted(
+            belt_treadmill,
+            belt_cm(),
+            &state.calibration_points,
+            offer_skipped,
+        ),
         limits: CalibrationLimits::default(),
         belt_cm: belt_cm(),
-        belt_treadmill: with_belt(|b| b.key.is_some()),
+        belt_treadmill,
         targets,
         points_rev: POINTS_REV.load(Ordering::Relaxed),
         run,
         sweep: with_sweep(|s| s.as_ref().map(Sweep::view)),
+        guide: with_guide(|g| g.as_ref().map(guide::Guide::view)),
     }
 }
 
@@ -2054,5 +2158,61 @@ mod tests {
         s.advance(false).unwrap();
         s.mark_pending(2.0);
         assert_eq!(s.view().marks[0], SweepMark::Skipped);
+    }
+
+    #[test]
+    fn never_calibrated_is_no_belt_length_and_no_points() {
+        assert!(offer_wanted(true, None, &[], false));
+        assert!(!offer_wanted(false, None, &[], false), "no treadmill known");
+        assert!(
+            !offer_wanted(true, Some(280.0), &[], false),
+            "a belt length"
+        );
+        assert!(!offer_wanted(true, None, &[pt(3.0, 0.9)], false), "a point");
+        assert!(!offer_wanted(true, None, &[], true), "SKIP");
+    }
+
+    #[test]
+    fn skip_on_the_offer_is_kept_per_treadmill() {
+        let _globals = TEST_GLOBALS.lock().unwrap_or_else(|e| e.into_inner());
+        let state = OrchestratorState::default();
+        set_belt_for_test(None);
+        assert!(snapshot(&state).offer, "a new treadmill gets the offer");
+        skip_offer_for_test();
+        assert!(!snapshot(&state).offer, "SKIP turns it off");
+        // Another treadmill (switched in with its own settings) has its own.
+        set_belt_for_test(None);
+        assert!(snapshot(&state).offer);
+        assert_eq!(offer_skip_key_for("AAAA"), "calibrationOfferSkipped:AAAA");
+        assert_ne!(offer_skip_key_for("AAAA"), offer_skip_key_for("BBBB"));
+    }
+
+    #[test]
+    fn the_guided_walk_starts_from_the_slowest_speed_and_needs_a_top_above_it() {
+        let _globals = TEST_GLOBALS.lock().unwrap_or_else(|e| e.into_inner());
+        close_all();
+        let state = OrchestratorState {
+            min_speed: 0.55,
+            max_speed: 8.0,
+            ..Default::default()
+        };
+        assert_eq!(slowest(&state), 0.6, "rounded up to a speed the deck runs");
+        set_belt_for_test(None);
+        assert!(guide_start(&state, 5.0).unwrap_err().contains("belt loop"));
+        set_belt_for_test(Some(280.0));
+        assert!(guide_start(&state, 9.0).unwrap_err().contains("tops out"));
+        assert!(guide_start(&state, 0.6)
+            .unwrap_err()
+            .contains("above the slowest"));
+        assert!(guide_start(&state, f32::NAN).is_err());
+        guide_start(&state, 5.0).unwrap();
+        let g = snapshot(&state).guide.unwrap();
+        assert_eq!((g.slow_kmh, g.top_kmh, g.next_kmh), (0.6, 5.0, Some(0.6)));
+        assert_eq!(snapshot(&state).run, None, "planning opens no run");
+        // SKIP moves on to the top speed; a single RUN leaves the walk.
+        guide_skip().unwrap();
+        assert_eq!(snapshot(&state).guide.unwrap().next_kmh, Some(5.0));
+        close_all();
+        assert_eq!(snapshot(&state).guide, None);
     }
 }

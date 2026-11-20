@@ -1890,12 +1890,137 @@ mod tests {
         assert!(r.deck.belt_still(), "a footstep never starts the belt");
     }
 
+    /// Tap the open GROUND_TRUTH run until it measures, as if the belt really
+    /// ran at the deck's speed over `factor`: a 300 cm loop's passes come
+    /// that far apart. Gives what the taps saved.
+    fn tap_until_measured(
+        r: &mut Rig,
+        factor: f32,
+    ) -> Option<Vec<crate::protocol::CalibrationPoint>> {
+        let mut saved = None;
+        for _ in 0..12 {
+            let real_ms = r.state.hardware_speed / factor / 3.6;
+            saved = saved.or(crate::calibration::tap(&mut r.state, r.t).unwrap());
+            r.run(3.0 / real_ms as f64);
+        }
+        saved
+    }
+
+    /// The whole guided walk: "What's the fastest you'll walk?" plans the
+    /// speeds and moves nothing. Each speed's RUN is the only thing that
+    /// moves the belt: the taps, the saves and the plan never do, STOP stops
+    /// it and nothing starts it again until his next RUN. The deck here is
+    /// straight, so the midpoint check agrees and the walk ends there.
+    #[test]
+    fn a_guided_calibration_only_moves_the_belt_on_his_run() {
+        let _globals = crate::calibration::TEST_GLOBALS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        crate::calibration::close_all();
+        crate::calibration::set_belt_for_test(Some(300.0));
+        let mut r = Rig::new();
+        r.run(5.0);
+        let factor = |kmh: f32| 0.9 + 0.02 * kmh;
+
+        // The question plans; the belt stays still.
+        let mark = r.mark();
+        crate::calibration::guide_start(&r.state, 5.0).unwrap();
+        r.run(20.0);
+        assert!(!moves_belt(&r.commands_since(mark)));
+        assert!(
+            r.deck.belt_still(),
+            "picking a top speed never starts the belt"
+        );
+        let slow = crate::calibration::snapshot(&r.state)
+            .guide
+            .unwrap()
+            .slow_kmh;
+
+        // RUN on the slowest speed, his press: the belt starts there.
+        r.state.set_test_now(r.t);
+        crate::calibration::guide_run(&mut r.state).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(slow), "{} km/h", r.deck.speed_kmh());
+        let mark = r.mark();
+        assert!(
+            tap_until_measured(&mut r, factor(slow)).is_some(),
+            "saved by itself"
+        );
+        r.run(20.0);
+        assert!(
+            !moves_belt(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+        assert!(r.deck.running_at(slow), "the belt waits at {slow} for RUN");
+
+        // RUN on the top speed, then STOP mid-tapping: the run closes, the
+        // walk waits on the same speed, and nothing restarts the belt.
+        r.state.set_test_now(r.t);
+        crate::calibration::guide_run(&mut r.state).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(5.0), "{} km/h", r.deck.speed_kmh());
+        crate::calibration::tap(&mut r.state, r.t).unwrap();
+        crate::calibration::on_stop();
+        r.press(crate::engine::DeckAction::Stop);
+        r.run(20.0);
+        assert!(r.deck.belt_still());
+        let mark = r.mark();
+        r.run(30.0);
+        assert!(!moves_belt(&r.commands_since(mark)));
+        assert!(r.deck.belt_still(), "nothing restarts the belt after STOP");
+        let snap = crate::calibration::snapshot(&r.state);
+        assert_eq!(snap.run, None);
+        assert_eq!(snap.guide.as_ref().unwrap().next_kmh, Some(5.0));
+
+        // His RUN again, then the taps.
+        r.state.set_test_now(r.t);
+        crate::calibration::guide_run(&mut r.state).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(5.0), "{} km/h", r.deck.speed_kmh());
+        let mark = r.mark();
+        assert!(tap_until_measured(&mut r, factor(5.0)).is_some());
+        r.run(20.0);
+        assert!(
+            !moves_belt(&r.commands_since(mark)),
+            "{:?} at {} km/h",
+            r.commands_since(mark),
+            r.deck.speed_kmh()
+        );
+        let guide = crate::calibration::snapshot(&r.state).guide.unwrap();
+        let mid = guide.next_kmh.expect("the midpoint check is next");
+        assert_eq!(guide.checks.len(), 1);
+        assert!(r.deck.running_at(5.0), "the belt waits at 5.0 for RUN");
+
+        // RUN on the midpoint: the check agrees and the walk is done.
+        r.state.set_test_now(r.t);
+        crate::calibration::guide_run(&mut r.state).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(mid), "{} km/h", r.deck.speed_kmh());
+        let mark = r.mark();
+        assert!(tap_until_measured(&mut r, factor(mid)).is_some());
+        r.run(30.0);
+        assert!(!moves_belt(&r.commands_since(mark)));
+        let guide = crate::calibration::snapshot(&r.state).guide.unwrap();
+        assert_eq!(guide.next_kmh, None, "done: {guide:?}");
+        assert_eq!(
+            guide.checks[0].verdict,
+            crate::calibration::CheckVerdict::Agreed
+        );
+        assert!(guide.remaining_error_pct.unwrap() < 2.0);
+        assert_eq!(r.state.calibration_points.len(), 3);
+        assert!(crate::calibration::guide_run(&mut r.state).is_err());
+        crate::calibration::close_all();
+    }
+
     /// RUN ALL: the press runs the slowest speed. Taps and saving never move
     /// the belt; STOP stops it, closes the open run, and nothing starts the
     /// belt again until his RUN on the next speed.
     #[test]
     fn a_calibration_sweep_only_moves_the_belt_on_his_run() {
-        crate::calibration::set_wizard_for_test(true);
+        let _globals = crate::calibration::TEST_GLOBALS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let mut r = Rig::new();
         r.run(5.0);
         r.state.set_test_now(r.t);

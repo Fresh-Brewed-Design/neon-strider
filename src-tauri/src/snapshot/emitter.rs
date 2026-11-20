@@ -92,6 +92,8 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     snapshot.traffic = crate::traffic::snapshot();
     snapshot.lights_out = lights_out::snapshot();
     snapshot.calibration = crate::calibration::snapshot(&state);
+    // The first-connect offer only shows while the treadmill is connected.
+    snapshot.calibration.offer &= snapshot.connection.connected;
     snapshot.ghost_pod = crate::ghost_pod::snapshot();
     snapshot.heart_rate = crate::heart_rate::snapshot();
     snapshot.heart_rate.zone = state.zone_band();

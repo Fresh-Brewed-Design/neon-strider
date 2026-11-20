@@ -72,7 +72,8 @@ pub struct AppSnapshot {
     pub traffic: crate::traffic::TrafficSnapshot,
 
     // ---- Labs ----
-    /// The guided calibration (Labs): its switch, limits and any run.
+    /// The guided calibration (GROUND_TRUTH): its limits, the first-connect
+    /// offer, any run and any guided walk.
     pub calibration: crate::calibration::CalibrationSnapshot,
     /// Labs: GHOST_POD, the PC as a foot pod for a watch (off by default).
     pub ghost_pod: crate::ghost_pod::GhostPodSnapshot,
@@ -744,11 +745,7 @@ pub enum Command {
         on: bool,
     },
 
-    // ---- Guided calibration (Labs) ----
-    /// Labs: the guided calibration wizard on or off (persisted, off by default).
-    CalibrationSetWizard {
-        on: bool,
-    },
+    // ---- Guided calibration (GROUND_TRUTH) ----
     /// RUN (or REPEAT) on a target speed: set the belt to `target_kmh` (deck
     /// km/h) and start it if it is still. The press is his.
     CalibrationRunStart {
@@ -802,6 +799,21 @@ pub enum Command {
     /// The stride a settled footstep phase measures is saved by itself.
     /// UNDO: put the point back as the belt run left it.
     CalibrationStepsUndo,
+    /// SKIP on "Calibrate this treadmill": the first-connect offer stays off
+    /// for this treadmill (kept per treadmill). Never moves the belt.
+    CalibrationOfferSkip,
+    /// "What's the fastest you'll walk?": open the guided walk from the
+    /// deck's slowest speed to `top_kmh` (deck km/h). Plans only; the belt
+    /// waits for RUN.
+    CalibrationGuideStart {
+        top_kmh: f32,
+    },
+    /// RUN on the guided walk's next speed. The press is his.
+    CalibrationGuideRun,
+    /// SKIP the guided walk's next speed. The belt keeps its speed.
+    CalibrationGuideSkip,
+    /// End the guided walk and any run. The belt keeps going.
+    CalibrationGuideEnd,
 
     // ---- GHOST_POD and WRIST_LINK (Labs) ----
     /// Labs: GHOST_POD on (`on`) or off. On, the PC advertises as a Bluetooth
