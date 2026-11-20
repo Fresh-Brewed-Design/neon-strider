@@ -6,6 +6,8 @@
         <iq:permissions>
             <iq:uses-permission id="BluetoothLowEnergy"/>
         </iq:permissions>
-        <iq:languages/>
+        <iq:languages>
+            <iq:language>eng</iq:language>
+        </iq:languages>
     </iq:application>
 </iq:manifest>

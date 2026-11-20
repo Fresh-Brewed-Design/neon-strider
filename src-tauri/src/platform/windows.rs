@@ -752,13 +752,15 @@ mod mic {
 // A WinRT GATT server (`GattServiceProvider`). It needs an adapter with the
 // peripheral role; most can be a central (the treadmill, through btleplug)
 // and a peripheral at once. Windows advertises with the PC's own Bluetooth
-// name. Event handlers run on WinRT threads and only call `events`.
+// name. Each service has a provider of its own, so switching one on or off
+// never drops a watch connected to another. Event handlers run on WinRT
+// threads and only call `events` and log.
 
-pub use peripheral::{peripheral_notify, peripheral_start, peripheral_stop};
+pub use peripheral::{peripheral_add, peripheral_notify, peripheral_remove, peripheral_stop};
 
 mod peripheral {
     use super::super::{
-        PeripheralCharacteristic, PeripheralEvent, PeripheralEvents, PeripheralService,
+        uuid_text, PeripheralCharacteristic, PeripheralEvent, PeripheralEvents, PeripheralService,
     };
     use std::collections::HashMap;
     use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -768,24 +770,42 @@ mod peripheral {
         GattLocalService, GattProtectionLevel, GattReadRequestedEventArgs, GattServiceProvider,
         GattServiceProviderAdvertisementStatus,
         GattServiceProviderAdvertisementStatusChangedEventArgs,
-        GattServiceProviderAdvertisingParameters, GattWriteOption, GattWriteRequestedEventArgs,
+        GattServiceProviderAdvertisingParameters, GattSession, GattSessionStatus,
+        GattSessionStatusChangedEventArgs, GattWriteOption, GattWriteRequestedEventArgs,
     };
     use windows::Devices::Bluetooth::{BluetoothAdapter, BluetoothError};
     use windows::Foundation::TypedEventHandler;
     use windows::Storage::Streams::{DataReader, DataWriter, IBuffer};
 
-    struct Server {
-        providers: Vec<GattServiceProvider>,
+    /// One service, on a `GattServiceProvider` of its own, so it can come and
+    /// go without touching the others.
+    struct Provided {
+        service: u128,
+        name: &'static str,
+        provider: GattServiceProvider,
         chars: Vec<(u128, GattLocalCharacteristic)>,
     }
 
-    static SERVER: Mutex<Option<Server>> = Mutex::new(None);
+    static SERVER: Mutex<Vec<Provided>> = Mutex::new(Vec::new());
     /// The latest value of each readable characteristic, which reads answer
     /// with (`peripheral_notify` updates it).
     static VALUES: Mutex<Option<HashMap<u128, Vec<u8>>>> = Mutex::new(None);
+    /// Each central seen (by its address), with its session. Windows has no
+    /// "a device connected" event for a GATT server, so a central shows up at
+    /// its first read, write or subscription; its session then says when it
+    /// disconnects.
+    static CENTRALS: Mutex<Option<HashMap<String, GattSession>>> = Mutex::new(None);
 
     fn values() -> MutexGuard<'static, Option<HashMap<u128, Vec<u8>>>> {
         VALUES.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn server() -> MutexGuard<'static, Vec<Provided>> {
+        SERVER.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn centrals() -> MutexGuard<'static, Option<HashMap<String, GattSession>>> {
+        CENTRALS.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     fn win(e: windows::core::Error) -> String {
@@ -795,6 +815,7 @@ mod peripheral {
     /// Plain English for a WinRT Bluetooth error.
     fn bt_error(e: BluetoothError) -> String {
         match e {
+            BluetoothError::Success => "Windows stopped the advertisement.".to_string(),
             BluetoothError::RadioNotAvailable => {
                 "Bluetooth is off or the adapter is missing.".to_string()
             }
@@ -815,6 +836,39 @@ mod peripheral {
         }
     }
 
+    /// The name of a `BluetoothError`, for the log.
+    fn bt_error_name(e: BluetoothError) -> String {
+        let name = match e {
+            BluetoothError::Success => "Success",
+            BluetoothError::RadioNotAvailable => "RadioNotAvailable",
+            BluetoothError::ResourceInUse => "ResourceInUse",
+            BluetoothError::DeviceNotConnected => "DeviceNotConnected",
+            BluetoothError::OtherError => "OtherError",
+            BluetoothError::DisabledByPolicy => "DisabledByPolicy",
+            BluetoothError::NotSupported => "NotSupported",
+            BluetoothError::DisabledByUser => "DisabledByUser",
+            BluetoothError::ConsentRequired => "ConsentRequired",
+            BluetoothError::TransportNotSupported => "TransportNotSupported",
+            other => return format!("error {}", other.0),
+        };
+        name.to_string()
+    }
+
+    /// `GattServiceProviderAdvertisementStatus` in words.
+    fn status_name(s: GattServiceProviderAdvertisementStatus) -> String {
+        let name = match s {
+            GattServiceProviderAdvertisementStatus::Created => "Created",
+            GattServiceProviderAdvertisementStatus::Stopped => "Stopped",
+            GattServiceProviderAdvertisementStatus::Started => "Started",
+            GattServiceProviderAdvertisementStatus::Aborted => "Aborted",
+            GattServiceProviderAdvertisementStatus::StartedWithoutAllAdvertisementData => {
+                "Started without all advertisement data"
+            }
+            other => return format!("status {}", other.0),
+        };
+        name.to_string()
+    }
+
     fn buffer(bytes: &[u8]) -> windows::core::Result<IBuffer> {
         let writer = DataWriter::new()?;
         writer.WriteBytes(bytes)?;
@@ -828,15 +882,83 @@ mod peripheral {
         Ok(out)
     }
 
-    fn server() -> MutexGuard<'static, Option<Server>> {
-        SERVER.lock().unwrap_or_else(PoisonError::into_inner)
+    /// The central's address from its device ID
+    /// (`BluetoothLE#BluetoothLE<adapter>-<central>`), or the whole ID.
+    fn address_of(session: &GattSession) -> String {
+        let id = session
+            .DeviceId()
+            .and_then(|d| d.Id())
+            .map(|h| h.to_string())
+            .unwrap_or_default();
+        id.rsplit('-').next().unwrap_or(&id).to_string()
     }
 
-    pub fn peripheral_start(
-        services: &[PeripheralService],
+    /// Log a central the first time it shows up, and watch its session so
+    /// its disconnect is logged too. `what` is what it did ("read of 2a54 on
+    /// RSC").
+    fn note_central(session: &GattSession, what: &str) {
+        let address = address_of(session);
+        let mut guard = centrals();
+        let map = guard.get_or_insert_with(HashMap::new);
+        if map.contains_key(&address) {
+            return;
+        }
+        log::info!(
+            "GHOST_POD: central {} connected (first seen: {}; max PDU {} bytes)",
+            address,
+            what,
+            session.MaxPduSize().unwrap_or(0)
+        );
+        let addr = address.clone();
+        let watched = session.SessionStatusChanged(&TypedEventHandler::new(
+            move |_: Ref<GattSession>, args: Ref<GattSessionStatusChangedEventArgs>| {
+                let args = args.ok()?;
+                if args.Status()? == GattSessionStatus::Closed {
+                    log::info!(
+                        "GHOST_POD: central {} disconnected ({})",
+                        addr,
+                        bt_error_name(args.Error()?)
+                    );
+                    if let Some(map) = centrals().as_mut() {
+                        map.remove(&addr);
+                    }
+                }
+                Ok(())
+            },
+        ));
+        if let Err(e) = watched {
+            log::warn!(
+                "GHOST_POD: can't watch central {}: {}",
+                address,
+                e.message()
+            );
+        }
+        map.insert(address, session.clone());
+    }
+
+    /// What the adapter can advertise, for the log: a second advertisement
+    /// next to the foot pod's depends on it.
+    pub(super) fn adapter_caps(adapter: &BluetoothAdapter) -> String {
+        let yes = |r: windows::core::Result<bool>| match r {
+            Ok(true) => "yes",
+            Ok(false) => "no",
+            Err(_) => "unknown",
+        };
+        format!(
+            "extended advertising {}, advertisement offload {}, max advertisement data {} bytes",
+            yes(adapter.IsExtendedAdvertisingSupported()),
+            yes(adapter.IsAdvertisementOffloadSupported()),
+            adapter
+                .MaxAdvertisementDataLength()
+                .map_or("unknown".to_string(), |n| n.to_string())
+        )
+    }
+
+    pub fn peripheral_add(
+        service: &PeripheralService,
         events: PeripheralEvents,
     ) -> Result<(), String> {
-        peripheral_stop();
+        peripheral_remove(service.uuid);
         let adapter = BluetoothAdapter::GetDefaultAsync()
             .and_then(|op| op.get())
             .map_err(|_| "No Bluetooth adapter found.".to_string())?;
@@ -846,78 +968,133 @@ mod peripheral {
                     .to_string(),
             );
         }
-
-        *values() = Some(HashMap::new());
-        let mut providers: Vec<GattServiceProvider> = Vec::new();
-        let mut chars = Vec::new();
-        let built = serve(services, &events, &mut providers, &mut chars);
-        if let Err(why) = built {
-            for p in &providers {
-                let _ = p.StopAdvertising();
-            }
-            *values() = None;
-            return Err(why);
+        if server().is_empty() {
+            log::info!("GHOST_POD: adapter: {}", adapter_caps(&adapter));
         }
-        *server() = Some(Server { providers, chars });
-        Ok(())
+        values().get_or_insert_with(HashMap::new);
+        let mut chars = Vec::new();
+        match serve(service, &events, &mut chars) {
+            Ok(provider) => {
+                server().push(Provided {
+                    service: service.uuid,
+                    name: service.name,
+                    provider,
+                    chars,
+                });
+                Ok(())
+            }
+            Err(why) => {
+                forget_values(&chars);
+                Err(why)
+            }
+        }
     }
 
-    /// Create, fill and advertise each service, pushing what exists so far
-    /// into `providers` and `chars` so the caller can undo a half start.
-    fn serve(
-        services: &[PeripheralService],
-        events: &PeripheralEvents,
-        providers: &mut Vec<GattServiceProvider>,
-        chars: &mut Vec<(u128, GattLocalCharacteristic)>,
-    ) -> Result<(), String> {
-        for service in services {
-            let created = GattServiceProvider::CreateAsync(GUID::from_u128(service.uuid))
-                .and_then(|op| op.get())
-                .map_err(win)?;
-            let err = created.Error().map_err(win)?;
-            if err != BluetoothError::Success {
-                return Err(bt_error(err));
+    fn forget_values(chars: &[(u128, GattLocalCharacteristic)]) {
+        if let Some(map) = values().as_mut() {
+            for (uuid, _) in chars {
+                map.remove(uuid);
             }
-            let provider = created.ServiceProvider().map_err(win)?;
-            let local = provider.Service().map_err(win)?;
-            for c in &service.characteristics {
-                let ch = add_characteristic(&local, c, events)?;
-                chars.push((c.uuid, ch));
-            }
-
-            let on_status = events.clone();
-            provider
-                .AdvertisementStatusChanged(&TypedEventHandler::new(
-                    move |_: Ref<GattServiceProvider>,
-                          args: Ref<GattServiceProviderAdvertisementStatusChangedEventArgs>| {
-                        let args = args.ok()?;
-                        let status = args.Status()?;
-                        log::info!("GHOST_POD: advertisement status {}", status.0);
-                        if status == GattServiceProviderAdvertisementStatus::Started
-                            || status
-                                == GattServiceProviderAdvertisementStatus::StartedWithoutAllAdvertisementData
-                        {
-                            on_status(PeripheralEvent::Advertising);
-                        } else if status == GattServiceProviderAdvertisementStatus::Aborted {
-                            on_status(PeripheralEvent::Failed(bt_error(args.Error()?)));
-                        }
-                        Ok(())
-                    },
-                ))
-                .map_err(win)?;
-
-            let params = GattServiceProviderAdvertisingParameters::new().map_err(win)?;
-            params.SetIsConnectable(true).map_err(win)?;
-            params.SetIsDiscoverable(true).map_err(win)?;
-            provider
-                .StartAdvertisingWithParameters(&params)
-                .map_err(win)?;
-            providers.push(provider);
         }
-        Ok(())
+    }
+
+    /// Create, fill and advertise one service. `chars` gets each
+    /// characteristic as it is made, so the caller can undo a half start.
+    fn serve(
+        service: &PeripheralService,
+        events: &PeripheralEvents,
+        chars: &mut Vec<(u128, GattLocalCharacteristic)>,
+    ) -> Result<GattServiceProvider, String> {
+        let (name, uuid) = (service.name, service.uuid);
+        let created = GattServiceProvider::CreateAsync(GUID::from_u128(uuid))
+            .and_then(|op| op.get())
+            .map_err(win)?;
+        let err = created.Error().map_err(win)?;
+        if err != BluetoothError::Success {
+            log::warn!(
+                "GHOST_POD: {} ({}) not created: {}",
+                name,
+                uuid_text(uuid),
+                bt_error_name(err)
+            );
+            return Err(bt_error(err));
+        }
+        let provider = created.ServiceProvider().map_err(win)?;
+        let local = provider.Service().map_err(win)?;
+        for c in &service.characteristics {
+            let ch = add_characteristic(name, &local, c, events)?;
+            chars.push((c.uuid, ch));
+        }
+
+        let on_status = events.clone();
+        provider
+            .AdvertisementStatusChanged(&TypedEventHandler::new(
+                move |_: Ref<GattServiceProvider>,
+                      args: Ref<GattServiceProviderAdvertisementStatusChangedEventArgs>| {
+                    let args = args.ok()?;
+                    let status = args.Status()?;
+                    let error = args.Error()?;
+                    log::info!(
+                        "GHOST_POD: {} ({}) advertisement {} ({})",
+                        name,
+                        uuid_text(uuid),
+                        status_name(status),
+                        bt_error_name(error)
+                    );
+                    if status == GattServiceProviderAdvertisementStatus::Started
+                        || status
+                            == GattServiceProviderAdvertisementStatus::StartedWithoutAllAdvertisementData
+                    {
+                        on_status(PeripheralEvent::Advertising { service: uuid });
+                    } else if status == GattServiceProviderAdvertisementStatus::Aborted {
+                        on_status(PeripheralEvent::Failed {
+                            service: uuid,
+                            why: bt_error(error),
+                        });
+                    }
+                    Ok(())
+                },
+            ))
+            .map_err(win)?;
+
+        // Discoverable always: Microsoft's BluetoothLE sample says it decides
+        // whether a remote device can query the PC for the service. Windows
+        // adds the service's UUID to the advertisement only when the service
+        // is connectable too (Microsoft's GATT server guide), so a service
+        // that stays out of the advertisement is discoverable but not
+        // connectable; a device reaches it over the connection it made through
+        // another service's advertisement.
+        let params = GattServiceProviderAdvertisingParameters::new().map_err(win)?;
+        params.SetIsDiscoverable(true).map_err(win)?;
+        params.SetIsConnectable(service.advertise).map_err(win)?;
+        log::info!(
+            "GHOST_POD: {} ({}) starting: {}",
+            name,
+            uuid_text(uuid),
+            if service.advertise {
+                "connectable, UUID in the advertisement"
+            } else {
+                "discoverable only, UUID left out of the advertisement"
+            }
+        );
+        provider
+            .StartAdvertisingWithParameters(&params)
+            .map_err(win)?;
+        // A service left out of the advertisement may never fire the status
+        // event, so its state right after the start goes in the log too.
+        if let Ok(now) = provider.AdvertisementStatus() {
+            log::info!(
+                "GHOST_POD: {} ({}) status after start: {}",
+                name,
+                uuid_text(uuid),
+                status_name(now)
+            );
+        }
+        Ok(provider)
     }
 
     fn add_characteristic(
+        service: &'static str,
         local: &GattLocalService,
         c: &PeripheralCharacteristic,
         events: &PeripheralEvents,
@@ -963,13 +1140,17 @@ mod peripheral {
             ch.ReadRequested(&TypedEventHandler::new(
                 move |_: Ref<GattLocalCharacteristic>, args: Ref<GattReadRequestedEventArgs>| {
                     let args = args.ok()?;
+                    let what = format!("read of {} on {}", uuid_text(uuid), service);
+                    if let Ok(session) = args.Session() {
+                        note_central(&session, &what);
+                    }
                     let deferral = args.GetDeferral()?;
                     let request = args.GetRequestAsync()?.get()?;
                     let value = values()
                         .as_ref()
                         .and_then(|map| map.get(&uuid).cloned())
                         .unwrap_or_default();
-                    log::info!("GHOST_POD: read of {:x}", uuid);
+                    log::info!("GHOST_POD: {}", what);
                     request.RespondWithValue(&buffer(&value)?)?;
                     deferral.Complete()?;
                     Ok(())
@@ -981,7 +1162,26 @@ mod peripheral {
             let ev = events.clone();
             ch.SubscribedClientsChanged(&TypedEventHandler::new(
                 move |sender: Ref<GattLocalCharacteristic>, _: Ref<IInspectable>| {
-                    let count = sender.ok()?.SubscribedClients()?.Size()?;
+                    let clients = sender.ok()?.SubscribedClients()?;
+                    let count = clients.Size()?;
+                    let what = format!("subscribed to {} on {}", uuid_text(uuid), service);
+                    let mut who = Vec::new();
+                    for client in clients {
+                        if let Ok(session) = client.Session() {
+                            note_central(&session, &what);
+                            who.push(address_of(&session));
+                        }
+                    }
+                    log::info!(
+                        "GHOST_POD: {} {}{}",
+                        count,
+                        what,
+                        if who.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" ({})", who.join(", "))
+                        }
+                    );
                     ev(PeripheralEvent::Subscribers { uuid, count });
                     Ok(())
                 },
@@ -993,6 +1193,10 @@ mod peripheral {
             ch.WriteRequested(&TypedEventHandler::new(
                 move |_: Ref<GattLocalCharacteristic>, args: Ref<GattWriteRequestedEventArgs>| {
                     let args = args.ok()?;
+                    if let Ok(session) = args.Session() {
+                        let what = format!("write to {} on {}", uuid_text(uuid), service);
+                        note_central(&session, &what);
+                    }
                     let deferral = args.GetDeferral()?;
                     let request = args.GetRequestAsync()?.get()?;
                     let value = bytes_of(&request.Value()?)?;
@@ -1016,11 +1220,15 @@ mod peripheral {
             }
         }
         let guard = server();
-        let Some(server) = guard.as_ref() else {
+        if guard.is_empty() {
             return Ok(());
-        };
-        let Some((_, ch)) = server.chars.iter().find(|(u, _)| *u == uuid) else {
-            return Err(format!("No characteristic {:x} on the pod.", uuid));
+        }
+        let Some((_, ch)) = guard
+            .iter()
+            .flat_map(|p| p.chars.iter())
+            .find(|(u, _)| *u == uuid)
+        else {
+            return Err(format!("No characteristic {} on the pod.", uuid_text(uuid)));
         };
         // Not awaited: Windows delivers it to each subscriber by itself.
         let _op = ch
@@ -1029,15 +1237,41 @@ mod peripheral {
         Ok(())
     }
 
+    fn stop_one(p: &Provided) {
+        if let Err(e) = p.provider.StopAdvertising() {
+            log::warn!(
+                "GHOST_POD: {} ({}) stop advertising failed: {}",
+                p.name,
+                uuid_text(p.service),
+                e.message()
+            );
+        }
+        forget_values(&p.chars);
+        log::info!("GHOST_POD: {} ({}) stopped", p.name, uuid_text(p.service));
+    }
+
+    pub fn peripheral_remove(service: u128) {
+        let removed: Vec<Provided> = {
+            let mut guard = server();
+            let (gone, kept): (Vec<Provided>, Vec<Provided>) =
+                guard.drain(..).partition(|p| p.service == service);
+            *guard = kept;
+            gone
+        };
+        for p in &removed {
+            stop_one(p);
+        }
+    }
+
     pub fn peripheral_stop() {
-        if let Some(s) = server().take() {
-            for provider in &s.providers {
-                if let Err(e) = provider.StopAdvertising() {
-                    log::warn!("GHOST_POD: stop advertising failed: {}", e.message());
-                }
-            }
+        let all: Vec<Provided> = server().drain(..).collect();
+        for p in &all {
+            stop_one(p);
+        }
+        if !all.is_empty() {
             *values() = None;
-            log::info!("GHOST_POD: stopped");
+            *centrals() = None;
+            log::info!("GHOST_POD: all services stopped");
         }
     }
 }
@@ -1097,5 +1331,91 @@ mod tests {
         ] {
             assert!(!is_typing_key(vk, false), "{vk:#x}");
         }
+    }
+
+    /// On this PC's real adapter: two services on providers of their own, one
+    /// advertised and one only served; the served one never aborts, and
+    /// removing it leaves the first advertising. It uses UUIDs the app never
+    /// serves, so it doesn't clash with a running app's foot pod. Run with
+    /// `cargo test peripheral_providers_are_independent -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "needs a Bluetooth adapter with the peripheral role"]
+    fn peripheral_providers_are_independent() {
+        use crate::platform::{
+            uuid_text, PeripheralCharacteristic, PeripheralEvent, PeripheralService,
+        };
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        // Cycling Speed and Cadence: a 16-bit UUID (it fits the advertisement
+        // next to the PC's name, as the foot pod's does) that the app never serves.
+        const ADVERTISED: u128 = crate::platform::sig_uuid(0x1816);
+        const SERVED: u128 = 0x5e1f7e57_0000_4000_8000_00000000b001;
+        let svc = |name, uuid: u128, advertise| PeripheralService {
+            name,
+            uuid,
+            advertise,
+            characteristics: vec![PeripheralCharacteristic {
+                uuid: uuid + 1,
+                read: Some(vec![1]),
+                notify: true,
+                indicate: false,
+                write: false,
+            }],
+        };
+        let (tx, rx) = mpsc::channel();
+        let tx = std::sync::Mutex::new(tx);
+        let events: crate::platform::PeripheralEvents = std::sync::Arc::new(move |e| {
+            let _ = tx.lock().unwrap().send(e);
+        });
+        // Long enough for Windows to report each provider's status (it
+        // answers within a second on a working adapter).
+        let settle = Duration::from_secs(3);
+        let drain = |rx: &mpsc::Receiver<PeripheralEvent>| {
+            let mut got = Vec::new();
+            while let Ok(e) = rx.recv_timeout(settle) {
+                got.push(e);
+            }
+            got
+        };
+
+        peripheral_add(&svc("TEST_A", ADVERTISED, true), events.clone()).expect("add A");
+        peripheral_add(&svc("TEST_B", SERVED, false), events.clone()).expect("add B");
+        let first = drain(&rx);
+        for e in &first {
+            println!("both up: {e:?}");
+        }
+        assert!(
+            first.contains(&PeripheralEvent::Advertising {
+                service: ADVERTISED
+            }),
+            "{} never started: {first:?}",
+            uuid_text(ADVERTISED)
+        );
+        assert!(
+            !first.iter().any(
+                |e| matches!(e, PeripheralEvent::Failed { service, .. } if *service == SERVED)
+            ),
+            "{} aborted: {first:?}",
+            uuid_text(SERVED)
+        );
+
+        peripheral_remove(SERVED);
+        let after = drain(&rx);
+        for e in &after {
+            println!("after removing B: {e:?}");
+        }
+        assert!(
+            !after.iter().any(
+                |e| matches!(e, PeripheralEvent::Failed { service, .. } if *service == ADVERTISED)
+            ),
+            "removing B aborted A: {after:?}"
+        );
+        assert!(
+            peripheral_notify(ADVERTISED + 1, &[2]).is_ok(),
+            "A is still served"
+        );
+        assert!(peripheral_notify(SERVED + 1, &[2]).is_err(), "B is gone");
+        peripheral_stop();
     }
 }

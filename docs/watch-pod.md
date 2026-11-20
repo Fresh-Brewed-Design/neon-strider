@@ -62,8 +62,8 @@ Power (0x1818), the profile a Stryd pod also serves. Windows advertises both ser
   or still belt sends 0 W.
 - **Running speeds read low.** METABOLIC_BURN uses the walking equation at every speed, and the
   watts follow it. A running equation would change the calorie count too, so it is left for later.
-- **Switching power restarts the pod**, since Windows serves a fixed set of services. The watch
-  reconnects to the foot pod by itself.
+- **Switching power leaves the foot pod alone.** Each service has its own Windows provider, so
+  the power service comes and goes by itself and the watch keeps its foot pod link.
 
 ### Will a Garmin take running power from a sensor that is not a Stryd?
 
