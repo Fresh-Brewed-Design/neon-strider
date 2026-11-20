@@ -202,9 +202,24 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             minutes,
             seconds,
             sound,
-        } => blocking(move || eyebreak::set_config(&app, enabled, minutes, seconds, sound)).await,
+            pause_belt,
+        } => {
+            let cfg = eyebreak::Config {
+                enabled,
+                minutes,
+                seconds,
+                sound,
+                pause_belt,
+            };
+            blocking(move || eyebreak::set_config(&app, cfg)).await
+        }
         Command::EyeBreakSkip => {
             eyebreak::with(|rt| rt.machine.skip());
+            Ok(())
+        }
+        Command::EyeBreakResume => desk::eye_break_resume().await,
+        Command::EyeBreakStayStill => {
+            desk::eye_break_stay_still();
             Ok(())
         }
         Command::CallsSetConfig { enabled, quiet_kmh } => {

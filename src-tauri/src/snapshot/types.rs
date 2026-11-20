@@ -531,15 +531,24 @@ pub enum Command {
     /// SNOOZE 15 MIN on the card: hide it for 15 minutes; the time seated is kept.
     SeatedSnooze,
     /// Eye-break settings: on or off, minutes of screen use between breaks (10 to
-    /// 120), seconds a break lasts (20 to 300) and whether the HUD plays tones.
+    /// 120), seconds a break lasts (20 to 300), whether the HUD plays tones and
+    /// whether a break pauses a walking belt.
     EyeBreakSetConfig {
         enabled: bool,
         minutes: u32,
         seconds: u32,
         sound: bool,
+        pause_belt: bool,
     },
-    /// SKIP on an eye-break card: no break now, and the count starts again.
+    /// SKIP on an eye-break card: no break now, and the count starts again. A
+    /// belt the break paused stays paused, and the resume card shows.
     EyeBreakSkip,
+    /// RESUME on the eye-break resume card: GO on the paused program, or the
+    /// treadmill's resume on a manual walk. A press.
+    EyeBreakResume,
+    /// STAY STILL on the eye-break resume card: the card goes, the belt stays
+    /// paused.
+    EyeBreakStayStill,
     /// Slow-down-on-calls settings: on or off, and the quiet speed 0.5 to 6 km/h.
     CallsSetConfig {
         enabled: bool,

@@ -13,7 +13,15 @@ seconds: number,
 /**
  * The HUD plays tones.
  */
-sound: boolean, phase: EyeBreakPhase, 
+sound: boolean, 
+/**
+ * A break that starts while the belt walks pauses it.
+ */
+pause_belt: boolean, 
+/**
+ * The belt is paused by the break (during the break, or on the resume card).
+ */
+holds_belt: boolean, phase: EyeBreakPhase, 
 /**
  * Seconds until the break (upcoming) or until it ends (break).
  */
