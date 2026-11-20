@@ -3,7 +3,7 @@
 /**
  * The point one run gives, with the numbers behind it.
  */
-export type CalibrationResult = { point: { speed: number, stride_length_cm: number, distance_scale: number }, 
+export type CalibrationResult = { point: { speed: number, stride_length_cm: number, distance_scale: number, runs: number }, 
 /**
  * The speed he really walked, km/h.
  */
@@ -23,4 +23,9 @@ cadence_spm: number | null,
 /**
  * False when the stride came from the current calibration (loops only).
  */
-stride_measured: boolean, };
+stride_measured: boolean, 
+/**
+ * The saved point at the run's speed with this run averaged in (ADD
+ * RUN); none when the speed has no saved point yet.
+ */
+averaged: { speed: number, stride_length_cm: number, distance_scale: number, runs: number } | null, };

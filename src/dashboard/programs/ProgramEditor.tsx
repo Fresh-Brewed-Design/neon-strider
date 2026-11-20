@@ -3,6 +3,8 @@ import { Plus, X } from "lucide-react";
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { dispatch } from "../../ipc";
+import { roundSpeed, snapToDeck } from "../../state/deckSpeeds";
+import { useAppState } from "../../state/useAppState";
 import { GhostButton, Hint, Label, NeonButton, Panel } from "../ui";
 import { cx } from "../util";
 import { fromDraft, type Draft, type StepDraft } from "./draft";
@@ -26,6 +28,14 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
   const [d, setD] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const save = useAction();
+  const deck = useAppState((snap) => snap.deck);
+  // A typed speed moves to one the deck runs (DECK_PROFILE) when the field is left.
+  const snapSpeedText = (text: string) => {
+    const v = Number(text);
+    if (text.trim() === "" || !Number.isFinite(v)) return text;
+    const snapped = roundSpeed(snapToDeck(v, deck));
+    return snapped === v ? text : String(snapped);
+  };
 
   const patchStep = (i: number, patch: Partial<StepDraft>) =>
     setD((prev) => ({ ...prev, steps: prev.steps.map((s, j) => (j === i ? { ...s, ...patch } : s)) }));
@@ -88,7 +98,13 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
               disabled={s.open}
               onChange={(e) => patchStep(i, { minutes: e.target.value })}
             />
-            <input className={input} inputMode="decimal" value={s.speed} onChange={(e) => patchStep(i, { speed: e.target.value })} />
+            <input
+              className={input}
+              inputMode="decimal"
+              value={s.speed}
+              onChange={(e) => patchStep(i, { speed: e.target.value })}
+              onBlur={() => patchStep(i, { speed: snapSpeedText(s.speed) })}
+            />
             <input className={input} inputMode="decimal" value={s.incline} onChange={(e) => patchStep(i, { incline: e.target.value })} />
             <GhostButton
               aria-label={`Remove step ${i + 1}`}

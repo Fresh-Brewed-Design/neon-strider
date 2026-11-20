@@ -18,6 +18,7 @@ pub mod backup;
 pub mod bluetooth;
 pub mod calibration;
 mod dashboard;
+pub mod deck_profile;
 mod display;
 pub mod engine;
 pub mod export;
@@ -213,6 +214,7 @@ async fn start_backend(app: tauri::AppHandle) {
     backup::spawn_daily(app.clone());
     let config = persistence::load_config(&app);
     bluetooth::init_from_config(&config).await;
+    bluetooth::load_deck_profile(&app).await;
 
     // Once per database: earlier builds saved bad session averages.
     let (app_c, tilt, offset) = (app.clone(), config.tilt_multiplier, config.incline_offset);

@@ -16,6 +16,13 @@ pub struct CalibrationPoint {
     pub stride_length_cm: f32,
     #[serde(alias = "distanceScale")]
     pub distance_scale: f32,
+    /// How many timed runs the point averages; older points count as one.
+    #[serde(default = "one_run")]
+    pub runs: u32,
+}
+
+fn one_run() -> u32 {
+    1
 }
 
 /// A wanted belt state: calibrated (physical) km/h and a hardware incline level.

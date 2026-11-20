@@ -1,6 +1,7 @@
 import { dispatch } from "../../ipc";
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
+import { roundSpeed, snapToDeck } from "../../state/deckSpeeds";
 import { useAppSnapshot } from "../../state/useAppState";
 import { GhostButton, Hint, Label } from "../ui";
 import { cx, send } from "../util";
@@ -288,7 +289,8 @@ export function DeskSection() {
             step={0.1}
             value={calls.quiet_kmh}
             hint="A running program is eased too, for the current step only; the saved program is not changed."
-            onCommit={(quiet_kmh) => saveCalls({ quiet_kmh: Math.round(quiet_kmh * 10) / 10 })}
+            snap={(kmh) => roundSpeed(snapToDeck(kmh, s.deck))}
+            onCommit={(quiet_kmh) => saveCalls({ quiet_kmh: Math.round(quiet_kmh * 100) / 100 })}
           />
           <Hint aria-live="polite">
             {calls.quiet_active

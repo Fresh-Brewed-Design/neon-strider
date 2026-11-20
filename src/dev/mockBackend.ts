@@ -71,6 +71,8 @@ export const snapshot: AppSnapshot = {
     max_speed_kmh: 10.5,
     max_incline_level: 15,
     max_incline_pct: 18.75,
+    speed_steps: [],
+    profile: { learned: 0, floor_kmh: null, ceiling_kmh: null, skipped_kmh: [] },
   },
   session: { active_id: 1, duration_s: 1934, distance_m: 1720, steps: 2412, calories: 103, daily_distance_m: 4310 },
   programs: [
@@ -416,6 +418,20 @@ if (deskSyncFlag === "open") {
   Object.assign(snapshot.desk_sync, { days, walked: days.filter((x) => x.walked).length, desk_days: days.length });
 }
 
+// ?deckprofile: DECK_PROFILE has learned the deck's floor (0.6), ceiling (4.0)
+// and a skipped 1.5 km/h, so the Live slider, the speed fields and the
+// program editor snap to it and System -> Diagnostics shows FORGET.
+if (params.has("deckprofile")) {
+  const steps = [];
+  for (let b = 6; b <= 40; b++) if (b !== 15) steps.push({ hw_kmh: b / 10, kmh: b / 10 });
+  Object.assign(snapshot.deck, {
+    speed_steps: steps,
+    max_speed_kmh: 4,
+    target_speed_kmh: 3.5,
+    profile: { learned: 9, floor_kmh: 0.6, ceiling_kmh: 4, skipped_kmh: [0.3, 1.5, 5] },
+  });
+}
+
 // ?weekly shows the last-week HUD card. Variants: ?weekly=long (123.4 km, 12h 05m,
 // +1234%), ?weekly=new (nothing the week before), ?weekly=down.
 const weeklyFlag = params.get("weekly");
@@ -728,7 +744,7 @@ function runBelt(kmh: number) {
 const CAL_CONFIG = {
   belt_length: 300,
   calibration_points: [
-    { speed: 3, stride_length_cm: 68.4, distance_scale: 0.912 },
+    { speed: 3, stride_length_cm: 68.4, distance_scale: 0.912, runs: 2 },
     { speed: 4.5, stride_length_cm: 74.1, distance_scale: calFlag === "oldpoint" ? 0.15 : 0.887 },
   ],
 };
@@ -813,20 +829,65 @@ const CAL_COMMANDS: Partial<Record<Command["type"], (c: Command) => void>> = {
   },
   calibration_run_count: (c) => {
     const r = snapshot.calibration.run;
-    if (c.type !== "calibration_run_count" || !r?.reported_kmh || c.count.method !== "loops") return;
+    if (c.type !== "calibration_run_count" || !r?.reported_kmh) return;
+    if (c.count.method === "steps_only") {
+      // The factor stays the nearest saved point's; the stride is the distance it gives over the steps.
+      const near = CAL_CONFIG.calibration_points.reduce((a, b) =>
+        Math.abs(b.speed - r.reported_kmh!) < Math.abs(a.speed - r.reported_kmh!) ? b : a,
+      );
+      const reported_m = (r.reported_kmh / 3.6) * r.elapsed_s;
+      const real_m = reported_m / near.distance_scale;
+      const stride = (real_m / c.count.steps) * 100;
+      if (c.count.steps < 10) throw "Count at least 10 steps.";
+      if (stride < 20 || stride > 200) throw `The step count gives a ${stride.toFixed(0)} cm stride, outside 20 to 200 cm. Check the step count.`;
+      // Rust averages the stride into the saved point at the target and keeps its factor.
+      const saved = CAL_CONFIG.calibration_points.find((p) => Math.abs(p.speed - r.target_kmh) <= 0.05);
+      const n = Math.max(1, saved?.runs ?? 1);
+      r.result = {
+        point: { speed: Math.round(r.reported_kmh * 10) / 10, stride_length_cm: stride, distance_scale: near.distance_scale, runs: 1 },
+        real_kmh: (real_m / r.elapsed_s) * 3.6,
+        real_m,
+        reported_m,
+        cadence_spm: (c.count.steps / r.elapsed_s) * 60,
+        stride_measured: true,
+        averaged: saved
+          ? {
+              speed: saved.speed,
+              stride_length_cm: (saved.stride_length_cm * n + stride) / (n + 1),
+              distance_scale: saved.distance_scale,
+              runs: n + 1,
+            }
+          : null,
+      };
+      return;
+    }
+    if (c.count.method !== "loops") return;
     const { loops, belt_length_cm, steps } = c.count;
     if (!(loops > 0)) throw "Enter how many loops you counted.";
     const real_m = (loops * belt_length_cm) / 100;
     const reported_m = (r.reported_kmh / 3.6) * r.elapsed_s;
     const scale = reported_m / real_m;
     if (scale < 0.2 || scale > 3) throw `That gives a factor of ${scale.toFixed(2)}, outside 0.2 to 3. Check the count and run it again.`;
+    const stride = steps ? (real_m / steps) * 100 : 74;
+    // Rust averages the run into the saved point at its target (calibration.rs averaged_point).
+    const saved = CAL_CONFIG.calibration_points.find((p) => Math.abs(p.speed - r.target_kmh) <= 0.05);
+    const n = Math.max(1, saved?.runs ?? 1);
+    const mean = (old: number, next: number) => (old * n + next) / (n + 1);
     r.result = {
-      point: { speed: Math.round(r.reported_kmh * 10) / 10, stride_length_cm: steps ? (real_m / steps) * 100 : 74, distance_scale: scale },
+      point: { speed: Math.round(r.reported_kmh * 10) / 10, stride_length_cm: stride, distance_scale: scale, runs: 1 },
       real_kmh: (real_m / r.elapsed_s) * 3.6,
       real_m,
       reported_m,
       cadence_spm: steps ? (steps / r.elapsed_s) * 60 : null,
       stride_measured: steps !== null,
+      averaged: saved
+        ? {
+            speed: saved.speed,
+            stride_length_cm: steps ? mean(saved.stride_length_cm, stride) : saved.stride_length_cm,
+            distance_scale: mean(saved.distance_scale, scale),
+            runs: n + 1,
+          }
+        : null,
     };
   },
   calibration_run_close: () => closeCal(),

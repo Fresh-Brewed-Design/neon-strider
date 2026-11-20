@@ -19,7 +19,8 @@ import { calibrationRows, chrono, runRowFor, type CalibrationRow } from "./guide
 /**
  * Labs: the guided calibration. One row per speed; RUN (his press) sets the
  * belt to it, COUNT and DONE time a count of belt loops in Rust, and Rust
- * works out the point from what he counted. REPEAT re-runs one saved point.
+ * works out the point from what he counted. ADD RUN times a saved point again,
+ * and Rust averages the new run in with the earlier ones (`result.averaged`).
  * RUN ALL walks every row as a sweep (`snapshot.calibration.sweep`): saving
  * or skipping one speed leaves the belt alone, and the next waits for RUN.
  * The run panel follows `snapshot.calibration.run`, so it is back where it was
@@ -55,7 +56,8 @@ export function GuidedCalibration() {
       </div>
       <Hint>
         Mark the belt, press RUN, then press COUNT as the mark passes once the belt is steady. Count loops for at least a
-        minute, and steps to measure your stride.
+        minute, and steps to measure your stride. With no mark on the belt, steps alone set the stride and keep the
+        distance factor.
       </Hint>
       <NumberField
         label="BELT_LOOP"
@@ -108,6 +110,7 @@ export function GuidedCalibration() {
                       value={`${row.point.distance_scale.toFixed(3)}x`}
                       className="text-neon-magenta"
                     />
+                    <Readout label="RUNS" value={String(row.point.runs ?? 1)} className="text-white" />
                   </>
                 ) : (
                   <span className="font-mono text-[11px] uppercase tracking-[0.15em] text-white/40">Uncalibrated</span>
@@ -120,7 +123,7 @@ export function GuidedCalibration() {
                   className="px-3 py-1.5"
                   tone={row.point ? "magenta" : "cyan"}
                 >
-                  {row.point ? "REPEAT" : "RUN"}
+                  {row.point ? "ADD RUN" : "RUN"}
                 </NeonButton>
                 {row.point && row.index !== null && (
                   <button
@@ -194,6 +197,8 @@ function RunPanel({
   const tally = useAction();
   const [loops, setLoops] = useState("");
   const [steps, setSteps] = useState("");
+  // No mark on the belt to count: steps alone set the stride, the factor stays.
+  const [stepsOnly, setStepsOnly] = useState(false);
   const addPoint = useTreadmillStore((s) => s.addCalibrationPoint);
   const updatePoint = useTreadmillStore((s) => s.updateCalibrationPoint);
 
@@ -205,13 +210,19 @@ function RunPanel({
     void dispatch(command).finally(onClosed);
   };
   const save = () => {
-    const point = run.result?.point;
-    if (!point) return;
-    if (row.index !== null) updatePoint(row.index, point);
-    else addPoint(point);
+    const result = run.result;
+    if (!result) return;
+    if (row.index !== null) updatePoint(row.index, result.averaged ?? result.point);
+    else addPoint(result.point);
     close(true);
   };
   const compute = () => {
+    if (stepsOnly) {
+      void tally.run(() =>
+        dispatch({ type: "calibration_run_count", count: { method: "steps_only", steps: Math.round(Number(steps)) } }),
+      );
+      return;
+    }
     const stepCount = steps.trim() === "" ? null : Math.round(Number(steps));
     void tally.run(() =>
       dispatch({
@@ -277,21 +288,36 @@ function RunPanel({
       {run.phase === "counted" && (
         <div className="space-y-3">
           <Hint>
-            Timed at {(run.reported_kmh ?? 0).toFixed(2)} km/h on the deck. Enter the loops counted; steps are optional
-            (at least {limits.min_steps}).
+            Timed at {(run.reported_kmh ?? 0).toFixed(2)} km/h on the deck.{" "}
+            {stepsOnly
+              ? `Enter the steps counted (at least ${limits.min_steps}); the distance factor stays the same.`
+              : `Enter the loops counted; steps are optional (at least ${limits.min_steps}).`}
           </Hint>
+          <label className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.15em] text-white/60">
+            <input
+              type="checkbox"
+              checked={stepsOnly}
+              onChange={(e) => {
+                setStepsOnly(e.target.checked);
+                tally.reset();
+              }}
+            />
+            NO_MARK // steps only
+          </label>
           <div className="flex flex-wrap items-end gap-3">
-            <label className="block">
-              <Label>BELT_LOOPS</Label>
-              <input
-                type="number"
-                min={0}
-                step={0.5}
-                value={loops}
-                onChange={(e) => setLoops(e.target.value)}
-                className={cx(INPUT_CLASS, "mt-1 block w-24")}
-              />
-            </label>
+            {!stepsOnly && (
+              <label className="block">
+                <Label>BELT_LOOPS</Label>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  value={loops}
+                  onChange={(e) => setLoops(e.target.value)}
+                  className={cx(INPUT_CLASS, "mt-1 block w-24")}
+                />
+              </label>
+            )}
             <label className="block">
               <Label>STEP_COUNT</Label>
               <input
@@ -303,7 +329,11 @@ function RunPanel({
                 className={cx(INPUT_CLASS, "mt-1 block w-24")}
               />
             </label>
-            <NeonButton className="px-3 py-1.5" disabled={tally.pending || loops.trim() === ""} onClick={compute}>
+            <NeonButton
+              className="px-3 py-1.5"
+              disabled={tally.pending || (stepsOnly ? steps.trim() === "" : loops.trim() === "")}
+              onClick={compute}
+            >
               COMPUTE
             </NeonButton>
           </div>
@@ -324,7 +354,7 @@ function RunPanel({
           )}
           <div className="flex gap-2">
             <NeonButton tone="green" className="flex-1 py-2" disabled={!r} onClick={save}>
-              {row.index !== null ? "REPLACE POINT" : "SAVE POINT"}
+              {row.index !== null ? "AVERAGE IN" : "SAVE POINT"}
             </NeonButton>
             <GhostButton onClick={() => close()}>{inSweep ? "SKIP" : "Discard"}</GhostButton>
           </div>
