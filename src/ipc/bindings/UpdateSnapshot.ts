@@ -14,6 +14,11 @@ current_version: string, status: UpdateStatus, offer: UpdateOffer | null,
  */
 dismissed: boolean, 
 /**
+ * The pink "update waiting" dot on the System nav, the Updates tab and the
+ * tray icon (`show_update_dot`).
+ */
+dot: boolean, 
+/**
  * Show the HUD's UPDATE READY card (once per version).
  */
 hud_card: boolean, 

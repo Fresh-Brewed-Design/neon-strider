@@ -6,6 +6,7 @@
 //!   Alt shortcuts, and switch the HUD's click-through as the pointer crosses
 //!   its content (`crate::hud`).
 //! - Session lock: whether the user's session is locked (walk-away).
+//! - Display power: whether the PC's display is off (lights out).
 //! - Microphone: which other apps are using the microphone (slow down on calls).
 //! - Pointer: the cursor position and primary button, for dragging the HUD.
 //! - Idle time: how long since the last keyboard or mouse input anywhere in
@@ -38,7 +39,8 @@ pub fn remember_hud_window(window: &tauri::WebviewWindow) {
     imp::remember_hud_window(window);
 }
 
-/// Start watching for the session locking and unlocking. Call once.
+/// Start watching for the session locking and unlocking, and for the display
+/// turning off and on (`display_off`). Call once.
 pub fn spawn_session_lock_watcher() {
     imp::spawn_session_lock_watcher();
 }
@@ -52,6 +54,12 @@ pub fn session_locked() -> bool {
 /// the microphone right now, except the one at `own_exe`. Blocking.
 pub fn apps_using_microphone(own_exe: Option<&str>) -> Vec<String> {
     imp::apps_using_microphone(own_exe)
+}
+
+/// The PC's display is off right now (the power plan turned it off, say).
+/// Dimmed is not off. False until the watcher has heard the first state.
+pub fn display_off() -> bool {
+    imp::display_off()
 }
 
 /// The primary mouse button is held down.

@@ -14,8 +14,82 @@ use std::time::{Duration, Instant};
 
 /// Connected but no telemetry frame for this long: the deck is asleep or out of range.
 const NO_DATA_AFTER: Duration = Duration::from_secs(10);
-/// The watchdog's retry interval.
+/// The watchdog's fast retry interval.
 pub const RETRY_EVERY: Duration = Duration::from_secs(15);
+/// The PC counts as in use when it has had input this recently.
+const PC_ACTIVE_WITHIN: Duration = Duration::from_secs(300);
+/// The watchdog re-checks the PC this often while it waits.
+const WAIT_SLICE: Duration = Duration::from_secs(5);
+/// The slowest the watchdog retries while the treadmill stays away.
+const RETRY_MAX: Duration = Duration::from_secs(120);
+
+/// How long the watchdog waits between tries. While the PC is in use it stays
+/// fast (the user may be switching the deck on). Once the PC has been idle,
+/// each further miss doubles the wait (`idle_misses` counts those): 30 s, 1
+/// min, then 2 min.
+pub fn retry_delay(idle_misses: u32, pc_active: bool) -> Duration {
+    if pc_active {
+        return RETRY_EVERY;
+    }
+    let secs = RETRY_EVERY.as_secs() << idle_misses.min(10);
+    Duration::from_secs(secs).min(RETRY_MAX)
+}
+
+/// Whether the PC has had input lately. Unknown counts as in use (stay fast).
+pub fn pc_active_from(idle: Option<Duration>) -> bool {
+    idle.is_none_or(|d| d < PC_ACTIVE_WITHIN)
+}
+
+fn pc_active() -> bool {
+    let idle = crate::platform::input_idle_for()
+        .or_else(|| crate::hooks::input_idle_ms(now_ms().max(0) as u64).map(Duration::from_millis));
+    pc_active_from(idle)
+}
+
+fn describe_interval(d: Duration) -> String {
+    let s = d.as_secs();
+    if s >= 120 && s.is_multiple_of(60) {
+        format!("{} min", s / 60)
+    } else {
+        format!("{s} s")
+    }
+}
+
+/// The watchdog's miss count and what it has already said in the log.
+#[derive(Debug, Default, PartialEq)]
+struct Backoff {
+    /// Misses while the PC was idle.
+    misses: u32,
+    /// The interval last announced.
+    announced: Option<Duration>,
+}
+
+impl Backoff {
+    /// A try failed: the wait before the next, and a log line when the
+    /// interval changed (and one for the first miss).
+    fn miss(&mut self, pc_active: bool) -> (Duration, Option<String>) {
+        self.misses = if pc_active { 0 } else { self.misses + 1 };
+        let delay = retry_delay(self.misses, pc_active);
+        let line = if self.announced == Some(delay) {
+            None
+        } else if delay > RETRY_EVERY {
+            Some(format!(
+                "Treadmill not found; retrying every {}.",
+                describe_interval(delay)
+            ))
+        } else if self.announced.is_none() {
+            Some("Treadmill not found; will keep trying.".to_string())
+        } else {
+            None
+        };
+        self.announced = Some(delay);
+        (delay, line)
+    }
+
+    fn reset(&mut self) {
+        *self = Backoff::default();
+    }
+}
 /// Connect tries inside one connect attempt (see `bluetooth.rs`).
 pub const CONNECT_TRIES: u32 = 3;
 
@@ -270,6 +344,7 @@ struct Live {
     has_saved: bool,
     wake_at: Option<Instant>,
     retries: u32,
+    backoff: Backoff,
     linked_at: Option<Instant>,
     last_frame: Option<Instant>,
     /// When the HUD last asked the dashboard to open its connect dialog (epoch ms).
@@ -288,6 +363,10 @@ static LIVE: Mutex<Live> = Mutex::new(Live {
     has_saved: false,
     wake_at: None,
     retries: 0,
+    backoff: Backoff {
+        misses: 0,
+        announced: None,
+    },
     linked_at: None,
     last_frame: None,
     connect_dialog_at_ms: None,
@@ -342,8 +421,16 @@ impl Drop for ScanGuard {
 /// Record a failure: remember it for the tooltip, and flag the adapter when
 /// that is the cause.
 pub fn note_error(err: &LinkError, raw: &str) {
-    log::warn!("treadmill link: {} (raw: {})", err.message, raw);
     let mut l = live();
+    // The watchdog hits the same failure over and over: say it once.
+    if l.last_error
+        .as_ref()
+        .is_some_and(|e| e.message == err.message)
+    {
+        log::debug!("treadmill link: {} (raw: {})", err.message, raw);
+    } else {
+        log::warn!("treadmill link: {} (raw: {})", err.message, raw);
+    }
     l.last_error = Some(LastError {
         message: err.message.clone(),
         at_ms: now_ms(),
@@ -384,7 +471,11 @@ pub fn mark_linked() {
     l.failed = None;
     l.last_error = None;
     l.adapter_problem = false;
+    if l.retries > 0 {
+        log::info!("Treadmill reconnected after {} tries.", l.retries);
+    }
     l.retries = 0;
+    l.backoff.reset();
     l.has_saved = true;
     l.linked_at = Some(Instant::now());
     l.last_frame = None;
@@ -506,8 +597,36 @@ pub fn has_saved_device() -> bool {
     live().has_saved
 }
 
-pub fn count_retry() {
-    live().retries += 1;
+/// The watchdog starts a try. Only the first of a run is logged at info.
+pub fn count_retry(device: &str) {
+    let mut l = live();
+    l.retries += 1;
+    if l.backoff.announced.is_none() {
+        log::info!("Treadmill link is down. Trying to reconnect to {device}.");
+    } else {
+        log::debug!("Reconnect try {} for {device}.", l.retries);
+    }
+}
+
+/// The watchdog's try ended: how long to wait before the next one. Logs the
+/// first miss and each change of interval (`mark_linked` logs the reconnect).
+pub fn retry_finished(linked: bool) -> Duration {
+    let active = pc_active();
+    let mut l = live();
+    if linked {
+        l.backoff.reset();
+        return RETRY_EVERY;
+    }
+    let (delay, line) = l.backoff.miss(active);
+    if let Some(line) = line {
+        log::info!("{line}");
+    }
+    delay
+}
+
+/// Back to the fast interval: the user pressed Connect or ran a scan.
+pub fn reset_backoff() {
+    live().backoff.reset();
 }
 
 /// The watchdog is about to sleep until `after` from now (or until woken).
@@ -515,11 +634,27 @@ pub fn set_wake(after: Duration) {
     live().wake_at = Some(Instant::now() + after);
 }
 
-/// The watchdog slot waits on this; `connect_now` wakes it.
-pub async fn wait_for_retry(after: Duration) {
-    tokio::select! {
-        _ = tokio::time::sleep(after) => {}
-        _ = RETRY_NOW.notified() => {}
+/// The watchdog waits here after a try; `connect_now` wakes it. It waits in
+/// short slices and re-checks the PC each time, so input after a long idle
+/// brings the next try back to the fast interval at once. The windows'
+/// countdown (`set_wake`) follows each slice.
+pub async fn wait_for_retry(delay: Duration) {
+    let started = Instant::now();
+    loop {
+        let target = if pc_active() {
+            RETRY_EVERY.min(delay)
+        } else {
+            delay
+        };
+        let remaining = target.saturating_sub(started.elapsed());
+        if remaining.is_zero() {
+            return;
+        }
+        set_wake(remaining);
+        tokio::select! {
+            _ = tokio::time::sleep(remaining.min(WAIT_SLICE)) => {}
+            _ = RETRY_NOW.notified() => return,
+        }
     }
 }
 
@@ -531,6 +666,7 @@ pub fn connect_now(app: &tauri::AppHandle) -> Result<(), String> {
     {
         return Err("No treadmill is saved yet. Use Connect to pick one.".to_string());
     }
+    reset_backoff();
     RETRY_NOW.notify_one();
     Ok(())
 }
@@ -562,6 +698,70 @@ pub fn connect_dialog_at_ms() -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retry_delay_is_fast_then_doubles_to_a_cap() {
+        let secs = |m| retry_delay(m, false).as_secs();
+        assert_eq!(
+            (1..=5).map(secs).collect::<Vec<_>>(),
+            [30, 60, 120, 120, 120]
+        );
+        assert_eq!(secs(u32::MAX), 120);
+    }
+
+    #[test]
+    fn retry_delay_stays_fast_while_the_pc_is_in_use() {
+        for m in [0, 1, 4, 50, u32::MAX] {
+            assert_eq!(retry_delay(m, true).as_secs(), 15);
+        }
+    }
+
+    #[test]
+    fn pc_counts_as_idle_after_five_minutes() {
+        let s = Duration::from_secs;
+        assert!(pc_active_from(None));
+        assert!(pc_active_from(Some(s(299))));
+        assert!(!pc_active_from(Some(s(300))));
+    }
+
+    #[test]
+    fn backoff_logs_the_first_miss_and_each_change_then_resets() {
+        let mut b = Backoff::default();
+        let run: Vec<(u64, bool)> = (0..8)
+            .map(|i| {
+                // Two misses while the PC is in use, then it goes idle.
+                let (d, line) = b.miss(i < 2);
+                (d.as_secs(), line.is_some())
+            })
+            .collect();
+        assert_eq!(
+            run,
+            [
+                (15, true),
+                (15, false),
+                (30, true),
+                (60, true),
+                (120, true),
+                (120, false),
+                (120, false),
+                (120, false)
+            ]
+        );
+        b.reset();
+        assert_eq!(b, Backoff::default());
+        assert_eq!(b.miss(true).0.as_secs(), 15);
+    }
+
+    #[test]
+    fn activity_after_idle_goes_back_to_fast() {
+        let mut b = Backoff::default();
+        for _ in 0..5 {
+            b.miss(false);
+        }
+        assert_eq!(b.miss(false).0.as_secs(), 120);
+        assert_eq!(b.miss(true).0.as_secs(), 15);
+        assert_eq!(b.miss(false).0.as_secs(), 30);
+    }
 
     #[test]
     fn each_connect_dialog_request_is_later_than_the_last() {

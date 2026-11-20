@@ -297,7 +297,9 @@ fn validate_program(p: &Program, min_speed: f32, max_speed: f32) -> Result<(), S
         if !ok(s.speed_kmh) {
             return Err(format!("Step {}: speed must be zero or more", n));
         }
-        if s.speed_kmh != 0.0 && (s.speed_kmh < min_speed || s.speed_kmh > max_speed) {
+        // The calibrated floor is rarely a round number; a speed typed as the
+        // floor shown (to 0.01 km/h) is not below it.
+        if s.speed_kmh != 0.0 && (s.speed_kmh < min_speed - 0.005 || s.speed_kmh > max_speed) {
             return Err(format!(
                 "Step {}: speed must be 0 or between {:.1} and {:.1} km/h",
                 n, min_speed, max_speed
@@ -362,8 +364,36 @@ pub fn seed_programs() -> Vec<Program> {
             NOTE_MICRO_BREAK,
         ),
         program(5, "Brisk", step(Some(30.0), 5.0, 0.0), None, NOTE_BRISK),
+        vo2_max_program(6),
     ]
 }
+
+/// The Norwegian 4x4 for the deck: warm-up, four 4-minute climbs each followed
+/// by 3 minutes of easy walking, cool-down. The deck tops out at 8 km/h and
+/// 10 %, so the hard part is the incline (docs/research.md). Existing installs
+/// get it from `persistence::migration_4_vo2_max_program`, which keeps its own copy.
+fn vo2_max_program(id: u32) -> Program {
+    let step = |minutes: f32, speed_kmh: f32, incline_pct: f32| ProgramStep {
+        duration_minutes: Some(minutes),
+        speed_kmh,
+        incline_pct,
+    };
+    let mut steps = vec![step(5.0, 4.5, 0.0)];
+    for _ in 0..4 {
+        steps.push(step(4.0, 6.0, 10.0));
+        steps.push(step(3.0, 4.0, 0.0));
+    }
+    steps.push(step(3.0, 3.0, 0.0));
+    Program {
+        id,
+        name: "VO2 max".to_string(),
+        steps,
+        repeat_every_minutes: None,
+        note: Some(NOTE_VO2_MAX.to_string()),
+    }
+}
+
+pub const NOTE_VO2_MAX: &str = "Four hard 4-minute climbs with easy walks between train VO2 max.";
 
 pub const NOTE_POST_MEAL: &str = "A walk soon after eating blunts the rise in blood sugar.";
 pub const NOTE_WORKDAY: &str = "Five minutes every half hour offsets long sitting.";
@@ -516,7 +546,7 @@ impl OrchestratorState {
                     .unwrap_or_else(|| ControlIntent {
                         speed: self
                             .to_physical_speed(self.hardware_speed)
-                            .max(self.min_speed),
+                            .max(self.min_physical_speed()),
                         incline: self.hardware_incline,
                     }),
             )
@@ -1115,8 +1145,9 @@ impl OrchestratorState {
     /// Create (id 0) or replace a program after validating it.
     pub fn save_program(&mut self, mut program: Program) -> Result<(), String> {
         program.name = program.name.trim().to_string();
+        let min_speed = self.min_physical_speed();
         let max_speed = self.to_physical_speed(self.max_speed);
-        validate_program(&program, self.min_speed, max_speed)?;
+        validate_program(&program, min_speed, max_speed)?;
         if program.id == 0 {
             // Notes are Rust's; a new program has none.
             program.note = None;
@@ -1768,6 +1799,31 @@ mod tests {
         assert!(s.program.is_none());
     }
 
+    /// Steps are calibrated km/h, so they're checked against the calibrated
+    /// floor, and a program started on a moving belt keeps at least that.
+    #[test]
+    fn programs_use_the_calibrated_speed_floor() {
+        let mut s = state();
+        s.sync_config(&crate::engine::slow_floor_config());
+        let floor = s.min_physical_speed();
+        assert!((floor - 1.2).abs() < 1e-4, "{floor}");
+        let mut p = s.programs[0].clone();
+        p.id = 0;
+        p.steps[0].speed_kmh = 0.8; // over hw 0.6, under the belt's 1.2 km/h
+        let err = s.save_program(p.clone()).unwrap_err();
+        assert!(err.contains("between 1.2 and"), "{err}");
+        p.steps[0].speed_kmh = 1.2;
+        s.save_program(p).unwrap();
+
+        // The deck reports its floor byte with no manual intent: the speed
+        // to return to is the calibrated floor, not the raw 0.6.
+        s.last_status = MachineStatus::Running;
+        s.hardware_speed = 0.3;
+        s.manual_intent = None;
+        let prev = s.capture_previous();
+        assert_eq!(prev.moving.map(|i| i.speed), Some(floor));
+    }
+
     #[test]
     fn save_assigns_ids_and_delete_ends_running() {
         let mut s = state();
@@ -1956,7 +2012,7 @@ mod tests {
         let l = initial_programs(None, None);
         assert!(l.seeded);
         assert_eq!(l.programs, seed_programs());
-        assert_eq!(l.next_id, 6);
+        assert_eq!(l.next_id, 7);
 
         // Present (even empty) is never reseeded.
         let l = initial_programs(Some("[]"), None);

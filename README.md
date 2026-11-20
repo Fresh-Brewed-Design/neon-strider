@@ -23,7 +23,8 @@ tried.
   - **Live**: speed and tilt control, transport, the running program, session stats.
   - **Programs**: saved routines, e.g. *Post-meal* (10 min at 4.0 km/h, 5 %),
     *Workday* (5 min every 30 min), *Focus* (2.0 km/h until you stop it), *Micro-break*
-    (2 min every 20 min) or *Brisk* (30 min at 5.0 km/h). Why each is built that way, with
+    (2 min every 20 min) or *Brisk* (30 min at 5.0 km/h) or *VO2 max* (four 4-minute climbs at 6.0 km/h and
+    10 %). Why each is built that way, with
     sources: [docs/research.md](docs/research.md). When a program ends, the
     treadmill goes back to what it was doing before; ended while the belt is paused, it stays
     paused, and Engage starts it at your earlier speed. A program never starts a still belt by
@@ -43,11 +44,11 @@ tried.
   or every so many belt hours if you prefer. It stays on the HUD until you mark the belt
   serviced. **System → Maintenance** also shows a lifetime odometer (distance, belt hours,
   since when), which you can pin to the HUD as ODO.
-- **Sit-too-long nudge.** After 30 minutes (15 to 240) of keyboard and mouse use without
-  walking, a HUD card offers up to three programs. The treadmill switches itself off when
-  idle, so if it is off, the program you pick starts when it connects (within 15 minutes).
-  LATER snoozes 15 minutes; DISMISS starts the count again. Only the time of the last input
-  is kept, never which keys. Turn it off in **System → Desk**.
+- **Idle nudge.** After 30 minutes (15 to 240) of keyboard and mouse use with the belt
+  still, a HUD card (for example `32 MIN IDLE`) offers ENGAGE and up to three programs. The
+  treadmill switches itself off when idle, so if it is off, the program you pick starts when
+  it connects (within 15 minutes). SNOOZE 15 MIN brings it back in 15 minutes. Only the time
+  of the last input is kept, never which keys. Turn it off in **System → Desk**.
 - **Slow down on calls.** While an app is using the microphone (read from the list Windows
   keeps; nothing is recorded), a running belt eases to a quiet speed (default 2.0 km/h, never
   faster than it was) and goes back 10 seconds after the call ends, unless you changed the
@@ -140,7 +141,7 @@ Everything stays on your PC unless you connect Strava.
 
 ## Privacy
 
-- Key presses are counted, never recorded. Neural flow and the sit-too-long nudge only know
+- Key presses are counted, never recorded. Neural flow and the idle nudge only know
   how much you typed or when you last used the keyboard or mouse, never which keys.
 - The Strava client secret and login live in Windows Credential Manager, not in the database.
 - Everything else (history, settings, backups, logs) stays on your PC. The only data that

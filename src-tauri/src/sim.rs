@@ -1025,6 +1025,63 @@ mod tests {
         assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
     }
 
+    /// Issue #58/#60: on a calibration whose km/h dips between points, the
+    /// HUD's speed-up stuck at one byte (about 3.8 km/h). Every press now
+    /// reaches the deck as one more 0.1 hardware step, up to the max speed,
+    /// and speed-down walks it back the same way.
+    #[test]
+    fn speed_up_presses_reach_the_max_speed_on_a_dipping_calibration() {
+        let mut r = Rig::new();
+        r.state.sync_config(&crate::persistence::AppConfig {
+            calibration_points: vec![
+                protocol::CalibrationPoint {
+                    speed: 0.6,
+                    stride_length_cm: 50.0,
+                    distance_scale: 0.6 / 1.46,
+                },
+                protocol::CalibrationPoint {
+                    speed: 1.5,
+                    stride_length_cm: 60.0,
+                    distance_scale: 1.5 / 4.84,
+                },
+                protocol::CalibrationPoint {
+                    speed: 2.0,
+                    stride_length_cm: 65.0,
+                    distance_scale: 2.0 / 2.97,
+                },
+            ],
+            max_speed: 5.0,
+            ..Default::default()
+        });
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(6.0);
+        assert_eq!(r.deck.status_code(), 3, "running");
+        r.set_speed(r.state.to_physical_speed(1.0));
+        r.run(5.0);
+        assert!(r.deck.running_at(1.0), "{} km/h", r.deck.speed_kmh());
+
+        let tenths = |kmh: f32| (kmh * 10.0).round() as i32;
+        let mut targets = vec![tenths(r.deck.target)];
+        for _ in 0..45 {
+            r.press(DeckAction::SpeedUp);
+            r.run(0.5);
+            targets.push(tenths(r.deck.target));
+        }
+        let climb: Vec<i32> = (10..=50).chain([50; 5]).collect();
+        assert_eq!(targets, climb, "one byte a press, held at the top");
+        r.run(10.0);
+        assert!(r.deck.running_at(5.0), "{} km/h", r.deck.speed_kmh());
+
+        let mut targets = vec![];
+        for _ in 0..10 {
+            r.press(DeckAction::SpeedDown);
+            r.run(0.5);
+            targets.push(tenths(r.deck.target));
+        }
+        assert_eq!(targets, (40..50).rev().collect::<Vec<_>>());
+    }
+
     #[test]
     fn a_power_cut_mid_walk_comes_back_still_and_nothing_starts_it() {
         let mut r = Rig::new();
@@ -1050,5 +1107,154 @@ mod tests {
         );
         assert!(r.deck.belt_still() && r.deck.status_code() == 0);
         assert_eq!(r.finalised.len(), 1, "the walk was saved once");
+    }
+
+    /// Issue #61: `min_speed` is the deck's floor in hardware units. With a
+    /// calibration at scale 0.5 there, 0.6 hardware km/h is 1.2 km/h on the
+    /// belt; a speed set under that ends at the floor byte (0.6 on the deck),
+    /// never below it.
+    #[test]
+    fn a_speed_set_under_the_calibrated_floor_runs_at_the_floor_byte() {
+        let mut r = Rig::new();
+        r.state.sync_config(&crate::engine::slow_floor_config());
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(6.0);
+        assert!(r.deck.running_at(START_KMH), "{} km/h", r.deck.speed_kmh());
+        r.set_speed(3.0);
+        r.run(15.0);
+        // 3.0 km/h: the nearest deck byte is 1.7 (3.03 km/h at scale 0.56).
+        assert!(r.deck.running_at(1.7), "{} km/h", r.deck.speed_kmh());
+        // 0.8 km/h is above the raw 0.6 but under the belt's 1.2 km/h floor.
+        r.set_speed(0.8);
+        let mut lowest = f32::MAX;
+        for _ in 0..20 {
+            r.run(1.0);
+            lowest = lowest.min(r.deck.speed_kmh());
+        }
+        assert!(r.deck.running_at(0.6), "{} km/h", r.deck.speed_kmh());
+        assert!(lowest >= 0.6 - 0.05, "dipped to {lowest} km/h");
+        assert_eq!(r.controls_since(0, Control::Pause), 0);
+    }
+
+    /// Lights out (`snapshot/lights_out.rs`) as `desk.rs` runs it: once a
+    /// second, with the display `off` or on, for `secs` seconds. Returns the
+    /// effects it applied.
+    fn lights_out_for(
+        r: &mut Rig,
+        m: &mut crate::snapshot::lights_out::LightsOut,
+        off: bool,
+        secs: u32,
+    ) -> Vec<crate::snapshot::lights_out::Effect> {
+        use crate::snapshot::lights_out;
+        let mut applied = vec![];
+        for _ in 0..secs {
+            r.run(1.0);
+            let input = lights_out::Input {
+                connected: r.linked && !r.state.awaiting_first_packet,
+                display_off: off,
+                belt: lights_out::belt(&r.state),
+            };
+            if let Some(effect) = m.tick(true, &input) {
+                r.state.set_test_now(r.t);
+                lights_out::apply(&mut r.state, effect);
+                applied.push(effect);
+            }
+        }
+        applied
+    }
+
+    /// Display off: one Stop, the deck winds down, the session is saved once
+    /// and the deck goes to its own sleep. Display back on: nothing is sent,
+    /// the belt stays still and the hold stands.
+    fn lights_out_stops_and_sleeps(r: &mut Rig) {
+        use crate::snapshot::lights_out::{Effect, LightsOut};
+        let mut m = LightsOut::default();
+        assert!(lights_out_for(r, &mut m, false, 5).is_empty());
+        let mark = r.mark();
+        assert_eq!(lights_out_for(r, &mut m, true, 20), vec![Effect::Stop]);
+        assert_eq!(r.commands_since(mark), vec![PacketKind::AtomicAction]);
+        assert_eq!(r.controls_since(mark, Control::Stop), 1);
+        assert!(
+            r.deck.history.ends_with(&[3, 4, 1, 0]),
+            "{:?}",
+            r.deck.history
+        );
+        assert_eq!(r.finalised.len(), 1, "the walk was saved once");
+        assert!(r.state.hold_auto_start);
+
+        assert!(lights_out_for(r, &mut m, true, 15 * 60).is_empty());
+        assert_eq!(r.deck.status_code(), 6, "standby, screen off");
+
+        let mark = r.mark();
+        assert_eq!(lights_out_for(r, &mut m, false, 1), vec![Effect::Back]);
+        assert!(lights_out_for(r, &mut m, false, 5 * 60).is_empty());
+        assert_eq!(r.commands_since(mark), vec![]);
+        assert!(r.deck.belt_still());
+        assert!(r.state.hold_auto_start);
+        assert_eq!(r.sessions_started, 1);
+        assert_eq!(r.finalised.len(), 1);
+    }
+
+    #[test]
+    fn lights_out_stops_a_walk_and_the_display_waking_starts_nothing() {
+        let mut r = Rig::new();
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(5.0);
+        r.set_speed(3.0);
+        r.run(30.0);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+        lights_out_stops_and_sleeps(&mut r);
+    }
+
+    #[test]
+    fn lights_out_ends_a_walking_program() {
+        let mut r = post_meal_walking();
+        lights_out_stops_and_sleeps(&mut r);
+        assert!(r.state.active_program().is_none(), "the program ended");
+    }
+
+    #[test]
+    fn lights_out_ends_a_resting_program() {
+        let mut r = Rig::new();
+        r.run(1.0);
+        r.run_program(WORKDAY);
+        r.run(5.0 * 60.0 + 20.0);
+        assert_eq!(r.program().phase, ProgramPhase::Resting);
+        assert_eq!(r.deck.status_code(), 10, "the rest pauses the belt");
+        let mark = r.mark();
+        let mut m = crate::snapshot::lights_out::LightsOut::default();
+        assert_eq!(
+            lights_out_for(&mut r, &mut m, true, 20),
+            vec![crate::snapshot::lights_out::Effect::Stop]
+        );
+        assert_eq!(r.controls_since(mark, Control::Stop), 1);
+        assert!(r.state.active_program().is_none(), "the program ended");
+        assert_eq!(r.finalised.len(), 1, "saved once");
+        let mark = r.mark();
+        assert!(lights_out_for(&mut r, &mut m, false, 30 * 60).len() == 1);
+        assert!(!moves_belt(&r.commands_since(mark)));
+        assert!(r.deck.belt_still());
+    }
+
+    #[test]
+    fn lights_out_sends_one_stop_to_a_still_awake_deck() {
+        use crate::snapshot::lights_out::{Effect, LightsOut};
+        let mut r = Rig::new();
+        r.run(5.0);
+        assert_eq!(r.deck.status_code(), 0);
+        let mark = r.mark();
+        let mut m = LightsOut::default();
+        assert_eq!(lights_out_for(&mut r, &mut m, true, 60), vec![Effect::Stop]);
+        assert_eq!(r.controls_since(mark, Control::Stop), 1, "sent once");
+        assert!(r.deck.belt_still());
+        assert!(!r.state.stop_requested, "nothing left waiting");
+        let mark = r.mark();
+        assert_eq!(
+            lights_out_for(&mut r, &mut m, false, 60),
+            vec![Effect::Back]
+        );
+        assert_eq!(r.commands_since(mark), vec![]);
     }
 }

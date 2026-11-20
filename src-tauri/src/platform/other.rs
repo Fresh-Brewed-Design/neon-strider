@@ -1,9 +1,10 @@
 //! Stand-ins for operating systems other than Windows: each feature reports
 //! "unsupported". No input is ever seen (so the sit-too-long nudge and the
-//! walk-away idle timer never fire), the session is never locked, and the
-//! microphone is always free. PC idle time is unknown, so updates never
-//! install by themselves. The HUD stays click-through. There is no Bluetooth
-//! peripheral, so GHOST_POD says it isn't supported.
+//! walk-away idle timer never fire), the session is never locked, the display
+//! is never off (so lights out never fires), and the microphone is always
+//! free. PC idle time is unknown, so updates never install by themselves. The
+//! HUD stays click-through. There is no Bluetooth peripheral, so GHOST_POD
+//! says it isn't supported.
 
 pub fn install_input_hooks() {
     log::info!("Global input hooks are not supported on this OS");
@@ -16,6 +17,10 @@ pub fn spawn_session_lock_watcher() {
 }
 
 pub fn session_locked() -> bool {
+    false
+}
+
+pub fn display_off() -> bool {
     false
 }
 
