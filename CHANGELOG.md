@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.31.0 (2026-11-20)
+
+### New
+
+- Programs can now hold a heart rate zone with a linked heart rate sensor: the belt speed is trimmed by 0.1 km/h at most every 20 s, up to 1 km/h either side of the step's speed, to keep your pulse in the zone. It only trims a belt that is already running and never starts it. Setting zones up comes in a later release.
+
 ## 1.30.0 (2026-11-20)
 
 ### New
