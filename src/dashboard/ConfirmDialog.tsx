@@ -35,6 +35,7 @@ export function ConfirmDialog() {
 
         <div className="p-6">
           <p className="text-xs text-white/70 font-mono leading-relaxed tracking-tight">{pending.message}</p>
+          {pending.hint && <p className="mt-3 text-[11px] text-white/50 font-mono leading-relaxed tracking-tight">{pending.hint}</p>}
         </div>
 
         <div className="p-4 bg-black/40 flex gap-3 justify-end">
