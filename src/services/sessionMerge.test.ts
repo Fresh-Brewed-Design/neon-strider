@@ -109,6 +109,30 @@ describe("mergeSessions", () => {
     expect(m.avg_incline).toBe(0);
   });
 
+  it("weights heart rate by duration and keeps the highest maximum", () => {
+    const [m] = mergeSessions(
+      [
+        session(1, 0, 10, { avg_heart_rate: 100, max_heart_rate: 120 }),
+        session(2, 11, 30, { avg_heart_rate: 120, max_heart_rate: 140 }),
+      ],
+      10,
+    );
+    expect(m.avg_heart_rate).toBe(115);
+    expect(m.max_heart_rate).toBe(140);
+  });
+
+  it("keeps one walk's heart rate when the joined walk has none", () => {
+    const [m] = mergeSessions(
+      [session(1, 0, 10), session(2, 11, 30, { avg_heart_rate: 118, max_heart_rate: 133 })],
+      10,
+    );
+    expect(m.avg_heart_rate).toBe(118);
+    expect(m.max_heart_rate).toBe(133);
+    const [none] = mergeSessions([session(1, 0, 10), session(2, 11, 10)], 10);
+    expect(none.avg_heart_rate).toBeNull();
+    expect(none.max_heart_rate).toBeNull();
+  });
+
   it("does not mutate its input", () => {
     const a = session(1, 0, 10);
     const b = session(2, 11, 10);

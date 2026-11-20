@@ -1,0 +1,1 @@
+- With a heart rate sensor linked (HEART_LINK), each walk now saves its heart rate every second. History shows the walk's average and maximum heart rate.

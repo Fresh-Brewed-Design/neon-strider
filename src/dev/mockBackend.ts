@@ -1057,6 +1057,8 @@ function setMaintenance(patch: Partial<MaintenanceSnapshot>) {
 if (params.has("due")) setMaintenance({ last_service_ms: Date.now() - 95 * 86_400_000, distance_since_km: 212.4, hours_since: 52.6 });
 resolveSeatedPrograms();
 
+const heartWalks = params.get("heart") === "on";
+
 /** A few weeks of fake walks for the History page. */
 function mockSessions() {
   const out = [];
@@ -1072,6 +1074,9 @@ function mockSessions() {
       distance_meters: dist, raw_distance_meters: dist, calories: dist * 0.06, steps: dist * 1.4,
       raw_steps: dist * 1.4, avg_speed: 3.2, raw_avg_speed: 3.6, avg_incline: 4,
       strava_id: d % 4 === 0 ? "123" : null, neural_heat: 0, neural_ticks: 0, last_hardware_time: dur,
+      // With ?heart=on, every other walk was saved with a watch linked.
+      avg_heart_rate: heartWalks && d % 2 === 0 ? 104 + (d % 9) : null,
+      max_heart_rate: heartWalks && d % 2 === 0 ? 121 + (d % 13) : null,
     });
   }
   return out;
