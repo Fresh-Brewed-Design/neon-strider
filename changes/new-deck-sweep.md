@@ -1,1 +1,0 @@
-- LABS // DECK_SWEEP in System -> Diagnostics, off until you switch it on: one press steps a walking belt through every speed DECK_PROFILE has not learned yet, up to your Top speed, then back to your speed. It never starts or resumes the belt, and stopping the belt, changing the speed or starting a program ends it.
