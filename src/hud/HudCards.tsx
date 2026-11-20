@@ -140,6 +140,36 @@ export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
 }
 
 /**
+ * Eye break: a quiet heads-up a minute ahead, then the break with its
+ * countdown. SKIP is the only button; the belt is never touched. Rust counts the
+ * time; the tones are played by the HUD (`useEyeBreakTones`).
+ */
+export function EyeBreakCard({ snapshot }: { snapshot: AppSnapshot }) {
+  const { send, error } = useHudSend();
+  const e = snapshot.eye_break;
+  const onBreak = e.phase === "break";
+  return (
+    <div className="hud-toast hud-eyebreak accent-cyan" role="alert">
+      <div className="hud-toast-body">
+        <span className="hud-label">OPTIC_RESET</span>
+        <span className="hud-toast-message">
+          {onBreak ? `LOOK AWAY // ${e.remaining_s} S` : `EYE BREAK IN ${e.remaining_s} S`}
+        </span>
+        <span className="hud-sub">
+          {onBreak
+            ? "Look at something far away, and blink when the tone sounds."
+            : "Finish what you are typing, then look away."}
+        </span>
+      </div>
+      <HudNote error={error} />
+      <div className="hud-seated-actions">
+        <SmallButton onClick={() => send({ type: "eye_break_skip" })}>SKIP</SmallButton>
+      </div>
+    </div>
+  );
+}
+
+/**
  * A new version is ready, shown once per version. INSTALL opens the dashboard
  * on the notes (it never installs blind); LATER just hides the card.
  */

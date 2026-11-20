@@ -3,6 +3,7 @@ import type { ActiveProgram } from "./ActiveProgram";
 import type { CallsSnapshot } from "./CallsSnapshot";
 import type { ConnectionSnapshot } from "./ConnectionSnapshot";
 import type { DeckSnapshot } from "./DeckSnapshot";
+import type { EyeBreakSnapshot } from "./EyeBreakSnapshot";
 import type { HudConfig } from "./HudConfig";
 import type { HudMonitor } from "./HudMonitor";
 import type { HudView } from "./HudView";
@@ -37,6 +38,10 @@ weekly: WeeklySummary,
  * The idle nudge: its settings and whether the HUD card shows.
  */
 seated: SeatedSnapshot, 
+/**
+ * Eye breaks: their settings, the phase and the tone counters.
+ */
+eye_break: EyeBreakSnapshot, 
 /**
  * Slow down on calls: its settings and whether the microphone is in use.
  */
