@@ -1,1 +1,0 @@
-- History: an opened walk saved with heart rate now draws it on the chart as a yellow line with its own BPM axis, with a gap where the watch had no reading.
