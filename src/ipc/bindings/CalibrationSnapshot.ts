@@ -2,6 +2,7 @@
 import type { CalibrationLimits } from "./CalibrationLimits";
 import type { CalibrationRunView } from "./CalibrationRunView";
 import type { CalibrationSweepView } from "./CalibrationSweepView";
+import type { CalibrationTarget } from "./CalibrationTarget";
 
 /**
  * The guided calibration in the snapshot.
@@ -10,7 +11,11 @@ export type CalibrationSnapshot = {
 /**
  * Labs switch: the guided wizard replaces the old calibration panel.
  */
-wizard_enabled: boolean, limits: CalibrationLimits, run: CalibrationRunView | null, 
+wizard_enabled: boolean, limits: CalibrationLimits, 
+/**
+ * The target speeds he keeps, slowest first.
+ */
+targets: Array<CalibrationTarget>, run: CalibrationRunView | null, 
 /**
  * RUN ALL: the list being walked, if any.
  */

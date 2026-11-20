@@ -669,11 +669,19 @@ pub enum Command {
     },
     /// Close the run (after saving its point, or to cancel). The belt keeps going.
     CalibrationRunClose,
-    /// RUN ALL: walk `targets_kmh` (deck km/h) slowest first, running the
-    /// first now. The press is his.
-    CalibrationSweepStart {
-        targets_kmh: Vec<f32>,
+    /// ADD_SPEED: put `kmh` (deck km/h, 0.1 steps, inside the treadmill's
+    /// min/max, not already listed) in the stored target list.
+    CalibrationTargetAdd {
+        kmh: f32,
     },
+    /// Take `kmh` out of the target list. Refused for a speed with a saved
+    /// point or the open run's speed.
+    CalibrationTargetRemove {
+        kmh: f32,
+    },
+    /// RUN ALL: walk the stored target list and the saved points' speeds
+    /// slowest first, running the first now. The press is his.
+    CalibrationSweepStart,
     /// RUN on the sweep's current speed. The press is his.
     CalibrationSweepRun,
     /// SAVE (`saved`) or SKIP the sweep's current speed and close its run.
