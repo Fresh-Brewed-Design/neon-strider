@@ -15,13 +15,21 @@
 //! stop, END). When the break ends, or is skipped, and its pause still holds,
 //! the HUD shows `OCULAR_IMPLANT // RECALIBRATED` with RESUME (a press) and
 //! STAY STILL. Nothing here ever resumes the belt. A belt that was still when
-//! the break began is left alone. Fitting breaks into program rests is still to
-//! come.
+//! the break began is left alone.
+//!
+//! Program rests: with "Take breaks at program rests" on (the default), a
+//! break fits into the moments a running program holds the belt still anyway
+//! (the rest between cycles, a 0 km/h step, or a wait for GO), so it doesn't
+//! interrupt a walk. At such a rest a break due within half an interval starts
+//! now. While a program walks, a break that comes due waits for the program's
+//! next rest if that rest is at most half an interval (and never more than 10
+//! minutes) late; the heads-up says so. A rest out of reach, or a manual walk,
+//! gets the pause as before. A still program never starts the belt by itself
+//! (its next step waits for GO), so a break at a rest needs no pause of its own.
 //!
 //! "Screen use" is keyboard or mouse input in the last 5 minutes, with the
-//! session unlocked. That stands in for the screen being on, which Windows does
-//! not tell us cheaply. Being away (locked, or no input for 15 minutes) starts
-//! the count again, and so does no input for as long as a break lasts: the eyes
+//! session unlocked and the display on (`platform::display_off`). Being away
+//! (locked, the display off, or no input for 15 minutes) starts the count again, and so does no input for as long as a break lasts: the eyes
 //! were off the screen anyway.
 //!
 //! The state machine is pure: it takes epoch-millisecond times as arguments, so
@@ -40,6 +48,7 @@ const KEY_MINUTES: &str = "eye_break_minutes";
 const KEY_SECONDS: &str = "eye_break_seconds";
 const KEY_SOUND: &str = "eye_break_sound";
 const KEY_PAUSE_BELT: &str = "eye_break_pause_belt";
+const KEY_FIT_RESTS: &str = "eye_break_fit_rests";
 
 const DEFAULT_MINUTES: u32 = 20;
 const MIN_MINUTES: u32 = 10;
@@ -63,6 +72,8 @@ const MAX_STEP_MS: u64 = 10 * SECOND;
 /// The deck takes a moment to report a pause. If the belt still walks this long
 /// after the pause was sent, it is sent again.
 const REISSUE_MS: u64 = 5 * SECOND;
+/// A break never waits longer than this for a program's rest.
+const MAX_WAIT_FOR_REST_MS: u64 = 10 * MINUTE;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
@@ -72,6 +83,8 @@ pub struct Config {
     pub sound: bool,
     /// A break that starts while the belt walks pauses it.
     pub pause_belt: bool,
+    /// Breaks fit into a running program's rests.
+    pub fit_rests: bool,
 }
 
 impl Default for Config {
@@ -82,6 +95,7 @@ impl Default for Config {
             seconds: DEFAULT_SECONDS,
             sound: true,
             pause_belt: true,
+            fit_rests: true,
         }
     }
 }
@@ -114,8 +128,13 @@ pub struct EyeBreakSnapshot {
     pub sound: bool,
     /// A break that starts while the belt walks pauses it.
     pub pause_belt: bool,
+    /// Breaks fit into a running program's rests.
+    pub fit_rests: bool,
     /// The belt is paused by the break (during the break, or on the resume card).
     pub holds_belt: bool,
+    /// Upcoming: the break is set for the program's next rest, so the belt
+    /// won't be paused for it.
+    pub at_rest: bool,
     pub phase: EyeBreakPhase,
     /// Seconds until the break (upcoming) or until it ends (break).
     pub remaining_s: u32,
@@ -131,8 +150,16 @@ pub struct Tick {
     /// Time since the last keyboard or mouse input; `None` if none was seen yet.
     pub idle_ms: Option<u64>,
     pub locked: bool,
+    /// The PC's display is off.
+    pub display_off: bool,
     /// The belt, so a break can pause it and know the pause is still its own.
     pub belt: Belt,
+    /// While a program walks: walking time until it next holds the belt still
+    /// (`ProgramRun::next_still_s`). None when no such rest is coming.
+    pub rest_in_ms: Option<u64>,
+    /// How long that rest lasts or, at a rest (`Belt::Rest`), what is left of
+    /// it. None: until a press (a wait for GO, an open-ended 0 km/h step).
+    pub rest_len_ms: Option<u64>,
 }
 
 /// Which pause: the treadmill's own (a manual walk), or a program's (by id).
@@ -154,6 +181,9 @@ pub enum Belt {
     /// Paused this way: the treadmill reports its pause with no program, or
     /// this program is paused at a walking step.
     Paused(Hold),
+    /// A running program holds the belt still by itself: its rest between
+    /// cycles, a 0 km/h step, or a wait for GO. A break fits here.
+    Rest,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -183,6 +213,11 @@ pub struct EyeBreak {
     /// The belt is paused by a break. Outlives the break: while it holds after
     /// one, the HUD shows the resume card.
     owned: Option<Owned>,
+    /// Upcoming: milliseconds until the break (until the rest when it waits
+    /// for one).
+    next_ms: u64,
+    /// The next break is set for the program's next rest.
+    at_rest: bool,
 }
 
 impl EyeBreak {
@@ -192,6 +227,57 @@ impl EyeBreak {
         self.active_ms = 0;
         self.break_ms = 0;
         self.phase = EyeBreakPhase::Idle;
+        self.at_rest = false;
+    }
+
+    /// When the next break comes, and whether it is set for a program's rest
+    /// (the next one, or the one the belt is in). A break waits for a rest at
+    /// most half an interval (and `MAX_WAIT_FOR_REST_MS`) past its time. It
+    /// comes early, by up to half an interval, to a rest that would be over
+    /// before the break ended at its own time. A rest that holds it anyway
+    /// leaves it on time.
+    fn plan(&self, cfg: &Config, interval: u64, input: &Tick) -> (u64, bool) {
+        let due_in = interval.saturating_sub(self.active_ms);
+        if !cfg.fit_rests {
+            return (due_in, false);
+        }
+        let rest_in = match (input.belt, input.rest_in_ms) {
+            (Belt::Rest, _) => 0,
+            (Belt::Walking(Hold::Program(_)), Some(r)) => r,
+            _ => return (due_in, false),
+        };
+        let half = interval / 2;
+        let fits = if rest_in >= due_in {
+            rest_in - due_in <= half.min(MAX_WAIT_FOR_REST_MS)
+        } else {
+            let ends_first = input
+                .rest_len_ms
+                .is_some_and(|len| due_in + cfg.seconds as u64 * SECOND > rest_in + len);
+            due_in - rest_in <= half && ends_first
+        };
+        if fits {
+            (rest_in, true)
+        } else {
+            (due_in, false)
+        }
+    }
+
+    /// The break begins: a blink prompt, and the pause if the belt walks.
+    fn begin(&mut self, cfg: &Config, now_ms: u64, belt: Belt) -> Option<Effect> {
+        self.phase = EyeBreakPhase::Break;
+        self.break_ms = 0;
+        self.at_rest = false;
+        self.blink_seq = self.blink_seq.wrapping_add(1);
+        if let (true, None, Belt::Walking(hold)) = (cfg.pause_belt, self.owned, belt) {
+            log::info!("Eye break: pausing the belt for the break");
+            self.owned = Some(Owned {
+                hold,
+                sent_ms: now_ms,
+                took: false,
+            });
+            return Some(Effect::Pause(hold));
+        }
+        None
     }
 
     /// Check the break's pause against the belt. Gives it up when the belt is
@@ -233,7 +319,10 @@ impl EyeBreak {
             return None;
         }
         let effect = self.follow(now_ms, input.belt);
-        let away = input.locked || step >= AWAY_MS || input.idle_ms.is_some_and(|i| i > AWAY_MS);
+        let away = input.locked
+            || input.display_off
+            || step >= AWAY_MS
+            || input.idle_ms.is_some_and(|i| i > AWAY_MS);
         if away {
             self.reset();
             return effect;
@@ -263,24 +352,21 @@ impl EyeBreak {
         }
 
         let interval = cfg.minutes as u64 * MINUTE;
-        if self.active_ms >= interval {
-            self.phase = EyeBreakPhase::Break;
-            self.break_ms = 0;
-            self.blink_seq = self.blink_seq.wrapping_add(1);
-            if let (true, None, Belt::Walking(hold)) = (cfg.pause_belt, self.owned, input.belt) {
-                log::info!("Eye break: pausing the belt for the break");
-                self.owned = Some(Owned {
-                    hold,
-                    sent_ms: now_ms,
-                    took: false,
-                });
-                return Some(Effect::Pause(hold));
+        let (next_ms, at_rest) = self.plan(cfg, interval, input);
+        self.next_ms = next_ms;
+        self.at_rest = at_rest;
+        // Set for a rest: it begins once the belt is at it.
+        if next_ms == 0 && (!at_rest || input.belt == Belt::Rest) {
+            if at_rest {
+                log::info!("Eye break: taking the break at the program's rest");
             }
-        } else if self.active_ms + WARN_MS >= interval {
-            self.phase = EyeBreakPhase::Upcoming;
-        } else {
-            self.phase = EyeBreakPhase::Idle;
+            return self.begin(cfg, now_ms, input.belt).or(effect);
         }
+        self.phase = if next_ms <= WARN_MS {
+            EyeBreakPhase::Upcoming
+        } else {
+            EyeBreakPhase::Idle
+        };
         effect
     }
 
@@ -323,7 +409,7 @@ impl EyeBreak {
     fn remaining_s(&self, cfg: &Config) -> u32 {
         let ms = match self.phase {
             EyeBreakPhase::Idle | EyeBreakPhase::Complete => return 0,
-            EyeBreakPhase::Upcoming => (cfg.minutes as u64 * MINUTE).saturating_sub(self.active_ms),
+            EyeBreakPhase::Upcoming => self.next_ms,
             EyeBreakPhase::Break => (cfg.seconds as u64 * SECOND).saturating_sub(self.break_ms),
         };
         ms.div_ceil(SECOND) as u32
@@ -342,6 +428,7 @@ pub fn config_from_raw(
     seconds: Option<&str>,
     sound: Option<&str>,
     pause_belt: Option<&str>,
+    fit_rests: Option<&str>,
 ) -> Config {
     Config {
         enabled: persistence::parse_setting(enabled).unwrap_or(false),
@@ -349,6 +436,7 @@ pub fn config_from_raw(
         seconds: persistence::setting_in(seconds, MIN_SECONDS..=MAX_SECONDS, DEFAULT_SECONDS),
         sound: persistence::parse_setting(sound).unwrap_or(true),
         pause_belt: persistence::parse_setting(pause_belt).unwrap_or(true),
+        fit_rests: persistence::parse_setting(fit_rests).unwrap_or(true),
     }
 }
 
@@ -391,6 +479,7 @@ pub fn init(app: &AppHandle) {
         read(KEY_SECONDS).as_deref(),
         read(KEY_SOUND).as_deref(),
         read(KEY_PAUSE_BELT).as_deref(),
+        read(KEY_FIT_RESTS).as_deref(),
     );
     with(|rt| rt.cfg = cfg);
 }
@@ -403,6 +492,7 @@ pub fn set_config(app: &AppHandle, cfg: Config) -> Result<(), String> {
         seconds,
         sound,
         pause_belt,
+        fit_rests,
     } = cfg;
     validate(minutes, seconds)?;
     persistence::write_setting(app, KEY_ENABLED, &enabled.to_string())?;
@@ -410,6 +500,7 @@ pub fn set_config(app: &AppHandle, cfg: Config) -> Result<(), String> {
     persistence::write_setting(app, KEY_SECONDS, &seconds.to_string())?;
     persistence::write_setting(app, KEY_SOUND, &sound.to_string())?;
     persistence::write_setting(app, KEY_PAUSE_BELT, &pause_belt.to_string())?;
+    persistence::write_setting(app, KEY_FIT_RESTS, &fit_rests.to_string())?;
     with(|rt| {
         rt.cfg = cfg;
         if !enabled {
@@ -423,13 +514,22 @@ pub fn set_config(app: &AppHandle, cfg: Config) -> Result<(), String> {
 
 /// For the snapshot. No I/O.
 pub fn snapshot() -> EyeBreakSnapshot {
-    with(|rt| EyeBreakSnapshot {
+    with(|rt| snapshot_of(rt))
+}
+
+/// The snapshot of one runtime.
+pub(crate) fn snapshot_of(rt: &Runtime) -> EyeBreakSnapshot {
+    EyeBreakSnapshot {
         enabled: rt.cfg.enabled,
         minutes: rt.cfg.minutes,
         seconds: rt.cfg.seconds,
         sound: rt.cfg.sound,
         pause_belt: rt.cfg.pause_belt,
+        fit_rests: rt.cfg.fit_rests,
         holds_belt: rt.cfg.enabled && rt.machine.holds_belt(),
+        at_rest: rt.cfg.enabled
+            && rt.machine.phase == EyeBreakPhase::Upcoming
+            && rt.machine.at_rest,
         phase: if rt.cfg.enabled {
             rt.machine.shown_phase()
         } else {
@@ -438,7 +538,7 @@ pub fn snapshot() -> EyeBreakSnapshot {
         remaining_s: rt.machine.remaining_s(&rt.cfg),
         blink_seq: rt.machine.blink_seq,
         end_seq: rt.machine.end_seq,
-    })
+    }
 }
 
 #[cfg(test)]
@@ -454,6 +554,7 @@ mod tests {
             seconds: 90,
             sound: true,
             pause_belt: true,
+            fit_rests: true,
         }
     }
 
@@ -461,7 +562,10 @@ mod tests {
         Tick {
             idle_ms: Some(0),
             locked: false,
+            display_off: false,
             belt: Belt::Other,
+            rest_in_ms: None,
+            rest_len_ms: None,
         }
     }
 
@@ -486,7 +590,10 @@ mod tests {
         Tick {
             idle_ms: Some(30 * SECOND),
             locked: false,
+            display_off: false,
             belt: b,
+            rest_in_ms: None,
+            rest_len_ms: None,
         }
     }
 
@@ -691,7 +798,10 @@ mod tests {
         let away = Tick {
             idle_ms: Some(30 * SECOND),
             locked: false,
+            display_off: false,
             belt: Belt::Other,
+            rest_in_ms: None,
+            rest_len_ms: None,
         };
         run(&mut m, &c, 1201, 1245, away);
         assert_eq!(m.blink_seq, start + 4);
@@ -721,7 +831,10 @@ mod tests {
         let locked = Tick {
             idle_ms: Some(0),
             locked: true,
+            display_off: false,
             belt: Belt::Other,
+            rest_in_ms: None,
+            rest_len_ms: None,
         };
         m.tick(&c, T0 + 1151 * SECOND, &locked);
         assert_eq!(m.phase(), EyeBreakPhase::Idle);
@@ -735,7 +848,10 @@ mod tests {
         let paused = Tick {
             idle_ms: Some(91 * SECOND),
             locked: false,
+            display_off: false,
             belt: Belt::Other,
+            rest_in_ms: None,
+            rest_len_ms: None,
         };
         m.tick(&c, T0 + 601 * SECOND, &paused);
         assert_eq!(m.active_ms, 0);
@@ -762,14 +878,210 @@ mod tests {
         assert_eq!(m.blink_seq, 0);
     }
 
+    // -- Program rests ------------------------------------------------------
+
+    const PROGRAM: Belt = Belt::Walking(Hold::Program(2));
+
+    /// One tick a second, the input made from the second.
+    fn run_by(
+        m: &mut EyeBreak,
+        c: &Config,
+        from: u64,
+        to: u64,
+        input: impl Fn(u64) -> Tick,
+    ) -> Vec<(u64, Effect)> {
+        let mut out = vec![];
+        for s in from..=to {
+            if let Some(e) = m.tick(c, T0 + s * SECOND, &input(s)) {
+                out.push((s, e));
+            }
+        }
+        out
+    }
+
+    /// A program walking at the keyboard until its rest at `rest_at` seconds,
+    /// then resting there for `len` seconds.
+    fn program_resting_at(rest_at: u64, len: u64) -> impl Fn(u64) -> Tick {
+        move |s| {
+            if s < rest_at {
+                Tick {
+                    rest_in_ms: Some((rest_at - s) * SECOND),
+                    rest_len_ms: Some(len * SECOND),
+                    ..belt(PROGRAM)
+                }
+            } else {
+                Tick {
+                    rest_len_ms: Some((rest_at + len).saturating_sub(s) * SECOND),
+                    ..belt(Belt::Rest)
+                }
+            }
+        }
+    }
+
+    /// The Workday shape: the rest is 25 minutes.
+    const LONG: u64 = 1500;
+    /// A rest over before a break due 500 s after it starts could end.
+    const SHORT: u64 = 300;
+
+    #[test]
+    fn a_break_due_while_a_program_walks_waits_for_its_rest_and_pauses_nothing() {
+        let (mut m, c) = (EyeBreak::default(), cfg());
+        // Due at 1200 s; the rest comes 200 s later.
+        let walk = program_resting_at(1400, LONG);
+        assert_eq!(run_by(&mut m, &c, 0, 1339, &walk), vec![]);
+        assert_eq!(
+            m.phase(),
+            EyeBreakPhase::Idle,
+            "no heads-up at the due time"
+        );
+        run_by(&mut m, &c, 1340, 1399, &walk);
+        assert_eq!(m.phase(), EyeBreakPhase::Upcoming);
+        assert!(m.at_rest);
+        assert_eq!(m.remaining_s(&c), 1);
+        assert_eq!(run_by(&mut m, &c, 1400, 1400, &walk), vec![]);
+        assert_eq!(m.phase(), EyeBreakPhase::Break);
+        assert!(!m.holds_belt());
+        // It runs its length at the rest, and no resume card follows.
+        run_by(&mut m, &c, 1401, 1500, |_| away_with(Belt::Rest));
+        assert_eq!(m.end_seq, 1);
+        assert_eq!(m.shown_phase(), EyeBreakPhase::Idle);
+    }
+
+    #[test]
+    fn a_rest_too_late_for_the_break_gets_the_pause_on_time() {
+        let (mut m, c) = (EyeBreak::default(), cfg());
+        // Half an interval is 600 s; this rest would be 700 s late.
+        let fx = run_by(&mut m, &c, 0, 1200, program_resting_at(1900, LONG));
+        assert_eq!(fx, vec![(1200, Effect::Pause(Hold::Program(2)))]);
+    }
+
+    #[test]
+    fn a_break_never_waits_more_than_ten_minutes_for_a_rest() {
+        let c = Config {
+            minutes: 60,
+            ..cfg()
+        };
+        // Due at 3600 s; a rest 11 minutes later is out of reach.
+        let mut m = EyeBreak::default();
+        let fx = run_by(&mut m, &c, 0, 3600, program_resting_at(3600 + 660, LONG));
+        assert_eq!(fx, vec![(3600, Effect::Pause(Hold::Program(2)))]);
+        // Nine minutes is in reach.
+        let mut m = EyeBreak::default();
+        let fx = run_by(&mut m, &c, 0, 4200, program_resting_at(3600 + 540, LONG));
+        assert_eq!(fx, vec![]);
+        assert_eq!(m.phase(), EyeBreakPhase::Break);
+    }
+
+    #[test]
+    fn a_short_rest_takes_a_break_due_within_half_an_interval_early() {
+        let (mut m, c) = (EyeBreak::default(), cfg());
+        // At 700 s the break is 500 s away and the rest is over at 1000 s.
+        let walk = program_resting_at(700, SHORT);
+        run_by(&mut m, &c, 0, 645, &walk);
+        assert_eq!(
+            m.phase(),
+            EyeBreakPhase::Upcoming,
+            "the heads-up comes first"
+        );
+        assert!(m.at_rest);
+        assert_eq!(run_by(&mut m, &c, 646, 700, &walk), vec![]);
+        assert_eq!(m.phase(), EyeBreakPhase::Break);
+        assert!(!m.holds_belt());
+        run_by(&mut m, &c, 701, 795, |_| away_with(Belt::Rest));
+        assert_eq!(m.end_seq, 1);
+        assert_eq!(m.phase(), EyeBreakPhase::Idle);
+    }
+
+    #[test]
+    fn a_long_rest_leaves_the_break_on_time() {
+        let (mut m, c) = (EyeBreak::default(), cfg());
+        // The rest from 700 s to 2200 s holds the break at 1200 s anyway.
+        let walk = program_resting_at(700, LONG);
+        run_by(&mut m, &c, 0, 1100, &walk);
+        assert_eq!(m.phase(), EyeBreakPhase::Idle);
+        assert_eq!(run_by(&mut m, &c, 1101, 1200, &walk), vec![]);
+        assert_eq!(m.phase(), EyeBreakPhase::Break);
+        assert!(!m.holds_belt());
+    }
+
+    #[test]
+    fn a_rest_more_than_half_an_interval_early_leaves_the_break_for_later() {
+        let (mut m, c) = (EyeBreak::default(), cfg());
+        // At 300 s the break is 900 s away; the short rest ends at 600 s.
+        let walk = program_resting_at(300, SHORT);
+        run_by(&mut m, &c, 0, 599, &walk);
+        assert_eq!(m.phase(), EyeBreakPhase::Idle);
+        assert_eq!(m.end_seq, 0);
+    }
+
+    #[test]
+    fn with_fit_rests_off_a_break_pauses_a_program_on_time() {
+        let mut m = EyeBreak::default();
+        let c = Config {
+            fit_rests: false,
+            ..cfg()
+        };
+        let fx = run_by(&mut m, &c, 0, 1200, program_resting_at(1300, LONG));
+        assert_eq!(fx, vec![(1200, Effect::Pause(Hold::Program(2)))]);
+        // Nor does a short rest take one early.
+        let mut m = EyeBreak::default();
+        run_by(&mut m, &c, 0, 800, program_resting_at(700, SHORT));
+        assert_eq!(m.phase(), EyeBreakPhase::Idle);
+    }
+
+    #[test]
+    fn a_manual_walk_never_waits_for_a_rest() {
+        let (mut m, c) = (EyeBreak::default(), cfg());
+        let walk = |_| Tick {
+            rest_in_ms: Some(100 * SECOND),
+            ..belt(WALK)
+        };
+        let fx = run_by(&mut m, &c, 0, 1200, walk);
+        assert_eq!(fx, vec![(1200, Effect::Pause(Hold::Manual))]);
+    }
+
+    #[test]
+    fn a_program_paused_while_its_break_waits_gets_the_break_at_once() {
+        let (mut m, c) = (EyeBreak::default(), cfg());
+        run_by(&mut m, &c, 0, 1250, program_resting_at(1400, LONG));
+        assert_eq!(m.phase(), EyeBreakPhase::Idle);
+        // The user pauses the program: the break starts, and isn't the pause's owner.
+        let fx = run(&mut m, &c, 1251, 1251, belt(Belt::Paused(Hold::Program(2))));
+        assert_eq!(fx, vec![]);
+        assert_eq!(m.phase(), EyeBreakPhase::Break);
+        assert!(!m.holds_belt());
+    }
+
+    #[test]
+    fn the_display_off_starts_the_count_again() {
+        let (mut m, c) = (EyeBreak::default(), cfg());
+        run(&mut m, &c, 0, 1150, typing());
+        assert_eq!(m.phase(), EyeBreakPhase::Upcoming);
+        let dark = Tick {
+            display_off: true,
+            ..typing()
+        };
+        m.tick(&c, T0 + 1151 * SECOND, &dark);
+        assert_eq!(m.phase(), EyeBreakPhase::Idle);
+        assert_eq!(m.active_ms, 0);
+    }
+
     #[test]
     fn bad_settings_fall_back_to_defaults() {
-        let c = config_from_raw(Some("garbage"), Some("1"), Some("9999"), None, Some("x"));
+        let c = config_from_raw(
+            Some("garbage"),
+            Some("1"),
+            Some("9999"),
+            None,
+            Some("x"),
+            Some("y"),
+        );
         assert_eq!(c, Config::default());
         let c = config_from_raw(
             Some("true"),
             Some("30"),
             Some("300"),
+            Some("false"),
             Some("false"),
             Some("false"),
         );
@@ -781,6 +1093,7 @@ mod tests {
                 seconds: 300,
                 sound: false,
                 pause_belt: false,
+                fit_rests: false,
             }
         );
         assert!(validate(5, 90).is_err());
