@@ -1,0 +1,1 @@
+- A pause on the treadmill's own buttons now pauses the running program too, so GO picks the step up where it stopped.

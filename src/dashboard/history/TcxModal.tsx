@@ -21,7 +21,7 @@ export function TcxModal({ session, tcx, onClose }: { session: MergedSession; tc
       .writeText(tcx)
       .then(() => {
         setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        setTimeout(() => setCopied(false), 2000); // long enough to see COPIED
       })
       .catch((e) => console.error("[history] copy failed", e));
   };

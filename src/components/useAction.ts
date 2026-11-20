@@ -59,7 +59,11 @@ export interface BackendResult {
   at_ms: number;
 }
 
-/** A command that records nothing counts as finished after this long without Rust being busy. */
+/**
+ * A command that records nothing counts as finished after this long without Rust being busy:
+ * six snapshot ticks (250 ms), so Rust has had time to report busy, and under a second and a
+ * half so the spinner never lingers.
+ */
 const SETTLE_MS = 1500;
 
 type Armed = { since: number; done: string | null } & (
@@ -93,7 +97,7 @@ export function useBackendAction(result: BackendResult | null, busy: boolean) {
   // Wake up once the quiet period is over.
   useEffect(() => {
     if (acceptedAt === null) return;
-    const t = setTimeout(() => setNow(Date.now()), Math.max(0, acceptedAt + SETTLE_MS - Date.now()) + 20);
+    const t = setTimeout(() => setNow(Date.now()), Math.max(0, acceptedAt + SETTLE_MS - Date.now()) + 20); // 20 ms past, so the check lands after it
     return () => clearTimeout(t);
   }, [acceptedAt]);
 

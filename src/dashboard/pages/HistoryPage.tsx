@@ -18,6 +18,7 @@ import { useSessionUploads } from "../history/useSessionUploads";
 import { GhostButton, Label, Page, Panel } from "../ui";
 import { cx } from "../util";
 
+/** Walks loaded at once: three a day for a year fill the 53-week calendar, and 1000 rows stay quick. */
 const LOAD_LIMIT = 1000;
 
 export function HistoryPage() {
@@ -77,7 +78,7 @@ export function HistoryPage() {
     const n = session.mergedIds.length;
     confirm({
       title: "Delete session",
-      message: `Delete ${n > 1 ? `these ${n} joined records` : "this record"} from the local archive? This cannot be undone.`,
+      message: `Delete ${n > 1 ? `${n} joined records` : "the session"} from the local archive? Deleted sessions can't be restored.`,
       onConfirm: async () => {
         try {
           for (const id of session.mergedIds) await SessionRepository.deleteSession(id);
@@ -171,7 +172,7 @@ export function HistoryPage() {
         ) : groups.length === 0 ? (
           <p className="py-6 text-center font-mono text-xs text-white/40">
             {sessions.length === 0
-              ? "No sessions recorded yet. Start walking and they will appear here."
+              ? "No sessions recorded yet. Every walk shows up in History."
               : "No sessions in this time frame."}
           </p>
         ) : (

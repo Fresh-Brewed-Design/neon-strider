@@ -114,7 +114,7 @@ pub fn status_message(
     error: Option<&str>,
 ) -> String {
     if !enabled {
-        return "Switch it on to let the watch's data field read the belt.".to_string();
+        return "Switch WRIST_LINK on to let the watch's data field read the belt.".to_string();
     }
     if !pod_on {
         return "Waiting for GHOST_POD: the watch keeps its foot pod link while the field reads the belt."
@@ -204,7 +204,7 @@ mod tests {
 
     #[test]
     fn the_message_follows_the_link() {
-        assert!(status_message(false, true, false, 0, None).starts_with("Switch it on"));
+        assert!(status_message(false, true, false, 0, None).starts_with("Switch WRIST_LINK on"));
         assert!(status_message(true, false, false, 0, None).starts_with("Waiting for GHOST_POD"));
         assert_eq!(status_message(true, true, true, 0, Some("boom")), "boom");
         assert!(status_message(true, true, true, 1, None).contains("connected"));

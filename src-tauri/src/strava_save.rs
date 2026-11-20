@@ -16,6 +16,7 @@ pub const UPLOAD_URL: &str = "https://www.strava.com/upload/select";
 /// The folder inside Downloads.
 pub const FOLDER_NAME: &str = "Neon Strider";
 
+/// Well inside Windows' 255-character file name, leaving room for the folder path.
 const MAX_STEM_CHARS: usize = 100;
 const RESERVED: [&str; 22] = [
     "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
@@ -97,6 +98,7 @@ pub fn write_tcx(dir: &Path, name: &str, contents: &str) -> Result<PathBuf, Stri
     while path.exists() {
         path = dir.join(format!("{} ({}){}", stem, n, ext));
         n += 1;
+        // 999 copies of one walk's file is a loop, not a user.
         if n > 999 {
             return Err("Too many files with that name in the folder".to_string());
         }

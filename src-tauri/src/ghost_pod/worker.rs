@@ -26,8 +26,11 @@ const KEY_ENABLED: &str = "ghost_pod_enabled";
 const KEY_POWER: &str = "ghost_pod_power";
 const KEY_WRIST_LINK: &str = "wrist_link_enabled";
 /// How often the pod sends a measurement.
+/// Foot pods send RSC measurements about once a second; watches expect that rate.
 const TICK: Duration = Duration::from_secs(1);
 /// After a failure, try again this long later (while the switch is on).
+/// A failed GATT server is a radio in use or switched off: twice a minute finds
+/// it again soon without retrying in a tight loop.
 const RETRY_AFTER: Duration = Duration::from_secs(30);
 
 /// One of the services the pod serves, each on its own provider.

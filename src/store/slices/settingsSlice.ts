@@ -1,12 +1,16 @@
 import type { StateCreator } from "zustand";
+import { SETTING_LIMITS } from "../../ipc";
 import type { CalibrationPoint, Settings, SettingsSlice, TreadmillStore } from "../types";
 
-/** Same default and range as src-tauri/src/neural.rs. */
+/** The default of src-tauri/src/neural.rs; the range comes from Rust's constants. */
 const NEURAL_FLOOR_DEFAULT = 90;
-export const NEURAL_FLOOR_MIN = 50;
-export const NEURAL_FLOOR_MAX = 95;
+const { min: NEURAL_FLOOR_MIN, max: NEURAL_FLOOR_MAX } = SETTING_LIMITS.neural_floor_pct;
 
-/** Shown until Rust's saved values arrive (see services/controlOrchestrator.ts). */
+/**
+ * Shown until Rust's saved values arrive (see services/controlOrchestrator.ts):
+ * the same numbers as `AppConfig::default()` in persistence.rs, except the
+ * legacy belt length, which nothing reads before the snapshot.
+ */
 export const DEFAULT_SETTINGS: Settings = {
   lastDeviceId: null,
   calibrationPoints: [],

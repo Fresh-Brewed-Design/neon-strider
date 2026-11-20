@@ -11,8 +11,10 @@ use tauri_plugin_opener::OpenerExt;
 /// Base name of the log file (`neon-strider.log`).
 const LOG_FILE: &str = "neon-strider";
 /// Rotate at about 1 MB.
+/// A day of normal use logs far less, so one file holds days and opens quickly in a text editor.
 const MAX_FILE_BYTES: u128 = 1_000_000;
 /// Older log files kept after rotation.
+/// Enough history to look back past a bad day without the folder growing.
 const KEEP_ROTATED: usize = 3;
 
 /// Debug in development builds, info in release builds.

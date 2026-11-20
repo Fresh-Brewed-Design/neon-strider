@@ -27,6 +27,7 @@ pub mod guided_task;
 pub mod heart_rate;
 mod hooks;
 mod hud;
+pub mod limits;
 pub mod link;
 pub mod logging;
 pub mod neural;
@@ -63,6 +64,8 @@ const AUTOSTART_ARG: &str = "--autostart";
 const TRAY_MENU_QUIT: &str = "quit";
 /// A tray click this soon after the dashboard closed on blur is the click that
 /// took its focus away: opening it again would make the click a no-op toggle.
+/// The blur from the same click lands within a few frames; 300 ms is shorter
+/// than a deliberate second click.
 const TRAY_CLICK_DEBOUNCE: Duration = Duration::from_millis(300);
 
 /// The app, once it has started. Read by the input hooks, which must not wait

@@ -312,8 +312,11 @@ const HUD_PAD_X: f64 = 16.0;
 /// Space kept above and below the content (logical px).
 const HUD_PAD_Y: f64 = 8.0;
 /// Within this distance (logical px) of a work-area edge, a drag snaps to it.
+/// Close enough that a drag meant for the edge lands on it, far enough that a
+/// spot chosen near the edge stays where it was dropped.
 const HUD_SNAP: f64 = 24.0;
 /// A restored top offset leaves at least this much of the strip below it.
+/// About the HUD header's height: enough to see it and drag it back.
 const HUD_MIN_VISIBLE: f64 = 48.0;
 
 /// A dragged HUD position, relative to its monitor's work area, in logical px
