@@ -37,7 +37,7 @@ export function TreadmillSection() {
           min={0}
           max={20}
           value={maxIncline}
-          hint="The treadmill's top incline step, kept under the deck's own once DECK_PROFILE has seen it."
+          hint="The treadmill's top incline step, kept at or under the deck's own top level once DECK_PROFILE has seen it."
           snap={(v) => snapToLevel(v, deck)}
           onCommit={(v) => updateSettings({ maxIncline: v })}
         />

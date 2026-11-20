@@ -32,7 +32,12 @@ min_speed_kmh: number,
 /**
  * Calibrated.
  */
-max_speed_kmh: number, max_incline_level: number, max_incline_pct: number, 
+max_speed_kmh: number, 
+/**
+ * The highest incline level setting, or the deck's own top level once
+ * DECK_PROFILE has seen it, whichever is lower.
+ */
+max_incline_level: number, max_incline_pct: number, 
 /**
  * incline_pct = level * incline_pct_per_level + incline_offset_pct.
  */

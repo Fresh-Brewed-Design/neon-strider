@@ -110,6 +110,12 @@ fn deck_snapshot(state: &OrchestratorState, max_incline_level: u8) -> DeckSnapsh
     // What the deck will run: a speed DECK_PROFILE knows it skips shows as
     // the one sent instead.
     let target_speed = state.snap_speed(target_speed);
+    // The top incline level the controls offer: the deck's own once
+    // DECK_PROFILE has seen it, as `max_speed_kmh` is for speed.
+    let max_incline_level = state
+        .deck_profile
+        .incline_ceiling()
+        .map_or(max_incline_level, |c| max_incline_level.min(c));
     DeckSnapshot {
         status: state.last_status,
         unknown_status_code: state.unknown_status_code,
@@ -399,6 +405,16 @@ mod tests {
         assert_eq!(s.deck.incline_offset_pct, 0.5);
         assert_eq!(s.deck.incline_pct_per_level, 1.5);
         assert_eq!(s.deck.target_speed_kmh, 3.0);
+    }
+
+    #[test]
+    fn the_top_incline_level_is_the_decks_once_learned() {
+        use crate::deck_profile::Outcome;
+        let mut state = OrchestratorState::default();
+        assert_eq!(snap(&state, 0.0, 15).deck.max_incline_level, 15);
+        state.deck_profile.learn_level(15, Outcome::Took(10));
+        assert_eq!(snap(&state, 0.0, 15).deck.max_incline_level, 10);
+        assert_eq!(snap(&state, 0.0, 8).deck.max_incline_level, 8);
     }
 
     #[test]

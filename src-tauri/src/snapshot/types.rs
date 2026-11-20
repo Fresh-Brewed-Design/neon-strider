@@ -186,6 +186,8 @@ pub struct DeckSnapshot {
     pub min_speed_kmh: f32,
     /// Calibrated.
     pub max_speed_kmh: f32,
+    /// The highest incline level setting, or the deck's own top level once
+    /// DECK_PROFILE has seen it, whichever is lower.
     pub max_incline_level: u8,
     pub max_incline_pct: f32,
     /// incline_pct = level * incline_pct_per_level + incline_offset_pct.

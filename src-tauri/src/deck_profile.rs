@@ -23,7 +23,8 @@ pub const KEY: &str = "deckProfile";
 
 /// A floor or ceiling is only read from a change of at least this many bytes:
 /// a deck that skips an in-between speed moves it to a neighbour, and taking
-/// that for its floor would hide every slower speed for good.
+/// that for its floor would hide every slower speed for good. Incline levels
+/// use the same rule for the top level, for the same reason.
 const LIMIT_JUMP: u8 = 2;
 
 /// What the deck did with one asked speed byte.
