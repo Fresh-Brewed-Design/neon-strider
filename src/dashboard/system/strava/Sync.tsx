@@ -115,7 +115,7 @@ export function SyncActions({
           tone="cyan"
           disabled={save.pending}
           onClick={saveForStrava}
-          title="Save the latest walk as a TCX file for Strava's upload page; no linked account needed."
+          title="Save the latest walk as a TCX file for Strava's upload page, which works without a linked account."
           className="flex shrink-0 items-center gap-2 px-3 py-2"
         >
           {save.pending ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}

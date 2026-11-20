@@ -62,7 +62,7 @@ pub(super) type SessionData = Vec<(Session, Vec<Sample>)>;
 fn load_session_data(app: &AppHandle, ids: &[i64]) -> Result<SessionData, String> {
     let sessions = persistence::db_sessions_by_ids(app, ids)?;
     if sessions.len() != ids.len() {
-        return Err("Some of those sessions no longer exist".to_string());
+        return Err("Some of the selected sessions no longer exist".to_string());
     }
     sessions
         .into_iter()
@@ -128,7 +128,7 @@ pub(super) async fn upload_sessions(
     let data = load_data(app, ids.to_vec()).await?;
     let active = active_session_id().await;
     if data.iter().any(|(s, _)| active.is_some() && s.id == active) {
-        return Err("That session is still running".to_string());
+        return Err("The session is still running".to_string());
     }
     if data.iter().any(|(s, _)| plan::is_uploaded(&s.strava_id)) {
         return Err(if explicit {

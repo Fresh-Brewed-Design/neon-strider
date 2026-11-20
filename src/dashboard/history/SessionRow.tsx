@@ -176,7 +176,7 @@ export function SessionRow({
               title={
                 live
                   ? "Still recording. Save once the walk has ended."
-                  : "Save the session as a TCX file for Strava's upload page; no linked account needed."
+                  : "Save the session as a TCX file for Strava's upload page, which works without a linked account."
               }
               disabled={live || save.pending}
               onClick={() =>

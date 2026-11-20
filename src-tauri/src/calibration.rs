@@ -423,7 +423,7 @@ impl Run {
     /// speed, for the point once the taps agree.
     pub fn tap(&mut self, now: Instant, raw_kmh: f32, stride_at: impl Fn(f32) -> f32) {
         if self.result.is_some() {
-            self.note = Some("The run is measured. TAP AGAIN starts it over.".into());
+            self.note = Some("The run is measured. TAP AGAIN starts the run over.".into());
             return;
         }
         if raw_kmh < STOPPED_BELOW_KMH {
@@ -1142,7 +1142,7 @@ pub fn set_belt(app: &AppHandle, cm: f32) -> Result<(), String> {
         ));
     }
     let key = with_belt(|b| b.key.clone())
-        .ok_or("Connect the treadmill first, so the belt length is kept for it.")?;
+        .ok_or("Connect the treadmill first, so the belt length is kept for that treadmill.")?;
     crate::persistence::write_setting(app, &key, &format!("{cm}"))?;
     with_belt(|b| b.cm = Some(cm));
     log::info!("Belt loop set to {cm:.0} cm");

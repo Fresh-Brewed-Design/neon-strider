@@ -153,7 +153,7 @@ pub fn sample_stats() -> Stats {
 pub fn check_length(template: &str, max_chars: usize) -> Result<(), String> {
     if template.chars().count() > max_chars {
         return Err(format!(
-            "That template is too long (limit {} characters)",
+            "Template is too long (limit {} characters)",
             max_chars
         ));
     }

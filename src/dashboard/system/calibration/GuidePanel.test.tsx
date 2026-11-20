@@ -99,9 +99,9 @@ describe("the guided walk", () => {
   });
 
   it("shows the walk's note when the deck ran another speed", () => {
-    current!.calibration.guide = guide({ note: "The deck ran 1.2, not 0.6, so 1.2 is the slowest speed." });
+    current!.calibration.guide = guide({ note: "The deck ran 1.2 km/h when asked for 0.6, so 1.2 km/h is the slowest speed." });
     render(<GuidedCalibration />);
-    expect(screen.getByText("The deck ran 1.2, not 0.6, so 1.2 is the slowest speed.")).toBeTruthy();
+    expect(screen.getByText("The deck ran 1.2 km/h when asked for 0.6, so 1.2 km/h is the slowest speed.")).toBeTruthy();
   });
 
   it("shows Rust's refusal under START", async () => {
