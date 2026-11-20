@@ -157,6 +157,8 @@ pub(crate) struct SimDeck {
     /// deck clamps and echoes the byte it took.
     floor: u8,
     ceiling: u8,
+    /// In-between speeds the deck skips: (asked byte, byte it runs instead).
+    skips: Vec<(u8, u8)>,
 }
 
 impl SimDeck {
@@ -179,6 +181,7 @@ impl SimDeck {
             nacks: 0,
             floor: 0,
             ceiling: u8::MAX,
+            skips: vec![],
         }
     }
 
@@ -187,6 +190,12 @@ impl SimDeck {
     pub(crate) fn set_limits(&mut self, floor: u8, ceiling: u8) {
         self.floor = floor;
         self.ceiling = ceiling;
+    }
+
+    /// A deck that runs `took` when asked for `asked` (speed bytes).
+    #[cfg(test)]
+    pub(crate) fn set_skip(&mut self, asked: u8, took: u8) {
+        self.skips.push((asked, took));
     }
 
     #[cfg(test)]
@@ -344,7 +353,11 @@ impl SimDeck {
             (Running, Control::Target) => {
                 // A speed outside the deck's range is clamped, and the echo
                 // below says which byte it took.
-                let taken = speed.clamp(self.floor, self.ceiling);
+                let taken = self
+                    .skips
+                    .iter()
+                    .find(|(asked, _)| *asked == speed)
+                    .map_or(speed.clamp(self.floor, self.ceiling), |(_, took)| *took);
                 self.target = taken as f32 / 10.0;
                 self.incline = incline;
                 echo_speed = Some(taken);
@@ -1028,6 +1041,161 @@ mod tests {
         r.state.target_note = None;
         r.state.on_deck_reply(protocol::DeckReply::Nack);
         assert_eq!(r.state.current_target_note(), None);
+    }
+
+    /// Target bytes sent since `mark`.
+    fn target_bytes_since(r: &Rig, mark: usize) -> Vec<u8> {
+        r.sent[mark..]
+            .iter()
+            .filter(|p| {
+                p.bytes.len() == 15 && p.bytes[1] == 0x53 && p.bytes[2] == Control::Target as u8
+            })
+            .map(|p| p.bytes[3])
+            .collect()
+    }
+
+    fn walking_rig(floor: u8, ceiling: u8) -> Rig {
+        let mut r = Rig::new();
+        r.deck.set_limits(floor, ceiling);
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(5.0);
+        r.set_speed(2.0);
+        r.run(3.0);
+        assert!(r.deck.running_at(2.0));
+        r
+    }
+
+    /// DECK_PROFILE learns the floor and ceiling from the echoes alone: the
+    /// app sends only the targets it was asked for, and afterwards the limits
+    /// shown, the stepper and a typed speed keep to them.
+    #[test]
+    fn the_deck_profile_learns_the_floor_and_ceiling_from_echoes() {
+        let mut r = walking_rig(6, 40);
+        assert_eq!(r.state.deck_profile.floor(), None);
+        let mark = r.mark();
+        r.set_speed(0.3);
+        r.run(3.0);
+        r.set_speed(5.0);
+        r.run(3.0);
+        assert_eq!(
+            target_bytes_since(&r, mark),
+            vec![3, 50],
+            "nothing sent to learn"
+        );
+        assert_eq!(r.state.deck_profile.floor(), Some(6));
+        assert_eq!(r.state.deck_profile.ceiling(), Some(40));
+        assert!((r.state.min_physical_speed() - 0.6).abs() < 1e-5);
+        assert!((r.state.top_hw_speed() - 4.0).abs() < 1e-5);
+        r.run(20.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+
+        // The deck already runs 4.0: asking 5.0 again sends nothing.
+        let mark = r.mark();
+        r.set_speed(4.5);
+        r.run(2.0);
+        assert!(target_bytes_since(&r, mark).is_empty());
+        r.press(DeckAction::SpeedUp);
+        r.run(2.0);
+        assert!(
+            target_bytes_since(&r, mark).is_empty(),
+            "the stepper stops at 4.0"
+        );
+
+        let steps = r.state.deck_speeds();
+        assert_eq!(steps.first().map(|s| s.0), Some(0.6));
+        assert_eq!(steps.last().map(|s| s.0), Some(4.0));
+
+        // Down to the floor and no further: a down press there sends nothing.
+        r.set_speed(0.7);
+        r.run(5.0);
+        r.press(DeckAction::SpeedDown);
+        r.run(2.0);
+        assert!(r.deck.running_at(0.6), "{} km/h", r.deck.speed_kmh());
+        let mark = r.mark();
+        r.press(DeckAction::SpeedDown);
+        r.run(2.0);
+        assert!(target_bytes_since(&r, mark).is_empty());
+        assert!(r.deck.running_at(0.6));
+
+        // The profile outlives the connection.
+        r.drop_link();
+        r.run(1.0);
+        assert!(r.reconnect());
+        assert_eq!(r.state.deck_profile.ceiling(), Some(40));
+    }
+
+    /// A skipped in-between speed is learned from its echo, and the stepper
+    /// then steps over it both ways.
+    #[test]
+    fn the_stepper_steps_over_a_speed_the_deck_skips() {
+        let mut r = walking_rig(6, 40);
+        r.deck.set_skip(15, 16);
+        r.set_speed(1.4);
+        r.run(3.0);
+        r.press(DeckAction::SpeedUp);
+        r.run(3.0);
+        assert!(r.deck.running_at(1.6), "{} km/h", r.deck.speed_kmh());
+        assert!(r.state.deck_profile.skips(15));
+        assert!(
+            r.state.current_target_note().is_some(),
+            "the first time is noted"
+        );
+        let shown = r.state.snap_speed(1.5);
+        assert!((shown - 1.6).abs() < 1e-5, "{shown}");
+
+        let mark = r.mark();
+        r.press(DeckAction::SpeedDown);
+        r.run(3.0);
+        r.press(DeckAction::SpeedUp);
+        r.run(3.0);
+        assert_eq!(
+            target_bytes_since(&r, mark),
+            vec![14, 16],
+            "1.5 never asked again"
+        );
+        assert!(r.deck.running_at(1.6));
+        assert!(!r
+            .state
+            .deck_speeds()
+            .iter()
+            .any(|s| (s.0 - 1.5).abs() < 1e-5));
+    }
+
+    /// DECK_PROFILE never moves a still belt: with a profile learned, a
+    /// reconnect to a still deck, a down press and a 0 speed send no start.
+    #[test]
+    fn a_learned_profile_never_starts_a_still_belt() {
+        let mut r = walking_rig(6, 40);
+        r.set_speed(0.3);
+        r.run(3.0);
+        assert_eq!(r.state.deck_profile.floor(), Some(6));
+        r.press(DeckAction::Stop);
+        r.run(15.0);
+        assert!(r.deck.belt_still());
+        r.drop_link();
+        r.run(1.0);
+        assert!(r.reconnect());
+        let mark = r.mark();
+        r.run(5.0);
+        r.press(DeckAction::SpeedDown);
+        r.run(5.0);
+        r.set_speed(0.0);
+        r.run(5.0);
+        assert!(!app_starts(&r.commands_since(mark)));
+        assert!(r.deck.belt_still());
+        assert_eq!(r.state.snap_speed(0.0), 0.0);
+    }
+
+    /// The simulated deck in dev builds teaches the profile nothing.
+    #[test]
+    fn replies_are_not_learned_while_learning_is_off() {
+        let mut r = walking_rig(6, 40);
+        r.state.profile_learning = false;
+        r.set_speed(0.3);
+        r.run(3.0);
+        assert!(r.state.deck_profile.is_empty());
+        assert!(r.state.current_target_note().is_some(), "still noted");
     }
 
     #[test]

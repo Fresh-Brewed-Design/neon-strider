@@ -184,6 +184,15 @@ pub struct OrchestratorState {
     /// What the deck did with the last target when it was not what we asked:
     /// plain words and when, for the windows to show for a while.
     pub(crate) target_note: Option<(String, Instant)>,
+    /// The last target packet changed the speed byte (not only the incline):
+    /// a nack on it can be filed against that speed.
+    pub(crate) target_speed_changed: bool,
+    /// DECK_PROFILE: what the deck did with each speed byte asked, learned
+    /// from its echoes and nacks (`deck_profile.rs`). Loaded at startup.
+    pub deck_profile: crate::deck_profile::DeckProfile,
+    /// Replies are filed in `deck_profile`. Off on the simulated deck, whose
+    /// limits are not the treadmill's.
+    pub(crate) profile_learning: bool,
 
     pub handshake_step: HandshakeStep,
     /// Whether the handshake under way is a pause (true) or a start. Decided
@@ -336,6 +345,9 @@ impl Default for OrchestratorState {
             unknown_status_code: None,
             target_pending: None,
             target_note: None,
+            target_speed_changed: false,
+            deck_profile: Default::default(),
+            profile_learning: true,
             deck_standby: false,
             hold_auto_start: true,
             engage_speed: None,
@@ -573,7 +585,7 @@ impl OrchestratorState {
     /// The slowest calibrated km/h the belt runs at: `min_speed` is the deck's
     /// own floor in hardware units, so every physical speed is bounded by this.
     pub fn min_physical_speed(&self) -> f32 {
-        self.to_physical_speed(self.min_speed)
+        self.to_physical_speed(self.floor_hw_speed())
     }
 
     /// Calibrated km/h for a hardware speed.
@@ -1063,18 +1075,22 @@ impl OrchestratorState {
         let cur = self
             .engage_preview()
             .unwrap_or_else(|| self.editable_intent());
-        let hw_byte = |phys: f32| {
-            calculate_hardware_bytes(phys, cur.incline, &self.calibration_points, self.max_speed).0
-        };
+        let hw_byte = |phys: f32| self.speed_byte(phys);
         let cur_byte = hw_byte(cur.speed) as i32;
-        let max_byte = (self.max_speed * 10.0).round() as i32;
-        let mut target_byte = (cur_byte + dir).clamp(0, max_byte);
-        // Two bytes with exactly the same km/h both send as the lower one:
-        // step past it so the press still moves the deck.
-        while target_byte > 0
+        let max_byte = (self.top_hw_speed() * 10.0).round() as i32;
+        // Down from a running speed stops at the deck's floor once it is known.
+        let floor = self.deck_profile.floor().map_or(0, i32::from);
+        let min_byte = if cur_byte >= floor { floor } else { 0 };
+        let mut target_byte = (cur_byte + dir).clamp(min_byte, max_byte);
+        // Two bytes with exactly the same km/h both send as the lower one, and
+        // DECK_PROFILE may know the deck skips a byte: step past either so the
+        // press still moves the deck.
+        while target_byte > min_byte
             && target_byte < max_byte
             && target_byte != cur_byte
-            && hw_byte(self.physical_for_byte(target_byte as u8, cur.incline)) as i32 != target_byte
+            && (hw_byte(self.physical_for_byte(target_byte as u8, cur.incline)) as i32
+                != target_byte
+                || self.deck_profile.skips(target_byte as u8))
         {
             target_byte += dir;
         }
@@ -1238,6 +1254,7 @@ impl OrchestratorState {
         let Some((asked_speed, asked_incline, _)) = pending else {
             return;
         };
+        self.learn_deck_reply(asked_speed, reply);
         let kmh = |b: u8| self.to_physical_speed(b as f32 / 10.0);
         let note = match reply {
             protocol::DeckReply::Nack => {
@@ -1276,6 +1293,95 @@ impl OrchestratorState {
             // The deck took it as asked: an older complaint is stale.
             None => self.target_note = None,
         }
+    }
+
+    /// File the deck's reply to a target at `asked` in DECK_PROFILE. A nack
+    /// counts against the speed only when the packet changed the speed: one
+    /// that changed only the incline says nothing about the speed.
+    fn learn_deck_reply(&mut self, asked: u8, reply: protocol::DeckReply) {
+        use crate::deck_profile::Outcome;
+        if !self.profile_learning {
+            return;
+        }
+        let outcome = match reply {
+            protocol::DeckReply::TargetEcho { speed, .. } => Outcome::Took(speed),
+            protocol::DeckReply::Nack if self.target_speed_changed => Outcome::Refused,
+            protocol::DeckReply::Nack => return,
+        };
+        self.deck_profile.learn(asked, outcome);
+    }
+
+    /// The fastest hardware speed to ask for: the top speed setting, or the
+    /// deck's ceiling once DECK_PROFILE has seen it, whichever is lower.
+    pub(crate) fn top_hw_speed(&self) -> f32 {
+        match self.deck_profile.ceiling() {
+            Some(c) => self.max_speed.min(c as f32 / 10.0),
+            None => self.max_speed,
+        }
+    }
+
+    /// The slowest running hardware speed: the min speed setting, or the
+    /// deck's floor once DECK_PROFILE has seen it, whichever is higher.
+    fn floor_hw_speed(&self) -> f32 {
+        match self.deck_profile.floor() {
+            Some(f) => self.min_speed.max(f as f32 / 10.0),
+            None => self.min_speed,
+        }
+    }
+
+    /// The hardware speed byte the transmit path sends for `kmh`, before
+    /// DECK_PROFILE: the calibrated, nearest byte up to the top speed.
+    pub(crate) fn speed_byte(&self, kmh: f32) -> u8 {
+        calculate_hardware_bytes(kmh, 0, &self.calibration_points, self.top_hw_speed()).0
+    }
+
+    /// `kmh` moved to a speed the deck runs, by DECK_PROFILE: unchanged unless
+    /// its byte is one the deck is known to change or refuse. A still target
+    /// stays still.
+    pub fn snap_speed(&self, kmh: f32) -> f32 {
+        if !kmh.is_finite() || kmh < STILL_KMH {
+            return kmh;
+        }
+        let byte = self.speed_byte(kmh);
+        let snapped = self.deck_profile.snap(byte);
+        if snapped == byte {
+            kmh
+        } else {
+            self.physical_for_byte(snapped, 0)
+        }
+    }
+
+    /// The speeds the controls may offer, as (hardware km/h, calibrated km/h),
+    /// slowest first: one per byte from the floor to the top that the deck is
+    /// not known to skip (a byte with the same km/h as the one before is left
+    /// out, as the transmit path would send that one). Empty while DECK_PROFILE
+    /// is empty, so the controls behave as before anything is learned.
+    pub fn deck_speeds(&self) -> Vec<(f32, f32)> {
+        if self.deck_profile.is_empty() {
+            return vec![];
+        }
+        let lo = ((self.floor_hw_speed() * 10.0).round() as u8).max(1);
+        let hi = (self.top_hw_speed() * 10.0)
+            .round()
+            .clamp(0.0, u8::MAX as f32) as u8;
+        let mut out: Vec<(f32, f32)> = vec![];
+        for b in lo..=hi {
+            if self.deck_profile.skips(b) {
+                continue;
+            }
+            let kmh = self.physical_for_byte(b, 0);
+            if out.last().is_some_and(|(_, k)| (*k - kmh).abs() < 1e-6) {
+                continue;
+            }
+            out.push((b as f32 / 10.0, kmh));
+        }
+        out
+    }
+
+    /// Forget everything DECK_PROFILE learned (System -> Diagnostics).
+    pub fn forget_deck_profile(&mut self) {
+        self.deck_profile.clear();
+        log::info!("Deck profile forgotten");
     }
 
     /// The note on the last target, while it is fresh.
@@ -1422,8 +1528,7 @@ impl OrchestratorState {
 
     /// Physical km/h of one hardware speed step near `base`.
     fn hw_step_kmh(&self, base: f32) -> f32 {
-        let (b, _) = calculate_hardware_bytes(base, 0, &self.calibration_points, self.max_speed);
-        let b = b.max(1);
+        let b = self.speed_byte(base).max(1);
         let step =
             self.to_physical_speed(b as f32 / 10.0) - self.to_physical_speed((b - 1) as f32 / 10.0);
         if step.is_finite() && step > 0.0 {
@@ -1860,10 +1965,16 @@ impl ProtocolEngine {
                     target_speed,
                     target_incline,
                     &state.calibration_points,
-                    state.max_speed,
+                    state.top_hw_speed(),
                 );
+                // A byte DECK_PROFILE knows the deck changes or refuses goes
+                // out as the one it runs. The byte last sent is compared the
+                // same way: after the deck took another byte for it, it is
+                // already running the snapped one.
+                let h_speed = state.deck_profile.snap(h_speed);
+                let sent_speed = state.deck_profile.snap(self.last_sent_speed);
                 self.last_physical_speed = target_speed;
-                if h_speed != self.last_sent_speed || h_inc != self.last_sent_incline {
+                if h_speed != sent_speed || h_inc != self.last_sent_incline {
                     log::debug!(
                         "SET -> Speed: {:.1}kmh (HW: {}), Incline: Level {} (HW: {}) [Source: {}]",
                         target_speed,
@@ -1872,6 +1983,7 @@ impl ProtocolEngine {
                         h_inc,
                         source
                     );
+                    state.target_speed_changed = h_speed != self.last_sent_speed;
                     self.last_sent_speed = h_speed;
                     self.last_sent_incline = h_inc;
                     state.target_pending = Some((h_speed, h_inc, now));

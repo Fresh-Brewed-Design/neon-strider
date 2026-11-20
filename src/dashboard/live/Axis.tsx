@@ -52,6 +52,7 @@ export function Axis({
   disabled,
   onSet,
   onNudge,
+  snap = (v) => v,
   pin,
 }: {
   pin: { widget: HudWidget; pinned: boolean };
@@ -68,12 +69,15 @@ export function Axis({
   disabled: boolean;
   onSet: (v: number) => void;
   onNudge: (up: boolean) => void;
+  /** Moves a chosen value to one the deck runs, so the slider lands where the belt will. */
+  snap?: (v: number) => number;
 }) {
   const [value, setDraft] = useDraft(target);
   const hex = tone === "cyan" ? "#00f3ff" : "#ff00ff";
   const set = (v: number) => {
-    setDraft(v);
-    onSet(v);
+    const snapped = snap(v);
+    setDraft(snapped);
+    onSet(snapped);
   };
 
   return (

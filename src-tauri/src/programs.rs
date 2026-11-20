@@ -1146,7 +1146,13 @@ impl OrchestratorState {
     pub fn save_program(&mut self, mut program: Program) -> Result<(), String> {
         program.name = program.name.trim().to_string();
         let min_speed = self.min_physical_speed();
-        let max_speed = self.to_physical_speed(self.max_speed);
+        let max_speed = self.to_physical_speed(self.top_hw_speed());
+        // Each step at a speed the deck runs (DECK_PROFILE); 0 stays 0.
+        for step in &mut program.steps {
+            if step.speed_kmh >= min_speed - 0.005 && step.speed_kmh <= max_speed {
+                step.speed_kmh = self.snap_speed(step.speed_kmh);
+            }
+        }
         validate_program(&program, min_speed, max_speed)?;
         if program.id == 0 {
             // Notes are Rust's; a new program has none.

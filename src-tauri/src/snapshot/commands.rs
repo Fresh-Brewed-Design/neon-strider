@@ -27,8 +27,11 @@ pub(super) fn clamp_manual_speed(state: &OrchestratorState, kmh: f32) -> Result<
     if kmh < PAUSE_BELOW_KMH {
         return Ok(0.0);
     }
-    let max = state.to_physical_speed(state.max_speed);
-    Ok(kmh.min(max).max(state.min_physical_speed()))
+    let max = state.to_physical_speed(state.top_hw_speed());
+    // Snapped to a speed the deck runs (DECK_PROFILE), then kept in bounds.
+    Ok(state
+        .snap_speed(kmh.min(max).max(state.min_physical_speed()))
+        .min(max))
 }
 
 pub(super) fn clamp_incline_level(state: &OrchestratorState, level: u8) -> u8 {
@@ -263,6 +266,10 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             blocking(move || crate::traffic::set_recording(&app, on)).await
         }
         Command::TrafficOpenFolder => crate::traffic::open_folder(&app),
+        Command::DeckProfileForget => {
+            ORCHESTRATOR.lock().await.forget_deck_profile();
+            Ok(())
+        }
 
         Command::CalibrationSetWizard { on } => {
             blocking(move || calibration::set_wizard(&app, on)).await

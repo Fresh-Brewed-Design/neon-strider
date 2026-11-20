@@ -234,6 +234,7 @@ export function NumberField({
   max,
   step = 1,
   unit,
+  snap,
   onCommit,
 }: {
   label: string;
@@ -243,6 +244,8 @@ export function NumberField({
   max: number;
   step?: number;
   unit?: string;
+  /** Moves a committed value to an allowed one (a speed the deck runs); the field then shows it. */
+  snap?: (v: number) => number;
   /** May return the command's promise: a rejection shows under the field. */
   onCommit: (v: number) => Promise<unknown> | void;
 }) {
@@ -255,7 +258,8 @@ export function NumberField({
     setText(null);
     if (text.trim() === "" || !Number.isFinite(n)) return;
     const clamped = Math.min(max, Math.max(min, n));
-    if (clamped !== value) void action.run(async () => onCommit(clamped));
+    const next = snap ? Math.min(max, Math.max(min, snap(clamped))) : clamped;
+    if (next !== value) void action.run(async () => onCommit(next));
   };
 
   return (

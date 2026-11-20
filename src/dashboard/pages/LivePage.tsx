@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { AppSnapshot, DeckSnapshot } from "../../ipc";
 import { linkView } from "../../state/linkStatus";
+import { snapToDeck } from "../../state/deckSpeeds";
 import { useAppSnapshot } from "../../state/useAppState";
 import { STAT_WIDGETS } from "../../widgets/registry";
 import { Axis } from "../live/Axis";
@@ -87,6 +88,7 @@ export function LivePage() {
             disabled={offline}
             onSet={(kmh) => send({ type: "set_speed", kmh })}
             onNudge={(up) => send({ type: "nudge_speed", up })}
+            snap={(kmh) => snapToDeck(kmh, deck)}
             pin={{ widget: "VELOCITY", pinned: pinned.has("VELOCITY") }}
           />
           <Axis
