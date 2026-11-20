@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.28.0 (2026-11-20)
+
+### New
+
+- When the deck changes or refuses a speed or tilt you set on the Live page, the DECK_ADJUSTED or DECK_REFUSED note now shows under that control, as it does on the HUD.
+
+### Changed
+
+- DECK_PROFILE is now kept per treadmill: each deck's learned speeds are saved under its Bluetooth identity and switch with the connection, so a second treadmill no longer starts from the first one's speeds. The profile learned so far goes to the treadmill you connect first.
+
 ## 1.27.0 (2026-11-20)
 
 ### New

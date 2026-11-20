@@ -1,1 +1,0 @@
-- When the deck changes or refuses a speed or tilt you set on the Live page, the DECK_ADJUSTED or DECK_REFUSED note now shows under that control, as it does on the HUD.
