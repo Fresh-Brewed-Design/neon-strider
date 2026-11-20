@@ -207,6 +207,7 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             seconds,
             sound,
             pause_belt,
+            fit_rests,
         } => {
             let cfg = eyebreak::Config {
                 enabled,
@@ -214,6 +215,7 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
                 seconds,
                 sound,
                 pause_belt,
+                fit_rests,
             };
             blocking(move || eyebreak::set_config(&app, cfg)).await
         }

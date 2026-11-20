@@ -1495,6 +1495,7 @@ mod tests {
                     seconds: 20,
                     sound: true,
                     pause_belt: true,
+                    fit_rests: true,
                 },
                 ..Default::default()
             };
@@ -1513,6 +1514,7 @@ mod tests {
                     true,
                     now,
                     Some(0),
+                    false,
                     false,
                 );
             }
@@ -1632,6 +1634,60 @@ mod tests {
             "nothing pauses it again"
         );
         assert!(r.deck.running_at(4.0));
+    }
+
+    #[test]
+    fn an_eye_break_due_mid_walk_waits_for_the_program_rest_and_never_pauses_the_walk() {
+        use crate::snapshot::eyebreak::EyeBreakPhase;
+        let mut r = Rig::new();
+        let mut eyes = Eyes::new(&r);
+        // Seven minutes at the screen, then Workday: 5 min at 3 km/h, rest 25.
+        eyes.run(&mut r, 420);
+        r.run_program(WORKDAY);
+        // Past the break's time (10 min of screen use), still walking.
+        eyes.run(&mut r, 200);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+        assert!(!r.program().paused);
+        assert_ne!(eyes.shown(), EyeBreakPhase::Break);
+        assert!(eyes.rt.machine.phase() == EyeBreakPhase::Idle);
+        let mark = r.mark();
+        // The heads-up, then the rest: the break starts there.
+        eyes.run(&mut r, 50);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Upcoming);
+        assert!(crate::snapshot::eyebreak::snapshot_of(&eyes.rt).at_rest);
+        assert!(r.deck.running_at(3.0));
+        eyes.run(&mut r, 70);
+        assert_eq!(r.program().phase, ProgramPhase::Resting);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Break);
+        assert!(!eyes.rt.machine.holds_belt());
+        assert!(r.deck.belt_still());
+        // Only the rest's own pauses: the same as Workday with no eye breaks.
+        let mut plain = Rig::new();
+        let mut off = Eyes::new(&plain);
+        off.rt.cfg.enabled = false;
+        off.run(&mut plain, 420);
+        plain.run_program(WORKDAY);
+        off.run(&mut plain, 200);
+        let plain_mark = plain.mark();
+        off.run(&mut plain, 120);
+        assert_eq!(
+            r.controls_since(mark, Control::Pause),
+            plain.controls_since(plain_mark, Control::Pause)
+        );
+        // No resume card after the break.
+        eyes.run(&mut r, 30);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Idle);
+        // The rest runs out and the next cycle waits for GO; nothing starts it.
+        eyes.run(&mut r, 26 * 60);
+        let a = r.program();
+        assert_eq!((a.paused, a.wait), (true, Some(ProgramWait::RestComplete)));
+        assert!(r.deck.belt_still());
+        assert!(
+            !app_starts(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+        assert!(!eyes.rt.machine.holds_belt());
     }
 
     #[test]

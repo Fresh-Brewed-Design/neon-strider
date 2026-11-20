@@ -181,7 +181,9 @@ export const snapshot: AppSnapshot = {
     seconds: 90,
     sound: true,
     pause_belt: true,
+    fit_rests: true,
     holds_belt: false,
+    at_rest: false,
     phase: "idle",
     remaining_s: 0,
     blink_seq: 0,
@@ -423,9 +425,16 @@ if (weeklyFlag !== null) Object.assign(snapshot.weekly, { show_card: true }, WEE
 
 // ?eyebreak=upcoming|break|resume shows the eye-break (OCULAR_IMPLANT) HUD card: the
 // heads-up, the cooldown with the belt it paused, or the resume card after it
-// (RESUME / STAY STILL). ?eyebreak=still is the cooldown with the belt left alone.
+// (RESUME / STAY STILL). ?eyebreak=still is the cooldown with the belt left alone,
+// ?eyebreak=rest the heads-up for a break set for the program's rest.
 const eyeBreakFlag = params.get("eyebreak");
-if (eyeBreakFlag === "upcoming") Object.assign(snapshot.eye_break, { enabled: true, phase: "upcoming", remaining_s: 48 });
+if (eyeBreakFlag === "upcoming" || eyeBreakFlag === "rest")
+  Object.assign(snapshot.eye_break, {
+    enabled: true,
+    phase: "upcoming",
+    remaining_s: 48,
+    at_rest: eyeBreakFlag === "rest",
+  });
 if (eyeBreakFlag === "break" || eyeBreakFlag === "still")
   Object.assign(snapshot.eye_break, { enabled: true, phase: "break", remaining_s: 72, holds_belt: eyeBreakFlag === "break" });
 if (eyeBreakFlag === "resume") Object.assign(snapshot.eye_break, { enabled: true, phase: "complete", holds_belt: true });
@@ -1089,8 +1098,8 @@ const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) =>
   },
   seated_snooze: () => Object.assign(snapshot.seated, { show_card: false, pending_program_id: null }),
   eye_break_set_config: (c) => {
-    const { enabled, minutes, seconds, sound, pause_belt } = c;
-    Object.assign(snapshot.eye_break, { enabled, minutes, seconds, sound, pause_belt });
+    const { enabled, minutes, seconds, sound, pause_belt, fit_rests } = c;
+    Object.assign(snapshot.eye_break, { enabled, minutes, seconds, sound, pause_belt, fit_rests });
     if (!c.enabled) Object.assign(snapshot.eye_break, { phase: "idle", remaining_s: 0, holds_belt: false });
   },
   eye_break_skip: () =>
