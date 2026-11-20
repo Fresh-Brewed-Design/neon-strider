@@ -1762,6 +1762,74 @@ mod tests {
         assert_eq!(r.controls_since(mark, Control::Pause), 0);
     }
 
+    /// A calibration run's belt paused at the treadmill's own buttons.
+    fn paused_at_treadmill_during_a_run(kmh: f32) -> Rig {
+        let mut r = Rig::new();
+        r.run(5.0);
+        r.state.set_test_now(r.t);
+        crate::calibration::begin_run(&mut r.state, kmh).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(kmh), "{} km/h", r.deck.speed_kmh());
+        let t = r.t;
+        r.deck.press_pause(t);
+        r.run(5.0);
+        assert_eq!(r.state.last_status, protocol::MachineStatus::Paused);
+        r
+    }
+
+    /// GROUND_TRUTH (#169): the belt paused at the treadmill stays paused
+    /// with no press, and RUN at the speed it paused at resumes it, as GO
+    /// does, though the target is no higher than the paused speed.
+    #[test]
+    fn a_calibration_run_at_the_same_speed_resumes_a_belt_paused_at_the_treadmill() {
+        let mut r = paused_at_treadmill_during_a_run(3.0);
+        let mark = r.mark();
+        r.run(60.0);
+        assert_eq!(r.deck.status_code(), 10, "no resume without the press");
+        assert!(!app_starts(&r.commands_since(mark)));
+
+        r.state.set_test_now(r.t);
+        crate::calibration::begin_run(&mut r.state, 3.0).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+    }
+
+    /// GROUND_TRUTH (#169): RUN at another speed, slower than the paused
+    /// one, resumes the paused belt at the run's speed.
+    #[test]
+    fn a_calibration_run_at_another_speed_resumes_a_paused_belt_at_that_speed() {
+        let mut r = paused_at_treadmill_during_a_run(3.0);
+        r.run(10.0);
+        r.state.set_test_now(r.t);
+        crate::calibration::begin_run(&mut r.state, 2.0).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(2.0), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(r.state.hardware_speed, 2.0);
+    }
+
+    /// GROUND_TRUTH (#169): after STOP the belt stays still with no press,
+    /// and RUN starts it at the run's speed.
+    #[test]
+    fn a_calibration_run_starts_a_stopped_belt() {
+        let mut r = Rig::new();
+        r.run(5.0);
+        r.state.set_test_now(r.t);
+        crate::calibration::begin_run(&mut r.state, 3.0).unwrap();
+        r.run(20.0);
+        r.press(crate::engine::DeckAction::Stop);
+        r.run(15.0);
+        assert!(r.deck.belt_still());
+        let mark = r.mark();
+        r.run(60.0);
+        assert!(r.deck.belt_still(), "no start without the press");
+        assert!(!app_starts(&r.commands_since(mark)));
+
+        r.state.set_test_now(r.t);
+        crate::calibration::begin_run(&mut r.state, 3.0).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+    }
+
     /// GROUND_TRUTH: tapping the passes of the belt mark only reads the
     /// deck. Nine taps measure the belt without one packet that could move
     /// it; the belt keeps the run's speed; after STOP a tap on the still belt

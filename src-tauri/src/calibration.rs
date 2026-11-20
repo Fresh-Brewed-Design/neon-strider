@@ -41,7 +41,7 @@ pub use guide::{CalibrationGuideView, CheckVerdict};
 pub use steps::StepRunView;
 
 use crate::engine::OrchestratorState;
-use crate::protocol::CalibrationPoint;
+use crate::protocol::{CalibrationPoint, MachineStatus};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Mutex;
@@ -861,10 +861,20 @@ pub(crate) fn begin_run(state: &mut OrchestratorState, target_hw_kmh: f32) -> Re
     if state.active_program().is_some() {
         return Err("End the program first, then calibrate.".into());
     }
-    // A speed set by hand starts a still belt (`note_hand_speed`), so this
-    // is the same path as typing the speed in.
+    // The speed is set as if typed in by hand (`note_hand_speed`).
     let speed = intent_for_target(state, target_hw_kmh);
     crate::bluetooth::apply_manual_intent(state, Some(speed), None);
+    // RUN is the user's press, so a paused or stopped belt gets an explicit
+    // start or resume, as GO sends. The automatic resume only fires on a
+    // target above the paused speed, so a RUN at the speed the belt paused
+    // at would otherwise send nothing. Not while Stopping: the deck refuses
+    // a start then, and the Stopped branch starts it once the belt is still.
+    if matches!(
+        state.last_status,
+        MachineStatus::Paused | MachineStatus::Stopped
+    ) {
+        state.trigger_action(crate::engine::DeckAction::Start);
+    }
     Ok(())
 }
 
