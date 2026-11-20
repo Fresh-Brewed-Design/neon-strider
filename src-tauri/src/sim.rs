@@ -1140,6 +1140,56 @@ mod tests {
         assert_eq!(r.controls_since(mark, Control::Pause), 0);
     }
 
+    /// RUN ALL: the press runs the slowest speed. Saving it never moves the
+    /// belt; STOP stops it, closes the open run, and nothing starts the belt
+    /// again until his RUN on the next speed.
+    #[test]
+    fn a_calibration_sweep_only_moves_the_belt_on_his_run() {
+        crate::calibration::set_wizard_for_test(true);
+        let mut r = Rig::new();
+        r.run(5.0);
+        r.state.set_test_now(r.t);
+        crate::calibration::sweep_start(&mut r.state, &[4.0, 3.0]).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+
+        // SAVE: the belt keeps 3.0 until RUN.
+        crate::calibration::sweep_next(true).unwrap();
+        r.run(10.0);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+
+        // RUN on 4.0, then STOP mid-settle: the run closes, the sweep waits.
+        r.state.set_test_now(r.t);
+        crate::calibration::sweep_run(&mut r.state).unwrap();
+        r.run(10.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        crate::calibration::on_stop();
+        r.press(crate::engine::DeckAction::Stop);
+        r.run(10.0);
+        assert!(r.deck.belt_still());
+        let snap = crate::calibration::snapshot(r.state.hardware_speed);
+        assert_eq!(snap.run, None);
+        assert_eq!(snap.sweep.as_ref().and_then(|s| s.current), Some(1));
+
+        let mark = r.mark();
+        r.run(20.0);
+        assert!(
+            !moves_belt(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+        assert!(r.deck.belt_still(), "nothing restarts the belt after STOP");
+
+        r.state.set_test_now(r.t);
+        crate::calibration::sweep_run(&mut r.state).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        crate::calibration::sweep_next(false).unwrap();
+        let snap = crate::calibration::snapshot(r.state.hardware_speed);
+        assert_eq!(snap.sweep.unwrap().current, None, "both speeds done");
+        crate::calibration::close_all();
+    }
+
     #[test]
     fn a_calibration_run_is_refused_while_a_program_runs() {
         let mut r = post_meal_walking();

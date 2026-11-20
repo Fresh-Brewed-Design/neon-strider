@@ -627,6 +627,20 @@ pub enum Command {
     },
     /// Close the run (after saving its point, or to cancel). The belt keeps going.
     CalibrationRunClose,
+    /// RUN ALL: walk `targets_kmh` (deck km/h) slowest first, running the
+    /// first now. The press is his.
+    CalibrationSweepStart {
+        targets_kmh: Vec<f32>,
+    },
+    /// RUN on the sweep's current speed. The press is his.
+    CalibrationSweepRun,
+    /// SAVE (`saved`) or SKIP the sweep's current speed and close its run.
+    /// The belt keeps its speed until the next RUN.
+    CalibrationSweepNext {
+        saved: bool,
+    },
+    /// End the sweep and any run. The belt keeps going.
+    CalibrationSweepEnd,
     /// Labs: GHOST_POD on (`on`) or off. On, the PC advertises as a Bluetooth
     /// foot pod and sends the belt speed to a paired watch once a second.
     GhostPodSet {
