@@ -92,7 +92,7 @@ export function LabsSection() {
               )
             )}
             <Hint className="mt-0.5">
-              Watts come from the METABOLIC_BURN estimate and your weight. Switching power restarts GHOST_POD; the watch reconnects.
+              Watts come from the METABOLIC_BURN estimate and your weight. Switching power leaves the watch's foot pod link up.
             </Hint>
           </div>
         )}
