@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { AppSnapshot, DeckSnapshot } from "../../ipc";
 import { linkView } from "../../state/linkStatus";
 import { snapToDeck } from "../../state/deckSpeeds";
@@ -61,6 +61,9 @@ function headerNotice(s: AppSnapshot): ReactNode {
 
 export function LivePage() {
   const s = useAppSnapshot();
+  // Which control sent the target the deck's note is about.
+  const [sentFrom, setSentFrom] = useState<"speed" | "tilt" | null>(null);
+  if (s && !s.deck.target_note && sentFrom) setSentFrom(null);
   if (!s) return <Waiting />;
   const { deck } = s;
   const offline = !s.connection.connected;
@@ -86,8 +89,15 @@ export function LivePage() {
             presets={SPEED_PRESETS}
             formatPreset={(v) => v.toFixed(1)}
             disabled={offline}
-            onSet={(kmh) => send({ type: "set_speed", kmh })}
-            onNudge={(up) => send({ type: "nudge_speed", up })}
+            onSet={(kmh) => {
+              setSentFrom("speed");
+              send({ type: "set_speed", kmh });
+            }}
+            onNudge={(up) => {
+              setSentFrom("speed");
+              send({ type: "nudge_speed", up });
+            }}
+            note={sentFrom === "speed" ? deck.target_note : null}
             snap={(kmh) => snapToDeck(kmh, deck)}
             pin={{ widget: "VELOCITY", pinned: pinned.has("VELOCITY") }}
           />
@@ -103,8 +113,15 @@ export function LivePage() {
             presets={tiltPresets(deck)}
             formatPreset={(v) => `${Math.round(v * 10) / 10}%`}
             disabled={offline}
-            onSet={(pct) => send({ type: "set_incline_level", level: levelForPct(deck, pct) })}
-            onNudge={(up) => send({ type: "nudge_incline", up })}
+            onSet={(pct) => {
+              setSentFrom("tilt");
+              send({ type: "set_incline_level", level: levelForPct(deck, pct) });
+            }}
+            onNudge={(up) => {
+              setSentFrom("tilt");
+              send({ type: "nudge_incline", up });
+            }}
+            note={sentFrom === "tilt" ? deck.target_note : null}
             pin={{ widget: "INCLINE", pinned: pinned.has("INCLINE") }}
           />
         </div>
