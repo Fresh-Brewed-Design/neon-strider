@@ -11,10 +11,13 @@
 //! - Pointer: the cursor position and primary button, for dragging the HUD.
 //! - Idle time: how long since the last keyboard or mouse input anywhere in
 //!   the session (auto-install of updates).
+//! - Bluetooth peripheral: one GATT service the app serves to other devices,
+//!   such as a watch (GHOST_POD, `crate::ghost_pod`). The treadmill link is a
+//!   central and goes through btleplug instead.
 //!
 //! `windows.rs` implements it. `other.rs` is the stand-in for every other OS:
 //! each feature reports "unsupported" (no input seen, never locked, microphone
-//! free, idle time unknown), so the app runs without them.
+//! free, idle time unknown, no Bluetooth peripheral), so the app runs without them.
 
 #[cfg(windows)]
 #[path = "windows.rs"]
@@ -74,4 +77,54 @@ pub fn cursor_position() -> Option<(i32, i32)> {
 /// `None` when the OS can't say.
 pub fn input_idle_for() -> Option<std::time::Duration> {
     imp::input_idle_for()
+}
+
+/// One characteristic of a peripheral service. UUIDs are 16-bit Bluetooth SIG
+/// numbers.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PeripheralCharacteristic {
+    pub uuid: u16,
+    /// A fixed value to answer reads with; `None` when it can't be read.
+    pub read: Option<Vec<u8>>,
+    pub notify: bool,
+    pub indicate: bool,
+    /// Writable (with response).
+    pub write: bool,
+}
+
+/// What the peripheral reports, from a Bluetooth thread.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PeripheralEvent {
+    /// Advertising: devices can find it and connect.
+    Advertising,
+    /// Advertising stopped by itself; the reason in plain English.
+    Failed(String),
+    /// How many devices are subscribed to this characteristic now.
+    Subscribers { uuid: u16, count: u32 },
+    /// A device wrote this value (already acknowledged).
+    Write { uuid: u16, value: Vec<u8> },
+}
+
+pub type PeripheralEvents = std::sync::Arc<dyn Fn(PeripheralEvent) + Send + Sync>;
+
+/// Serve `service` with `characteristics` and start advertising it. Blocking
+/// (a second or so). One service at a time: starting again replaces it. The
+/// error is one plain sentence (no adapter, no peripheral role, Bluetooth off).
+pub fn peripheral_start(
+    service: u16,
+    characteristics: &[PeripheralCharacteristic],
+    events: PeripheralEvents,
+) -> Result<(), String> {
+    imp::peripheral_start(service, characteristics, events)
+}
+
+/// Send `value` to every device subscribed to `uuid` (a notification or an
+/// indication, as the characteristic was declared). Does not wait.
+pub fn peripheral_notify(uuid: u16, value: &[u8]) -> Result<(), String> {
+    imp::peripheral_notify(uuid, value)
+}
+
+/// Stop advertising and drop the service. Fine to call when not started.
+pub fn peripheral_stop() {
+    imp::peripheral_stop()
 }

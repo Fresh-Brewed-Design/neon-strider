@@ -3,8 +3,8 @@
 //! included, so the `///` text here is part of the generated TypeScript.
 
 use super::{
-    CallsSnapshot, LightsOutSnapshot, MaintenanceBasis, MaintenanceSnapshot, OdometerSnapshot,
-    SeatedSnapshot, WalkAwaySnapshot, WeeklySummary,
+    CallsSnapshot, DeskSync, LightsOutSnapshot, MaintenanceBasis, MaintenanceSnapshot,
+    OdometerSnapshot, SeatedSnapshot, WalkAwaySnapshot, WeeklySummary,
 };
 use crate::link::{LastError, LinkState};
 use crate::placement;
@@ -32,6 +32,9 @@ pub struct AppSnapshot {
     pub maintenance: MaintenanceSnapshot,
     /// Last week against the week before, and this week so far.
     pub weekly: WeeklySummary,
+    /// DESK_SYNC: how many of the recent desk days (days the PC was used)
+    /// were walked on.
+    pub desk_sync: DeskSync,
     /// The idle nudge: its settings and whether the HUD card shows.
     pub seated: SeatedSnapshot,
     /// Eye breaks: their settings, the phase and the tone counters.
@@ -48,6 +51,10 @@ pub struct AppSnapshot {
     pub traffic: crate::traffic::TrafficSnapshot,
     /// Lights out: stop the belt when the PC's display turns off.
     pub lights_out: LightsOutSnapshot,
+    /// The guided calibration (Labs): its switch, limits and any run.
+    pub calibration: crate::calibration::CalibrationSnapshot,
+    /// Labs: GHOST_POD, the PC as a foot pod for a watch (off by default).
+    pub ghost_pod: crate::ghost_pod::GhostPodSnapshot,
 }
 
 /// Strava as the windows see it. Tokens and the client secret never appear here.
@@ -596,10 +603,34 @@ pub enum Command {
     },
     /// Show the folder the traffic recordings are saved in.
     TrafficOpenFolder,
-    /// Lights out: stop the belt (or pause a program until GO) when the PC's
+    /// Lights out: a full Stop (any program ends) when the PC's
     /// display turns off.
     LightsOutSetConfig {
         enabled: bool,
+    },
+    /// Labs: the guided calibration wizard on or off (persisted, off by default).
+    CalibrationSetWizard {
+        on: bool,
+    },
+    /// RUN (or REPEAT) on a target speed: set the belt to `target_kmh` (deck
+    /// km/h) and start it if it is still. The press is his.
+    CalibrationRunStart {
+        target_kmh: f32,
+    },
+    /// COUNT: start the run's clock (refused while the belt is still).
+    CalibrationCountStart,
+    /// DONE: stop the clock (refused if the belt stopped or changed speed).
+    CalibrationCountStop,
+    /// What he counted; the point appears in `calibration.run.result`.
+    CalibrationRunCount {
+        count: crate::calibration::CalibrationCount,
+    },
+    /// Close the run (after saving its point, or to cancel). The belt keeps going.
+    CalibrationRunClose,
+    /// Labs: GHOST_POD on (`on`) or off. On, the PC advertises as a Bluetooth
+    /// foot pod and sends the belt speed to a paired watch once a second.
+    GhostPodSet {
+        on: bool,
     },
 }
 
@@ -862,6 +893,8 @@ mod tests {
         assert_eq!(c, Command::UpdateAutoInstall { on: false });
         let c: Command = serde_json::from_str(r#"{"type":"traffic_record","on":true}"#).unwrap();
         assert_eq!(c, Command::TrafficRecord { on: true });
+        let c: Command = serde_json::from_str(r#"{"type":"ghost_pod_set","on":true}"#).unwrap();
+        assert_eq!(c, Command::GhostPodSet { on: true });
         let c: Command = serde_json::from_str(r#"{"type":"traffic_open_folder"}"#).unwrap();
         assert_eq!(c, Command::TrafficOpenFolder);
 

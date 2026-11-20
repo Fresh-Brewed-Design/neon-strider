@@ -11,7 +11,8 @@
 //! - `emitter`: collecting the snapshot and pushing it to the windows
 //!
 //! The feature modules that contribute a part of the snapshot or act on it
-//! (calls, desk, eyebreak, hud_drag, lights_out, maintenance, odometer, seated, tray,
+//! (calls, desk, desk_sync, eyebreak, hud_drag, lights_out, maintenance, odometer, seated,
+//! tray,
 //! walkaway, weekly) are declared here rather than in `lib.rs`, so this module owns
 //! their wiring.
 
@@ -19,6 +20,8 @@
 pub mod calls;
 #[path = "desk.rs"]
 pub mod desk;
+#[path = "desk_sync.rs"]
+pub mod desk_sync;
 #[path = "eyebreak.rs"]
 pub mod eyebreak;
 #[path = "hud_drag.rs"]
@@ -45,6 +48,7 @@ mod stasis;
 mod types;
 
 pub use calls::CallsSnapshot;
+pub use desk_sync::DeskSync;
 pub use emitter::spawn_emitter;
 pub use eyebreak::EyeBreakSnapshot;
 pub use hud::{hud_config, on_setting_written, refresh_monitors, toggle_minified};
@@ -171,8 +175,9 @@ fn neural_snapshot(state: &OrchestratorState) -> NeuralSnapshot {
 }
 
 /// Build a snapshot from state. Pure (no Tauri, no locks, no I/O) so it can be
-/// unit-tested. `walkaway`, `update`, `traffic`, `lights_out` and `hud_view` are left at
-/// their defaults: they depend on the clock or shared state, so the emitter fills them in.
+/// unit-tested. `desk_sync`, `walkaway`, `update`, `traffic`, `lights_out`, `ghost_pod`,
+/// `calibration` and `hud_view` are left at their defaults: they depend on the clock or shared
+/// state, so the emitter fills them in.
 pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSnapshot {
     AppSnapshot {
         connection: parts.connection,
@@ -187,6 +192,7 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         strava: parts.strava,
         maintenance: parts.maintenance,
         weekly: parts.weekly,
+        desk_sync: DeskSync::default(),
         seated: parts.seated,
         eye_break: parts.eye_break,
         calls: parts.calls,
@@ -195,6 +201,8 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         update: crate::update::UpdateSnapshot::default(),
         traffic: crate::traffic::TrafficSnapshot::default(),
         lights_out: LightsOutSnapshot::default(),
+        calibration: crate::calibration::CalibrationSnapshot::default(),
+        ghost_pod: crate::ghost_pod::GhostPodSnapshot::default(),
     }
 }
 
@@ -229,8 +237,10 @@ pub fn init(app: &AppHandle) {
     refresh_daily_base(app, None);
     maintenance::init(app);
     weekly::init(app);
+    desk_sync::init(app);
     odometer::init(app);
     desk::init(app);
+    crate::calibration::init(app);
 }
 
 #[tauri::command]

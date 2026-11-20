@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 /// One point of the user's calibration. Near hardware `speed`, the real belt
 /// speed is the deck's speed divided by `distance_scale`, and one step is
 /// `stride_length_cm` long.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct CalibrationPoint {
     pub speed: f32,
     #[serde(alias = "strideLengthCm")]

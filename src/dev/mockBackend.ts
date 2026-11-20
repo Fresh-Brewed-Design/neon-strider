@@ -4,7 +4,7 @@
 import { emit } from "@tauri-apps/api/event";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import type { ActiveProgram, AppSnapshot, Command, ConnectionSnapshot } from "../ipc";
-import type { MaintenanceSnapshot, Program, StravaSnapshot, WeeklySummary } from "../ipc";
+import type { DeskSync, MaintenanceSnapshot, Program, StravaSnapshot, WeeklySummary } from "../ipc";
 import type { RustConfig } from "../services/controlOrchestrator";
 
 // Same defaults as src-tauri/src/strava_template.rs.
@@ -12,6 +12,23 @@ const DEFAULT_TITLE = "NEON STRIDER // {distance_km} KM UPLINK";
 const DEFAULT_ROLLUP_TITLE = "NEON STRIDER // DAILY UPLINK · {walks} WALKS · {distance_km} KM";
 const DEFAULT_DESCRIPTION =
   "DECK_CYCLES {duration} · DISPLACEMENT {distance_km} km · ALTITUDE_BIAS {avg_incline}% · METABOLIC_BURN {calories} kcal\nLogged by Neon Strider";
+
+/**
+ * DESK_SYNC over the last 14 weekdays (weekends off the PC), ending today,
+ * which is walked; one day in the middle had no walk.
+ */
+function mockDeskSync(): DeskSync {
+  const days: DeskSync["days"] = [];
+  const d = new Date();
+  while (days.length < 14) {
+    if (d.getDay() !== 0 && d.getDay() !== 6) {
+      const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      days.unshift({ date, walked: ![3, 8].includes(days.length) });
+    }
+    d.setDate(d.getDate() - 1);
+  }
+  return { walked: days.filter((x) => x.walked).length, desk_days: days.length, window: 14, days, today_open: false };
+}
 
 /** A rough stand-in for the Rust renderer: the real one is tested in Rust. */
 function previewTemplate(template: string, fallback: string): string {
@@ -147,6 +164,7 @@ export const snapshot: AppSnapshot = {
     distance_change: { pct: 12, is_new: false },
     show_card: false,
   },
+  desk_sync: mockDeskSync(),
   seated: {
     enabled: true,
     minutes: 30,
@@ -187,6 +205,23 @@ export const snapshot: AppSnapshot = {
     auto_install: true,
   },
   traffic: { recording: false, file_path: null, file_name: null, packets: 0, bytes: 0, elapsed_s: 0, stop_reason: null },
+  // Same limits as src-tauri/src/calibration.rs.
+  calibration: {
+    wizard_enabled: false,
+    limits: {
+      min_stride_cm: 20, max_stride_cm: 200, min_scale: 0.2, max_scale: 3, min_belt_cm: 50, max_belt_cm: 1000,
+      min_run_s: 15, min_steps: 10, default_targets_kmh: [2, 3, 4, 5, 6],
+    },
+    run: null,
+  },
+  ghost_pod: {
+    enabled: false,
+    status: "off",
+    label: "OFFLINE",
+    message: "Switch it on to let a watch read the belt as a foot pod.",
+    watches: 0,
+    speed_kmh: 0,
+  },
 };
 
 /** Send the current snapshot to every listener, as Rust's `app-state` event does. */
@@ -353,6 +388,19 @@ function tickCountdowns(): boolean {
     changed = true;
   }
   return changed;
+}
+
+// ?desksync=open: today is a desk day not walked yet (left out of the count).
+// ?desksync=new: nothing recorded yet. ?desksync=few: only three desk days so far.
+const deskSyncFlag = params.get("desksync");
+if (deskSyncFlag === "open") {
+  const days = snapshot.desk_sync.days.slice(0, -1);
+  Object.assign(snapshot.desk_sync, { days, walked: days.filter((x) => x.walked).length, desk_days: days.length, today_open: true });
+} else if (deskSyncFlag === "new") {
+  Object.assign(snapshot.desk_sync, { days: [], walked: 0, desk_days: 0, today_open: false });
+} else if (deskSyncFlag === "few") {
+  const days = snapshot.desk_sync.days.slice(-3);
+  Object.assign(snapshot.desk_sync, { days, walked: days.filter((x) => x.walked).length, desk_days: days.length });
 }
 
 // ?weekly shows the last-week HUD card. Variants: ?weekly=long (123.4 km, 12h 05m,
@@ -611,6 +659,132 @@ if (trafficFlag === "saved") {
   startTraffic(4 * 3600);
   stopTraffic("Stopped by itself at the 4-hour limit.");
 }
+
+// The guided calibration (Labs). ?calwizard: the switch is on, with two saved
+// points. ?calwizard=counting: a count 23 s in (the clock ticks).
+// ?calwizard=counted: a timed count waiting for the loops. The math is a rough
+// stand-in for Rust's (calibration.rs, unit-tested there).
+const calFlag = params.get("calwizard");
+let calTimer: ReturnType<typeof setInterval> | null = null;
+function calRun(target_kmh: number, phase: "settling" | "counting" | "counted", elapsed_s = 0) {
+  if (calTimer) clearInterval(calTimer);
+  calTimer = null;
+  snapshot.calibration.run = {
+    target_kmh, phase, elapsed_s, reported_kmh: phase === "counted" ? target_kmh : null, result: null,
+  };
+  if (phase === "counting") {
+    calTimer = setInterval(() => {
+      const r = snapshot.calibration.run;
+      if (r?.phase === "counting") r.elapsed_s += 0.25;
+      publish();
+    }, 250);
+  }
+}
+function closeCal() {
+  if (calTimer) clearInterval(calTimer);
+  calTimer = null;
+  snapshot.calibration.run = null;
+}
+/** ?calwizard: two saved points and a 3 m belt loop. */
+const CAL_CONFIG = {
+  belt_length: 300,
+  calibration_points: [
+    { speed: 3, stride_length_cm: 68.4, distance_scale: 0.912 },
+    { speed: 4.5, stride_length_cm: 74.1, distance_scale: 0.887 },
+  ],
+};
+/** The preview runs no settings sync: the store settings ?calwizard starts with. */
+export function previewSettings() {
+  return calFlag === null ? null : { beltLength: CAL_CONFIG.belt_length, calibrationPoints: CAL_CONFIG.calibration_points };
+}
+if (calFlag !== null) {
+  snapshot.calibration.wizard_enabled = true;
+  if (calFlag === "counting" || calFlag === "counted") Object.assign(snapshot.deck, { raw_speed_kmh: 3, speed_kmh: 3.3 });
+  if (calFlag === "counting") calRun(3, "counting", 23);
+  if (calFlag === "counted") calRun(3, "counted", 62.4);
+}
+const CAL_COMMANDS: Partial<Record<Command["type"], (c: Command) => void>> = {
+  calibration_set_wizard: (c) => {
+    if (c.type !== "calibration_set_wizard") return;
+    snapshot.calibration.wizard_enabled = c.on;
+    if (!c.on) closeCal();
+  },
+  calibration_run_start: (c) => {
+    if (c.type !== "calibration_run_start") return;
+    Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: c.target_kmh, speed_kmh: c.target_kmh });
+    calRun(c.target_kmh, "settling");
+  },
+  calibration_count_start: () => {
+    const r = snapshot.calibration.run;
+    if (!r) throw "Press RUN on a speed first.";
+    if (snapshot.deck.raw_speed_kmh < 0.05) throw "The belt is not moving. Press RUN, then COUNT once it is up to speed.";
+    calRun(r.target_kmh, "counting");
+  },
+  calibration_count_stop: () => {
+    const r = snapshot.calibration.run;
+    if (!r || r.phase !== "counting") throw "Press COUNT first.";
+    if (r.elapsed_s < 15) throw `Keep counting: at least 15 s, so far ${r.elapsed_s.toFixed(0)} s.`;
+    if (snapshot.deck.raw_speed_kmh < 0.05) {
+      calRun(r.target_kmh, "settling");
+      throw "The belt stopped during the count. Run it again.";
+    }
+    calRun(r.target_kmh, "counted", r.elapsed_s);
+  },
+  calibration_run_count: (c) => {
+    const r = snapshot.calibration.run;
+    if (c.type !== "calibration_run_count" || !r?.reported_kmh || c.count.method !== "loops") return;
+    const { loops, belt_length_cm, steps } = c.count;
+    if (!(loops > 0)) throw "Enter how many loops you counted.";
+    const real_m = (loops * belt_length_cm) / 100;
+    const reported_m = (r.reported_kmh / 3.6) * r.elapsed_s;
+    const scale = reported_m / real_m;
+    if (scale < 0.2 || scale > 3) throw `That gives a factor of ${scale.toFixed(2)}, outside 0.2 to 3. Check the count and run it again.`;
+    r.result = {
+      point: { speed: Math.round(r.reported_kmh * 10) / 10, stride_length_cm: steps ? (real_m / steps) * 100 : 74, distance_scale: scale },
+      real_kmh: (real_m / r.elapsed_s) * 3.6,
+      real_m,
+      reported_m,
+      cadence_spm: steps ? (steps / r.elapsed_s) * 60 : null,
+      stride_measured: steps !== null,
+    };
+  },
+  calibration_run_close: () => closeCal(),
+};
+
+// Labs: GHOST_POD. ?ghostpod=advertising|connected|error picks its status;
+// switching it on in the preview advertises, then a watch connects 3 s later.
+const GHOST_POD: Record<"off" | "starting" | "advertising" | "connected" | "error", [string, string]> = {
+  off: ["OFFLINE", "Switch it on to let a watch read the belt as a foot pod."],
+  starting: ["BOOTING", "Starting the pod."],
+  advertising: ["BROADCASTING", "Waiting for a watch. Add a foot pod sensor on it; the pod shows under this PC's Bluetooth name."],
+  connected: ["LINKED", "A watch is connected and gets the belt speed every second."],
+  error: ["FAULT", "This PC's Bluetooth adapter can't act as a sensor (no peripheral role)."],
+};
+let ghostPodTimer: ReturnType<typeof setTimeout> | null = null;
+function setGhostPod(status: keyof typeof GHOST_POD) {
+  const [label, message] = GHOST_POD[status];
+  Object.assign(snapshot.ghost_pod, {
+    enabled: status !== "off",
+    status,
+    label,
+    message,
+    watches: status === "connected" ? 1 : 0,
+    speed_kmh: status === "connected" ? snapshot.deck.speed_kmh : 0,
+  });
+}
+function switchGhostPod(on: boolean) {
+  if (ghostPodTimer) clearTimeout(ghostPodTimer);
+  ghostPodTimer = null;
+  setGhostPod(on ? "advertising" : "off");
+  if (on) {
+    ghostPodTimer = setTimeout(() => {
+      setGhostPod("connected");
+      publish();
+    }, 3000);
+  }
+}
+const ghostPodFlag = params.get("ghostpod");
+if (ghostPodFlag && ghostPodFlag in GHOST_POD) setGhostPod(ghostPodFlag as keyof typeof GHOST_POD);
 
 // ?custom: the HUD sits where it was dragged (a custom position).
 if (params.has("custom")) snapshot.hud.custom = { dx: 400, top: 120 };
@@ -917,6 +1091,8 @@ const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) =>
   update_auto_install: (c) => (snapshot.update.auto_install = c.on),
   traffic_record: (c) => (c.on ? startTraffic(0) : stopTraffic()),
   traffic_open_folder: () => {},
+  ...CAL_COMMANDS,
+  ghost_pod_set: (c) => switchGhostPod(c.on),
   strava_set_credentials: () => (snapshot.strava.has_credentials = true),
   strava_connect: () => {
     Object.assign(snapshot.strava, { connected: true, athlete_name: "Preview Athlete" });
@@ -985,7 +1161,7 @@ const QUERIES: Record<string, (args: Record<string, unknown>) => unknown> = {
     };
   },
   strava_tcx_preview: () => "<TrainingCenterDatabase><!-- preview --></TrainingCenterDatabase>",
-  get_rust_config: () => PREVIEW_CONFIG,
+  get_rust_config: () => (calFlag !== null ? { ...PREVIEW_CONFIG, ...CAL_CONFIG } : PREVIEW_CONFIG),
   dispatch: (args) => {
     if (rejecting) throw "Treadmill not connected";
     const command = args.command as Command;

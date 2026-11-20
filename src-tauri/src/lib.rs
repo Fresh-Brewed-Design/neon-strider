@@ -16,10 +16,12 @@ use tauri::{
 
 pub mod backup;
 pub mod bluetooth;
+pub mod calibration;
 mod dashboard;
 mod display;
 pub mod engine;
 pub mod export;
+pub mod ghost_pod;
 mod hooks;
 mod hud;
 pub mod link;
@@ -226,6 +228,8 @@ async fn start_backend(app: tauri::AppHandle) {
     strava::spawn_worker(app.clone());
     update::init(&app);
     update::spawn(app.clone());
+    ghost_pod::init(&app);
+    ghost_pod::spawn(app.clone());
 
     if persistence::has_pinned_elements(&app) {
         log::info!("Pinned elements found. Auto-spawning HUD.");

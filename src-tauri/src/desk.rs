@@ -15,7 +15,7 @@ use crate::bluetooth::{self, ORCHESTRATOR};
 use crate::engine::{DeckAction, OrchestratorState};
 use crate::programs::{self, ProgramPhase};
 use crate::protocol::MachineStatus;
-use crate::snapshot::{calls, eyebreak, lights_out, seated, walkaway};
+use crate::snapshot::{calls, desk_sync, eyebreak, lights_out, seated, walkaway};
 use crate::util::{blocking, now_ms_u64 as now_ms};
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
@@ -332,6 +332,10 @@ pub fn spawn(app: AppHandle) {
             let connected = bluetooth::is_bluetooth_connected().await;
             let now = now_ms();
             let idle_ms = crate::hooks::input_idle_ms(now);
+            // The PC's own idle time where the platform has one, else the hooks'.
+            let idle =
+                crate::platform::input_idle_for().or_else(|| idle_ms.map(Duration::from_millis));
+            desk_sync::note_input(&app, idle);
             let out = step(connected, now, idle_ms, &mut machine).await;
             if let Some(id) = out.started_program {
                 let app_c = app.clone();
