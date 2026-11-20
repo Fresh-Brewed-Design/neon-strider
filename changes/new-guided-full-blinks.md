@@ -1,1 +1,0 @@
-- OCULAR_IMPLANT breaks now guide full blinks: close and hold, squeeze gently, open, 2 seconds each, 15 times in a 90-second break. The HUD card shows each step as `SHUTTER // CLOSE`, `SQUEEZE` and `OPEN`, and with Tones on each step has its own soft beep. The timing comes from a blinking-exercise trial; the sources are in docs/research.md.
