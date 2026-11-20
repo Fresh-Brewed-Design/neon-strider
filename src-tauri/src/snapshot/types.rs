@@ -651,6 +651,11 @@ pub enum Command {
     GhostPodSet {
         on: bool,
     },
+    /// Labs: GHOST_POD's power switch. On, the pod also serves running power
+    /// (the Cycling Power service) while GHOST_POD is on.
+    GhostPodPowerSet {
+        on: bool,
+    },
 }
 
 #[cfg(test)]
@@ -914,6 +919,9 @@ mod tests {
         assert_eq!(c, Command::TrafficRecord { on: true });
         let c: Command = serde_json::from_str(r#"{"type":"ghost_pod_set","on":true}"#).unwrap();
         assert_eq!(c, Command::GhostPodSet { on: true });
+        let c: Command =
+            serde_json::from_str(r#"{"type":"ghost_pod_power_set","on":true}"#).unwrap();
+        assert_eq!(c, Command::GhostPodPowerSet { on: true });
         let c: Command = serde_json::from_str(r#"{"type":"traffic_open_folder"}"#).unwrap();
         assert_eq!(c, Command::TrafficOpenFolder);
 
