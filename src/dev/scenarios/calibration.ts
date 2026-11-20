@@ -1,18 +1,23 @@
-// GROUND_TRUTH, the guided calibration (Labs). ?calwizard: the switch is on,
-// a 280 cm belt loop and two saved points. ?calwizard=belt: no belt length
+// GROUND_TRUTH, the guided calibration. ?calwizard: a 280 cm belt loop, two
+// saved points and the top speed question. ?calwizard=belt: no belt length
 // yet (the BELT_LOOP step). ?calwizard=tapping: a run at 3.0 km/h five passes
 // in (the clock ticks); =dropped the same with one tap dropped and a restart
 // note; =measured: the taps agreed and the result waits for SAVE POINT.
 // ?calwizard=sweep: RUN ALL with two speeds done and 4.0 km/h up next;
 // ?calwizard=sweeprun: the same sweep tapping at 4.0. ?calwizard=steps: the
 // measured run tapping footsteps (GAIT_SYNC) twelve steps in; =stepsaved the
-// stride measured and saved, with UNDO. The math is a rough
+// stride measured and saved, with UNDO. ?calwizard=guiderun: the guided walk
+// from 0.6 to 5.0 km/h tapping at 5.0; =guidecheck both ends saved and the
+// midpoint check up next; =guidesplit the check 3.1 % off and split;
+// =guidedone the walk done with its summary. ?caloffer: a connected treadmill
+// with no calibration, so the first-connect card shows. The math is a rough
 // stand-in for Rust's (calibration.rs and calibration/tap.rs, unit-tested there).
-import type { CalibrationRunView, Command, StepRunView } from "../../ipc";
+import type { CalibrationGuideView, CalibrationRunView, Command, GuideCheck, GuideSpeed, StepRunView } from "../../ipc";
 import { PREVIEW_CONFIG, params, publish, snapshot } from "../mockState";
 import type { Scenario } from "./types";
 
 const calFlag = params.get("calwizard");
+const offerFlag = params.has("caloffer");
 const BELT_CM = 280;
 let calTimer: ReturnType<typeof setInterval> | null = null;
 /** The mock's tap times, ms, since the tapping last started. */
@@ -80,9 +85,10 @@ function measured(target_kmh: number, real: number, reported: number, passes: nu
         stride_length_cm: saved.stride_length_cm,
         distance_scale: (saved.distance_scale * n + scale) / (n + 1),
         runs: n + 1,
+        stride_runs: saved.stride_runs ?? 0,
       }
     : null;
-  const point = { speed: Math.round(reported * 10) / 10, stride_length_cm: 72, distance_scale: scale, runs: 1 };
+  const point = { speed: Math.round(reported * 10) / 10, stride_length_cm: 72, distance_scale: scale, runs: 1, stride_runs: 0 };
   // Rust saves the point by itself and keeps what it replaced for UNDO. At load the
   // saved list already holds it (CAL_CONFIG), so the preview starts as Rust leaves it.
   before = saved ? { ...saved } : null;
@@ -93,6 +99,7 @@ function measured(target_kmh: number, real: number, reported: number, passes: nu
     if (i >= 0) sweep.marks[i] = "saved";
     sweepCurrent();
   }
+  guideRecord(target_kmh, point.speed, scale);
   if (!atLoad) {
     setPoints([...CAL_CONFIG.calibration_points.filter((p) => Math.abs(p.speed - written.speed) > 0.05), written]);
   }
@@ -118,7 +125,7 @@ function measured(target_kmh: number, real: number, reported: number, passes: nu
 }
 /** What the mock's last save replaced, for UNDO. */
 let before: CalPoint | null = null;
-type CalPoint = { speed: number; stride_length_cm: number; distance_scale: number; runs?: number };
+type CalPoint = { speed: number; stride_length_cm: number; distance_scale: number; runs?: number; stride_runs?: number };
 /** Put the points back as before the run's save; its sweep speed is up again. */
 function undoSave() {
   const r = snapshot.calibration.run;
@@ -136,6 +143,7 @@ function undoSave() {
     if (i >= 0 && s.marks[i] === "saved") s.marks[i] = "pending";
     sweepCurrent();
   }
+  guideForget(r.target_kmh);
 }
 /** The saved points changed in Rust: the dashboard reloads them when `points_rev` moves. */
 function setPoints(points: CalPoint[]) {
@@ -170,9 +178,11 @@ function stepsMeasured(gap: number, count: number, atLoad = false) {
   const stride = (r.result.real_kmh / 3.6) * gap * 100;
   const saved = CAL_CONFIG.calibration_points.find((p) => Math.abs(p.speed - r.target_kmh) <= 0.05);
   const n = Math.max(1, saved?.runs ?? 1);
-  const point = { ...r.result.point, stride_length_cm: stride, runs: 1 };
+  const m = saved?.stride_runs ?? 0;
+  const point = { ...r.result.point, stride_length_cm: stride, runs: 1, stride_runs: 1 };
+  // As in Rust: a stride never measured is replaced; later ones average with measured strides only.
   const averaged = saved
-    ? { ...saved, runs: n, stride_length_cm: (saved.stride_length_cm * n + stride) / (n + 1) }
+    ? { ...saved, runs: n, stride_runs: m + 1, stride_length_cm: (saved.stride_length_cm * m + stride) / (m + 1) }
     : null;
   const written = averaged ?? point;
   stepBefore = saved ? { ...saved } : null;
@@ -207,6 +217,87 @@ function sweepCurrent() {
   s.current = i < 0 ? null : i;
   return s.current === null ? null : s.targets_kmh[s.current];
 }
+/** The mock's guided walk: the ends, then midpoint checks split past 2 %, three levels down (Rust: calibration/guide.rs). */
+let guideEnds: [number, number] | null = null;
+const guideOutcomes = new Map<number, { at: number; scale: number } | "skipped">();
+const key = (kmh: number) => Math.round(kmh * 10);
+function guideRecord(target: number, at: number, scale: number) {
+  if (guideEnds) guideOutcomes.set(key(target), { at, scale });
+  guidePublish();
+}
+function guideForget(target: number) {
+  guideOutcomes.delete(key(target));
+  guidePublish();
+}
+function guidePlan(): CalibrationGuideView | null {
+  if (!guideEnds) return null;
+  const [slow, top] = guideEnds;
+  const speeds: GuideSpeed[] = [];
+  const checks: GuideCheck[] = [];
+  let next: number | null = null;
+  const mark = (kmh: number) => {
+    const o = guideOutcomes.get(key(kmh));
+    return o === undefined ? "pending" : o === "skipped" ? "skipped" : "saved";
+  };
+  const measuredAt = (kmh: number) => {
+    const o = guideOutcomes.get(key(kmh));
+    return o === undefined || o === "skipped" ? null : o;
+  };
+  for (const end of [slow, top]) {
+    speeds.push({ kmh: end, mark: mark(end), end: true });
+    if (!guideOutcomes.has(key(end)) && next === null) next = end;
+  }
+  const walk = (lo: number, hi: number, depth: number) => {
+    const mid = Math.round((lo + hi) * 5) / 10;
+    if (mid - lo < 0.099 || hi - mid < 0.099) return;
+    speeds.push({ kmh: mid, mark: mark(mid), end: false });
+    const o = guideOutcomes.get(key(mid));
+    const check: GuideCheck = { lo_kmh: lo, hi_kmh: hi, mid_kmh: mid, verdict: "pending", error_pct: null };
+    checks.push(check);
+    if (o === undefined) {
+      if (next === null) next = mid;
+      return;
+    }
+    if (o === "skipped") {
+      check.verdict = "skipped";
+      return;
+    }
+    const a = measuredAt(lo);
+    const b = measuredAt(hi);
+    if (!a || !b) return;
+    const t = (o.at - a.at) / (b.at - a.at);
+    const predicted = a.scale + t * (b.scale - a.scale);
+    const err = Math.abs(o.scale / predicted - 1);
+    check.error_pct = err * 100;
+    check.verdict = err <= 0.02 ? "agreed" : depth >= 3 ? "at_limit" : "split";
+    if (check.verdict === "split") {
+      walk(lo, mid, depth + 1);
+      walk(mid, hi, depth + 1);
+    }
+  };
+  if (measuredAt(slow) && measuredAt(top)) walk(slow, top, 1);
+  speeds.sort((x, y) => x.kmh - y.kmh);
+  const ended = checks.filter((c) => c.verdict === "agreed" || c.verdict === "at_limit").map((c) => c.error_pct ?? 0);
+  return {
+    slow_kmh: slow,
+    top_kmh: top,
+    speeds,
+    checks,
+    next_kmh: next,
+    remaining_error_pct: ended.length ? Math.max(...ended) : null,
+    tolerance_pct: 2,
+  };
+}
+function guidePublish() {
+  snapshot.calibration.guide = guidePlan();
+}
+/** Load a walk from 0.6 to 5.0 with these speeds already measured, as factors. */
+function guideLoad(measured: [number, number][]) {
+  guideEnds = [0.6, 5];
+  guideOutcomes.clear();
+  for (const [kmh, scale] of measured) guideOutcomes.set(key(kmh), { at: kmh, scale });
+  guidePublish();
+}
 function runBelt(kmh: number) {
   Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: kmh, speed_kmh: kmh });
   taps = [];
@@ -219,8 +310,8 @@ const CAL_CONFIG: { belt_length: number; calibration_points: CalPoint[] } = {
   belt_length: 300,
   calibration_points: [
     calFlag === "measured"
-      ? { speed: 3, stride_length_cm: 68.4, distance_scale: (0.912 * 2 + 3 / 2.82) / 3, runs: 3 }
-      : { speed: 3, stride_length_cm: 68.4, distance_scale: 0.912, runs: 2 },
+      ? { speed: 3, stride_length_cm: 68.4, distance_scale: (0.912 * 2 + 3 / 2.82) / 3, runs: 3, stride_runs: 1 }
+      : { speed: 3, stride_length_cm: 68.4, distance_scale: 0.912, runs: 2, stride_runs: 1 },
     { speed: 4.5, stride_length_cm: 74.1, distance_scale: calFlag === "oldpoint" ? 0.15 : 0.887 },
   ],
 };
@@ -229,18 +320,42 @@ export function previewSettings() {
   return calFlag === null ? null : { beltLength: CAL_CONFIG.belt_length, calibrationPoints: CAL_CONFIG.calibration_points };
 }
 const CAL_COMMANDS: Partial<Record<Command["type"], (c: Command) => void>> = {
-  calibration_set_wizard: (c) => {
-    if (c.type !== "calibration_set_wizard") return;
-    snapshot.calibration.wizard_enabled = c.on;
-    if (!c.on) {
-      snapshot.calibration.sweep = null;
-      closeCal();
-    }
-  },
   calibration_run_start: (c) => {
     if (c.type !== "calibration_run_start") return;
     snapshot.calibration.sweep = null;
+    guideEnds = null;
+    guidePublish();
     runBelt(c.target_kmh);
+  },
+  calibration_guide_start: (c) => {
+    if (c.type !== "calibration_guide_start") return;
+    if (!(c.top_kmh > 0.6)) throw "Pick a top speed above the slowest, 0.6 km/h.";
+    if (c.top_kmh > 12) throw "The treadmill tops out at 12.0 km/h.";
+    guideEnds = [0.6, Math.round(c.top_kmh * 10) / 10];
+    guideOutcomes.clear();
+    snapshot.calibration.sweep = null;
+    closeCal();
+    guidePublish();
+  },
+  calibration_guide_run: () => {
+    const next = snapshot.calibration.guide?.next_kmh ?? null;
+    if (next === null) throw "Every speed is done.";
+    runBelt(next);
+  },
+  calibration_guide_skip: () => {
+    const next = snapshot.calibration.guide?.next_kmh ?? null;
+    if (next === null) throw "Every speed is done.";
+    guideOutcomes.set(key(next), "skipped");
+    closeCal();
+    guidePublish();
+  },
+  calibration_guide_end: () => {
+    guideEnds = null;
+    closeCal();
+    guidePublish();
+  },
+  calibration_offer_skip: () => {
+    snapshot.calibration.offer = false;
   },
   calibration_target_add: (c) => {
     if (c.type !== "calibration_target_add") return;
@@ -259,6 +374,8 @@ const CAL_COMMANDS: Partial<Record<Command["type"], (c: Command) => void>> = {
     snapshot.calibration.targets = snapshot.calibration.targets.filter((x) => Math.abs(x.kmh - c.kmh) > 0.05);
   },
   calibration_sweep_start: () => {
+    guideEnds = null;
+    guidePublish();
     const listed = snapshot.calibration.targets.filter((t) => t.runnable).map((t) => t.kmh);
     const targets_kmh = [...new Set([...listed, ...CAL_CONFIG.calibration_points.map((p) => p.speed)])].sort(
       (a, b) => a - b,
@@ -395,8 +512,10 @@ function tappingRun(target: number, passes: number, reported: number, extra: Par
 
 export const calibration: Scenario = {
   apply() {
+    if (offerFlag) {
+      Object.assign(snapshot.calibration, { offer: true, belt_treadmill: true, belt_cm: null });
+    }
     if (calFlag === null) return;
-    snapshot.calibration.wizard_enabled = calFlag !== "oldpoint";
     snapshot.calibration.belt_treadmill = true;
     snapshot.calibration.belt_cm = calFlag === "belt" ? null : BELT_CM;
     const live = ["tapping", "dropped", "measured", "steps", "stepsaved"].includes(calFlag);
@@ -417,6 +536,18 @@ export const calibration: Scenario = {
         run.steps = stepView({ phase: "tapping", steps: 12, kept: 10, dropped: 1, elapsed_s: 6.9, cadence_spm: 104, stride_cm: 45.2 });
       }
       if (calFlag === "stepsaved") stepsMeasured(0.58, 22, true);
+    }
+    // The guided walk from 0.6 to 5.0 km/h, on a deck whose factor bends after 2.8 km/h.
+    if (calFlag === "guiderun") {
+      guideLoad([[0.6, 0.86]]);
+      Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: 5, speed_kmh: 5.2 });
+      tappingRun(5, 6, 5, { measured_kmh: 4.82 });
+    }
+    if (calFlag === "guidecheck") guideLoad([[0.6, 0.86], [5, 1.04]]);
+    if (calFlag === "guidesplit") guideLoad([[0.6, 0.86], [5, 1.04], [2.8, 0.98]]);
+    if (calFlag === "guidedone") guideLoad([[0.6, 0.86], [5, 1.04], [2.8, 0.98], [1.7, 0.925], [3.9, 1.015]]);
+    if (calFlag.startsWith("guide") && calFlag !== "guiderun") {
+      Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: 5, speed_kmh: 5.2 });
     }
     // A stored 14.0 km/h the treadmill (12.0 max) can't run any more, and a 3.5 the user added.
     if (calFlag === "targets") {

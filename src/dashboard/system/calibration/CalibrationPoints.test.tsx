@@ -10,12 +10,11 @@ vi.mock("../../../state/useAppState", () => ({
 
 const { snapshot: mock } = await import("../../../dev/mockBackend");
 const { useTreadmillStore } = await import("../../../store/treadmillStore");
-const { CalibrationPanel } = await import("./CalibrationPanel");
+const { ClassicCalibrationPanel: CalibrationPanel } = await import("./CalibrationPanel");
 const { EditPointModal } = await import("./EditPointModal");
 
 beforeEach(() => {
   current = structuredClone(mock);
-  current.calibration.wizard_enabled = false;
 });
 
 describe("EditPointModal factor limits", () => {

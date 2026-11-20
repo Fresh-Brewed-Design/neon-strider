@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Edit, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Edit, Plus, Trash2 } from "lucide-react";
 import { useAppState } from "../../../state/useAppState";
 import { useTreadmillStore } from "../../../store/treadmillStore";
 import type { CalibrationPoint } from "../../../store/types";
@@ -9,16 +9,30 @@ import { GuidedCalibration } from "./GuidedCalibration";
 import { appliedScale } from "./math";
 
 /**
- * The calibration points. With the Labs switch on (System -> Diagnostics) the
- * guided wizard replaces this panel; off, it is the panel as it always was.
+ * GROUND_TRUTH, always. The old panel (count loops, edit a point by hand)
+ * stays under ADVANCED // POINT_EDITOR until #92 retires it.
  */
 export function CalibrationPanel() {
-  const guided = useAppState((s) => s.calibration.wizard_enabled) ?? false;
-  return guided ? <GuidedCalibration /> : <ClassicCalibrationPanel />;
+  const [editor, setEditor] = useState(false);
+  return (
+    <div className="space-y-4">
+      <GuidedCalibration />
+      <button
+        type="button"
+        aria-expanded={editor}
+        onClick={() => setEditor((v) => !v)}
+        className="flex items-center gap-1 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-white/60 transition-colors hover:text-neon-cyan"
+      >
+        {editor ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        ADVANCED // POINT_EDITOR
+      </button>
+      {editor && <ClassicCalibrationPanel />}
+    </div>
+  );
 }
 
 /** The saved calibration points, with the wizard that measures a new one. */
-function ClassicCalibrationPanel() {
+export function ClassicCalibrationPanel() {
   const calibrationPoints = useTreadmillStore((s) => s.calibrationPoints);
   const addCalibrationPoint = useTreadmillStore((s) => s.addCalibrationPoint);
   const removeCalibrationPoint = useTreadmillStore((s) => s.removeCalibrationPoint);
