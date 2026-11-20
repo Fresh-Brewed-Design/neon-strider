@@ -1,1 +1,0 @@
-- GROUND_TRUTH: after the belt is timed at a speed, GAIT_SYNC measures your stride. Tap each footstep, left and right, with TAP, Space or Alt+Space; it ends by itself once the steps agree, saves the stride for that speed with UNDO, and never moves the belt.
