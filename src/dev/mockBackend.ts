@@ -186,6 +186,7 @@ export const snapshot: AppSnapshot = {
     at_rest: false,
     phase: "idle",
     remaining_s: 0,
+    blink: null,
     blink_seq: 0,
     end_seq: 0,
   },
@@ -426,8 +427,10 @@ if (weeklyFlag !== null) Object.assign(snapshot.weekly, { show_card: true }, WEE
 // ?eyebreak=upcoming|break|resume shows the eye-break (OCULAR_IMPLANT) HUD card: the
 // heads-up, the cooldown with the belt it paused, or the resume card after it
 // (RESUME / STAY STILL). ?eyebreak=still is the cooldown with the belt left alone,
-// ?eyebreak=rest the heads-up for a break set for the program's rest.
+// ?eyebreak=rest the heads-up for a break set for the program's rest. During the
+// cooldown, ?blink=squeeze|open picks the guided blink step (CLOSE by default).
 const eyeBreakFlag = params.get("eyebreak");
+const blinkFlag = params.get("blink");
 if (eyeBreakFlag === "upcoming" || eyeBreakFlag === "rest")
   Object.assign(snapshot.eye_break, {
     enabled: true,
@@ -436,7 +439,13 @@ if (eyeBreakFlag === "upcoming" || eyeBreakFlag === "rest")
     at_rest: eyeBreakFlag === "rest",
   });
 if (eyeBreakFlag === "break" || eyeBreakFlag === "still")
-  Object.assign(snapshot.eye_break, { enabled: true, phase: "break", remaining_s: 72, holds_belt: eyeBreakFlag === "break" });
+  Object.assign(snapshot.eye_break, {
+    enabled: true,
+    phase: "break",
+    remaining_s: 72,
+    holds_belt: eyeBreakFlag === "break",
+    blink: blinkFlag === "squeeze" || blinkFlag === "open" ? blinkFlag : "close",
+  });
 if (eyeBreakFlag === "resume") Object.assign(snapshot.eye_break, { enabled: true, phase: "complete", holds_belt: true });
 if (eyeBreakFlag === "break" || eyeBreakFlag === "resume") {
   // The break paused the walk: the program at its step, or the treadmill's pause.

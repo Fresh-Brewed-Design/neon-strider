@@ -1,11 +1,19 @@
 //! Eye breaks.
 //!
 //! Optional (off by default). After a set time of screen use, the HUD says a
-//! break is a minute away, then runs a break: a card with a countdown, a tone
-//! every 10 seconds to blink, and a tone at the end. The defaults follow the
-//! research in the roadmap issue: a break of 90 seconds, because the focusing
-//! system needs about that long to relax (Boulet 2016), every 20 minutes.
-//! Longer breaks (5 minutes an hour, Pucker & Gawne 2023) are one setting away.
+//! break is a minute away, then runs a break: a card with a countdown, guided
+//! full blinks, and a tone at the end. The defaults follow `docs/research.md`:
+//! a break of 90 seconds, because the focusing system needs about that long to
+//! relax (Boulet 2016), every 20 minutes. Longer breaks (5 minutes an hour,
+//! Pucker & Gawne 2023) are one setting away.
+//!
+//! Guided blinks: screen reading makes more blinks incomplete (Chu et al. 2014,
+//! Argilés et al. 2015), and blinking exercises cut incomplete blinks. Through
+//! the break the card repeats the exercise from Wolffsohn et al. (2025): close
+//! the eyes and hold, squeeze gently, open, each step 2 seconds. At the default
+//! 90 seconds that is 15 full blinks, the trial's best routine. Each step is a
+//! cue (`blink` and `blink_seq` in the snapshot): text on the card, and a tone
+//! when Tones is on.
 //!
 //! The belt: with "Pause the belt" on (the default once eye breaks are on), a
 //! break that starts while the belt is walking pauses it, the same pause as the
@@ -65,8 +73,14 @@ const ACTIVE_WINDOW_MS: u64 = 5 * MINUTE;
 const AWAY_MS: u64 = 15 * MINUTE;
 /// The heads-up comes this long before the break.
 const WARN_MS: u64 = MINUTE;
-/// A blink tone this often during a break.
-const BLINK_EVERY_MS: u64 = 10 * SECOND;
+/// Each step of a guided blink (close and hold, squeeze, open) lasts this
+/// long: the 2 s per step of the blinking-exercise trial (Wolffsohn et al. 2025).
+const BLINK_STEP_MS: u64 = 2 * SECOND;
+/// The steps of one full blink: close, squeeze, open.
+const BLINK_STEPS: u64 = 3;
+/// A step starts this much early, so it lands on the nearest one-second tick
+/// and not a whole tick late when a tick runs a few milliseconds early.
+const BLINK_SLACK_MS: u64 = SECOND / 2;
 /// A longer gap between two ticks is a stall or sleep, not time passing.
 const MAX_STEP_MS: u64 = 10 * SECOND;
 /// The deck takes a moment to report a pause. If the belt still walks this long
@@ -109,7 +123,7 @@ pub enum EyeBreakPhase {
     Idle,
     /// A break is about a minute away.
     Upcoming,
-    /// Look away, blink.
+    /// Look away, and blink fully with the cues.
     Break,
     /// The break is over and the belt it paused is still paused: RESUME or
     /// STAY STILL. Only in the snapshot; the machine itself is counting again.
@@ -138,10 +152,38 @@ pub struct EyeBreakSnapshot {
     pub phase: EyeBreakPhase,
     /// Seconds until the break (upcoming) or until it ends (break).
     pub remaining_s: u32,
-    /// Counts up at each blink prompt; the HUD plays a tone when it changes.
+    /// During a break: the step of the guided blink to do now.
+    pub blink: Option<BlinkStep>,
+    /// Counts up at each blink cue; the HUD plays the step's tone when it changes.
     pub blink_seq: u32,
     /// Counts up when a break runs its full length; the HUD plays the end tone.
     pub end_seq: u32,
+}
+
+/// One step of a guided full blink.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum BlinkStep {
+    /// Close the eyes and hold them closed.
+    Close,
+    /// Squeeze the eyelids gently.
+    Squeeze,
+    /// Open the eyes and look far away.
+    Open,
+}
+
+/// The step `break_ms` into a break.
+fn blink_index(break_ms: u64) -> u64 {
+    (break_ms + BLINK_SLACK_MS) / BLINK_STEP_MS
+}
+
+fn blink_step(break_ms: u64) -> BlinkStep {
+    match blink_index(break_ms) % BLINK_STEPS {
+        0 => BlinkStep::Close,
+        1 => BlinkStep::Squeeze,
+        _ => BlinkStep::Open,
+    }
 }
 
 /// What the desk loop tells the machine each second.
@@ -262,7 +304,7 @@ impl EyeBreak {
         }
     }
 
-    /// The break begins: a blink prompt, and the pause if the belt walks.
+    /// The break begins: the first blink cue, and the pause if the belt walks.
     fn begin(&mut self, cfg: &Config, now_ms: u64, belt: Belt) -> Option<Effect> {
         self.phase = EyeBreakPhase::Break;
         self.break_ms = 0;
@@ -335,7 +377,7 @@ impl EyeBreak {
             if self.break_ms >= break_ms {
                 self.reset();
                 self.end_seq = self.end_seq.wrapping_add(1);
-            } else if self.break_ms / BLINK_EVERY_MS > before / BLINK_EVERY_MS {
+            } else if blink_index(self.break_ms) > blink_index(before) {
                 self.blink_seq = self.blink_seq.wrapping_add(1);
             }
             return effect;
@@ -404,6 +446,11 @@ impl EyeBreak {
             EyeBreakPhase::Idle if self.owned.is_some() => EyeBreakPhase::Complete,
             p => p,
         }
+    }
+
+    /// During a break, the blink step to do now.
+    pub fn blink(&self) -> Option<BlinkStep> {
+        (self.phase == EyeBreakPhase::Break).then(|| blink_step(self.break_ms))
     }
 
     fn remaining_s(&self, cfg: &Config) -> u32 {
@@ -536,6 +583,11 @@ pub(crate) fn snapshot_of(rt: &Runtime) -> EyeBreakSnapshot {
             EyeBreakPhase::Idle
         },
         remaining_s: rt.machine.remaining_s(&rt.cfg),
+        blink: if rt.cfg.enabled {
+            rt.machine.blink()
+        } else {
+            None
+        },
         blink_seq: rt.machine.blink_seq,
         end_seq: rt.machine.end_seq,
     }
@@ -788,28 +840,71 @@ mod tests {
         assert_eq!(m.blink_seq, 1);
     }
 
-    #[test]
-    fn a_break_blinks_every_ten_seconds_then_ends_with_a_tone() {
-        let (mut m, c) = (EyeBreak::default(), cfg());
-        run(&mut m, &c, 0, 1200, typing());
-        assert_eq!(m.phase(), EyeBreakPhase::Break);
-        let start = m.blink_seq;
-        // Looking away: no input during the break.
-        let away = Tick {
+    fn away() -> Tick {
+        Tick {
             idle_ms: Some(30 * SECOND),
             locked: false,
             display_off: false,
             belt: Belt::Other,
             rest_in_ms: None,
             rest_len_ms: None,
-        };
-        run(&mut m, &c, 1201, 1245, away);
-        assert_eq!(m.blink_seq, start + 4);
+        }
+    }
+
+    #[test]
+    fn a_break_guides_full_blinks_then_ends_with_a_tone() {
+        let (mut m, c) = (EyeBreak::default(), cfg());
+        run(&mut m, &c, 0, 1200, typing());
+        assert_eq!(m.phase(), EyeBreakPhase::Break);
+        assert_eq!(m.blink(), Some(BlinkStep::Close));
+        let start = m.blink_seq;
+        // Close and hold for 2 s, squeeze for 2 s, open for 2 s.
+        run(&mut m, &c, 1201, 1201, away());
+        assert_eq!((m.blink(), m.blink_seq), (Some(BlinkStep::Close), start));
+        run(&mut m, &c, 1202, 1203, away());
+        assert_eq!(
+            (m.blink(), m.blink_seq),
+            (Some(BlinkStep::Squeeze), start + 1)
+        );
+        run(&mut m, &c, 1204, 1205, away());
+        assert_eq!((m.blink(), m.blink_seq), (Some(BlinkStep::Open), start + 2));
+        run(&mut m, &c, 1206, 1206, away());
+        assert_eq!(
+            (m.blink(), m.blink_seq),
+            (Some(BlinkStep::Close), start + 3)
+        );
+        // 90 seconds hold 15 full blinks: 45 cues, the last one OPEN.
+        run(&mut m, &c, 1207, 1289, away());
+        assert_eq!(m.blink(), Some(BlinkStep::Open));
+        assert_eq!(m.blink_seq, start + 44);
         assert_eq!(m.end_seq, 0);
-        run(&mut m, &c, 1246, 1295, away);
+        run(&mut m, &c, 1290, 1295, away());
         assert_eq!(m.phase(), EyeBreakPhase::Idle);
+        assert_eq!(m.blink(), None);
+        assert_eq!(m.blink_seq, start + 44);
         assert_eq!(m.end_seq, 1);
         assert_eq!(m.remaining_s(&c), 0);
+    }
+
+    #[test]
+    fn blink_steps_stay_two_ticks_long_when_ticks_run_early_or_late() {
+        for tick_ms in [990, 999, 1003, 1010] {
+            let (mut m, c) = (EyeBreak::default(), cfg());
+            run(&mut m, &c, 0, 1200, typing());
+            assert_eq!(m.phase(), EyeBreakPhase::Break);
+            let t0 = T0 + 1200 * SECOND;
+            let mut changes = vec![];
+            let mut seq = m.blink_seq;
+            for k in 1..=40u64 {
+                m.tick(&c, t0 + k * tick_ms, &away());
+                if m.blink_seq != seq {
+                    seq = m.blink_seq;
+                    changes.push(k);
+                }
+            }
+            let gaps: Vec<u64> = changes.windows(2).map(|w| w[1] - w[0]).collect();
+            assert!(gaps.iter().all(|&g| g == 2), "{tick_ms} ms ticks: {gaps:?}");
+        }
     }
 
     #[test]

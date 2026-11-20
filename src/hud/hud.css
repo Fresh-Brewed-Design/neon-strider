@@ -658,6 +658,23 @@ body,
   font-variant-numeric: tabular-nums;
 }
 
+/* The guided blink step and the countdown share a row; the step leads. */
+.hud-eyebreak-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.hud-eyebreak-cue {
+  font-family: var(--hud-font-display);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--hud-magenta);
+  letter-spacing: 0.04em;
+}
+
 /* Buttons take the width of their name and wrap onto a new row when the row is
    full, so "WORKDAY" is never broken mid-word to keep three in a line. */
 .hud-seated-programs {
