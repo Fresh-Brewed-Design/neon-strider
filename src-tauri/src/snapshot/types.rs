@@ -3,8 +3,8 @@
 //! included, so the `///` text here is part of the generated TypeScript.
 
 use super::{
-    CallsSnapshot, LightsOutSnapshot, MaintenanceBasis, MaintenanceSnapshot, OdometerSnapshot,
-    SeatedSnapshot, WalkAwaySnapshot, WeeklySummary,
+    CallsSnapshot, DeskSync, LightsOutSnapshot, MaintenanceBasis, MaintenanceSnapshot,
+    OdometerSnapshot, SeatedSnapshot, WalkAwaySnapshot, WeeklySummary,
 };
 use crate::link::{LastError, LinkState};
 use crate::placement;
@@ -32,8 +32,13 @@ pub struct AppSnapshot {
     pub maintenance: MaintenanceSnapshot,
     /// Last week against the week before, and this week so far.
     pub weekly: WeeklySummary,
+    /// DESK_SYNC: how many of the recent desk days (days the PC was used)
+    /// were walked on.
+    pub desk_sync: DeskSync,
     /// The idle nudge: its settings and whether the HUD card shows.
     pub seated: SeatedSnapshot,
+    /// Eye breaks: their settings, the phase and the tone counters.
+    pub eye_break: crate::snapshot::EyeBreakSnapshot,
     /// Slow down on calls: its settings and whether the microphone is in use.
     pub calls: CallsSnapshot,
     /// Distance and belt hours over every saved session plus the live one.
@@ -533,6 +538,16 @@ pub enum Command {
     },
     /// SNOOZE 15 MIN on the card: hide it for 15 minutes; the idle time is kept.
     SeatedSnooze,
+    /// Eye-break settings: on or off, minutes of screen use between breaks (10 to
+    /// 120), seconds a break lasts (20 to 300) and whether the HUD plays tones.
+    EyeBreakSetConfig {
+        enabled: bool,
+        minutes: u32,
+        seconds: u32,
+        sound: bool,
+    },
+    /// SKIP on an eye-break card: no break now, and the count starts again.
+    EyeBreakSkip,
     /// Slow-down-on-calls settings: on or off, and the quiet speed 0.5 to 6 km/h.
     CallsSetConfig {
         enabled: bool,

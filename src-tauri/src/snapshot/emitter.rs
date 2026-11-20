@@ -2,9 +2,9 @@
 //! it to the windows as `app-state`.
 
 use super::{
-    build_snapshot, calls, daily_base, hud, lights_out, maintenance, odometer, refresh_daily_base,
-    seated, stasis, tray, walkaway, weekly, AppSnapshot, ConnectionSnapshot, SnapshotParts,
-    EVENT_APP_STATE,
+    build_snapshot, calls, daily_base, desk_sync, eyebreak, hud, lights_out, maintenance, odometer,
+    refresh_daily_base, seated, stasis, tray, walkaway, weekly, AppSnapshot, ConnectionSnapshot,
+    SnapshotParts, EVENT_APP_STATE,
 };
 use crate::bluetooth::{self, ORCHESTRATOR};
 use crate::programs::{self, SavedRun};
@@ -80,11 +80,13 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
             maintenance: maintenance::snapshot(live_m, live_s),
             weekly: weekly::snapshot(),
             seated: seated::snapshot(&state.programs),
+            eye_break: eyebreak::snapshot(),
             calls: calls::snapshot(),
             odometer: odometer::snapshot(live_m, live_s, live_open),
         },
     );
     let now_ms = crate::util::now_ms_u64();
+    snapshot.desk_sync = desk_sync::snapshot(snapshot.session.daily_distance_m);
     snapshot.walkaway = walkaway::snapshot(now_ms);
     snapshot.update = crate::update::snapshot(now_ms);
     snapshot.traffic = crate::traffic::snapshot();
@@ -185,6 +187,9 @@ impl Loop {
             if session_changed || weekly::rolled_over() {
                 weekly::refresh(&app, active_id);
             }
+            if session_changed {
+                desk_sync::refresh(&app, active_id);
+            }
             // After the refresh, so the card judges the current week even when
             // the session starts just after Monday 00:00.
             if session_started {
@@ -194,13 +199,14 @@ impl Loop {
     }
 
     /// A due belt service, the last-week card (shown on a new week's first
-    /// walk), the sit-too-long card, the walk-away cards and the update card all show on the
+    /// walk), the sit-too-long card, the eye-break cards, the walk-away cards and the update card all show on the
     /// HUD, so the HUD window must exist. It is never destroyed when they go away: an empty HUD is
     /// invisible and click-through.
     fn ensure_hud_for_cards(&self, snapshot: &AppSnapshot) {
         let card = snapshot.maintenance.due
             || snapshot.weekly.show_card
             || snapshot.seated.show_card
+            || snapshot.eye_break.phase != eyebreak::EyeBreakPhase::Idle
             || snapshot.walkaway.card != walkaway::WalkAwayCard::None
             || snapshot.update.hud_card;
         if card && self.app.get_webview_window("hud").is_none() {

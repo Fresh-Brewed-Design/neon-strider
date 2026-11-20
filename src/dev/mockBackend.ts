@@ -4,7 +4,7 @@
 import { emit } from "@tauri-apps/api/event";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import type { ActiveProgram, AppSnapshot, Command, ConnectionSnapshot } from "../ipc";
-import type { MaintenanceSnapshot, Program, StravaSnapshot, WeeklySummary } from "../ipc";
+import type { DeskSync, MaintenanceSnapshot, Program, StravaSnapshot, WeeklySummary } from "../ipc";
 import type { RustConfig } from "../services/controlOrchestrator";
 
 // Same defaults as src-tauri/src/strava_template.rs.
@@ -12,6 +12,23 @@ const DEFAULT_TITLE = "NEON STRIDER // {distance_km} KM UPLINK";
 const DEFAULT_ROLLUP_TITLE = "NEON STRIDER // DAILY UPLINK · {walks} WALKS · {distance_km} KM";
 const DEFAULT_DESCRIPTION =
   "DECK_CYCLES {duration} · DISPLACEMENT {distance_km} km · ALTITUDE_BIAS {avg_incline}% · METABOLIC_BURN {calories} kcal\nLogged by Neon Strider";
+
+/**
+ * DESK_SYNC over the last 14 weekdays (weekends off the PC), ending today,
+ * which is walked; one day in the middle had no walk.
+ */
+function mockDeskSync(): DeskSync {
+  const days: DeskSync["days"] = [];
+  const d = new Date();
+  while (days.length < 14) {
+    if (d.getDay() !== 0 && d.getDay() !== 6) {
+      const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      days.unshift({ date, walked: ![3, 8].includes(days.length) });
+    }
+    d.setDate(d.getDate() - 1);
+  }
+  return { walked: days.filter((x) => x.walked).length, desk_days: days.length, window: 14, days, today_open: false };
+}
 
 /** A rough stand-in for the Rust renderer: the real one is tested in Rust. */
 function previewTemplate(template: string, fallback: string): string {
@@ -147,6 +164,7 @@ export const snapshot: AppSnapshot = {
     distance_change: { pct: 12, is_new: false },
     show_card: false,
   },
+  desk_sync: mockDeskSync(),
   seated: {
     enabled: true,
     minutes: 30,
@@ -155,6 +173,16 @@ export const snapshot: AppSnapshot = {
     show_card: false,
     seated_minutes: 60,
     pending_program_id: null,
+  },
+  eye_break: {
+    enabled: false,
+    minutes: 20,
+    seconds: 90,
+    sound: true,
+    phase: "idle",
+    remaining_s: 0,
+    blink_seq: 0,
+    end_seq: 0,
   },
   calls: { enabled: true, quiet_kmh: 2, mic_in_use: false, quiet_active: false },
   odometer: { distance_km: 412.6, belt_hours: 138.2, since_ms: Date.UTC(2026, 2, 12) },
@@ -351,6 +379,19 @@ function tickCountdowns(): boolean {
   return changed;
 }
 
+// ?desksync=open: today is a desk day not walked yet (left out of the count).
+// ?desksync=new: nothing recorded yet. ?desksync=few: only three desk days so far.
+const deskSyncFlag = params.get("desksync");
+if (deskSyncFlag === "open") {
+  const days = snapshot.desk_sync.days.slice(0, -1);
+  Object.assign(snapshot.desk_sync, { days, walked: days.filter((x) => x.walked).length, desk_days: days.length, today_open: true });
+} else if (deskSyncFlag === "new") {
+  Object.assign(snapshot.desk_sync, { days: [], walked: 0, desk_days: 0, today_open: false });
+} else if (deskSyncFlag === "few") {
+  const days = snapshot.desk_sync.days.slice(-3);
+  Object.assign(snapshot.desk_sync, { days, walked: days.filter((x) => x.walked).length, desk_days: days.length });
+}
+
 // ?weekly shows the last-week HUD card. Variants: ?weekly=long (123.4 km, 12h 05m,
 // +1234%), ?weekly=new (nothing the week before), ?weekly=down.
 const weeklyFlag = params.get("weekly");
@@ -366,6 +407,11 @@ const WEEKLY_SCENARIOS: Record<string, Partial<WeeklySummary>> = {
   down: { distance_change: { pct: -23, is_new: false } },
 };
 if (weeklyFlag !== null) Object.assign(snapshot.weekly, { show_card: true }, WEEKLY_SCENARIOS[weeklyFlag]);
+
+// ?eyebreak=upcoming|break shows the eye-break HUD card.
+const eyeBreakFlag = params.get("eyebreak");
+if (eyeBreakFlag === "upcoming") Object.assign(snapshot.eye_break, { enabled: true, phase: "upcoming", remaining_s: 48 });
+if (eyeBreakFlag === "break") Object.assign(snapshot.eye_break, { enabled: true, phase: "break", remaining_s: 72 });
 
 // ?seated shows the idle-nudge HUD card (STASIS_ALERT). Variants, comma-separated: off (treadmill off,
 // nothing picked yet), queued (treadmill off, second program remembered), long (long
@@ -868,6 +914,11 @@ const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) =>
     Object.assign(snapshot.deck, { status: "Running", speed_kmh: snapshot.deck.target_speed_kmh });
   },
   seated_snooze: () => Object.assign(snapshot.seated, { show_card: false, pending_program_id: null }),
+  eye_break_set_config: (c) => {
+    Object.assign(snapshot.eye_break, { enabled: c.enabled, minutes: c.minutes, seconds: c.seconds, sound: c.sound });
+    if (!c.enabled) Object.assign(snapshot.eye_break, { phase: "idle", remaining_s: 0 });
+  },
+  eye_break_skip: () => Object.assign(snapshot.eye_break, { phase: "idle", remaining_s: 0 }),
   calls_set_config: (c) => Object.assign(snapshot.calls, { enabled: c.enabled, quiet_kmh: c.quiet_kmh }),
   walkaway_set_config: (c) => {
     if (c.idle_minutes < 2 || c.idle_minutes > 30) throw "Idle time must be between 2 and 30 minutes";
