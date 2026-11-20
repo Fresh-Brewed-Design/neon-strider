@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.8.1 (2026-11-20)
+
+### Changed
+
+- The HUD nudge now says how long the belt has been idle (for example 32 MIN IDLE) instead of assuming you are seated, and its setting is called Idle nudge.
+
+### Fixed
+
+- INSTALL on the HUD's update card now reliably opens the dashboard on System -> Updates, instead of the window sometimes vanishing again before you could see it.
+
 ## 1.8.0 (2026-11-17)
 
 ### New

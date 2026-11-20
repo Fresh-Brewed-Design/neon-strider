@@ -17,10 +17,11 @@ const withStatus = (status: UpdateSnapshot["status"], dismissed = false): Update
 const available = { state: "available", version: "1.3.0", notes: "## v1.3.0", published: null } as const;
 
 describe("update helpers", () => {
-  it("badges an offer unless it was put off", () => {
-    expect(showUpdateBadge(withStatus(available))).toBe(true);
-    expect(showUpdateBadge(withStatus(available, true))).toBe(false);
-    expect(showUpdateBadge(withStatus({ state: "up_to_date" }))).toBe(false);
+  it("shows the dot exactly when Rust says so", () => {
+    // Rust decides (update::show_update_dot); the dashboard only reads it.
+    expect(showUpdateBadge({ ...withStatus(available), dot: true })).toBe(true);
+    expect(showUpdateBadge({ ...withStatus(available, true), dot: false })).toBe(false);
+    expect(showUpdateBadge({ ...withStatus({ state: "up_to_date" }), dot: false })).toBe(false);
     expect(showUpdateBadge(undefined)).toBe(false);
   });
 

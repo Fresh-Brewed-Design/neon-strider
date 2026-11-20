@@ -130,6 +130,9 @@ pub struct UpdateSnapshot {
     pub offer: Option<UpdateOffer>,
     /// The offered version was put off with "Not now" (until the next daily check).
     pub dismissed: bool,
+    /// The pink "update waiting" dot on the System nav, the Updates tab and the
+    /// tray icon (`show_update_dot`).
+    pub dot: bool,
     /// Show the HUD's UPDATE READY card (once per version).
     pub hud_card: bool,
     /// Set when only the newest version's notes could be shown, and why.
@@ -382,6 +385,13 @@ pub struct Dismissal {
 /// (the next daily check offers it again).
 pub fn dismissal_active(d: Option<&Dismissal>, version: &str, now_ms: u64) -> bool {
     d.is_some_and(|d| d.version == version && now_ms < d.at_ms + DAY_MS)
+}
+
+/// The "update waiting" dot (System nav, System -> Updates tab, tray icon): an
+/// update is on offer and wasn't put off with "Not now". It clears when the
+/// offer is put off, starts downloading or installing, or goes away.
+pub fn show_update_dot(status: &UpdateStatus, dismissed: bool) -> bool {
+    matches!(status, UpdateStatus::Available { .. }) && !dismissed
 }
 
 /// The notes saved just before installing, for "What's new" after the restart.
@@ -1002,6 +1012,7 @@ pub fn snapshot(now_ms: u64) -> UpdateSnapshot {
             status: rt.status.clone(),
             offer: rt.offer.clone(),
             dismissed,
+            dot: show_update_dot(&rt.status, dismissed),
             hud_card,
             notes_warning: rt.notes_warning.clone(),
             show_notes_at_ms: rt.show_notes_at_ms,
@@ -1282,6 +1293,31 @@ mod tests {
         // A newer version is offered again at once.
         assert!(!dismissal_active(Some(&d), "1.3.1", 6_000));
         assert!(!dismissal_active(None, "1.3.0", 6_000));
+    }
+
+    #[test]
+    fn the_update_dot_shows_only_for_an_offer_not_put_off() {
+        let available = UpdateStatus::Available {
+            version: "1.3.0".into(),
+            notes: String::new(),
+            published: None,
+        };
+        assert!(show_update_dot(&available, false));
+        // "Not now" clears it everywhere at once.
+        assert!(!show_update_dot(&available, true));
+        // So does installing it, and any other state.
+        for status in [
+            UpdateStatus::Idle,
+            UpdateStatus::Checking,
+            UpdateStatus::Downloading { percent: Some(40) },
+            UpdateStatus::Installing,
+            UpdateStatus::UpToDate,
+            UpdateStatus::Failed {
+                message: "offline".into(),
+            },
+        ] {
+            assert!(!show_update_dot(&status, false), "{status:?}");
+        }
     }
 
     #[test]
