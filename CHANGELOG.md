@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.41.4 (2026-11-20)
+
+### Changed
+
+- Speed toasts on the HUD no longer fire when a steady treadmill wobbles by 0.1 km/h; at some speeds they used to, at others not.
+- Treadmill settings saved outside the ranges in System, Treadmill (speeds, top incline level, incline per level and offset) now load at the nearest end of the range, so the belt is never asked for more than 25 km/h.
+
 ## 1.41.3 (2026-11-20)
 
 ### Changed
