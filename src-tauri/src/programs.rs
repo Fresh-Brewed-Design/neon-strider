@@ -583,11 +583,12 @@ const INTERVAL_BRISK_INCLINE_PCT: f32 = 5.0;
 /// Easy: about 2.7 METs, flat, a slow walk to recover.
 const INTERVAL_EASY_KMH: f32 = 3.5;
 
-pub const NOTE_VO2_MAX: &str = "Four hard 4-minute climbs with easy walks between train VO2 max.";
-pub const NOTE_POST_MEAL: &str = "A walk soon after eating blunts the rise in blood sugar.";
+pub const NOTE_VO2_MAX: &str =
+    "Four hard climbs of four minutes, split by easy walks, train VO2 max.";
+pub const NOTE_POST_MEAL: &str = "Walking soon after a meal blunts the rise in blood sugar.";
 pub const NOTE_DESK_BREAKS: &str = "Short easy walks on a timer break up long hours at the desk.";
-pub const NOTE_FOCUS: &str = "Slow and flat, so typing and thinking stay steady.";
-pub const NOTE_BRISK: &str = "Moderate walking toward the weekly 150 minutes.";
+pub const NOTE_FOCUS: &str = "A slow, flat walk keeps typing and thinking steady.";
+pub const NOTE_BRISK: &str = "Thirty brisk minutes count toward a weekly 150 of moderate activity.";
 pub const NOTE_INTERVAL_WALK: &str =
     "Five rounds alternate three brisk minutes with three easy ones.";
 
@@ -2227,6 +2228,21 @@ mod tests {
             let note = p.note.as_deref().unwrap();
             assert!(note.len() <= 70 && note.ends_with('.'), "{}", note);
             assert_eq!(note.matches(". ").count(), 0, "{}", note);
+            // The writing rules: no dashes or semicolons, no deictic words.
+            assert!(
+                !note.contains(['\u{2014}', '\u{2013}', ';', '-']),
+                "{}",
+                note
+            );
+            for word in ["this", "that", "it", "here", "below"] {
+                assert!(
+                    !note
+                        .split([' ', ',', '.'])
+                        .any(|w| w.eq_ignore_ascii_case(word)),
+                    "{}",
+                    note
+                );
+            }
         }
         validate_program(&base(), 0.6, 12.0).unwrap();
 

@@ -35,8 +35,8 @@ Some caveats apply to all of it:
   vigorous and well above what was tested. It is also the deck's top incline level, under a
   desk, straight after a meal. At 5 % it is about 4.6 METs, which is moderate.
 
-**Verdict:** keep the time and speed, lower the incline to 5 %. **In the app:** "A walk soon
-after eating blunts the rise in blood sugar."
+**Verdict:** keep the time and speed, lower the incline to 5 %. **In the app:** "Walking soon
+after a meal blunts the rise in blood sugar."
 
 ## Desk breaks
 
@@ -93,8 +93,8 @@ at 3.2 km/h, flat, every 20 min). **Now:** one program, Desk breaks, at Workday'
   at a desk roughly doubles energy use compared with sitting (Levine and Miller 2007).
 
 **Verdict:** change to 2.0 km/h and 0 %. The evidence for the exact speed is thin; slower and flat
-is the safer choice for typing. **In the app:** "Slow and flat, so typing and thinking stay
-steady."
+is the safer choice for typing. **In the app:** "A slow, flat walk keeps typing and
+thinking steady."
 
 ## Brisk (new)
 
@@ -111,7 +111,7 @@ steady."
 - This is not a desk-work pace: by the treadmill-desk studies above, typing will suffer, so it
   suits calls, reading or a break.
 
-**In the app:** "Moderate walking toward the weekly 150 minutes."
+**In the app:** "Thirty brisk minutes count toward a weekly 150 of moderate activity."
 
 ## VO2 max (new)
 
@@ -149,7 +149,7 @@ intensity the 4x4 studies prescribe.
 - Existing installs get the zones only on a VO2 max that was never edited; an edited one keeps
   what you set.
 
-**In the app:** "Four hard 4-minute climbs with easy walks between train VO2 max."
+**In the app:** "Four hard climbs of four minutes, split by easy walks, train VO2 max."
 
 ## Interval walk (new)
 

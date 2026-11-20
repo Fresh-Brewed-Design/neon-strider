@@ -419,6 +419,8 @@ fn vo2_max_zones_v7(raw: &str) -> Option<String> {
 /// - Interval walk (#161) is added after the user's programs, unless the
 ///   list is empty (they deleted every program), unreadable, or one has that
 ///   name already.
+/// - Notes (#180): an untouched Post-meal, Focus, Brisk or VO2 max gets its
+///   note rewritten to the writing rules; an edited one keeps its text.
 ///
 /// "Untouched" is the name, the plan and the note exactly as migration 3 or
 /// `seed_programs` wrote them: a save that changes the plan drops the note,
@@ -510,6 +512,58 @@ const MICRO_BREAK_V3: SeedV3 = SeedV3 {
     repeat: Some(20.0),
     note: "Two easy minutes every 20 lower blood sugar after meals.",
 };
+const POST_MEAL_V3: SeedV3 = SeedV3 {
+    name: "Post-meal",
+    step: (Some(10.0), 4.0, 5.0),
+    repeat: None,
+    note: "A walk soon after eating blunts the rise in blood sugar.",
+};
+const FOCUS_V3: SeedV3 = SeedV3 {
+    name: "Focus",
+    step: (None, 2.0, 0.0),
+    repeat: None,
+    note: "Slow and flat, so typing and thinking stay steady.",
+};
+const BRISK_V3: SeedV3 = SeedV3 {
+    name: "Brisk",
+    step: (Some(30.0), 5.0, 0.0),
+    repeat: None,
+    note: "Moderate walking toward the weekly 150 minutes.",
+};
+
+/// Migration 4's VO2 max as shipped: its name, steps and note, with the
+/// climbs' 85 to 95 % zones from migration 7 or `seed_programs`, or no zones
+/// at all.
+fn vo2_max_untouched_v8(p: &serde_json::Value) -> bool {
+    use serde_json::Value;
+    let mut seeded = vec![(5.0, 4.5, 0.0)];
+    for _ in 0..4 {
+        seeded.push((4.0, 6.0, 10.0));
+        seeded.push((3.0, 4.0, 0.0));
+    }
+    seeded.push((3.0, 3.0, 0.0));
+    let Some(steps) = p["steps"].as_array() else {
+        return false;
+    };
+    let zone_ok = |s: &Value, climb: bool| {
+        let z = &s["zone"];
+        z.is_null()
+            || (climb
+                && z["low_pct"].as_f64() == Some(85.0)
+                && z["high_pct"].as_f64() == Some(95.0))
+    };
+    p["name"] == "VO2 max"
+        && p["repeat_every_minutes"].is_null()
+        && p["note"] == "Four hard 4-minute climbs with easy walks between train VO2 max."
+        && steps.len() == seeded.len()
+        && steps.iter().zip(&seeded).all(|(s, &(min, kmh, pct))| {
+            s["duration_minutes"].as_f64() == Some(min)
+                && s["speed_kmh"].as_f64() == Some(kmh)
+                && s["incline_pct"].as_f64() == Some(pct)
+                && zone_ok(s, pct > 0.0)
+        })
+}
+
 const DESK_BREAKS_V8: &str = "Desk breaks";
 const DESK_BREAKS_NOTE_V8: &str = "Short easy walks on a timer break up long hours at the desk.";
 
@@ -562,6 +616,32 @@ fn seeded_programs_v8(
             }
             changed = true;
         }
+    }
+
+    // Notes (#180): each untouched seed's note in the writing rules' words.
+    // An edited program has no note or another name, so it is skipped.
+    for (seed, note) in [
+        (
+            POST_MEAL_V3,
+            "Walking soon after a meal blunts the rise in blood sugar.",
+        ),
+        (
+            FOCUS_V3,
+            "A slow, flat walk keeps typing and thinking steady.",
+        ),
+        (
+            BRISK_V3,
+            "Thirty brisk minutes count toward a weekly 150 of moderate activity.",
+        ),
+    ] {
+        for p in list.iter_mut().filter(|p| seed.matches(p)) {
+            p["note"] = json!(note);
+            changed = true;
+        }
+    }
+    for p in list.iter_mut().filter(|p| vo2_max_untouched_v8(p)) {
+        p["note"] = json!("Four hard climbs of four minutes, split by easy walks, train VO2 max.");
+        changed = true;
     }
 
     // Interval walk (#161): added after the user's programs, unless the list
@@ -2263,10 +2343,11 @@ mod db_tests {
         conn
     }
 
-    /// The stored programs but the Interval walk migration 8 adds.
-    fn without_interval_walk(conn: &Connection) -> Vec<crate::programs::Program> {
-        let mut list = stored_programs(conn);
-        list.retain(|p| p.name != "Interval walk");
+    /// `list` without the programs migration 8 adds or gives a new note, so
+    /// what is left is what Desk breaks may change.
+    fn break_programs(mut list: Vec<crate::programs::Program>) -> Vec<crate::programs::Program> {
+        let other = ["Interval walk", "Post-meal", "Focus", "Brisk", "VO2 max"];
+        list.retain(|p| !other.contains(&p.name.as_str()));
         list
     }
 
@@ -2325,7 +2406,7 @@ mod db_tests {
             .name = "Tiny walks".to_string();
         set(&conn, "programs", &serde_json::to_string(&list).unwrap());
         rerun_from_7(&mut conn);
-        assert_eq!(without_interval_walk(&conn), list);
+        assert_eq!(break_programs(stored_programs(&conn)), break_programs(list));
 
         // A program already called Desk breaks leaves both seeds alone.
         let mut conn = seeds_at_v7();
@@ -2333,7 +2414,7 @@ mod db_tests {
         list[0].name = "Desk breaks".to_string();
         set(&conn, "programs", &serde_json::to_string(&list).unwrap());
         rerun_from_7(&mut conn);
-        assert_eq!(without_interval_walk(&conn), list);
+        assert_eq!(break_programs(stored_programs(&conn)), break_programs(list));
     }
 
     #[test]
@@ -2418,6 +2499,50 @@ mod db_tests {
             migrate(&mut conn).unwrap();
             assert_eq!(get_setting_str(&conn, "programs").as_deref(), Some(raw));
         }
+    }
+
+    #[test]
+    fn migration_8_rewrites_the_notes_of_untouched_seeds_only() {
+        use crate::programs::{NOTE_BRISK, NOTE_FOCUS, NOTE_POST_MEAL, NOTE_VO2_MAX};
+        let note = |list: &[crate::programs::Program], name: &str| {
+            list.iter()
+                .find(|p| p.name == name)
+                .and_then(|p| p.note.clone())
+        };
+        let mut conn = seeds_at_v7();
+        rerun_from_7(&mut conn);
+        let list = stored_programs(&conn);
+        for (name, want) in [
+            ("Post-meal", NOTE_POST_MEAL),
+            ("Focus", NOTE_FOCUS),
+            ("Brisk", NOTE_BRISK),
+            ("VO2 max", NOTE_VO2_MAX),
+        ] {
+            assert_eq!(note(&list, name).as_deref(), Some(want), "{}", name);
+        }
+
+        // Post-meal renamed keeps its old note, Focus at a new pace has none,
+        // and a VO2 max that never got its zones still counts as untouched.
+        let mut conn = seeds_at_v7();
+        let mut list = stored_programs(&conn);
+        let old_post_meal = note(&list, "Post-meal");
+        list.iter_mut()
+            .find(|p| p.name == "Post-meal")
+            .unwrap()
+            .name = "Lunch walk".to_string();
+        let focus = list.iter_mut().find(|p| p.name == "Focus").unwrap();
+        focus.steps[0].speed_kmh = 2.4;
+        focus.note = None;
+        for s in &mut list.iter_mut().find(|p| p.name == "VO2 max").unwrap().steps {
+            s.zone = None;
+        }
+        set(&conn, "programs", &serde_json::to_string(&list).unwrap());
+        rerun_from_7(&mut conn);
+        let after = stored_programs(&conn);
+        assert_eq!(note(&after, "Lunch walk"), old_post_meal);
+        assert_eq!(note(&after, "Focus"), None);
+        assert_eq!(note(&after, "VO2 max").as_deref(), Some(NOTE_VO2_MAX));
+        assert_eq!(note(&after, "Brisk").as_deref(), Some(NOTE_BRISK));
     }
 
     #[test]
