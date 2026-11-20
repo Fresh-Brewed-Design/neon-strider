@@ -30,8 +30,9 @@ class BeltLink extends BluetoothLowEnergy.BleDelegate {
     private var _device as BluetoothLowEnergy.Device or Null = null;
     // When pairDevice was called (System.getTimer), or null when not waiting.
     private var _linkSince as Number or Null = null;
-    // The last LINK gave up: show NOCONN while scanning again.
-    private var _gaveUp as Boolean = false;
+    // Scan results seen since the field started, shown as SCAN n so a test
+    // tells "the watch hears nothing" apart from "it hears devices, not the PC".
+    private var _seen as Number = 0;
 
     function initialize() {
         BleDelegate.initialize();
@@ -56,20 +57,22 @@ class BeltLink extends BluetoothLowEnergy.BleDelegate {
 
     function scan() as Void {
         _linkSince = null;
-        self.status = _gaveUp ? "NOCONN" : "SCAN";
+        self.status = "SCAN " + _seen;
         BluetoothLowEnergy.setScanState(BluetoothLowEnergy.SCAN_STATE_SCANNING);
     }
 
-    // Called once a second from the field's compute(): gives up on a LINK
-    // that has waited LINK_TIMEOUT_MS.
+    // Called once a second from the field's compute(): a LINK that has
+    // waited LINK_TIMEOUT_MS stops as BLOCKED. It does not unpair and retry:
+    // on a watch that also has the PC as its foot pod, unpairing dropped the
+    // shared link and knocked the foot pod off every 20 s (hardware test,
+    // 2026-11-20).
     function check() as Void {
         var since = _linkSince;
         if (since == null || System.getTimer() - since < LINK_TIMEOUT_MS) {
             return;
         }
-        _gaveUp = true;
-        forget();
-        scan();
+        _linkSince = null;
+        self.status = "BLOCKED";
     }
 
     // Drop the pairing, so the BLE subsystem stops searching for the device.
@@ -87,6 +90,10 @@ class BeltLink extends BluetoothLowEnergy.BleDelegate {
         for (var result = scanResults.next(); result != null; result = scanResults.next()) {
             if (!(result instanceof BluetoothLowEnergy.ScanResult)) {
                 continue;
+            }
+            _seen += 1;
+            if (_linkSince == null && self.status.find("SCAN") == 0) {
+                self.status = "SCAN " + _seen;
             }
             var match = matchOf(result);
             if (match == 'W') {
@@ -140,7 +147,6 @@ class BeltLink extends BluetoothLowEnergy.BleDelegate {
             scan();
             return;
         }
-        _gaveUp = false;
         _device = device;
         var service = device.getService(SERVICE_UUID);
         var state_char = service != null ? service.getCharacteristic(STATE_UUID) : null;
