@@ -2567,7 +2567,7 @@ mod db_tests {
             rerun_from_7(&mut conn);
             let run: crate::programs::SavedRun = serde_json::from_str(&raw).unwrap();
             let mut state = crate::engine::OrchestratorState::default();
-            state.programs = stored_programs(&conn);
+            state.programs.extend(stored_programs(&conn));
             let t0 = std::time::Instant::now();
             state.restore_run(&run, now_ms, t0).unwrap();
             let active = state.active_program().unwrap();
