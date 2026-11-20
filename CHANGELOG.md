@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.0 (2026-11-20)
+
+### New
+
+- New *VO2 max* example program: a Norwegian 4x4 for the deck (warm-up, four 4-minute climbs at 6.0 km/h and 10 % with 3 easy minutes between, cool-down). It is added to your programs, and docs/research.md has the sources.
+
 ## 1.9.1 (2026-11-20)
 
 ### Fixed
