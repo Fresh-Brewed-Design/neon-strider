@@ -23,47 +23,81 @@ use std::time::{Duration, Instant};
 
 /// How long the deck may sit paused before the session is saved (and the user
 /// told so). The session stays open: a resume continues it.
+/// Five minutes: past a short break, so an ordinary pause doesn't save half a
+/// session, and soon enough that a walk left paused is saved while the PC is on.
 const PAUSE_SAVE_AFTER: Duration = Duration::from_secs(300);
 
 /// Below this a speed means "belt still" (km/h, physical or hardware).
+/// Half the deck's 0.1 km/h step: float noise at zero never reads as moving, and
+/// the slowest real step always does.
 pub(crate) const STILL_KMH: f32 = 0.05;
 /// A stopped deck is only auto-started for a target above this.
+/// The deck's smallest speed step.
 const AUTO_START_MIN_KMH: f32 = 0.1;
 /// Manual input wins over a running program for this long.
+/// Each press restarts it, so a run of presses ends before a program takes its
+/// speed back; 5 s is a few presses' worth without the program feeling ignored.
 pub(crate) const MANUAL_LOCKOUT: Duration = Duration::from_secs(5);
 /// Least time between the last write and the next command packet.
+/// Several BLE connection intervals (7.5 to 50 ms) between two writes, and a
+/// quarter of the 600 ms poll, so a press still feels immediate.
 const COMMAND_GAP: Duration = Duration::from_millis(150);
 /// Least time between the deck's Ready (or first Pause) and the Start (or
 /// second Pause) of the handshake.
+/// The same 150 ms as any two writes (`COMMAND_GAP`).
 const HANDSHAKE_PRIME_GAP: Duration = Duration::from_millis(150);
+/// Between the handshake's two packets: under one 600 ms poll, and long enough
+/// for the deck to have handled the first before the second arrives.
 const HANDSHAKE_ACT_GAP: Duration = Duration::from_millis(400);
-/// How often the deck is asked for a status frame.
 /// A nack or echo this soon after a target packet is the deck's answer to it.
+/// Three polls of 600 ms: the deck answers a target packet in the next frame or
+/// two, and a later nack belongs to something else.
 const TARGET_REPLY_WINDOW: Duration = Duration::from_secs(2);
 /// How long the note on an adjusted or refused target stays up.
+/// Long enough to read a one-line note after glancing up from the keyboard.
 const TARGET_NOTE_SHOWN: Duration = Duration::from_secs(8);
+/// How often the deck is asked for a status frame.
+/// The deck answers a poll within a frame or two; 600 ms gives about two speed
+/// readings a second for the HUD and physics while leaving the link room for commands.
 const POLL_EVERY: Duration = Duration::from_millis(600);
 /// While a stop is in flight it is repeated this often...
+/// Under two polls, so a stop the deck missed goes out again before the walker notices.
 const STOP_REISSUE_INTERVAL: Duration = Duration::from_secs(1);
 /// ...for at most this long, if the deck never reports the belt at rest.
+/// The deck winds down from top speed in a few seconds (status 4, docs/protocol.md);
+/// 20 s is well past that, so only a deck that ignores stops runs it out.
 const STOP_TIMEOUT: Duration = Duration::from_secs(20);
 /// Incline levels above this are never sent, whatever the settings say.
+/// The top of the Highest incline level setting (0 to 20, TreadmillSection), so a
+/// corrupted setting can never send a level no FitShow deck has.
 pub(crate) const INCLINE_LEVEL_LIMIT: u8 = 20;
 /// A sample is recorded at most this often...
+/// One sample a second, the usual trackpoint rate of a recorded activity.
 const SAMPLE_EVERY: Duration = Duration::from_secs(1);
 /// ...and the session row rewritten at most this often, so a crash loses little.
+/// A crash loses at most 5 s of totals, at one small write every 5 s.
 const SESSION_FLUSH_EVERY: Duration = Duration::from_secs(5);
 /// A deck timer at or under this on connect is an idle deck, not a workout.
+/// The deck's 3, 2, 1 countdown (docs/protocol.md) can leave up to 3 s on its timer
+/// with no workout behind it.
 const RESUME_MARGIN_S: u16 = 3;
 /// A link lost within this long of the last telemetry, with the belt moving,
 /// is a dropout: the intents and session are kept for the reconnect.
+/// Two of the watchdog's 15 s retries (`link::RETRY_EVERY`): a BLE dropout with
+/// the walker still on the belt reconnects inside that.
 const DROPOUT_GRACE: Duration = Duration::from_secs(30);
 /// Physics steps longer than this are a stall (sleep, lost link), not walking.
+/// Eight missed polls of 600 ms: longer is no longer a late frame. GHOST_POD's
+/// `PodMeter::advance` uses the same 5 s.
 const MAX_PHYSICS_STEP_S: f64 = 5.0;
 /// Stride used when there is no calibration, cm.
+/// The common 0.415 times height estimate for a walking stride, at an adult
+/// height of about 178 cm; calibration replaces it.
 const DEFAULT_STRIDE_CM: f32 = 74.0;
 /// Slack on top of the deck's timer when matching a session to the deck's
 /// current workout: the deck holds its clock while paused.
+/// Two hours covers a long lunch pause; longer and the deck's own pause timeout
+/// has ended the workout anyway.
 const RESUME_SLACK_MS: i64 = 2 * 60 * 60 * 1000;
 
 /// `now` minus `ago`, or `now` itself if the clock doesn't reach back that far.
@@ -122,6 +156,29 @@ impl fmt::Display for DeckAction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }
+}
+
+/// The deck speed byte a running belt keeps after the calibration curve
+/// changed under it (a settings sync, a point saved or deleted). Intents are
+/// calibrated km/h, so the new curve would turn the same target into another
+/// byte and move the deck by itself. The byte holds until the target it was
+/// worked out for changes: a speed set by hand, a program step, or any other
+/// change the engine already makes (`CurveHoldKey`), or the belt leaves
+/// Running. The new curve applies from that change on.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct CurveHold {
+    key: CurveHoldKey,
+    byte: u8,
+}
+
+/// What the held byte was worked out for: the target before the floor (the
+/// floor itself moves with the curve), the hand-speed count (a press to the
+/// same km/h is still a press) and the program step.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct CurveHoldKey {
+    speed_bits: u32,
+    hand_epoch: u64,
+    step: Option<(usize, u32)>,
 }
 
 /// Which intent [`OrchestratorState::resolve_base`] picked.
@@ -324,6 +381,9 @@ pub struct OrchestratorState {
     /// A press stepped from the deck's own setting: send the next target even
     /// when its bytes match the last ones sent, since the deck runs others.
     pub resend_target: bool,
+    /// The deck byte kept on a running belt after a calibration change
+    /// (`CurveHold`).
+    pub(crate) curve_hold: Option<CurveHold>,
 
     /// Tests only: the simulated instant `now()` reads instead of the real
     /// clock, so ticked time and the engine's own clock reads agree.
@@ -399,6 +459,7 @@ impl Default for OrchestratorState {
             deck_set_speed: None,
             deck_set_incline: None,
             resend_target: false,
+            curve_hold: None,
             #[cfg(test)]
             test_now: None,
         }
@@ -580,7 +641,11 @@ impl OrchestratorState {
     /// incline byte being sent: the deck stays where it is and only its
     /// percentage is recomputed (`incline_pct`). A program step's level is
     /// worked out from its percentage when the step starts.
+    ///
+    /// New calibration points never move a running belt by themselves: the
+    /// deck keeps its byte until the next speed change or step (`CurveHold`).
     pub fn sync_config(&mut self, config: &persistence::AppConfig) {
+        self.hold_deck_speed_for(&config.calibration_points);
         self.calibration_points = config.calibration_points.clone();
         self.min_speed = config.min_speed;
         self.max_speed = config.max_speed;
@@ -601,9 +666,68 @@ impl OrchestratorState {
     /// Use `points` for every speed and distance from here on, as a settings
     /// sync does for the points it carries. The caller saves them.
     pub fn set_calibration_points(&mut self, points: Vec<CalibrationPoint>) {
+        self.hold_deck_speed_for(&points);
         self.calibration_points = points;
         self.sorted_points = sorted_by_hw_speed(&self.calibration_points);
         self.rebuild_lookup_table();
+    }
+
+    /// Before `points` replace the current ones: a running belt keeps the byte
+    /// the current curve sends for its target. A hold already in place for the
+    /// same target stays, so a second change in a row keeps the first byte.
+    fn hold_deck_speed_for(&mut self, points: &[CalibrationPoint]) {
+        if points == self.calibration_points.as_slice() {
+            return;
+        }
+        if !self.may_drive() || self.last_status != MachineStatus::Running {
+            self.curve_hold = None;
+            return;
+        }
+        let key = self.curve_hold_key();
+        if self.curve_hold.is_some_and(|h| h.key == key) {
+            return;
+        }
+        let (speed, _, source) = self.resolve_target();
+        if source == TargetSource::Unset || speed < STILL_KMH {
+            self.curve_hold = None;
+            return;
+        }
+        let byte = self.speed_byte(speed);
+        self.curve_hold = Some(CurveHold { key, byte });
+        log::info!(
+            "Calibration changed on a running belt: deck kept at byte {byte} until the next speed change"
+        );
+    }
+
+    fn curve_hold_key(&self) -> CurveHoldKey {
+        CurveHoldKey {
+            speed_bits: self.resolve_eased().0.to_bits(),
+            hand_epoch: self.speed_hand_epoch,
+            step: self
+                .program
+                .as_ref()
+                .filter(|r| r.phase == ProgramPhase::Walking)
+                .map(|r| (r.step_index, r.cycle)),
+        }
+    }
+
+    /// The byte a running belt keeps after a calibration change, while its
+    /// target is the one the byte was kept for (`CurveHold`).
+    pub(crate) fn held_speed_byte(&self) -> Option<u8> {
+        self.curve_hold
+            .filter(|h| {
+                self.last_status == MachineStatus::Running && h.key == self.curve_hold_key()
+            })
+            .map(|h| h.byte)
+    }
+
+    /// Drop a hold whose target changed or whose belt left Running: the new
+    /// curve applies from here on.
+    fn release_stale_curve_hold(&mut self) {
+        if self.curve_hold.is_some() && self.held_speed_byte().is_none() {
+            self.curve_hold = None;
+            log::info!("Speed changed: the new calibration applies");
+        }
     }
 
     /// Every field `sync_config` sets, for tests that compare two states.
@@ -1143,7 +1267,11 @@ impl OrchestratorState {
             None => self.nudge_base(),
         };
         let hw_byte = |phys: f32| self.speed_byte(phys);
-        let cur_byte = deck_byte.unwrap_or_else(|| hw_byte(cur.speed)) as i32;
+        // A belt kept at its byte after a calibration change steps from that
+        // byte, the one it runs (`CurveHold`).
+        let cur_byte = deck_byte
+            .or_else(|| self.held_speed_byte())
+            .unwrap_or_else(|| hw_byte(cur.speed)) as i32;
         let max_byte = (self.top_hw_speed() * 10.0).round() as i32;
         // Down from a running speed stops at the slowest speed sent: the Min
         // speed setting, or the deck's floor once DECK_PROFILE knows it. A
@@ -1562,6 +1690,7 @@ impl OrchestratorState {
         self.deck_set_speed = None;
         self.deck_set_incline = None;
         self.resend_target = false;
+        self.curve_hold = None;
         // Nothing starts the belt on this connection until it is seen moving
         // or the user asks; a start half-sent before the drop is void too.
         self.hold_auto_start = true;
@@ -1754,14 +1883,7 @@ impl OrchestratorState {
     /// The speed and incline to send now: the base eased by Neural flow, held
     /// to at least the belt's floor (`min_physical_speed`) while moving.
     pub fn resolve_target(&self) -> (f32, u8, TargetSource) {
-        let (speed, incline, source) = self.resolve_base(self.now());
-        // A speed set by hand since Neural flow's last tick wins at once; quiet
-        // mode on a call takes the lower speed and is never slowed further.
-        let speed = self.neural.speed_for(
-            speed,
-            self.speed_hand_epoch,
-            crate::snapshot::calls::quiet_active(),
-        );
+        let (speed, incline, source) = self.resolve_eased();
         // The top speed is enforced in `calculate_hardware_bytes`.
         let floor = self.min_physical_speed();
         let speed = if speed > 0.0 && speed < floor {
@@ -1770,6 +1892,19 @@ impl OrchestratorState {
             speed
         };
         (speed, incline.min(INCLINE_LEVEL_LIMIT), source)
+    }
+
+    /// The base eased by Neural flow, before the belt's floor.
+    fn resolve_eased(&self) -> (f32, u8, TargetSource) {
+        let (speed, incline, source) = self.resolve_base(self.now());
+        // A speed set by hand since Neural flow's last tick wins at once; quiet
+        // mode on a call takes the lower speed and is never slowed further.
+        let speed = self.neural.speed_for(
+            speed,
+            self.speed_hand_epoch,
+            crate::snapshot::calls::quiet_active(),
+        );
+        (speed, incline, source)
     }
 
     /// The engine may drive the deck: it has reported, and no stop is in flight.
@@ -1887,6 +2022,8 @@ const PRESS_UNSENT_REPORT: Duration = Duration::from_secs(4);
 /// How long the deck reports the same speed or incline, with no target sent
 /// in that time, before a value short of the app's target counts as the
 /// deck's own setting (`DeckWatch::check`).
+/// Five polls: the deck ramps to a target over a second or two, so a value that
+/// holds for 3 s is where the deck stopped, not a step on the way.
 const DECK_SETTLED: Duration = Duration::from_secs(3);
 
 /// One tick of `ProtocolEngine::notice_deck_changes`.
@@ -2194,6 +2331,7 @@ impl ProtocolEngine {
         if !state.may_drive() {
             return None;
         }
+        state.release_stale_curve_hold();
         let (target_speed, target_incline, source) = state.resolve_target();
         let has_target = source != TargetSource::Unset;
 
@@ -2252,6 +2390,8 @@ impl ProtocolEngine {
                     &state.calibration_points,
                     state.top_hw_speed(),
                 );
+                // New calibration points never move the belt by themselves.
+                let h_speed = state.held_speed_byte().unwrap_or(h_speed);
                 // A byte DECK_PROFILE knows the deck changes or refuses goes
                 // out as the one it runs. The byte last sent is compared the
                 // same way: after the deck took another byte for it, it is
@@ -3340,6 +3480,83 @@ mod tests {
                 assert_eq!(back, byte, "byte {byte} -> {phys} km/h -> {back}");
             }
         }
+    }
+
+    /// A running belt at a hand-set 3.0 km/h on the default (uncalibrated)
+    /// curve: byte 30.
+    fn running_at_three() -> OrchestratorState {
+        let mut state = OrchestratorState::default();
+        state.sync_config(&persistence::AppConfig::default());
+        frame(&mut state, MachineStatus::Running, 3.0, 0);
+        state.manual_intent = Some(ControlIntent {
+            speed: 3.0,
+            incline: 0,
+        });
+        state
+    }
+
+    /// Issue #167: new points on a running belt keep the byte the old curve
+    /// sent, through a second change too, until a press, even to the same km/h.
+    #[test]
+    fn a_new_curve_keeps_a_running_belts_byte_until_a_press() {
+        let mut state = running_at_three();
+        state.sync_config(&skewed_calibration());
+        assert_ne!(
+            state.speed_byte(3.0),
+            30,
+            "the new curve sends another byte"
+        );
+        assert_eq!(state.held_speed_byte(), Some(30));
+        state.set_calibration_points(vec![point(4.0, 70.0, 0.5)]);
+        assert_eq!(state.held_speed_byte(), Some(30), "the first byte stays");
+        // The same settings again change nothing.
+        let points = state.calibration_points.clone();
+        state.set_calibration_points(points);
+        assert_eq!(state.held_speed_byte(), Some(30));
+
+        state.note_hand_speed(state.now());
+        assert_eq!(state.held_speed_byte(), None, "a press to the same speed");
+        state.release_stale_curve_hold();
+        assert_eq!(state.curve_hold, None);
+    }
+
+    #[test]
+    fn a_new_curve_applies_at_once_to_a_still_or_paused_belt() {
+        for status in [MachineStatus::Stopped, MachineStatus::Paused] {
+            let mut state = running_at_three();
+            state.last_status = status;
+            state.sync_config(&skewed_calibration());
+            assert_eq!(state.curve_hold, None, "{status:?}");
+        }
+        // A belt that pauses after the change drops the hold.
+        let mut state = running_at_three();
+        state.sync_config(&skewed_calibration());
+        state.last_status = MachineStatus::Paused;
+        assert_eq!(state.held_speed_byte(), None);
+    }
+
+    /// The transmit path sends the held byte, and a new target sends the new
+    /// curve's byte for it.
+    #[test]
+    fn the_held_byte_is_sent_until_the_target_changes() {
+        let mut state = running_at_three();
+        state.hold_auto_start = false;
+        let mut engine = ProtocolEngine::new();
+        engine.last_sent_speed = 30;
+        engine.last_sent_incline = 0;
+        let now = state.now() + Duration::from_secs(10);
+        state.sync_config(&skewed_calibration());
+        let sent = kinds(&mut engine, &mut state, now, 200);
+        assert!(!moves_belt(&sent), "{sent:?}");
+
+        state.manual_intent = Some(ControlIntent {
+            speed: 3.5,
+            incline: 0,
+        });
+        let sent = kinds(&mut engine, &mut state, now + Duration::from_secs(20), 200);
+        assert!(sent.contains(&PacketKind::ControlSet), "{sent:?}");
+        assert_eq!(engine.last_sent_speed, state.speed_byte(3.5));
+        assert_eq!(state.curve_hold, None);
     }
 
     /// The app restarts (an update, say) while the belt keeps going: the new

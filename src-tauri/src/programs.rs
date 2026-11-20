@@ -30,12 +30,17 @@ const RESUME_MAX_AGE_MS: i64 = 10 * 60 * 1000;
 /// waiting over lunch should still be there. Older ones are dropped.
 const RESUME_STILL_MAX_AGE_MS: i64 = 4 * 60 * 60 * 1000;
 /// Elapsed time is saved at most this often; structural changes save at once.
+/// A crash or update loses at most 5 s of a step, as for the session row.
 const ACTIVE_RUN_SAVE_EVERY: Duration = Duration::from_secs(5);
 
-const MAX_NAME_CHARS: usize = 40;
-const MAX_STEPS: usize = 20;
-/// Below this a speed means "belt held still" (same threshold the engine uses).
-const MOVING_KMH: f32 = 0.05;
+/// Fits a program button on the HUD and the idle-nudge card.
+pub(crate) const MAX_NAME_CHARS: usize = 40;
+/// A long interval program (the VO2 max one has 10 steps) with room to spare,
+/// while the editor stays one screen.
+pub(crate) const MAX_STEPS: usize = 20;
+/// Below this a speed means "belt held still": the engine's own threshold.
+const MOVING_KMH: f32 = STILL_KMH;
+/// Half a minute to finish a sentence before the belt stops for a rest.
 const REST_WARNING_S: f64 = 30.0;
 /// A step with a heart rate zone changes the speed by this much at a time:
 /// one deck step, the smallest change the belt makes.
@@ -402,6 +407,7 @@ pub(crate) fn validate_program(p: &Program, min_speed: f32, max_speed: f32) -> R
         }
         // The calibrated floor is rarely a round number; a speed typed as the
         // floor shown (to 0.01 km/h) is not below it.
+        // 0.005 is half the 0.01 km/h the floor is shown to.
         if s.speed_kmh != 0.0 && (s.speed_kmh < min_speed - 0.005 || s.speed_kmh > max_speed) {
             return Err(format!(
                 "Step {}: speed must be 0 or between {:.1} and {:.1} km/h",
@@ -730,10 +736,12 @@ impl OrchestratorState {
         });
     }
 
-    /// resolve_target lets manual intent win for 5 s after the last manual
+    /// resolve_target lets manual intent win for `MANUAL_LOCKOUT` after the last manual
     /// interaction; push that timestamp into the past so the program applies now.
     fn prioritize_program(&mut self, now: Instant) {
-        self.last_manual_interaction = now.checked_sub(Duration::from_secs(6)).unwrap_or(now);
+        self.last_manual_interaction = now
+            .checked_sub(crate::engine::MANUAL_LOCKOUT + Duration::from_secs(1))
+            .unwrap_or(now);
     }
 
     /// A paused deck only auto-resumes when the target exceeds the engine's
@@ -1291,6 +1299,7 @@ impl OrchestratorState {
             (step.speed_kmh + ZONE_TRIM_RANGE_KMH).min(self.to_physical_speed(self.top_hw_speed()));
         // A speed set by hand outside the range is the user's choice: the zone
         // leaves it alone rather than pull it back by up to a km/h at once.
+        // 0.001 km/h is float slack, far under the deck's 0.1 step.
         if run.target.speed < floor - 0.001 || run.target.speed > ceiling + 0.001 {
             return;
         }
@@ -1399,6 +1408,7 @@ impl OrchestratorState {
         let max_speed = self.to_physical_speed(self.top_hw_speed());
         // Each step at a speed the deck runs (DECK_PROFILE); 0 stays 0.
         for step in &mut program.steps {
+            // 0.005: half the 0.01 km/h the floor is shown to, as in `validate`.
             if step.speed_kmh >= min_speed - 0.005 && step.speed_kmh <= max_speed {
                 step.speed_kmh = self.snap_speed(step.speed_kmh);
             }

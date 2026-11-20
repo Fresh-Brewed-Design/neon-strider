@@ -21,7 +21,7 @@ export function ProgramsPage() {
   const remove = (p: Program) =>
     confirm({
       title: "Delete program",
-      message: `Delete "${p.name}"? This can't be undone.`,
+      message: `Delete "${p.name}"? A deleted program can't be restored.`,
       onConfirm: () => send({ type: "program_delete", id: p.id }),
     });
 
@@ -45,7 +45,7 @@ export function ProgramsPage() {
         ) : s.programs.length === 0 ? (
           <Panel className="p-6 text-center">
             <p className="font-mono text-xs text-white/55">
-              Save a routine once, then start it with one click here or from the HUD.
+              Saved programs start with one click, from the Programs page or the HUD.
             </p>
           </Panel>
         ) : (

@@ -56,14 +56,14 @@ pub(super) async fn save_for_strava(
     };
     if let Some(active) = upload::active_session_id().await {
         if ids.contains(&active) {
-            return Err("That session is still running".to_string());
+            return Err("The session is still running".to_string());
         }
     }
 
     let data = upload::load_data(&app, ids.clone()).await?;
     let activity = plan::plan_activity(&data, Naming::Walk, &settings::load_templates(&app));
     let Payload::Tcx(tcx) = activity.payload else {
-        return Err("This walk has too few telemetry samples to make a file.".to_string());
+        return Err("The walk has too few telemetry samples to make a file.".to_string());
     };
     let name = save::file_name(&local_date(activity.start_ms), &activity.name);
     let dir = save_folder(&app)?;

@@ -12,17 +12,27 @@ use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
 /// How many daily backups to keep (including today's).
+/// Two weeks: a damaged or wrongly edited history is usually noticed within days,
+/// and the database is small enough that 14 copies cost little disk.
 const KEEP_BACKUPS: usize = 14;
 
 const PREFIX: &str = "treadmill-";
 const SUFFIX: &str = ".db";
 /// How long the backup's own connection waits on a locked database.
+/// Same as the app's own connection (`persistence::BUSY_TIMEOUT`): a write holds
+/// the lock for milliseconds, so only a stuck writer runs it out.
 const BUSY_TIMEOUT: Duration = Duration::from_millis(5000);
 /// Pages copied per backup step, and the pause between steps that lets
 /// writers in.
+/// 128 pages is 512 KiB at SQLite's default 4 KiB page: each step holds the lock
+/// briefly, and the whole database still copies in a few steps.
 const PAGES_PER_STEP: std::os::raw::c_int = 128;
+/// Long enough for a waiting writer to take the lock, short enough that the
+/// backup of a small database still takes well under a second.
 const STEP_PAUSE: Duration = Duration::from_millis(10);
 /// How often the running app checks whether today's backup exists.
+/// Hourly is often enough to catch midnight on a PC left running; each check is
+/// one file lookup.
 const CHECK_EVERY: Duration = Duration::from_secs(60 * 60);
 
 /// `treadmill-YYYY-MM-DD.db`

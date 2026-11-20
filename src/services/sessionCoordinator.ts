@@ -5,8 +5,9 @@ import type { AppSnapshot } from "../ipc";
 import { subscribeAppSnapshot } from "../state/useAppState";
 import { useTreadmillStore } from "../store/treadmillStore";
 
+/** History's open walk changes slowly; once a minute keeps it current without reloading every row each tick. */
 const REFRESH_WHILE_ACTIVE_MS = 60_000;
-/** Rust writes a closed session's final totals off-thread, so wait a moment before reloading. */
+/** Rust writes a closed session's final totals off-thread, so wait a moment before reloading (Strava's worker waits 3 s). */
 const AFTER_SESSION_CHANGE_MS = 1500;
 
 let started = false;

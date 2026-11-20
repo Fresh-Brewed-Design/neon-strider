@@ -18,6 +18,7 @@ pub const TRAY_ID: &str = "main";
 /// Windows' tooltip limit: 128 UTF-16 units including the terminating null.
 const MAX_TOOLTIP_UNITS: usize = 127;
 /// The tooltip changes at most this often.
+/// The snapshot heartbeat's 2 s: the tooltip never lags a change by more.
 const TOOLTIP_EVERY_MS: u64 = 2000;
 
 const APP: &str = "Neon Strider";

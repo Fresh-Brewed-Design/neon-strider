@@ -25,7 +25,7 @@ use tauri::AppHandle;
 const KEY_ACK: &str = "weekly_summary_ack";
 
 /// A day counts as active when one of its sessions went further than this.
-const ACTIVE_SESSION_MIN_M: f64 = 50.0;
+const ACTIVE_SESSION_MIN_M: f64 = crate::strava_plan::MIN_WALK_DISTANCE_M;
 
 /// One saved session, as far as the summary cares.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -131,6 +131,7 @@ fn current_week_id<Tz: TimeZone>(now_ms: i64, tz: &Tz) -> String {
 /// First instant of a local date as epoch ms. A DST gap at midnight starts the
 /// day later, so try the next few hours.
 fn day_start_ms<Tz: TimeZone>(tz: &Tz, date: NaiveDate) -> Option<i64> {
+    // DST gaps are one hour (two at most in a few zones); four hours clears any.
     (0..=3).find_map(|hour| {
         let naive = date.and_hms_opt(hour, 0, 0)?;
         tz.from_local_datetime(&naive)

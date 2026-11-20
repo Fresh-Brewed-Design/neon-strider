@@ -852,6 +852,27 @@ mod tests {
         }
     }
 
+    /// A top speed stored past the setting's range (40 km/h, which the dashboard
+    /// can't type) loads as 25 km/h, so a speed asked for by hand runs the belt
+    /// at 25, never 40, on a deck that would take either.
+    #[test]
+    fn a_stored_top_speed_past_its_range_holds_the_belt_to_the_range() {
+        let mut r = Rig::new();
+        let stored = |key: &str| match key {
+            "maxSpeed" => Some("40".to_string()),
+            _ => None,
+        };
+        let config = crate::persistence::config_from_settings(stored);
+        assert_eq!(config.max_speed, crate::persistence::MAX_SPEED_SETTING_KMH);
+        r.state.sync_config(&config);
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(6.0);
+        r.set_speed(40.0);
+        r.run(120.0);
+        assert!(r.deck.running_at(25.0), "{} km/h", r.deck.speed_kmh());
+    }
+
     /// Fixture: Post-meal run from a still deck, walking at 4.0 km/h.
     fn post_meal_walking() -> Rig {
         let mut r = Rig::new();
@@ -3375,5 +3396,69 @@ mod tests {
         }
         assert_eq!(r.controls_since(0, Control::Start), 0);
         assert_eq!(r.controls_since(0, Control::Ready), 0);
+    }
+
+    /// One point at 4.0 hardware km/h reading 0.8 of it: 3.2 km/h runs as
+    /// byte 40, and without the point it would be byte 32.
+    fn one_point() -> crate::persistence::AppConfig {
+        crate::persistence::AppConfig {
+            calibration_points: vec![protocol::CalibrationPoint {
+                speed: 4.0,
+                stride_length_cm: 70.0,
+                distance_scale: 0.8,
+                runs: 1,
+                stride_runs: 0,
+            }],
+            ..Default::default()
+        }
+    }
+
+    /// Issue #167: a points change through the settings sync (a row deleted in
+    /// the old point panel) while the belt runs leaves the deck where it is.
+    /// The new curve applies at the next speed set by hand, and a press steps
+    /// from the byte the deck runs.
+    #[test]
+    fn a_calibration_sync_never_moves_a_running_belt() {
+        let mut r = Rig::new();
+        r.state.sync_config(&one_point());
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(6.0);
+        r.set_speed(r.state.to_physical_speed(4.0));
+        r.run(15.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+
+        let mark = r.mark();
+        r.state.set_test_now(r.t);
+        r.state
+            .sync_config(&crate::persistence::AppConfig::default());
+        r.run(20.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(target_bytes_since(&r, mark), Vec::<u8>::new());
+        assert!(!moves_belt(&r.commands_since(mark)));
+
+        // His press: one step up from the byte the deck runs.
+        r.press(DeckAction::SpeedUp);
+        r.run(3.0);
+        assert!(r.deck.running_at(4.1), "{} km/h", r.deck.speed_kmh());
+        // A speed set by hand goes through the new curve.
+        r.set_speed(3.0);
+        r.run(5.0);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+    }
+
+    /// The same for a program's belt: a new curve mid-step keeps the deck at
+    /// the step's byte until the next step.
+    #[test]
+    fn a_calibration_sync_never_moves_a_programs_belt() {
+        let mut r = post_meal_walking();
+        let mark = r.mark();
+        r.state.set_test_now(r.t);
+        r.state.sync_config(&one_point());
+        r.run(20.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(target_bytes_since(&r, mark), Vec::<u8>::new());
+        assert_eq!(r.controls_since(mark, Control::Pause), 0);
+        assert_eq!(r.controls_since(mark, Control::Stop), 0);
     }
 }

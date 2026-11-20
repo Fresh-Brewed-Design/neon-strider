@@ -5,12 +5,14 @@ import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 import { emit } from "@tauri-apps/api/event";
 import { installMockBackend } from "../dev/mockBackend";
+import { applyTextScale } from "../dev/textScale";
 
-// Scenario flags (?anchor=, ?idle, ?offline, ?noprogram, ?program=, ?seated, ?due, ?weekly) are
+// Scenario flags (?anchor=, ?idle, ?offline, ?noprogram, ?program=, ?seated, ?due, ?weekly, ?textscale) are
 // read by the mock; ?toasts, ?call and ?program=ready's toast are handled below.
 const params = new URLSearchParams(location.search);
 
 installMockBackend();
+applyTextScale();
 
 // A page background so the translucent panel reads as it would over a desktop.
 const backdrop = document.createElement("div");

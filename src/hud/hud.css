@@ -667,14 +667,15 @@ body,
   font-variant-numeric: tabular-nums;
 }
 
-/* The guided blink step, above the countdown. One line: the step names are short. */
+/* The guided blink step, above the countdown. A step name wraps at its spaces rather than
+   run into the card's border when the Windows text size is larger. */
 .hud-eyebreak-cue {
   font-family: var(--hud-font-display);
   font-size: 20px;
   font-weight: 700;
   line-height: 1.1;
   color: var(--hud-magenta);
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 /* Buttons take the width of their name and wrap onto a new row when the row is
@@ -712,9 +713,14 @@ body,
 
 .hud-seated-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 6px;
 }
+
+/* A card's buttons keep their names on one line (equal heights); when the row is full, a
+   button drops to the next row instead. */
+.hud-seated-actions .hud-btn-sm { white-space: nowrap; }
 
 /* Custom position (dragged by the logo). The strip window sits where it was
    dropped; the content is 16px in from its left edge, `top` px down (the
