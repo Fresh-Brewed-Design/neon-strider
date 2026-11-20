@@ -27,6 +27,8 @@ export type { DeckSpeedStep } from "./bindings/DeckSpeedStep";
 export type { DeskDay } from "./bindings/DeskDay";
 export type { DeskSync } from "./bindings/DeskSync";
 export type { EyeBreakSnapshot } from "./bindings/EyeBreakSnapshot";
+export type { GuidedTask } from "./bindings/GuidedTask";
+export type { GuidedTaskSnapshot } from "./bindings/GuidedTaskSnapshot";
 export type { HudAnchor } from "./bindings/HudAnchor";
 export type { HudConfig } from "./bindings/HudConfig";
 export type { HudCustom } from "./bindings/HudCustom";

@@ -11,6 +11,7 @@ import { ActionStatus } from "../../../components/ActionStatus";
 import { useAction } from "../../../components/useAction";
 import { useAppSnapshot } from "../../../state/useAppState";
 import { useTreadmillStore } from "../../../store/treadmillStore";
+import { useGuidedTask } from "../../guided/useGuidedTask";
 import { GhostButton, Hint, Label, NeonButton } from "../../ui";
 import { cx } from "../../util";
 import { INPUT_CLASS, NumberField } from "../fields";
@@ -41,6 +42,8 @@ export function GuidedCalibration() {
   const [removing, setRemoving] = useState<number | null>(null);
   const removeAction = useAction();
   const cal = snap?.calibration;
+  // The dashboard stays open and on top while a run or sweep is open (#139).
+  useGuidedTask("ground_truth", Boolean(cal?.run || cal?.sweep));
   if (!cal) return null;
 
   const run = cal.run;

@@ -94,6 +94,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     snapshot.calibration = crate::calibration::snapshot(&state);
     snapshot.ghost_pod = crate::ghost_pod::snapshot();
     snapshot.heart_rate = crate::heart_rate::snapshot();
+    snapshot.guided_task = crate::guided_task::snapshot();
     // Recomputed every tick, so the end of the grace after a stop reaches the
     // HUD with the next on-change emit (within a tick).
     snapshot.hud_view = stasis::view(&snapshot, deck_silent, Instant::now());
@@ -267,6 +268,10 @@ impl Loop {
         self.save_program_run().await;
         self.save_deck_profile().await;
         self.refresh_monitors().await;
+        // The guided-task safety timeout ends here, within a tick of its time.
+        if crate::guided_task::expire() {
+            crate::dashboard::on_guided_pin_changed(&self.app);
+        }
         let snapshot = assemble(connected, device_id).await;
         self.refresh_totals(snapshot.session.active_id);
         self.ensure_hud_for_cards(&snapshot);
