@@ -83,6 +83,8 @@ export const snapshot: AppSnapshot = {
       learned_levels: 0,
       ceiling_level: null,
       skipped_levels: [],
+      sweep: null,
+      sweep_enabled: false,
     },
   },
   session: { active_id: 1, duration_s: 1934, distance_m: 1720, steps: 2412, calories: 103, daily_distance_m: 4310 },
@@ -443,6 +445,7 @@ if (deskSyncFlag === "open") {
 // ?deckprofile: DECK_PROFILE has learned the deck's floor (0.6), ceiling (4.0)
 // and a skipped 1.5 km/h, plus its top incline level (12) and a skipped level 7, so the Live slider, the speed fields and the
 // program editor snap to it and System -> Diagnostics shows FORGET.
+// ?deckprofile=sweep shows DECK_SWEEP switched on and running.
 if (params.has("deckprofile")) {
   const steps = [];
   for (let b = 6; b <= 40; b++) if (b !== 15) steps.push({ hw_kmh: b / 10, kmh: b / 10 });
@@ -463,6 +466,8 @@ if (params.has("deckprofile")) {
       learned_levels: 6,
       ceiling_level: 12,
       skipped_levels: [7, 15],
+      sweep: params.get("deckprofile") === "sweep" ? { done: 12, total: 30, kmh: 1.8 } : null,
+      sweep_enabled: params.get("deckprofile") === "sweep",
     },
   });
 }

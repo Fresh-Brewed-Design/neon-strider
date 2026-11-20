@@ -205,6 +205,7 @@ fn tick_each_second(
     crate::link::log_frame_flow();
     state.heart_bpm = crate::heart_rate::snapshot().bpm;
     state.max_heart_rate = u32::from(crate::heart_rate::max_heart_rate());
+    state.tick_profile_sweep(now);
     state.tick_program(now)
 }
 

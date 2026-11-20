@@ -32,6 +32,7 @@ pub mod neural;
 pub mod persistence;
 pub mod placement;
 mod platform;
+pub mod profile_sweep;
 pub mod programs;
 pub mod protocol;
 pub mod secrets;
@@ -218,6 +219,7 @@ async fn start_backend(app: tauri::AppHandle) {
     if let Some(id) = &config.last_device_id {
         bluetooth::switch_deck_profile(&app, id).await;
     }
+    profile_sweep::init(&app).await;
 
     // Once per database: earlier builds saved bad session averages.
     let (app_c, tilt, offset) = (app.clone(), config.tilt_multiplier, config.incline_offset);

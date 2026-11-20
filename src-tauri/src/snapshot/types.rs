@@ -240,6 +240,10 @@ pub struct DeckProfileSnapshot {
     pub ceiling_level: Option<u8>,
     /// Incline levels asked that the deck changed or refused.
     pub skipped_levels: Vec<u8>,
+    /// DECK_SWEEP, while it runs.
+    pub sweep: Option<crate::profile_sweep::ProfileSweepView>,
+    /// The DECK_SWEEP Labs switch.
+    pub sweep_enabled: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS)]
@@ -660,6 +664,16 @@ pub enum Command {
     /// Diagnostics: forget the speeds DECK_PROFILE learned from the deck's
     /// replies. Sends nothing to the treadmill.
     DeckProfileForget,
+    /// Labs: DECK_SWEEP steps the moving belt through every speed the profile
+    /// has no reply for. A press; refused on a still belt or a program.
+    DeckProfileSweepStart,
+    /// End DECK_SWEEP. The belt keeps going.
+    DeckProfileSweepStop,
+    /// Labs: the DECK_SWEEP switch on or off (persisted, off by default). Off
+    /// also ends a sweep; the belt keeps going.
+    DeckProfileSweepSet {
+        on: bool,
+    },
     /// Lights out: a full Stop (any program ends) when the PC's
     /// display turns off.
     LightsOutSetConfig {

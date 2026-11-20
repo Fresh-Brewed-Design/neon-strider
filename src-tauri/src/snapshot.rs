@@ -158,6 +158,8 @@ fn profile_snapshot(state: &OrchestratorState) -> DeckProfileSnapshot {
         learned_levels: p.level_count() as u32,
         ceiling_level: p.incline_ceiling(),
         skipped_levels: p.skipped_levels(),
+        sweep: state.profile_sweep_view(),
+        sweep_enabled: state.profile_sweep_enabled,
     }
 }
 

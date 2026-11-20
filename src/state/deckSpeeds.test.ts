@@ -20,6 +20,8 @@ const none: DeckProfileSnapshot = {
   learned_levels: 0,
   ceiling_level: null,
   skipped_levels: [],
+  sweep: null,
+  sweep_enabled: false,
 };
 
 // Bytes 0.6..2.0 without 1.5, calibrated 10 % slower than the deck says.
