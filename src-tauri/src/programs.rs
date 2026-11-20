@@ -432,7 +432,7 @@ pub(crate) fn validate_program(p: &Program, min_speed: f32, max_speed: f32) -> R
         }
         // A cycle starts every `r` minutes and the rest is what is left after
         // the steps, so a spacing no longer than the walk would leave no rest
-        // (Desk breaks: the spacing must be longer than the break).
+        // (DUTY_CYCLE: the spacing must be longer than the break).
         if r <= total_minutes(p) {
             return Err("Repeat interval must be longer than the program".to_string());
         }
@@ -445,7 +445,7 @@ pub(crate) fn validate_program(p: &Program, min_speed: f32, max_speed: f32) -> R
 /// `persistence::migration_3_research_programs` and
 /// `persistence::migration_8_seeded_programs`, which keep their own copies.
 /// The ids match what a v1.6 install ends up with after every migration
-/// (id 4 was Micro-break, merged into Desk breaks), so a migrated install and
+/// (id 4 was Micro-break, merged into DUTY_CYCLE), so a migrated install and
 /// a new one hold the same list.
 pub fn seed_programs() -> Vec<Program> {
     let program =
@@ -472,14 +472,14 @@ pub fn seed_programs() -> Vec<Program> {
         ),
         program(
             2,
-            "Desk breaks",
+            "DUTY_CYCLE",
             step(
                 Some(DESK_BREAK_MINUTES),
                 DESK_BREAK_KMH,
                 DESK_BREAK_INCLINE_PCT,
             ),
             Some(DESK_BREAK_EVERY_MINUTES),
-            NOTE_DESK_BREAKS,
+            NOTE_DUTY_CYCLE,
         ),
         program(3, "Focus", step(None, 2.0, 0.0), None, NOTE_FOCUS),
         program(5, "Brisk", step(Some(30.0), 5.0, 0.0), None, NOTE_BRISK),
@@ -488,7 +488,7 @@ pub fn seed_programs() -> Vec<Program> {
     ]
 }
 
-/// Desk breaks' two settings are the program's own fields: the break length
+/// DUTY_CYCLE's two settings are the program's own fields: the break length
 /// is its one step's minutes and the spacing is `repeat_every_minutes`, both
 /// edited like any program's, with speed and incline. The defaults are
 /// Duran et al. (2023)'s best dose: 5 minutes of light walking every 30 was
@@ -586,7 +586,7 @@ const INTERVAL_EASY_KMH: f32 = 3.5;
 pub const NOTE_VO2_MAX: &str =
     "Four hard climbs of four minutes, split by easy walks, train VO2 max.";
 pub const NOTE_POST_MEAL: &str = "Walking soon after a meal blunts the rise in blood sugar.";
-pub const NOTE_DESK_BREAKS: &str = "Short easy walks on a timer break up long hours at the desk.";
+pub const NOTE_DUTY_CYCLE: &str = "Five easy minutes every half hour keep the body online.";
 pub const NOTE_FOCUS: &str = "A slow, flat walk keeps typing and thinking steady.";
 pub const NOTE_BRISK: &str = "Thirty brisk minutes count toward a weekly 150 of moderate activity.";
 pub const NOTE_INTERVAL_WALK: &str =

@@ -78,7 +78,7 @@ export const snapshot: AppSnapshot = {
   session: { active_id: 1, duration_s: 1934, distance_m: 1720, steps: 2412, calories: 103, daily_distance_m: 4310 },
   programs: [
     { id: 1, name: "Post-meal", steps: [{ duration_minutes: 10, speed_kmh: 4, incline_pct: 5 }], repeat_every_minutes: null, note: "Walking soon after a meal blunts the rise in blood sugar." },
-    { id: 2, name: "Desk breaks", steps: [{ duration_minutes: 5, speed_kmh: 3, incline_pct: 5 }], repeat_every_minutes: 30, note: "Short easy walks on a timer break up long hours at the desk." },
+    { id: 2, name: "DUTY_CYCLE", steps: [{ duration_minutes: 5, speed_kmh: 3, incline_pct: 5 }], repeat_every_minutes: 30, note: "Five easy minutes every half hour keep the body online." },
     { id: 3, name: "Focus", steps: [{ duration_minutes: null, speed_kmh: 2, incline_pct: 0 }], repeat_every_minutes: null, note: "A slow, flat walk keeps typing and thinking steady." },
     { id: 5, name: "Brisk", steps: [{ duration_minutes: 30, speed_kmh: 5, incline_pct: 0 }], repeat_every_minutes: null, note: "Thirty brisk minutes count toward a weekly 150 of moderate activity." },
     { id: 6, name: "VO2 max", steps: [{ duration_minutes: 5, speed_kmh: 4.5, incline_pct: 0 }, { duration_minutes: 4, speed_kmh: 6, incline_pct: 10, zone: { low_pct: 85, high_pct: 95 } }, { duration_minutes: 3, speed_kmh: 4, incline_pct: 0 }, { duration_minutes: 4, speed_kmh: 6, incline_pct: 10, zone: { low_pct: 85, high_pct: 95 } }, { duration_minutes: 3, speed_kmh: 4, incline_pct: 0 }, { duration_minutes: 4, speed_kmh: 6, incline_pct: 10, zone: { low_pct: 85, high_pct: 95 } }, { duration_minutes: 3, speed_kmh: 4, incline_pct: 0 }, { duration_minutes: 4, speed_kmh: 6, incline_pct: 10, zone: { low_pct: 85, high_pct: 95 } }, { duration_minutes: 3, speed_kmh: 4, incline_pct: 0 }, { duration_minutes: 3, speed_kmh: 3, incline_pct: 0 }], repeat_every_minutes: null, note: "Four hard climbs of four minutes, split by easy walks, train VO2 max." },
@@ -86,7 +86,7 @@ export const snapshot: AppSnapshot = {
   ],
   active_program: {
     program_id: 2,
-    name: "Desk breaks",
+    name: "DUTY_CYCLE",
     phase: "walking",
     step_index: 0,
     step_count: 1,

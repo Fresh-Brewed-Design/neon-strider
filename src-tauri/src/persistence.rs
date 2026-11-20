@@ -410,12 +410,12 @@ fn vo2_max_zones_v7(raw: &str) -> Option<String> {
 
 /// Migration 8: the seeded programs, second round (docs/research.md).
 ///
-/// - Desk breaks (#160): an untouched Workday becomes Desk breaks, same id
+/// - DUTY_CYCLE (#160): an untouched Workday becomes DUTY_CYCLE, same id
 ///   and plan. An untouched Micro-break is removed when nothing refers to it
-///   and Desk breaks now exists; otherwise it becomes Desk breaks too, kept at
+///   and DUTY_CYCLE now exists; otherwise it becomes DUTY_CYCLE too, kept at
 ///   its 2 minutes every 20, so a card, a last run or a saved run that points
 ///   at its id still finds it. Copies the user edited stay as they are, and
-///   nothing changes if a program is already called Desk breaks.
+///   nothing changes if a program is already called DUTY_CYCLE.
 /// - Interval walk (#161) is added after the user's programs, unless the
 ///   list is empty (they deleted every program), unreadable, or one has that
 ///   name already.
@@ -564,8 +564,8 @@ fn vo2_max_untouched_v8(p: &serde_json::Value) -> bool {
         })
 }
 
-const DESK_BREAKS_V8: &str = "Desk breaks";
-const DESK_BREAKS_NOTE_V8: &str = "Short easy walks on a timer break up long hours at the desk.";
+const DUTY_CYCLE_V8: &str = "DUTY_CYCLE";
+const DUTY_CYCLE_NOTE_V8: &str = "Five easy minutes every half hour keep the body online.";
 
 /// Migration 8's change to the stored programs JSON; `None` when there is
 /// nothing to change or the value can't be read. `referenced` lists the ids
@@ -591,11 +591,11 @@ fn seeded_programs_v8(
         .max(max_id + 1);
     let mut changed = false;
 
-    // Desk breaks (#160).
-    if !list.iter().any(|p| p["name"] == DESK_BREAKS_V8) {
+    // DUTY_CYCLE (#160).
+    if !list.iter().any(|p| p["name"] == DUTY_CYCLE_V8) {
         let into_desk_breaks = |p: &mut Value| {
-            p["name"] = json!(DESK_BREAKS_V8);
-            p["note"] = json!(DESK_BREAKS_NOTE_V8);
+            p["name"] = json!(DUTY_CYCLE_V8);
+            p["note"] = json!(DUTY_CYCLE_NOTE_V8);
         };
         let workday = list.iter().position(|p| WORKDAY_V3.matches(p));
         if let Some(i) = workday {
@@ -606,7 +606,7 @@ fn seeded_programs_v8(
             let in_use = list[i]["id"]
                 .as_u64()
                 .is_some_and(|id| referenced.iter().any(|&r| u64::from(r) == id));
-            // Removed only when nothing points at it and Desk breaks took
+            // Removed only when nothing points at it and DUTY_CYCLE took
             // Workday's place; with Workday edited or deleted, the user's
             // only break program stays, renamed.
             if in_use || workday.is_none() {
@@ -2344,7 +2344,7 @@ mod db_tests {
     }
 
     /// `list` without the programs migration 8 adds or gives a new note, so
-    /// what is left is what Desk breaks may change.
+    /// what is left is what DUTY_CYCLE may change.
     fn break_programs(mut list: Vec<crate::programs::Program>) -> Vec<crate::programs::Program> {
         let other = ["Interval walk", "Post-meal", "Focus", "Brisk", "VO2 max"];
         list.retain(|p| !other.contains(&p.name.as_str()));
@@ -2372,15 +2372,15 @@ mod db_tests {
         let list = stored_programs(&conn);
         let names: Vec<&str> = list.iter().map(|p| p.name.as_str()).collect();
         assert!(!names.contains(&"Workday") && !names.contains(&"Micro-break"));
-        let desk = list.iter().find(|p| p.name == "Desk breaks").unwrap();
+        let desk = list.iter().find(|p| p.name == "DUTY_CYCLE").unwrap();
         let workday = before.iter().find(|p| p.name == "Workday").unwrap();
         // Same id and plan as the Workday it was.
         assert_eq!(
             (desk.id, &desk.steps, desk.repeat_every_minutes),
             (workday.id, &workday.steps, workday.repeat_every_minutes)
         );
-        assert_eq!(desk.note.as_deref(), Some(DESK_BREAKS_NOTE_V8));
-        assert_eq!(list.iter().filter(|p| p.name == "Desk breaks").count(), 1);
+        assert_eq!(desk.note.as_deref(), Some(DUTY_CYCLE_NOTE_V8));
+        assert_eq!(list.iter().filter(|p| p.name == "DUTY_CYCLE").count(), 1);
         // Forced to run again, nothing changes.
         let raw = get_setting_str(&conn, "programs");
         rerun_from_7(&mut conn);
@@ -2408,10 +2408,10 @@ mod db_tests {
         rerun_from_7(&mut conn);
         assert_eq!(break_programs(stored_programs(&conn)), break_programs(list));
 
-        // A program already called Desk breaks leaves both seeds alone.
+        // A program already called DUTY_CYCLE leaves both seeds alone.
         let mut conn = seeds_at_v7();
         let mut list = stored_programs(&conn);
-        list[0].name = "Desk breaks".to_string();
+        list[0].name = "DUTY_CYCLE".to_string();
         set(&conn, "programs", &serde_json::to_string(&list).unwrap());
         rerun_from_7(&mut conn);
         assert_eq!(break_programs(stored_programs(&conn)), break_programs(list));
@@ -2433,14 +2433,14 @@ mod db_tests {
             rerun_from_7(&mut conn);
             let list = stored_programs(&conn);
             let kept = list.iter().find(|p| p.id == 4).expect(key);
-            assert_eq!(kept.name, "Desk breaks", "{}", key);
+            assert_eq!(kept.name, "DUTY_CYCLE", "{}", key);
             assert_eq!(kept.steps[0].duration_minutes, Some(2.0), "{}", key);
             assert_eq!(kept.steps[0].speed_kmh, 3.2, "{}", key);
             assert_eq!(kept.repeat_every_minutes, Some(20.0), "{}", key);
-            assert_eq!(kept.note.as_deref(), Some(DESK_BREAKS_NOTE_V8), "{}", key);
-            // Workday became Desk breaks too, at 5 every 30.
+            assert_eq!(kept.note.as_deref(), Some(DUTY_CYCLE_NOTE_V8), "{}", key);
+            // Workday became DUTY_CYCLE too, at 5 every 30.
             let workday = list.iter().find(|p| p.id == 2).unwrap();
-            assert_eq!(workday.name, "Desk breaks", "{}", key);
+            assert_eq!(workday.name, "DUTY_CYCLE", "{}", key);
             assert_eq!(workday.repeat_every_minutes, Some(30.0), "{}", key);
         }
 
@@ -2454,7 +2454,7 @@ mod db_tests {
         let kept = list.iter().find(|p| p.id == 4).unwrap();
         assert_eq!(
             (kept.name.as_str(), kept.repeat_every_minutes),
-            ("Desk breaks", Some(20.0))
+            ("DUTY_CYCLE", Some(20.0))
         );
     }
 
@@ -2572,7 +2572,7 @@ mod db_tests {
             state.restore_run(&run, now_ms, t0).unwrap();
             let active = state.active_program().unwrap();
             assert_eq!(active.program_id, run.program_id);
-            assert_eq!(active.name, "Desk breaks");
+            assert_eq!(active.name, "DUTY_CYCLE");
             assert_eq!(active.wait, run.wait);
             for id in [2, 4] {
                 assert!(state.programs.iter().any(|p| p.id == id), "{}", id);
