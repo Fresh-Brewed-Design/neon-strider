@@ -38,20 +38,43 @@ Some caveats apply to all of it:
 **Verdict:** keep the time and speed, lower the incline to 5 %. **In the app:** "A walk soon
 after eating blunts the rise in blood sugar."
 
-## Workday
+## Desk breaks
 
-**Was and is:** 5 min at 3.0 km/h, 5 %, every 30 min. Kept.
+**Was:** two programs, Workday (5 min at 3.0 km/h and 5 %, every 30 min) and Micro-break (2 min
+at 3.2 km/h, flat, every 20 min). **Now:** one program, Desk breaks, at Workday's 5 min every
+30 min, 3.0 km/h and 5 %.
 
-- In a dose-response trial, Duran et al. (2023) compared breaks of 1 or 5 minutes of light
-  walking every 30 or 60 minutes. Only 5 minutes every 30 minutes significantly lowered the
-  glucose rise after meals. Every dose lowered blood pressure. The same dose also gave the
-  biggest drop in fatigue.
+- Both were sitting breaks backed by the same trials, so they differ only in break length and
+  spacing. In the program those are its two settings: the step's minutes are the break length
+  and "Repeat every" is the spacing, edited like any program, along with speed and incline. The
+  spacing has to be longer than the break, since the rest between breaks is the spacing minus
+  the break.
+- In a dose-response trial, Duran et al. (2023) had 11 middle-aged and older adults sit for
+  8 hours with breaks of 1 or 5 minutes of light walking every 30 or 60 minutes. Only 5 minutes
+  every 30 minutes significantly lowered the glucose rise after meals, so it is the default.
+  Every dose lowered systolic blood pressure against unbroken sitting, by about 4 mmHg for
+  5 minutes every 30 (−4.3 mmHg). That is a one-day lab result, not a training effect.
+- Shorter, more frequent breaks help too: 2 minutes of light walking (3.2 km/h) every 20 minutes
+  cut the post-meal glucose rise by about a quarter and insulin by about the same, compared with
+  sitting through (Dunstan et al. 2012). In people with type 2 diabetes, 3 minutes of light
+  walking (3.2 km/h) every 30 minutes also helped (Dempsey et al. 2016). Anyone who finds
+  5 minutes every 30 too disruptive can set 2 minutes every 20. Breaks of 1 minute lowered blood
+  pressure but not glucose (Duran et al. 2023), so 2 minutes is the shortest worth setting.
 - A meta-analysis of sitting-break trials found that light walking breaks lower post-meal
   glucose and insulin compared with unbroken sitting, and do better than standing breaks
   (Buffey et al. 2022).
 - At about 3.7 METs, 3.0 km/h with 5 % is light to moderate, in line with the trials.
+- Desk breaks and the idle nudge both follow these trials, but they do different jobs. Desk
+  breaks walks you: once started it runs a break on a timer, all day, and after each rest the
+  belt waits for GO. The idle nudge only reminds you: after 30 minutes of PC use with the belt
+  still it shows a card, and nothing moves until you pick a program or start the belt.
+- Existing installs: a Workday never edited becomes Desk breaks. A Micro-break never edited is
+  removed, unless the sit-too-long card offers it, it was the last program run, or it was
+  running, resting or waiting for GO; then it becomes Desk breaks at 2 minutes every 20. It
+  also stays, as Desk breaks, when Workday was edited or deleted. Edited copies keep what you
+  set.
 
-**Verdict:** keep. **In the app:** "Five minutes every half hour offsets long sitting."
+**In the app:** "Short easy walks on a timer break up long hours at the desk."
 
 ## Focus
 
@@ -72,20 +95,6 @@ after eating blunts the rise in blood sugar."
 **Verdict:** change to 2.0 km/h and 0 %. The evidence for the exact speed is thin; slower and flat
 is the safer choice for typing. **In the app:** "Slow and flat, so typing and thinking stay
 steady."
-
-## Micro-break (new)
-
-**New:** 2 min at 3.2 km/h, flat, every 20 min.
-
-- Breaking up sitting with 2 minutes of light walking (3.2 km/h) every 20 minutes cut the
-  post-meal glucose rise by about a quarter and insulin by about the same, compared with
-  sitting through (Dunstan et al. 2012). In people with type 2 diabetes, 3 minutes of light
-  walking (3.2 km/h) every 30 minutes also helped (Dempsey et al. 2016).
-- It is for people who find 5 minutes every 30 too disruptive. Duran et al. (2023) found that
-  very short breaks (1 minute) lowered blood pressure but not glucose, so the breaks should not
-  be shorter than this.
-
-**In the app:** "Two easy minutes every 20 lower blood sugar after meals."
 
 ## Brisk (new)
 

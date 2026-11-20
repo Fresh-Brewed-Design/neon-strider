@@ -22,8 +22,8 @@ tried.
 - **Dashboard.** Opens from the tray icon, with five pages:
   - **Live**: speed and tilt control, transport, the running program, session stats.
   - **Programs**: saved routines, e.g. *Post-meal* (10 min at 4.0 km/h, 5 %),
-    *Workday* (5 min every 30 min), *Focus* (2.0 km/h until you stop it), *Micro-break*
-    (2 min every 20 min) or *Brisk* (30 min at 5.0 km/h) or *VO2 max* (four 4-minute climbs at 6.0 km/h and
+    *Desk breaks* (5 min every 30 min, or 2 min every 20), *Focus* (2.0 km/h until you stop
+    it), *Brisk* (30 min at 5.0 km/h) or *VO2 max* (four 4-minute climbs at 6.0 km/h and
     10 %). Why each is built that way, with
     sources: [docs/research.md](docs/research.md). When a program ends, the
     treadmill goes back to what it was doing before; ended while the belt is paused, it stays

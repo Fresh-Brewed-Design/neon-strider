@@ -408,6 +408,162 @@ fn vo2_max_zones_v7(raw: &str) -> Option<String> {
     serde_json::to_string(&list).ok()
 }
 
+/// Migration 8: the seeded programs, second round (docs/research.md).
+///
+/// - Desk breaks (#160): an untouched Workday becomes Desk breaks, same id
+///   and plan. An untouched Micro-break is removed when nothing refers to it
+///   and Desk breaks now exists; otherwise it becomes Desk breaks too, kept at
+///   its 2 minutes every 20, so a card, a last run or a saved run that points
+///   at its id still finds it. Copies the user edited stay as they are, and
+///   nothing changes if a program is already called Desk breaks.
+///
+/// "Untouched" is the name, the plan and the note exactly as migration 3 or
+/// `seed_programs` wrote them: a save that changes the plan drops the note,
+/// and a rename changes the name.
+///
+/// Frozen: the values are written out here, not read from `seed_programs`.
+fn migration_8_seeded_programs(tx: &Transaction) -> rusqlite::Result<()> {
+    let Some(raw) = get_setting_str(tx, "programs") else {
+        return Ok(()); // Never seeded: the first start seeds the new list.
+    };
+    let next_id = get_setting_str(tx, "program_next_id");
+    let referenced = referenced_program_ids(tx);
+    if let Some((programs, next_id)) = seeded_programs_v8(&raw, next_id.as_deref(), &referenced) {
+        for (key, value) in [
+            ("programs", programs),
+            ("program_next_id", next_id.to_string()),
+        ] {
+            tx.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+                params![key, value],
+            )?;
+        }
+    }
+    Ok(())
+}
+
+/// The program ids something else keeps: the sit-too-long card's chosen
+/// programs, the last program run (the HUD's one-press start) and the saved
+/// running, resting, paused or waiting program. Sessions don't record a
+/// program, so History never refers to one. A program queued from the card
+/// lives in memory only and is gone before a migration can run.
+fn referenced_program_ids(conn: &Connection) -> Vec<u32> {
+    let mut ids: Vec<u32> = get_setting_str(conn, "seated_program_ids")
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default();
+    ids.extend(
+        get_setting_str(conn, "program_last_run_id")
+            .and_then(|s| s.trim().trim_matches('"').parse::<u32>().ok()),
+    );
+    ids.extend(
+        get_setting_str(conn, "program_active_run")
+            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+            .and_then(|run| run["program_id"].as_u64())
+            .and_then(|id| u32::try_from(id).ok()),
+    );
+    ids
+}
+
+/// A seeded single-step program as migration 3 wrote it: (minutes, km/h,
+/// incline %) for its one step, its repeat and its note.
+struct SeedV3 {
+    name: &'static str,
+    step: (Option<f64>, f64, f64),
+    repeat: Option<f64>,
+    note: &'static str,
+}
+
+impl SeedV3 {
+    /// `p` is this seed exactly as shipped: no edit, no rename, no zone.
+    fn matches(&self, p: &serde_json::Value) -> bool {
+        use serde_json::Value;
+        let num = |v: &Value, x: Option<f64>| match x {
+            None => v.is_null(),
+            Some(x) => v.as_f64().is_some_and(|f| (f - x).abs() < 1e-3),
+        };
+        let (min, kmh, pct) = self.step;
+        p["name"] == self.name
+            && p["note"] == self.note
+            && num(&p["repeat_every_minutes"], self.repeat)
+            && p["steps"].as_array().is_some_and(|s| {
+                s.len() == 1
+                    && num(&s[0]["duration_minutes"], min)
+                    && num(&s[0]["speed_kmh"], Some(kmh))
+                    && num(&s[0]["incline_pct"], Some(pct))
+                    && s[0].get("zone").is_none_or(Value::is_null)
+            })
+    }
+}
+
+const WORKDAY_V3: SeedV3 = SeedV3 {
+    name: "Workday",
+    step: (Some(5.0), 3.0, 5.0),
+    repeat: Some(30.0),
+    note: "Five minutes every half hour offsets long sitting.",
+};
+const MICRO_BREAK_V3: SeedV3 = SeedV3 {
+    name: "Micro-break",
+    step: (Some(2.0), 3.2, 0.0),
+    repeat: Some(20.0),
+    note: "Two easy minutes every 20 lower blood sugar after meals.",
+};
+const DESK_BREAKS_V8: &str = "Desk breaks";
+const DESK_BREAKS_NOTE_V8: &str = "Short easy walks on a timer break up long hours at the desk.";
+
+/// Migration 8's change to the stored programs JSON; `None` when there is
+/// nothing to change or the value can't be read. `referenced` lists the ids
+/// something else keeps (`referenced_program_ids`).
+fn seeded_programs_v8(
+    raw: &str,
+    next_id: Option<&str>,
+    referenced: &[u32],
+) -> Option<(String, u32)> {
+    use serde_json::{json, Value};
+    let mut list: Vec<Value> = serde_json::from_str(raw).ok()?;
+    let mut changed = false;
+
+    // Desk breaks (#160).
+    if !list.iter().any(|p| p["name"] == DESK_BREAKS_V8) {
+        let into_desk_breaks = |p: &mut Value| {
+            p["name"] = json!(DESK_BREAKS_V8);
+            p["note"] = json!(DESK_BREAKS_NOTE_V8);
+        };
+        let workday = list.iter().position(|p| WORKDAY_V3.matches(p));
+        if let Some(i) = workday {
+            into_desk_breaks(&mut list[i]);
+            changed = true;
+        }
+        if let Some(i) = list.iter().position(|p| MICRO_BREAK_V3.matches(p)) {
+            let in_use = list[i]["id"]
+                .as_u64()
+                .is_some_and(|id| referenced.iter().any(|&r| u64::from(r) == id));
+            // Removed only when nothing points at it and Desk breaks took
+            // Workday's place; with Workday edited or deleted, the user's
+            // only break program stays, renamed.
+            if in_use || workday.is_none() {
+                into_desk_breaks(&mut list[i]);
+            } else {
+                list.remove(i);
+            }
+            changed = true;
+        }
+    }
+
+    if !changed {
+        return None;
+    }
+    let max_id = list
+        .iter()
+        .filter_map(|p| p["id"].as_u64())
+        .max()
+        .unwrap_or(0) as u32;
+    let next = next_id
+        .and_then(|s| s.trim().trim_matches('"').parse::<u32>().ok())
+        .unwrap_or(0)
+        .max(max_id + 1);
+    Some((serde_json::to_string(&list).ok()?, next))
+}
+
 type Migration = fn(&Transaction) -> rusqlite::Result<()>;
 
 /// Append new migrations at the end; never reorder or edit a shipped one.
@@ -420,6 +576,7 @@ const MIGRATIONS: &[Migration] = &[
     migration_5_desk_days,
     migration_6_heart_rate,
     migration_7_vo2_max_zones,
+    migration_8_seeded_programs,
 ];
 
 fn schema_version(conn: &Connection) -> rusqlite::Result<u32> {
@@ -1882,6 +2039,19 @@ mod db_tests {
         conn
     }
 
+    /// Apply the migrations the file hasn't seen, up to and including number
+    /// `last`, so a test of an older migration sees what it left.
+    fn migrate_through(conn: &mut Connection, last: usize) {
+        let from = version(conn) as usize;
+        for (i, m) in MIGRATIONS.iter().enumerate().take(last).skip(from) {
+            let tx = conn.transaction().unwrap();
+            m(&tx).unwrap();
+            tx.execute_batch(&format!("PRAGMA user_version = {}", i + 1))
+                .unwrap();
+            tx.commit().unwrap();
+        }
+    }
+
     fn set(conn: &Connection, key: &str, value: &str) {
         conn.execute(
             "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
@@ -1937,7 +2107,7 @@ mod db_tests {
         set(&conn, "programs", &edited);
         set(&conn, "program_next_id", "9");
         set(&conn, "seated_minutes", "45");
-        migrate(&mut conn).unwrap();
+        migrate_through(&mut conn, 7);
         let list = stored_programs(&conn);
         let names: Vec<&str> = list.iter().map(|p| p.name.as_str()).collect();
         assert_eq!(
@@ -1965,7 +2135,7 @@ mod db_tests {
         // Forced to run again, nothing changes.
         let before = get_setting_str(&conn, "programs");
         conn.execute_batch("PRAGMA user_version = 2").unwrap();
-        migrate(&mut conn).unwrap();
+        migrate_through(&mut conn, 7);
         assert_eq!(get_setting_str(&conn, "programs"), before);
     }
 
@@ -1974,21 +2144,21 @@ mod db_tests {
         let list = |conn: &Connection| stored_programs(conn);
         let mut conn = migrated_to_v2();
         set(&conn, "programs", V1_SEEDS);
-        migrate(&mut conn).unwrap();
+        migrate_through(&mut conn, 7);
         let first = list(&conn);
         assert_eq!(first.iter().filter(|p| p.name == "VO2 max").count(), 1);
         assert_eq!(first.last().unwrap().steps.len(), 10);
         // Forced to run again, nothing changes.
         let before = get_setting_str(&conn, "programs");
         conn.execute_batch("PRAGMA user_version = 3").unwrap();
-        migrate(&mut conn).unwrap();
+        migrate_through(&mut conn, 7);
         assert_eq!(get_setting_str(&conn, "programs"), before);
 
         // A program of their own with that name is kept as it is.
         let mut conn = migrated_to_v2();
         let own = r#"[{"id":1,"name":"VO2 max","steps":[{"duration_minutes":20.0,"speed_kmh":5.0,"incline_pct":0.0}],"repeat_every_minutes":null}]"#;
         set(&conn, "programs", own);
-        migrate(&mut conn).unwrap();
+        migrate_through(&mut conn, 7);
         let l = list(&conn);
         assert_eq!(l.len(), 3, "Micro-break and Brisk come from migration 3");
         assert_eq!(l.iter().filter(|p| p.name == "VO2 max").count(), 1);
@@ -2001,7 +2171,7 @@ mod db_tests {
             |p: &crate::programs::Program| p.steps.iter().filter(|s| s.zone.is_some()).count();
         let mut conn = migrated_to_v2();
         set(&conn, "programs", V1_SEEDS);
-        migrate(&mut conn).unwrap();
+        migrate_through(&mut conn, 7);
         let l = stored_programs(&conn);
         assert_eq!(l.len(), 6, "nothing added or removed");
         let vo2 = l.iter().find(|p| p.name == "VO2 max").unwrap();
@@ -2021,7 +2191,7 @@ mod db_tests {
         // Forced to run again, nothing changes.
         let before = get_setting_str(&conn, "programs");
         conn.execute_batch("PRAGMA user_version = 6").unwrap();
-        migrate(&mut conn).unwrap();
+        migrate_through(&mut conn, 7);
         assert_eq!(get_setting_str(&conn, "programs"), before);
 
         // A VO2 max the user edited (a faster climb, so no note) is left alone,
@@ -2042,7 +2212,7 @@ mod db_tests {
         let raw = serde_json::to_string(&list).unwrap();
         set(&conn, "programs", &raw);
         conn.execute_batch("PRAGMA user_version = 6").unwrap();
-        migrate(&mut conn).unwrap();
+        migrate_through(&mut conn, 7);
         assert_eq!(
             get_setting_str(&conn, "programs").as_deref(),
             Some(raw.as_str())
@@ -2053,8 +2223,167 @@ mod db_tests {
             let mut conn = migrated_to_v2();
             set(&conn, "programs", raw);
             conn.execute_batch("PRAGMA user_version = 6").unwrap();
-            migrate(&mut conn).unwrap();
+            migrate_through(&mut conn, 7);
             assert_eq!(get_setting_str(&conn, "programs").as_deref(), Some(raw));
+        }
+    }
+
+    /// A v1.6 install brought up to migration 7: Post-meal, Workday, Focus,
+    /// Micro-break (id 4), Brisk and VO2 max, all untouched.
+    fn seeds_at_v7() -> Connection {
+        let mut conn = migrated_to_v2();
+        set(&conn, "programs", V1_SEEDS);
+        migrate_through(&mut conn, 7);
+        conn
+    }
+
+    fn rerun_from_7(conn: &mut Connection) {
+        conn.execute_batch("PRAGMA user_version = 7").unwrap();
+        migrate(conn).unwrap();
+    }
+
+    #[test]
+    fn migration_8_on_a_fresh_database_writes_nothing() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&mut conn).unwrap();
+        assert_eq!(version(&conn), 8);
+        assert_eq!(get_setting_str(&conn, "programs"), None);
+    }
+
+    #[test]
+    fn migration_8_turns_an_untouched_workday_into_desk_breaks_and_drops_micro_break() {
+        let mut conn = seeds_at_v7();
+        let before = stored_programs(&conn);
+        migrate(&mut conn).unwrap();
+        let list = stored_programs(&conn);
+        let names: Vec<&str> = list.iter().map(|p| p.name.as_str()).collect();
+        assert!(!names.contains(&"Workday") && !names.contains(&"Micro-break"));
+        let desk = list.iter().find(|p| p.name == "Desk breaks").unwrap();
+        let workday = before.iter().find(|p| p.name == "Workday").unwrap();
+        // Same id and plan as the Workday it was.
+        assert_eq!(
+            (desk.id, &desk.steps, desk.repeat_every_minutes),
+            (workday.id, &workday.steps, workday.repeat_every_minutes)
+        );
+        assert_eq!(desk.note.as_deref(), Some(DESK_BREAKS_NOTE_V8));
+        assert_eq!(list.iter().filter(|p| p.name == "Desk breaks").count(), 1);
+        // Forced to run again, nothing changes.
+        let raw = get_setting_str(&conn, "programs");
+        rerun_from_7(&mut conn);
+        assert_eq!(get_setting_str(&conn, "programs"), raw);
+    }
+
+    #[test]
+    fn migration_8_keeps_edited_copies_as_they_are() {
+        let mut conn = seeds_at_v7();
+        let mut list = stored_programs(&conn);
+        // Workday at a new pace (so its note went), Micro-break renamed, and
+        // a copy of Workday under a name of their own.
+        let workday = list.iter_mut().find(|p| p.name == "Workday").unwrap();
+        workday.steps[0].speed_kmh = 3.5;
+        workday.note = None;
+        let mut copy = list.iter().find(|p| p.name == "Workday").unwrap().clone();
+        copy.id = 40;
+        copy.name = "My breaks".to_string();
+        list.push(copy);
+        list.iter_mut()
+            .find(|p| p.name == "Micro-break")
+            .unwrap()
+            .name = "Tiny walks".to_string();
+        let raw = serde_json::to_string(&list).unwrap();
+        set(&conn, "programs", &raw);
+        rerun_from_7(&mut conn);
+        assert_eq!(
+            get_setting_str(&conn, "programs").as_deref(),
+            Some(raw.as_str())
+        );
+
+        // A program already called Desk breaks leaves both seeds alone.
+        let mut conn = seeds_at_v7();
+        let mut list = stored_programs(&conn);
+        list[0].name = "Desk breaks".to_string();
+        let raw = serde_json::to_string(&list).unwrap();
+        set(&conn, "programs", &raw);
+        rerun_from_7(&mut conn);
+        assert_eq!(
+            get_setting_str(&conn, "programs").as_deref(),
+            Some(raw.as_str())
+        );
+    }
+
+    #[test]
+    fn migration_8_keeps_a_referenced_micro_break_as_desk_breaks_at_2_every_20() {
+        let refs = [
+            ("seated_program_ids", "[4,1]"),
+            ("program_last_run_id", "4"),
+            (
+                "program_active_run",
+                r#"{"program_id":4,"phase":"resting","step_index":0,"cycle":2,"paused":false,"elapsed_s":60.0,"target":{"speed":3.2,"incline":0},"previous":{"status":"Running","moving":null},"rest_warned":false,"saved_at_ms":5}"#,
+            ),
+        ];
+        for (key, value) in refs {
+            let mut conn = seeds_at_v7();
+            set(&conn, key, value);
+            rerun_from_7(&mut conn);
+            let list = stored_programs(&conn);
+            let kept = list.iter().find(|p| p.id == 4).expect(key);
+            assert_eq!(kept.name, "Desk breaks", "{}", key);
+            assert_eq!(kept.steps[0].duration_minutes, Some(2.0), "{}", key);
+            assert_eq!(kept.steps[0].speed_kmh, 3.2, "{}", key);
+            assert_eq!(kept.repeat_every_minutes, Some(20.0), "{}", key);
+            assert_eq!(kept.note.as_deref(), Some(DESK_BREAKS_NOTE_V8), "{}", key);
+            // Workday became Desk breaks too, at 5 every 30.
+            let workday = list.iter().find(|p| p.id == 2).unwrap();
+            assert_eq!(workday.name, "Desk breaks", "{}", key);
+            assert_eq!(workday.repeat_every_minutes, Some(30.0), "{}", key);
+        }
+
+        // Unreferenced, with Workday deleted: the only break program stays.
+        let mut conn = seeds_at_v7();
+        let mut list = stored_programs(&conn);
+        list.retain(|p| p.name != "Workday");
+        set(&conn, "programs", &serde_json::to_string(&list).unwrap());
+        rerun_from_7(&mut conn);
+        let list = stored_programs(&conn);
+        let kept = list.iter().find(|p| p.id == 4).unwrap();
+        assert_eq!(
+            (kept.name.as_str(), kept.repeat_every_minutes),
+            ("Desk breaks", Some(20.0))
+        );
+    }
+
+    #[test]
+    fn migration_8_leaves_a_running_waiting_or_queued_program_working() {
+        let now_ms = 10_000_000;
+        // Workday waiting for GO after its rest, and Micro-break walking.
+        let saved = [
+            format!(
+                r#"{{"program_id":2,"phase":"walking","step_index":0,"cycle":3,"paused":true,"wait":"rest_complete","elapsed_s":0.0,"target":{{"speed":3.0,"incline":5}},"previous":{{"status":"Paused","moving":null}},"rest_warned":true,"saved_at_ms":{}}}"#,
+                now_ms - 60_000
+            ),
+            format!(
+                r#"{{"program_id":4,"phase":"walking","step_index":0,"cycle":1,"paused":false,"elapsed_s":30.0,"target":{{"speed":3.2,"incline":0}},"previous":{{"status":"Running","moving":null}},"rest_warned":false,"saved_at_ms":{}}}"#,
+                now_ms - 5_000
+            ),
+        ];
+        for raw in saved {
+            let mut conn = seeds_at_v7();
+            set(&conn, "program_active_run", &raw);
+            // Queued from the sit-too-long card's chosen programs.
+            set(&conn, "seated_program_ids", "[2,4]");
+            rerun_from_7(&mut conn);
+            let run: crate::programs::SavedRun = serde_json::from_str(&raw).unwrap();
+            let mut state = crate::engine::OrchestratorState::default();
+            state.programs = stored_programs(&conn);
+            let t0 = std::time::Instant::now();
+            state.restore_run(&run, now_ms, t0).unwrap();
+            let active = state.active_program().unwrap();
+            assert_eq!(active.program_id, run.program_id);
+            assert_eq!(active.name, "Desk breaks");
+            assert_eq!(active.wait, run.wait);
+            for id in [2, 4] {
+                assert!(state.programs.iter().any(|p| p.id == id), "{}", id);
+            }
         }
     }
 

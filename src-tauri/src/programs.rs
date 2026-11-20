@@ -430,6 +430,9 @@ pub(crate) fn validate_program(p: &Program, min_speed: f32, max_speed: f32) -> R
         if p.steps[last].duration_minutes.is_none() {
             return Err("A step that runs until ended can't repeat".to_string());
         }
+        // A cycle starts every `r` minutes and the rest is what is left after
+        // the steps, so a spacing no longer than the walk would leave no rest
+        // (Desk breaks: the spacing must be longer than the break).
         if r <= total_minutes(p) {
             return Err("Repeat interval must be longer than the program".to_string());
         }
@@ -439,7 +442,11 @@ pub(crate) fn validate_program(p: &Program, min_speed: f32, max_speed: f32) -> R
 
 /// The examples a new install starts with. Values and sources are in
 /// docs/research.md. Existing installs were moved to these by
-/// `persistence::migration_3_research_programs`, which keeps its own copy.
+/// `persistence::migration_3_research_programs` and
+/// `persistence::migration_8_seeded_programs`, which keep their own copies.
+/// The ids match what a v1.6 install ends up with after every migration
+/// (id 4 was Micro-break, merged into Desk breaks), so a migrated install and
+/// a new one hold the same list.
 pub fn seed_programs() -> Vec<Program> {
     let program =
         |id: u32, name: &str, step: ProgramStep, repeat: Option<f32>, note: &str| Program {
@@ -465,23 +472,35 @@ pub fn seed_programs() -> Vec<Program> {
         ),
         program(
             2,
-            "Workday",
-            step(Some(5.0), 3.0, 5.0),
-            Some(30.0),
-            NOTE_WORKDAY,
+            "Desk breaks",
+            step(
+                Some(DESK_BREAK_MINUTES),
+                DESK_BREAK_KMH,
+                DESK_BREAK_INCLINE_PCT,
+            ),
+            Some(DESK_BREAK_EVERY_MINUTES),
+            NOTE_DESK_BREAKS,
         ),
         program(3, "Focus", step(None, 2.0, 0.0), None, NOTE_FOCUS),
-        program(
-            4,
-            "Micro-break",
-            step(Some(2.0), 3.2, 0.0),
-            Some(20.0),
-            NOTE_MICRO_BREAK,
-        ),
         program(5, "Brisk", step(Some(30.0), 5.0, 0.0), None, NOTE_BRISK),
         vo2_max_program(6),
     ]
 }
+
+/// Desk breaks' two settings are the program's own fields: the break length
+/// is its one step's minutes and the spacing is `repeat_every_minutes`, both
+/// edited like any program's, with speed and incline. The defaults are
+/// Duran et al. (2023)'s best dose: 5 minutes of light walking every 30 was
+/// the only one of their four doses that lowered the glucose rise after
+/// meals. The limits are the ones every program has (`validate_program`):
+/// the spacing must be longer than the break, since the rest between breaks
+/// is the spacing minus the break.
+const DESK_BREAK_MINUTES: f32 = 5.0;
+const DESK_BREAK_EVERY_MINUTES: f32 = 30.0;
+/// Light walking, about 3.7 METs by the ACSM equation, in line with the
+/// trials' light breaks (docs/research.md).
+const DESK_BREAK_KMH: f32 = 3.0;
+const DESK_BREAK_INCLINE_PCT: f32 = 5.0;
 
 /// The Norwegian 4x4 for the deck: warm-up, four 4-minute climbs each followed
 /// by 3 minutes of easy walking, cool-down. The deck tops out at 8 km/h and
@@ -518,11 +537,9 @@ fn vo2_max_program(id: u32) -> Program {
 }
 
 pub const NOTE_VO2_MAX: &str = "Four hard 4-minute climbs with easy walks between train VO2 max.";
-
 pub const NOTE_POST_MEAL: &str = "A walk soon after eating blunts the rise in blood sugar.";
-pub const NOTE_WORKDAY: &str = "Five minutes every half hour offsets long sitting.";
+pub const NOTE_DESK_BREAKS: &str = "Short easy walks on a timer break up long hours at the desk.";
 pub const NOTE_FOCUS: &str = "Slow and flat, so typing and thinking stay steady.";
-pub const NOTE_MICRO_BREAK: &str = "Two easy minutes every 20 lower blood sugar after meals.";
 pub const NOTE_BRISK: &str = "Moderate walking toward the weekly 150 minutes.";
 
 /// Test fixture: the three programs v1.6 seeded (Post-meal 10 min at 4.0 km/h
@@ -1478,7 +1495,12 @@ impl OrchestratorState {
     /// on the reconnect (see `tick_program`). A run that holds the belt still
     /// keeps for hours (a program left waiting for GO over lunch is still
     /// there); a walking one only for minutes.
-    fn restore_run(&mut self, saved: &SavedRun, now_ms: i64, now: Instant) -> Result<(), String> {
+    pub(crate) fn restore_run(
+        &mut self,
+        saved: &SavedRun,
+        now_ms: i64,
+        now: Instant,
+    ) -> Result<(), String> {
         let age = now_ms - saved.saved_at_ms;
         let max_age = if saved.holds_belt_still() {
             RESUME_STILL_MAX_AGE_MS

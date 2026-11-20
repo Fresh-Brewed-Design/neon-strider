@@ -1,0 +1,2 @@
+- Workday and Micro-break are now one program, Desk breaks: 5 easy minutes every 30 by default. Set the break length with the step's minutes and the spacing with Repeat every, for example 2 minutes every 20.
+- A Workday you never edited becomes Desk breaks. A Micro-break you never edited is removed, unless the sit-too-long card offers it or it was your last or running program; then it becomes Desk breaks at 2 minutes every 20. Programs you edited stay as they are.

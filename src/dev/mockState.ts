@@ -78,15 +78,14 @@ export const snapshot: AppSnapshot = {
   session: { active_id: 1, duration_s: 1934, distance_m: 1720, steps: 2412, calories: 103, daily_distance_m: 4310 },
   programs: [
     { id: 1, name: "Post-meal", steps: [{ duration_minutes: 10, speed_kmh: 4, incline_pct: 5 }], repeat_every_minutes: null, note: "A walk soon after eating blunts the rise in blood sugar." },
-    { id: 2, name: "Workday", steps: [{ duration_minutes: 5, speed_kmh: 3, incline_pct: 5 }], repeat_every_minutes: 30, note: "Five minutes every half hour offsets long sitting." },
+    { id: 2, name: "Desk breaks", steps: [{ duration_minutes: 5, speed_kmh: 3, incline_pct: 5 }], repeat_every_minutes: 30, note: "Short easy walks on a timer break up long hours at the desk." },
     { id: 3, name: "Focus", steps: [{ duration_minutes: null, speed_kmh: 2, incline_pct: 0 }], repeat_every_minutes: null, note: "Slow and flat, so typing and thinking stay steady." },
-    { id: 4, name: "Micro-break", steps: [{ duration_minutes: 2, speed_kmh: 3.2, incline_pct: 0 }], repeat_every_minutes: 20, note: "Two easy minutes every 20 lower blood sugar after meals." },
     { id: 5, name: "Brisk", steps: [{ duration_minutes: 30, speed_kmh: 5, incline_pct: 0 }], repeat_every_minutes: null, note: "Moderate walking toward the weekly 150 minutes." },
     { id: 6, name: "VO2 max", steps: [{ duration_minutes: 5, speed_kmh: 4.5, incline_pct: 0 }, { duration_minutes: 4, speed_kmh: 6, incline_pct: 10, zone: { low_pct: 85, high_pct: 95 } }, { duration_minutes: 3, speed_kmh: 4, incline_pct: 0 }, { duration_minutes: 4, speed_kmh: 6, incline_pct: 10, zone: { low_pct: 85, high_pct: 95 } }, { duration_minutes: 3, speed_kmh: 4, incline_pct: 0 }, { duration_minutes: 4, speed_kmh: 6, incline_pct: 10, zone: { low_pct: 85, high_pct: 95 } }, { duration_minutes: 3, speed_kmh: 4, incline_pct: 0 }, { duration_minutes: 4, speed_kmh: 6, incline_pct: 10, zone: { low_pct: 85, high_pct: 95 } }, { duration_minutes: 3, speed_kmh: 4, incline_pct: 0 }, { duration_minutes: 3, speed_kmh: 3, incline_pct: 0 }], repeat_every_minutes: null, note: "Four hard 4-minute climbs with easy walks between train VO2 max." },
   ],
   active_program: {
     program_id: 2,
-    name: "Workday",
+    name: "Desk breaks",
     phase: "walking",
     step_index: 0,
     step_count: 1,
