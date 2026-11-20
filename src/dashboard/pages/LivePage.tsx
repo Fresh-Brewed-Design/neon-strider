@@ -59,11 +59,21 @@ function headerNotice(s: AppSnapshot): ReactNode {
   );
 }
 
+/** The Live page control a target came from. */
+type NoteFrom = "speed" | "tilt";
+
 export function LivePage() {
   const s = useAppSnapshot();
-  // Which control sent the target the deck's note is about.
-  const [sentFrom, setSentFrom] = useState<"speed" | "tilt" | null>(null);
-  if (s && !s.deck.target_note && sentFrom) setSentFrom(null);
+  // Which control sent last, and the deck's note showing at that press: that
+  // note is about an older target (a program step, the HUD), so it stays off
+  // the control. A press on the control that already shows a note keeps it.
+  const [sent, setSent] = useState<{ from: NoteFrom; before: string | null } | null>(null);
+  if (s && !s.deck.target_note && sent) setSent(null);
+  const sentFrom = (from: NoteFrom) => {
+    if (sent?.from !== from) setSent({ from, before: s?.deck.target_note ?? null });
+  };
+  const noteFor = (from: NoteFrom) =>
+    sent?.from === from && s?.deck.target_note !== sent.before ? (s?.deck.target_note ?? null) : null;
   if (!s) return <Waiting />;
   const { deck } = s;
   const offline = !s.connection.connected;
@@ -90,14 +100,14 @@ export function LivePage() {
             formatPreset={(v) => v.toFixed(1)}
             disabled={offline}
             onSet={(kmh) => {
-              setSentFrom("speed");
+              sentFrom("speed");
               send({ type: "set_speed", kmh });
             }}
             onNudge={(up) => {
-              setSentFrom("speed");
+              sentFrom("speed");
               send({ type: "nudge_speed", up });
             }}
-            note={sentFrom === "speed" ? deck.target_note : null}
+            note={noteFor("speed")}
             snap={(kmh) => snapToDeck(kmh, deck)}
             pin={{ widget: "VELOCITY", pinned: pinned.has("VELOCITY") }}
           />
@@ -114,14 +124,14 @@ export function LivePage() {
             formatPreset={(v) => `${Math.round(v * 10) / 10}%`}
             disabled={offline}
             onSet={(pct) => {
-              setSentFrom("tilt");
+              sentFrom("tilt");
               send({ type: "set_incline_level", level: levelForPct(deck, pct) });
             }}
             onNudge={(up) => {
-              setSentFrom("tilt");
+              sentFrom("tilt");
               send({ type: "nudge_incline", up });
             }}
-            note={sentFrom === "tilt" ? deck.target_note : null}
+            note={noteFor("tilt")}
             pin={{ widget: "INCLINE", pinned: pinned.has("INCLINE") }}
           />
         </div>
