@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.41.8 (2026-11-20)
+
+### Fixed
+
+- Fixed history showing the wrong "Yesterday" label for an hour after a daylight-saving clock change.
+
 ## 1.41.7 (2026-11-20)
 
 ### Fixed
