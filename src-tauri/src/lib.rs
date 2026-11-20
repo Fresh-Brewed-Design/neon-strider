@@ -23,6 +23,7 @@ mod display;
 pub mod engine;
 pub mod export;
 pub mod ghost_pod;
+pub mod guided_task;
 pub mod heart_rate;
 mod hooks;
 mod hud;
@@ -119,7 +120,7 @@ fn close_to_tray(app: &tauri::AppHandle) {
     if !windows.is_empty() {
         log::info!("Closing windows to the tray ({} open)", windows.len());
         let hud_pinned = persistence::has_pinned_elements(app);
-        let dashboard_pinned = persistence::is_window_pinned(app);
+        let dashboard_pinned = persistence::is_window_pinned(app) || guided_task::pinned();
         for (label, window) in windows {
             match label.as_str() {
                 dashboard::DASHBOARD_LABEL if dashboard_pinned => {

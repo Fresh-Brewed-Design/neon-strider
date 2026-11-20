@@ -385,6 +385,26 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         Command::HeartRateMaxSet { bpm } => {
             blocking(move || crate::heart_rate::set_max_heart_rate(&app, bpm)).await
         }
+
+        // ---- Guided tasks ----
+        Command::GuidedTaskStart { task } => {
+            if crate::guided_task::start(task) {
+                crate::dashboard::on_guided_pin_changed(&app);
+            }
+            Ok(())
+        }
+        Command::GuidedTaskEnd { task } => {
+            if crate::guided_task::end(task) {
+                crate::dashboard::on_guided_pin_changed(&app);
+            }
+            Ok(())
+        }
+        Command::GuidedTaskCancel => {
+            if crate::guided_task::cancel() {
+                crate::dashboard::on_guided_pin_changed(&app);
+            }
+            Ok(())
+        }
     }
 }
 

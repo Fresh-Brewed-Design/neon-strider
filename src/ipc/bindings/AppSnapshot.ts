@@ -7,6 +7,7 @@ import type { DeckSnapshot } from "./DeckSnapshot";
 import type { DeskSync } from "./DeskSync";
 import type { EyeBreakSnapshot } from "./EyeBreakSnapshot";
 import type { GhostPodSnapshot } from "./GhostPodSnapshot";
+import type { GuidedTaskSnapshot } from "./GuidedTaskSnapshot";
 import type { HeartRateSnapshot } from "./HeartRateSnapshot";
 import type { HudConfig } from "./HudConfig";
 import type { HudMonitor } from "./HudMonitor";
@@ -82,4 +83,8 @@ calibration: CalibrationSnapshot,
 /**
  * Labs: GHOST_POD, the PC as a foot pod for a watch (off by default).
  */
-ghost_pod: GhostPodSnapshot, heart_rate: HeartRateSnapshot, };
+ghost_pod: GhostPodSnapshot, heart_rate: HeartRateSnapshot, 
+/**
+ * The dashboard held open and on top during a guided task (GROUND_TRUTH).
+ */
+guided_task: GuidedTaskSnapshot, };

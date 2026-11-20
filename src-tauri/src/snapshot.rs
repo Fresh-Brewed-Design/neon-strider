@@ -212,7 +212,7 @@ fn neural_snapshot(state: &OrchestratorState) -> NeuralSnapshot {
 
 /// Build a snapshot from state. Pure (no Tauri, no locks, no I/O) so it can be
 /// unit-tested. `desk_sync`, `walkaway`, `update`, `traffic`, `lights_out`, `ghost_pod`,
-/// `calibration` and `hud_view` are left at their defaults: they depend on the clock or shared
+/// `calibration`, `guided_task` and `hud_view` are left at their defaults: they depend on the clock or shared
 /// state, so the emitter fills them in.
 pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSnapshot {
     AppSnapshot {
@@ -240,6 +240,7 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         calibration: crate::calibration::CalibrationSnapshot::default(),
         ghost_pod: crate::ghost_pod::GhostPodSnapshot::default(),
         heart_rate: crate::heart_rate::HeartRateSnapshot::default(),
+        guided_task: crate::guided_task::GuidedTaskSnapshot::default(),
     }
 }
 
