@@ -54,6 +54,7 @@ export type { SavedFile } from "./bindings/SavedFile";
 export type { SeatedSnapshot } from "./bindings/SeatedSnapshot";
 export type { SessionSnapshot } from "./bindings/SessionSnapshot";
 export type { StartResult } from "./bindings/StartResult";
+export type { StepRunView } from "./bindings/StepRunView";
 export type { StravaActivity } from "./bindings/StravaActivity";
 export type { StravaGear } from "./bindings/StravaGear";
 export type { StravaHint } from "./bindings/StravaHint";
