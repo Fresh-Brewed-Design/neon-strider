@@ -20,7 +20,7 @@ function previewTemplate(template: string, fallback: string): string {
 
 const stravaFlag = params.get("strava");
 const INACTIVE_MESSAGE =
-  "Strava turned off this API app: the account that owns it needs a Strava subscription. Subscribe, then reactivate it at strava.com/settings/api \u2014 or use Save for Strava below.";
+  "Strava turned off the API app because its owner needs a Strava subscription. Subscribe and reactivate the app at strava.com/settings/api, or use Save for Strava.";
 const OFFLINE_MESSAGE = "Can't reach Strava. Check your internet connection.";
 const PAUSED: Partial<StravaSnapshot> = {
   activity: { state: "paused", reason: INACTIVE_MESSAGE },

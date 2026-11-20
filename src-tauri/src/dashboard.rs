@@ -12,17 +12,24 @@ use tauri::Manager;
 pub(crate) const DASHBOARD_LABEL: &str = "main";
 /// Settings key (JSON, see `placement::SavedPosition`) for where the dashboard was.
 const KEY_DASHBOARD_POSITION: &str = "dashboard_position";
+/// The size the dashboard's layout is designed at (`/dashboard-preview.html`).
 const DASHBOARD_SIZE: (f64, f64) = (760.0, 600.0);
 /// Gap from the primary display's right and bottom edges when there is no
 /// saved spot, logical px (the bottom one clears the taskbar).
 const DEFAULT_MARGIN: (f64, f64) = (20.0, 60.0);
 /// Quiet time after the last move event before the position is saved.
+/// Windows sends a move event per frame while dragging; half a second after the
+/// last one the drag is over, so a drag is one write.
 const SAVE_DEBOUNCE: Duration = Duration::from_millis(500);
 /// Move events for this long after we placed the window ourselves are ours, not
 /// the user's drag, and are not saved.
+/// The moves Windows reports after a `set_position` arrive within a few frames;
+/// 800 ms covers a slow repaint and is shorter than a deliberate drag.
 const PLACE_GRACE: Duration = Duration::from_millis(800);
 /// A focus loss this soon after opening is part of opening (the tray click
 /// that opened it), not the user leaving.
+/// The tray click's focus change lands within a few hundred ms; a second covers
+/// a busy PC and is shorter than any real look away.
 const OPEN_GRACE: Duration = Duration::from_millis(1000);
 
 static PLACED_AT: Mutex<Option<Instant>> = Mutex::new(None);

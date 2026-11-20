@@ -19,7 +19,7 @@ function useDraft(live: number) {
   const set = (v: number) => {
     setDraft(v);
     clearTimeout(timer.current);
-    timer.current = setTimeout(() => setDraft(null), 1500);
+    timer.current = setTimeout(() => setDraft(null), 1500); // a few snapshots after the last change, so Rust's value has arrived
   };
   return [draft ?? live, set] as const;
 }

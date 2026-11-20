@@ -12,7 +12,7 @@ export interface CalibrationRow {
   index: number | null;
 }
 
-/** A saved point this close to a target is that target's point. */
+/** A saved point this close to a target is that target's point: half a deck step, as `calibration.rs` `SAME_SPEED_KMH`. */
 const SAME_SPEED_KMH = 0.05;
 
 /**
@@ -89,11 +89,15 @@ function pct(v: number): string {
 /** One line per midpoint check of the guided walk, in plain words. */
 export function checkLine(c: GuideCheck, tolerancePct: number): string {
   const span = `${c.lo_kmh.toFixed(1)} to ${c.hi_kmh.toFixed(1)} km/h`;
-  const at = c.mid_kmh.toFixed(1);
+  // Once run, the speed the deck ran, as the chip and the walk's note show it.
+  const at = (c.ran_kmh ?? c.mid_kmh).toFixed(1);
   const off = c.error_pct === null ? "" : pct(c.error_pct);
   switch (c.verdict) {
     case "pending":
-      return `${span}: the check at ${at} km/h waits for RUN.`;
+      // Rust moved the check off a halfway speed the deck skips (DECK_PROFILE).
+      return c.halfway_kmh === null
+        ? `${span}: the check at ${at} km/h waits for RUN.`
+        : `${span}: the deck skips ${c.halfway_kmh.toFixed(1)}, so the check at ${at} km/h waits for RUN.`;
     case "agreed":
       return `${span}: ${off} off at ${at} km/h, within ${pct(tolerancePct)}.`;
     case "split":
@@ -107,20 +111,20 @@ export function checkLine(c: GuideCheck, tolerancePct: number): string {
 
 /** The walk's summary once every speed is done: what was calibrated, and how far off the curve still is. */
 export function guideSummary(g: CalibrationGuideView): string[] {
-  const saved = g.speeds.filter((s) => s.mark === "saved").map((s) => s.kmh);
+  const saved = g.speeds.filter((s) => s.mark === "saved").map((s) => s.ran_kmh ?? s.kmh);
   const lines = [saved.length === 0 ? "No speed was calibrated." : `Calibrated ${speedList(saved)}.`];
   const ended = g.checks.filter((c) => c.verdict === "agreed" || c.verdict === "at_limit");
   if (g.remaining_error_pct !== null) {
     const within = g.remaining_error_pct <= g.tolerance_pct;
     lines.push(
       within
-        ? `Between those speeds, distance is within ${pct(g.remaining_error_pct)} of the belt.`
-        : `Distance is still up to ${pct(g.remaining_error_pct)} off between some of those speeds.`,
+        ? `Between the calibrated speeds, distance is within ${pct(g.remaining_error_pct)} of the belt.`
+        : `Distance is still up to ${pct(g.remaining_error_pct)} off between some calibrated speeds.`,
     );
   } else if (saved.length >= 2 && g.checks.length === 0) {
-    lines.push("The deck has no speed between those two to check.");
+    lines.push("The deck has no speed between the two calibrated speeds to check.");
   }
-  if (g.checks.some((c) => c.verdict === "skipped")) lines.push("A skipped check leaves the error there unknown.");
+  if (g.checks.some((c) => c.verdict === "skipped")) lines.push("A skipped check leaves the distance error at its midpoint unknown.");
   if (ended.length > 0) lines.push("Each check run measured the error halfway between two calibrated speeds.");
   return lines;
 }

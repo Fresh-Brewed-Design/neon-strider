@@ -1,6 +1,5 @@
-import type { NeuralSensitivity } from "../../ipc";
+import { SETTING_LIMITS, type NeuralSensitivity } from "../../ipc";
 import { useAppSnapshot } from "../../state/useAppState";
-import { NEURAL_FLOOR_MAX, NEURAL_FLOOR_MIN } from "../../store/slices/settingsSlice";
 import { useTreadmillStore } from "../../store/treadmillStore";
 import { Hint, Label } from "../ui";
 import { cx } from "../util";
@@ -82,7 +81,8 @@ export function NeuralSection() {
         tone="green"
         checked={enabled}
         onChange={(v) => updateSettings({ focusStabilityEnabled: v })}
-        description="Works on any walk, set by hand or by a program. It starts after about 10 s of steady typing. When you type less, it speeds back up within about 20 s, all the way once you are typing only now and then, and back to full speed about a minute after you stop. A speed you set yourself becomes the new starting point."
+        description="Works on any walk, set by hand or by a program."
+        hint="Neural flow starts easing after about 10 s of steady typing. Typing less brings the speed back up within about 20 s, and full speed returns about a minute after typing stops. A speed you set yourself becomes the new starting point."
       />
       {enabled && (
         <>
@@ -90,12 +90,12 @@ export function NeuralSection() {
           <SliderField
             label="Slowest speed"
             tone="green"
-            min={NEURAL_FLOOR_MIN}
-            max={NEURAL_FLOOR_MAX}
+            min={SETTING_LIMITS.neural_floor_pct.min}
+            max={SETTING_LIMITS.neural_floor_pct.max}
             step={1}
             value={floor}
             format={(v) => `${v.toFixed(0)}% of your speed`}
-            hint="How far it can ease off, reached only during intense typing."
+            hint="How far Neural flow can ease the belt, reached only during intense typing."
             onCommit={(v) => updateSettings({ neuralFloorPct: v })}
           />
           <SensitivityChoice />

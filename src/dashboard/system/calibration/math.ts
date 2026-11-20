@@ -2,7 +2,7 @@
 // the treadmill reports divided by the speed actually walked. Rust applies the
 // points; this only works them out.
 
-/** Steps the user counts in one timed run. */
+/** Steps the user counts in one timed run: about 30 s at a walk, so a 0.3 s stopwatch slip is 1 %. */
 export const STEPS_PER_RUN = 50;
 
 const kmh = (meters: number, seconds: number) => (seconds > 0 ? (meters / seconds) * 3.6 : 0);

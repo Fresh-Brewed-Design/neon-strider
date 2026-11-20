@@ -6,8 +6,8 @@
 //! The deck lives for the app's run, as a real one stays switched on: a
 //! reconnect finds the belt as the link left it. Its walks stay in memory
 //! (negative session ids), so a dev run never reaches History, the odometer
-//! or Strava, and connecting it never saves it as the treadmill to reconnect
-//! to.
+//! or Strava. Connecting it saves it as the treadmill to reconnect to, in the
+//! dev builds' own database.
 
 use crate::sim::SimDeck;
 use btleplug::api::ValueNotification;

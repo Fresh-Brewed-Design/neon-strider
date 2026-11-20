@@ -62,7 +62,7 @@ export function ActiveProgramCard() {
         <GhostButton
           onClick={() => send({ type: "program_end" })}
           className="flex items-center gap-1.5 hover:text-neon-magenta"
-          title="End the program and go back to what the treadmill was doing before. A belt that isn't moving stays still: press Engage when ready."
+          title="End the program and go back to the earlier speed."
         >
           <Square size={14} /> End
         </GhostButton>

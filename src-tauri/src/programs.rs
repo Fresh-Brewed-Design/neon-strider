@@ -30,12 +30,17 @@ const RESUME_MAX_AGE_MS: i64 = 10 * 60 * 1000;
 /// waiting over lunch should still be there. Older ones are dropped.
 const RESUME_STILL_MAX_AGE_MS: i64 = 4 * 60 * 60 * 1000;
 /// Elapsed time is saved at most this often; structural changes save at once.
+/// A crash or update loses at most 5 s of a step, as for the session row.
 const ACTIVE_RUN_SAVE_EVERY: Duration = Duration::from_secs(5);
 
-const MAX_NAME_CHARS: usize = 40;
-const MAX_STEPS: usize = 20;
-/// Below this a speed means "belt held still" (same threshold the engine uses).
-const MOVING_KMH: f32 = 0.05;
+/// Fits a program button on the HUD and the idle-nudge card.
+pub(crate) const MAX_NAME_CHARS: usize = 40;
+/// A long interval program (the VO2 max one has 10 steps) with room to spare,
+/// while the editor stays one screen.
+pub(crate) const MAX_STEPS: usize = 20;
+/// Below this a speed means "belt held still": the engine's own threshold.
+const MOVING_KMH: f32 = STILL_KMH;
+/// Half a minute to finish a sentence before the belt stops for a rest.
 const REST_WARNING_S: f64 = 30.0;
 /// A step with a heart rate zone changes the speed by this much at a time:
 /// one deck step, the smallest change the belt makes.
@@ -240,6 +245,10 @@ pub struct ProgramRun {
     /// Watches for a start at the treadmill while the run holds the belt still
     /// (paused, waiting for GO, or resting). Not saved.
     pub deck_start: DeckStartWatch,
+    /// The deck has reported the belt moving since the run last started or
+    /// resumed walking, so a Paused report after it is a pause of that walk
+    /// (`notice_deck_pause`), not the deck still answering a GO. Not saved.
+    pub deck_moved: bool,
     /// When the speed was last trimmed to hold a heart rate zone. Not saved.
     pub zone_trimmed_at: Option<Instant>,
 }
@@ -398,6 +407,7 @@ pub(crate) fn validate_program(p: &Program, min_speed: f32, max_speed: f32) -> R
         }
         // The calibrated floor is rarely a round number; a speed typed as the
         // floor shown (to 0.01 km/h) is not below it.
+        // 0.005 is half the 0.01 km/h the floor is shown to.
         if s.speed_kmh != 0.0 && (s.speed_kmh < min_speed - 0.005 || s.speed_kmh > max_speed) {
             return Err(format!(
                 "Step {}: speed must be 0 or between {:.1} and {:.1} km/h",
@@ -726,10 +736,12 @@ impl OrchestratorState {
         });
     }
 
-    /// resolve_target lets manual intent win for 5 s after the last manual
+    /// resolve_target lets manual intent win for `MANUAL_LOCKOUT` after the last manual
     /// interaction; push that timestamp into the past so the program applies now.
     fn prioritize_program(&mut self, now: Instant) {
-        self.last_manual_interaction = now.checked_sub(Duration::from_secs(6)).unwrap_or(now);
+        self.last_manual_interaction = now
+            .checked_sub(crate::engine::MANUAL_LOCKOUT + Duration::from_secs(1))
+            .unwrap_or(now);
     }
 
     /// A paused deck only auto-resumes when the target exceeds the engine's
@@ -767,6 +779,7 @@ impl OrchestratorState {
         run.wait = Some(why);
         run.last_tick = now;
         run.deck_start = DeckStartWatch::default();
+        run.deck_moved = false;
         self.set_program_intent_from(run);
         self.manual_intent = Some(ControlIntent {
             speed: 0.0,
@@ -798,6 +811,53 @@ impl OrchestratorState {
     /// in the meantime. The engine calls this before deciding what to send;
     /// it returns true while a start is being confirmed, and the engine then
     /// leaves the belt alone instead of pausing it.
+    /// A pause at the treadmill (its own buttons or remote, or the deck's
+    /// Pause sent from a shortcut) while the program walks a moving step: the
+    /// program pauses with it, the same as its own pause. Its step timer
+    /// stops, the HUD and dashboard offer GO, and GO (or a start at the
+    /// treadmill, `watch_for_deck_start`) resumes the step. Without this the
+    /// program walked on against a paused belt, and GO had nothing to resume.
+    ///
+    /// It counts only once the deck has reported the belt moving since the
+    /// run last started or resumed (`ProgramRun::deck_moved`): until then a
+    /// Paused report is the deck not yet answering GO. A reconnect that holds
+    /// automatic starts is left to the program's own wait (`BeltStill`), and a
+    /// run restored after a restart to its re-apply. Nothing is sent: the deck
+    /// is paused already, and the program's paused target is zero.
+    pub(crate) fn notice_deck_pause(&mut self, now: Instant) {
+        if self.awaiting_first_packet || self.stop_requested || self.hold_auto_start {
+            return;
+        }
+        let moving = self.last_status.is_moving();
+        let deck_paused = self.last_status == MachineStatus::Paused;
+        let Some(run) = self.program.as_mut() else {
+            return;
+        };
+        // A 0 km/h step pauses the belt itself: that pause is the program's.
+        if run.phase != ProgramPhase::Walking
+            || run.paused
+            || run.restored
+            || run.target.speed < MOVING_KMH
+        {
+            run.deck_moved = false;
+            return;
+        }
+        if moving {
+            run.deck_moved = true;
+            return;
+        }
+        if !deck_paused || !run.deck_moved {
+            return;
+        }
+        log::info!(
+            "Belt paused at the treadmill: pausing program {}",
+            run.program.id
+        );
+        if let Err(e) = self.pause_program(now) {
+            log::warn!("Pause at the treadmill: {}", e);
+        }
+    }
+
     pub(crate) fn watch_for_deck_start(&mut self, now: Instant) -> bool {
         let moving = self.last_status.is_moving();
         let app_start = self.handshake_step != crate::protocol::HandshakeStep::Idle
@@ -907,6 +967,7 @@ impl OrchestratorState {
             restored: false,
             saved_at: None,
             deck_start: DeckStartWatch::default(),
+            deck_moved: false,
             zone_trimmed_at: None,
         };
         self.set_program_intent_from(&run);
@@ -957,6 +1018,7 @@ impl OrchestratorState {
         run.paused = true;
         run.last_tick = now;
         run.deck_start = DeckStartWatch::default();
+        run.deck_moved = false;
         let incline = run.target.incline;
         let run = run.clone();
         self.set_program_intent_from(&run);
@@ -1237,6 +1299,7 @@ impl OrchestratorState {
             (step.speed_kmh + ZONE_TRIM_RANGE_KMH).min(self.to_physical_speed(self.top_hw_speed()));
         // A speed set by hand outside the range is the user's choice: the zone
         // leaves it alone rather than pull it back by up to a km/h at once.
+        // 0.001 km/h is float slack, far under the deck's 0.1 step.
         if run.target.speed < floor - 0.001 || run.target.speed > ceiling + 0.001 {
             return;
         }
@@ -1343,6 +1406,7 @@ impl OrchestratorState {
         let max_speed = self.to_physical_speed(self.top_hw_speed());
         // Each step at a speed the deck runs (DECK_PROFILE); 0 stays 0.
         for step in &mut program.steps {
+            // 0.005: half the 0.01 km/h the floor is shown to, as in `validate`.
             if step.speed_kmh >= min_speed - 0.005 && step.speed_kmh <= max_speed {
                 step.speed_kmh = self.snap_speed(step.speed_kmh);
             }
@@ -1514,6 +1578,7 @@ impl OrchestratorState {
             restored: true,
             saved_at: now.checked_sub(Duration::from_millis(age as u64)),
             deck_start: DeckStartWatch::default(),
+            deck_moved: false,
             zone_trimmed_at: None,
         };
         self.set_program_intent_from(&run);
@@ -3634,5 +3699,110 @@ mod tests {
         let saved = s.programs.iter().find(|p| p.id == seeded.id).unwrap();
         assert_eq!(saved.steps[1].zone.unwrap().low_pct, 70.0);
         assert_eq!(saved.note, None, "a new zone changes what the program does");
+    }
+
+    // -----------------------------------------------------------------------
+    // A pause at the treadmill (#158).
+    // -----------------------------------------------------------------------
+
+    /// Post-meal walking at 4.0 km/h on a synced engine for 3 s, then paused
+    /// at the treadmill and reported Paused for 5 s.
+    fn post_meal_paused_at_the_treadmill(t0: Instant) -> (OrchestratorState, ProtocolEngine) {
+        let mut s = state();
+        moving(&mut s, BEFORE.speed, BEFORE.incline);
+        s.hardware_speed = 4.0;
+        s.run_program(1, t0).unwrap();
+        let mut engine = ProtocolEngine::new();
+        engine.has_synced_reality = true;
+        s.awaiting_first_packet = false;
+        drive(&mut s, &mut engine, t0, 3);
+        assert!(!s.active_program().unwrap().paused);
+        s.last_status = MachineStatus::Paused;
+        s.hardware_speed = 0.0;
+        let sent = drive(&mut s, &mut engine, t0 + secs(3), 5);
+        assert!(!moves_belt(&sent) && !pauses_belt(&sent), "{sent:?}");
+        (s, engine)
+    }
+
+    #[test]
+    fn a_pause_at_the_treadmill_pauses_the_walking_program() {
+        let t0 = Instant::now();
+        let (mut s, mut engine) = post_meal_paused_at_the_treadmill(t0);
+        let a = s.active_program().unwrap();
+        assert_eq!(
+            (a.phase, a.paused, a.wait),
+            (ProgramPhase::Walking, true, None)
+        );
+        assert_eq!(a.step_index, 0);
+        assert_eq!(s.program_intent.map(|i| i.speed), Some(0.0));
+        // The step timer holds, and nothing restarts the belt.
+        let left = a.seconds_remaining;
+        let sent = drive(&mut s, &mut engine, t0 + secs(8), 60);
+        assert!(!moves_belt(&sent), "{sent:?}");
+        assert_eq!(s.active_program().unwrap().seconds_remaining, left);
+        assert!(s.active_program().unwrap().paused);
+    }
+
+    #[test]
+    fn go_after_a_pause_at_the_treadmill_resumes_the_step() {
+        let t0 = Instant::now();
+        let (mut s, mut engine) = post_meal_paused_at_the_treadmill(t0);
+        s.resume_program(t0 + secs(8)).unwrap();
+        assert_eq!(s.handshake_step, crate::protocol::HandshakeStep::Priming);
+        let sent = drive(&mut s, &mut engine, t0 + secs(8), 2);
+        assert!(app_starts(&sent), "{sent:?}");
+        // The deck still reports Paused until it answers: GO stands.
+        let a = s.active_program().unwrap();
+        assert_eq!((a.paused, a.step_index), (false, 0));
+        assert_eq!(s.program_intent.map(|i| i.speed), Some(4.0));
+    }
+
+    #[test]
+    fn engage_after_a_pause_at_the_treadmill_is_the_programs_go() {
+        let t0 = Instant::now();
+        let (mut s, _) = post_meal_paused_at_the_treadmill(t0);
+        s.set_test_now(t0 + secs(8));
+        s.trigger_action(crate::engine::DeckAction::Start);
+        let a = s.active_program().unwrap();
+        assert_eq!((a.paused, a.wait), (false, None));
+        assert_eq!(s.resolve_target().2, crate::engine::TargetSource::Program);
+    }
+
+    #[test]
+    fn a_start_at_the_treadmill_after_its_pause_is_the_programs_go() {
+        let t0 = Instant::now();
+        let (mut s, mut engine) = post_meal_paused_at_the_treadmill(t0);
+        // The deck counts down, then resumes at the speed it paused at.
+        s.last_status = MachineStatus::Starting;
+        let mut sent = drive(&mut s, &mut engine, t0 + secs(8), 3);
+        s.last_status = MachineStatus::Running;
+        s.hardware_speed = 4.0;
+        sent.extend(drive(&mut s, &mut engine, t0 + secs(11), 5));
+        assert!(!app_starts(&sent) && !pauses_belt(&sent), "{sent:?}");
+        let a = s.active_program().unwrap();
+        assert_eq!((a.paused, a.wait), (false, None));
+        assert_eq!(s.program_intent.map(|i| i.speed), Some(4.0));
+        assert_eq!(
+            s.take_program_toast(),
+            Some(ProgramToast::deck_go("Post-meal"))
+        );
+    }
+
+    /// Run on a paused deck: the deck reports Paused until it answers the
+    /// program's start. That is not a pause at the treadmill.
+    #[test]
+    fn a_paused_report_before_the_belt_moved_is_not_a_pause() {
+        let t0 = Instant::now();
+        let mut s = state();
+        s.last_status = MachineStatus::Paused;
+        s.manual_intent = Some(ControlIntent {
+            speed: 0.0,
+            incline: 0,
+        });
+        let mut engine = still_for(&mut s, t0, 1);
+        s.run_program(1, t0 + secs(1)).unwrap();
+        let sent = drive(&mut s, &mut engine, t0 + secs(1), 2);
+        assert!(app_starts(&sent), "{sent:?}");
+        assert!(!s.active_program().unwrap().paused);
     }
 }

@@ -51,8 +51,11 @@ use tauri::AppHandle;
 /// Stride a point may have, cm. Wider than a walking stride on purpose: short
 /// shuffles at a desk and long strides both happen.
 pub const MIN_STRIDE_CM: f32 = 20.0;
+/// Twice a tall walker's stride (about 80 cm), so only a typo lands outside.
 pub const MAX_STRIDE_CM: f32 = 200.0;
 /// Distance scale a point may have (reported over real distance).
+/// Far wider than any deck's error (a few to tens of percent), so only a mistyped
+/// time or belt length, or a botched run, lands outside 0.2 to 3.
 pub const MIN_SCALE: f32 = 0.2;
 pub const MAX_SCALE: f32 = 3.0;
 /// The belt loop length the user can enter, cm: from the shortest walking
@@ -60,9 +63,11 @@ pub const MAX_SCALE: f32 = 3.0;
 pub const MIN_BELT_CM: f32 = 50.0;
 pub const MAX_BELT_CM: f32 = 1000.0;
 /// The speeds the wizard offers until the user edits the list, in deck km/h.
+/// Desk walking runs from about 2 km/h (typing) to 5 or 6 km/h (brisk), see
+/// docs/research.md; 1 km/h apart keeps the list to five runs.
 pub const DEFAULT_TARGETS_KMH: [f32; 5] = [2.0, 3.0, 4.0, 5.0, 6.0];
 /// A reported speed below this is a still belt.
-const STOPPED_BELOW_KMH: f32 = 0.05;
+const STOPPED_BELOW_KMH: f32 = crate::engine::STILL_KMH;
 /// Reported speeds during one run may differ by at most this much: the deck
 /// reports tenths and wobbles by one, while a real change is a step of 0.5 or
 /// more from a press or a program.
@@ -86,6 +91,7 @@ pub(crate) static TEST_GLOBALS: Mutex<()> = Mutex::new(());
 /// The stored target list; None until the user edits it (the defaults apply).
 static TARGETS: Mutex<Option<Vec<f32>>> = Mutex::new(None);
 /// Targets this close together are one speed.
+/// Half the deck's 0.1 km/h step: closer than that, the deck runs one speed.
 const SAME_TARGET_KMH: f32 = 0.05;
 
 /// The limits as the UI sees them, so both sides use one set of numbers.
@@ -151,6 +157,7 @@ pub struct CalibrationResult {
 /// A saved point this close to a run's target is that target's point: the
 /// same tolerance the dashboard's rows use (`guided.ts`), so the row and the
 /// averaged point agree.
+/// Half the deck's 0.1 km/h step.
 const SAME_SPEED_KMH: f32 = 0.05;
 
 /// `saved` with one more run folded in, every run weighing the same. A run
@@ -423,7 +430,7 @@ impl Run {
     /// speed, for the point once the taps agree.
     pub fn tap(&mut self, now: Instant, raw_kmh: f32, stride_at: impl Fn(f32) -> f32) {
         if self.result.is_some() {
-            self.note = Some("The run is measured. TAP AGAIN starts it over.".into());
+            self.note = Some("The run is measured. TAP AGAIN starts the run over.".into());
             return;
         }
         if raw_kmh < STOPPED_BELOW_KMH {
@@ -894,6 +901,7 @@ fn check_target(state: &OrchestratorState, target_hw_kmh: f32) -> Result<(), Str
 
 /// `kmh` lies inside the treadmill's `min_kmh..=max_kmh`.
 fn check_range(kmh: f32, min_kmh: f32, max_kmh: f32) -> Result<(), String> {
+    // 0.1 km/h is the deck's smallest step: below it a target is a stop.
     if !kmh.is_finite() || kmh < min_kmh.max(0.1) {
         return Err(format!("Pick a speed of at least {min_kmh:.1} km/h."));
     }
@@ -1142,7 +1150,7 @@ pub fn set_belt(app: &AppHandle, cm: f32) -> Result<(), String> {
         ));
     }
     let key = with_belt(|b| b.key.clone())
-        .ok_or("Connect the treadmill first, so the belt length is kept for it.")?;
+        .ok_or("Connect the treadmill first, so the belt length is kept for that treadmill.")?;
     crate::persistence::write_setting(app, &key, &format!("{cm}"))?;
     with_belt(|b| b.cm = Some(cm));
     log::info!("Belt loop set to {cm:.0} cm");
@@ -1251,10 +1259,29 @@ pub(crate) fn close_all() {
 
 /// The slowest speed the deck runs, in tenths (rounded up, so the deck can
 /// run it).
-/// DECK_PROFILE's floor, once seen, is the slowest the deck holds.
+/// DECK_PROFILE's floor, once seen, is the slowest the deck holds, and a
+/// speed it skips above that moves up to the next one it runs.
 fn slowest(state: &OrchestratorState) -> f32 {
     let floor = state.deck_profile.floor().map_or(0.0, |b| b as f32 / 10.0);
-    (state.min_speed.max(floor).max(0.1) * 10.0 - 1e-3).ceil() / 10.0
+    let first = (state.min_speed.max(floor).max(0.1) * 10.0 - 1e-3).ceil() as u8;
+    let last = (state.max_speed * 10.0).round() as u8;
+    let byte = (first..=last.max(first))
+        .find(|b| !state.deck_profile.skips(*b))
+        .unwrap_or(first);
+    f32::from(byte) / 10.0
+}
+
+/// The speeds from `slow_kmh` to `top_kmh` DECK_PROFILE knows the deck
+/// skips, so the walk's checks pick ones it runs.
+fn skipped_between(state: &OrchestratorState, slow_kmh: f32, top_kmh: f32) -> Vec<f32> {
+    let (lo, hi) = (
+        (slow_kmh * 10.0).round() as u8,
+        (top_kmh * 10.0).round() as u8,
+    );
+    (lo..=hi)
+        .filter(|b| state.deck_profile.skips(*b))
+        .map(|b| f32::from(b) / 10.0)
+        .collect()
 }
 
 /// "What's the fastest you'll walk?": open the guided walk from the deck's
@@ -1271,7 +1298,9 @@ pub(crate) fn guide_start(state: &OrchestratorState, top_kmh: f32) -> Result<(),
             state.max_speed
         ));
     }
-    let walk = guide::Guide::new(slowest(state), top_kmh)?;
+    let slow = slowest(state);
+    let walk =
+        guide::Guide::new(slow, top_kmh)?.with_skipped(skipped_between(state, slow, top_kmh));
     log::info!("Calibration walk to {top_kmh:.1} km/h");
     with_run(|r| *r = None);
     with_sweep(|s| *s = None);
@@ -2251,6 +2280,36 @@ mod tests {
         assert_eq!(snapshot(&state).guide.unwrap().next_kmh, Some(5.0));
         close_all();
         assert_eq!(snapshot(&state).guide, None);
+    }
+
+    /// #166: the walk starts at a speed the deck runs and picks its check
+    /// from DECK_PROFILE's runnable speeds.
+    #[test]
+    fn the_guided_walk_plans_only_speeds_the_deck_runs() {
+        use crate::deck_profile::Outcome::Took;
+        let _globals = TEST_GLOBALS.lock().unwrap_or_else(|e| e.into_inner());
+        close_all();
+        let mut state = OrchestratorState {
+            min_speed: 0.6,
+            max_speed: 8.0,
+            ..Default::default()
+        };
+        // The deck changes 0.6 to 0.7 and 2.8 to 2.9.
+        state.deck_profile.learn(6, Took(7));
+        state.deck_profile.learn(28, Took(29));
+        assert_eq!(slowest(&state), 0.7);
+        assert_eq!(skipped_between(&state, 0.7, 5.0), vec![2.8]);
+        set_belt_for_test(Some(280.0));
+        guide_start(&state, 5.0).unwrap();
+        assert_eq!(snapshot(&state).guide.unwrap().slow_kmh, 0.7);
+        let mut walk = guide::Guide::new(0.7, 4.9)
+            .unwrap()
+            .with_skipped(skipped_between(&state, 0.7, 4.9));
+        walk.record(0.7, 0.7, 1.0);
+        walk.record(4.9, 4.9, 1.0);
+        let c = walk.view().checks[0];
+        assert_eq!((c.mid_kmh, c.halfway_kmh), (2.7, Some(2.8)));
+        close_all();
     }
 
     #[test]

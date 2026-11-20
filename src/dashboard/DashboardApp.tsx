@@ -81,6 +81,7 @@ export function DashboardApp() {
         writePref(NOTES_SHOWN_KEY, String(at));
         writePref(PAGE_KEY, "system");
         setPage("system");
+        // 80 ms: a frame or so for the System page to render before scrolling to it.
         setTimeout(() => document.getElementById(UPDATES_SECTION_ID)?.scrollIntoView({ block: "start" }), 80);
       }),
     [],
@@ -128,7 +129,7 @@ export function DashboardApp() {
           <button
             type="button"
             onClick={() => send({ type: "dashboard_set_pinned", pinned: !pinned })}
-            title={pinned ? "Close this window when it loses focus" : "Keep this window open when it loses focus"}
+            title={pinned ? "Close the dashboard when it loses focus" : "Keep the dashboard open when it loses focus"}
             className={cx(
               "flex w-full items-center gap-2 rounded px-2.5 py-2 text-left transition-colors hover:bg-white/5",
               pinned ? "text-neon-cyan" : "text-white/50",

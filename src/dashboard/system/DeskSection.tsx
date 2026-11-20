@@ -1,4 +1,4 @@
-import { dispatch } from "../../ipc";
+import { dispatch, SETTING_LIMITS } from "../../ipc";
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { roundSpeed, snapToDeck } from "../../state/deckSpeeds";
@@ -8,7 +8,8 @@ import { cx, send } from "../util";
 import { NumberField, Section, Toggle } from "./fields";
 import { LightsOutSetting } from "./LightsOutSetting";
 
-const MAX_PROGRAM_BUTTONS = 3;
+const L = SETTING_LIMITS;
+const MAX_PROGRAM_BUTTONS = L.seated_program_buttons;
 
 /** Walk-away safety: pause the belt on lock, or after a long time without input. */
 function WalkAwaySettings() {
@@ -34,7 +35,8 @@ function WalkAwaySettings() {
           tone="yellow"
           checked={w.lock_enabled}
           onChange={(lock_enabled) => void lockAction.run(() => save({ lock_enabled }))}
-          description="Locking Windows (Win+L) pauses a moving belt at once, a running program too. The session is kept; it never restarts by itself, so the HUD asks to resume or end when you are back."
+          description="Locking Windows (Win+L) pauses a moving belt and any running program."
+          hint="The session is kept and the belt never restarts by itself: the HUD asks to resume or end."
         />
         <ActionStatus pending={lockAction.pending} error={lockAction.error} className="mt-1" />
       </div>
@@ -44,7 +46,8 @@ function WalkAwaySettings() {
           tone="yellow"
           checked={w.idle_enabled}
           onChange={(idle_enabled) => void idleAction.run(() => save({ idle_enabled }))}
-          description="After a long time without keyboard or mouse input, the HUD warns for 30 seconds, then pauses the belt. Any input, or STAY on the card, cancels it. Not during a call, so you can talk while you walk."
+          description={`After ${w.idle_minutes} minutes with no keyboard or mouse input, the HUD warns for 30 seconds, then pauses the belt.`}
+          hint="Any input or STAY on the HUD card cancels the pause, and a call never triggers one."
         />
         <ActionStatus pending={idleAction.pending} error={idleAction.error} className="mt-1" />
       </div>
@@ -52,11 +55,11 @@ function WalkAwaySettings() {
         <NumberField
           label="Pause after"
           unit="minutes without input"
-          min={2}
-          max={30}
+          min={L.walkaway_idle_minutes.min}
+          max={L.walkaway_idle_minutes.max}
           step={1}
           value={w.idle_minutes}
-          hint="2 to 30. Long enough to watch a video while you walk."
+          hint={`${L.walkaway_idle_minutes.min} to ${L.walkaway_idle_minutes.max}. Long enough to watch a video while you walk.`}
           onCommit={(idle_minutes) => save({ idle_minutes: Math.round(idle_minutes) })}
         />
       )}
@@ -107,21 +110,21 @@ function EyeBreakSettings() {
           <NumberField
             label="Break every"
             unit="minutes of screen use"
-            min={10}
-            max={120}
+            min={L.eye_break_minutes.min}
+            max={L.eye_break_minutes.max}
             step={5}
             value={e.minutes}
-            hint="10 to 120. The 20-minute habit is popular, but studies on myopia favour 5 minutes an hour."
+            hint={`${L.eye_break_minutes.min} to ${L.eye_break_minutes.max}. The 20-minute habit is popular, but studies on myopia favour 5 minutes an hour.`}
             onCommit={(minutes) => save({ minutes })}
           />
           <NumberField
             label="Break lasts"
             unit="seconds"
-            min={20}
-            max={300}
+            min={L.eye_break_seconds.min}
+            max={L.eye_break_seconds.max}
             step={10}
             value={e.seconds}
-            hint="20 to 300. Focusing needs about 90 seconds to relax; 20 seconds is often too short."
+            hint={`${L.eye_break_seconds.min} to ${L.eye_break_seconds.max}. Focusing needs about 90 seconds to relax; 20 seconds is often too short.`}
             onCommit={(seconds) => save({ seconds })}
           />
           <Toggle
@@ -190,25 +193,26 @@ export function DeskSection() {
     <Section
       id="sys-desk"
       title="Desk"
-      description="Small nudges for a day at the PC. The treadmill switches itself off when idle, so none of this can start it: a program you pick waits until the treadmill connects."
+      description="Small nudges that never start the belt."
     >
       <Toggle
         label="Idle nudge"
         tone="yellow"
         checked={seated.enabled}
         onChange={(enabled) => saveSeated({ enabled })}
-        description="After a while of keyboard and mouse use without walking, a card on the HUD offers a walk or a program. Only the time of the last input is kept, never which keys."
+        description="After a stretch of PC use without walking, a HUD card offers a walk or a program."
+        hint="A program picked on the card waits until the treadmill connects. Only the time of the last input is kept, never which keys."
       />
       {seated.enabled && (
         <>
           <NumberField
             label="Remind after"
             unit="minutes of PC use"
-            min={15}
-            max={240}
+            min={L.seated_minutes.min}
+            max={L.seated_minutes.max}
             step={5}
             value={seated.minutes}
-            hint="15 to 240. Walking for 2 minutes, or being away from the PC for 15, starts the count again."
+            hint={`${L.seated_minutes.min} to ${L.seated_minutes.max}. Walking for 2 minutes, or being away from the PC for 15, starts the count again.`}
             onCommit={(minutes) => saveSeated({ minutes })}
           />
           <div>
@@ -220,7 +224,7 @@ export function DeskSection() {
             </div>
             {programs.length === 0 ? (
               <Hint className="mt-1">
-                Save a program on the Programs page and it will appear here.
+                Programs saved on the Programs page appear on the card.
               </Hint>
             ) : (
               <ul className="mt-1.5 flex flex-wrap gap-1.5" aria-label="Programs on the card">
@@ -277,15 +281,16 @@ export function DeskSection() {
         tone="yellow"
         checked={calls.enabled}
         onChange={(enabled) => saveCalls({ enabled })}
-        description="While an app is using the microphone, a running belt eases to a quiet speed (never faster than it was), and goes back 10 seconds after the call ends. A speed you change during the call is left alone."
+        description="While an app uses the microphone, a running belt eases to the quiet speed until 10 seconds after the call."
+        hint="The belt never speeds up for a call, and a speed changed during the call stays."
       />
       {calls.enabled && (
         <>
           <NumberField
             label="Quiet speed"
             unit="km/h"
-            min={0.5}
-            max={6}
+            min={L.calls_quiet_kmh.min}
+            max={L.calls_quiet_kmh.max}
             step={0.1}
             value={calls.quiet_kmh}
             hint="A running program is eased too, for the current step only; the saved program is not changed."

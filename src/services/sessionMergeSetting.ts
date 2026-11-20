@@ -1,12 +1,13 @@
 // The "join sessions closer than N minutes" setting. Rust reads the same key
 // when it groups walks for Strava, so both sides join sessions the same way.
 
+import { SETTING_LIMITS } from "../ipc";
 import { useTreadmillStore } from "../store/treadmillStore";
 import { SettingsRepository } from "./db/repositories/settingsRepository";
 
 const KEY = "session_merge_threshold_minutes";
-export const MERGE_THRESHOLD_MIN = 1;
-export const MERGE_THRESHOLD_MAX = 60;
+/** Rust clamps the stored value to the same range when it groups walks. */
+const { min: MERGE_THRESHOLD_MIN, max: MERGE_THRESHOLD_MAX } = SETTING_LIMITS.session_merge_minutes;
 
 function valid(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v) && v >= MERGE_THRESHOLD_MIN && v <= MERGE_THRESHOLD_MAX;
