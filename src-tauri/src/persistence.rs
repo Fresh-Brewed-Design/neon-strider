@@ -347,6 +347,67 @@ fn vo2_max_program_v4(raw: &str, next_id: Option<&str>) -> Option<(String, u32)>
     Some((serde_json::to_string(&list).ok()?, id + 1))
 }
 
+/// Migration 7: heart rate zones on the VO2 max program (roadmap #124): each
+/// 4-minute climb holds 85 to 95 % of maximum heart rate. Only a VO2 max the
+/// user hasn't touched (migration 4's name, steps, repeat and note) gains them;
+/// an edited one, or any other program, is left as it is. Nothing is removed.
+///
+/// Frozen: the program is written out here, not read from `seed_programs`.
+fn migration_7_vo2_max_zones(tx: &Transaction) -> rusqlite::Result<()> {
+    let Some(raw) = get_setting_str(tx, "programs") else {
+        return Ok(()); // Never seeded: the first start seeds it with zones.
+    };
+    if let Some(programs) = vo2_max_zones_v7(&raw) {
+        tx.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('programs', ?1)",
+            params![programs],
+        )?;
+    }
+    Ok(())
+}
+
+/// Migration 7's change to the stored programs JSON; `None` when there is
+/// nothing to change or the value can't be read.
+fn vo2_max_zones_v7(raw: &str) -> Option<String> {
+    use serde_json::{json, Value};
+    let mut list: Vec<Value> = serde_json::from_str(raw).ok()?;
+    // Migration 4's VO2 max, step by step: (minutes, km/h, incline %).
+    let mut seeded = vec![(5.0, 4.5, 0.0)];
+    for _ in 0..4 {
+        seeded.push((4.0, 6.0, 10.0));
+        seeded.push((3.0, 4.0, 0.0));
+    }
+    seeded.push((3.0, 3.0, 0.0));
+    let untouched = |p: &Value| {
+        let Some(steps) = p["steps"].as_array() else {
+            return false;
+        };
+        p["name"] == "VO2 max"
+            && p["repeat_every_minutes"].is_null()
+            && p["note"] == "Four hard 4-minute climbs with easy walks between train VO2 max."
+            && steps.len() == seeded.len()
+            && steps.iter().zip(&seeded).all(|(s, &(min, kmh, pct))| {
+                s["duration_minutes"].as_f64() == Some(min)
+                    && s["speed_kmh"].as_f64() == Some(kmh)
+                    && s["incline_pct"].as_f64() == Some(pct)
+                    && s.get("zone").is_none_or(Value::is_null)
+            })
+    };
+    let mut changed = false;
+    for p in list.iter_mut().filter(|p| untouched(p)) {
+        for s in p["steps"].as_array_mut()? {
+            if s["incline_pct"].as_f64() == Some(10.0) {
+                s["zone"] = json!({ "low_pct": 85.0, "high_pct": 95.0 });
+            }
+        }
+        changed = true;
+    }
+    if !changed {
+        return None;
+    }
+    serde_json::to_string(&list).ok()
+}
+
 type Migration = fn(&Transaction) -> rusqlite::Result<()>;
 
 /// Append new migrations at the end; never reorder or edit a shipped one.
@@ -358,6 +419,7 @@ const MIGRATIONS: &[Migration] = &[
     migration_4_vo2_max_program,
     migration_5_desk_days,
     migration_6_heart_rate,
+    migration_7_vo2_max_zones,
 ];
 
 fn schema_version(conn: &Connection) -> rusqlite::Result<u32> {
@@ -1931,6 +1993,69 @@ mod db_tests {
         assert_eq!(l.len(), 3, "Micro-break and Brisk come from migration 3");
         assert_eq!(l.iter().filter(|p| p.name == "VO2 max").count(), 1);
         assert_eq!(l[0].steps.len(), 1);
+    }
+
+    #[test]
+    fn migration_7_puts_zones_on_an_untouched_vo2_max_only() {
+        let zoned =
+            |p: &crate::programs::Program| p.steps.iter().filter(|s| s.zone.is_some()).count();
+        let mut conn = migrated_to_v2();
+        set(&conn, "programs", V1_SEEDS);
+        migrate(&mut conn).unwrap();
+        let l = stored_programs(&conn);
+        assert_eq!(l.len(), 6, "nothing added or removed");
+        let vo2 = l.iter().find(|p| p.name == "VO2 max").unwrap();
+        assert_eq!(zoned(vo2), 4);
+        for s in &vo2.steps {
+            let want = (s.incline_pct > 0.0).then_some(crate::programs::HeartZone {
+                low_pct: 85.0,
+                high_pct: 95.0,
+            });
+            assert_eq!(s.zone, want, "{:?}", s);
+        }
+        assert!(vo2.note.is_some(), "the note stays");
+        assert!(l
+            .iter()
+            .filter(|p| p.name != "VO2 max")
+            .all(|p| zoned(p) == 0));
+        // Forced to run again, nothing changes.
+        let before = get_setting_str(&conn, "programs");
+        conn.execute_batch("PRAGMA user_version = 6").unwrap();
+        migrate(&mut conn).unwrap();
+        assert_eq!(get_setting_str(&conn, "programs"), before);
+
+        // A VO2 max the user edited (a faster climb, so no note) is left alone,
+        // and so is a renamed copy of the seed.
+        let mut list = stored_programs(&conn);
+        for p in &mut list {
+            for s in &mut p.steps {
+                s.zone = None;
+            }
+        }
+        let mut renamed = list.iter().find(|p| p.name == "VO2 max").unwrap().clone();
+        renamed.id = 99;
+        renamed.name = "My 4x4".to_string();
+        let edited = list.iter_mut().find(|p| p.name == "VO2 max").unwrap();
+        edited.steps[1].speed_kmh = 6.5;
+        edited.note = None;
+        list.push(renamed);
+        let raw = serde_json::to_string(&list).unwrap();
+        set(&conn, "programs", &raw);
+        conn.execute_batch("PRAGMA user_version = 6").unwrap();
+        migrate(&mut conn).unwrap();
+        assert_eq!(
+            get_setting_str(&conn, "programs").as_deref(),
+            Some(raw.as_str())
+        );
+
+        // An empty or unreadable list stays as it is.
+        for raw in ["[]", "not json"] {
+            let mut conn = migrated_to_v2();
+            set(&conn, "programs", raw);
+            conn.execute_batch("PRAGMA user_version = 6").unwrap();
+            migrate(&mut conn).unwrap();
+            assert_eq!(get_setting_str(&conn, "programs").as_deref(), Some(raw));
+        }
     }
 
     #[test]

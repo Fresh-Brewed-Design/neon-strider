@@ -19,7 +19,8 @@ export function describeProgram(p: Program): string {
 
   const length = openEnded ? (p.steps.length === 1 ? "Continuous" : `${num(total)} min, then continuous`) : `${num(total)} min`;
   const repeat = p.repeat_every_minutes != null ? ` every ${num(p.repeat_every_minutes)} min` : "";
-  return `${length}${repeat} · ${pace}`;
+  const zone = p.steps.some((s) => s.zone) ? " · heart zone" : "";
+  return `${length}${repeat} · ${pace}${zone}`;
 }
 
 /** A walking step follows one that holds the belt still (0 km/h). */
@@ -36,7 +37,8 @@ export function describePlan(p: Program): string {
   p.steps.forEach((st, i) => {
     const time = st.duration_minutes == null ? "until you end it" : `${num(st.duration_minutes)} min`;
     const prefix = p.steps.length > 1 ? `${i + 1}. ` : "";
-    lines.push(`${prefix}${time} at ${st.speed_kmh.toFixed(1)} km/h, ${num(st.incline_pct)}% incline`);
+    const zone = st.zone ? `, heart zone ${num(st.zone.low_pct)} to ${num(st.zone.high_pct)} % of max` : "";
+    lines.push(`${prefix}${time} at ${st.speed_kmh.toFixed(1)} km/h, ${num(st.incline_pct)}% incline${zone}`);
   });
   if (walksAfterAHold(p)) {
     lines.push("After a 0 km/h step, the belt waits for GO before it moves.");

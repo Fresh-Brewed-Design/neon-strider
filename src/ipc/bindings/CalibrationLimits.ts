@@ -7,4 +7,8 @@ export type CalibrationLimits = { min_stride_cm: number, max_stride_cm: number, 
 /**
  * Agreeing times between taps a run needs (`tap::MIN_AGREEING`).
  */
-min_agreeing: number, };
+min_agreeing: number, 
+/**
+ * Agreeing times between footsteps a step run needs (`steps::MIN_STEPS`).
+ */
+min_steps: number, };

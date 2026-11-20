@@ -94,6 +94,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     snapshot.calibration = crate::calibration::snapshot(&state);
     snapshot.ghost_pod = crate::ghost_pod::snapshot();
     snapshot.heart_rate = crate::heart_rate::snapshot();
+    snapshot.heart_rate.zone = state.zone_band();
     snapshot.guided_task = crate::guided_task::snapshot();
     // Recomputed every tick, so the end of the grace after a stop reaches the
     // HUD with the next on-change emit (within a tick).

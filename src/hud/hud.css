@@ -380,6 +380,15 @@ body,
 
 .hud-value-sm { font-size: 15px; }
 
+/* PULSE_RATE's spark chart under the value, in the card's accent. */
+.hud-spark {
+  display: block;
+  width: 100%;
+  height: 16px;
+  color: var(--accent, var(--hud-cyan));
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--accent, var(--hud-cyan)) 50%, transparent));
+}
+
 .hud-unit {
   font-family: var(--hud-font-mono);
   font-size: 11px;

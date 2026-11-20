@@ -54,6 +54,7 @@ export type { SavedFile } from "./bindings/SavedFile";
 export type { SeatedSnapshot } from "./bindings/SeatedSnapshot";
 export type { SessionSnapshot } from "./bindings/SessionSnapshot";
 export type { StartResult } from "./bindings/StartResult";
+export type { StepRunView } from "./bindings/StepRunView";
 export type { StravaActivity } from "./bindings/StravaActivity";
 export type { StravaGear } from "./bindings/StravaGear";
 export type { StravaHint } from "./bindings/StravaHint";
@@ -72,6 +73,7 @@ export type { WalkAwaySnapshot } from "./bindings/WalkAwaySnapshot";
 export type { WeeklySummary } from "./bindings/WeeklySummary";
 export type { WeekStats } from "./bindings/WeekStats";
 export type { WhatsNew } from "./bindings/WhatsNew";
+export type { ZoneBand } from "./bindings/ZoneBand";
 export type { UnlistenFn };
 
 export function getSnapshot(): Promise<AppSnapshot> {

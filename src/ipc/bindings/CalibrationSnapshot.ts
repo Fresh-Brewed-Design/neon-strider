@@ -24,7 +24,12 @@ belt_treadmill: boolean,
 /**
  * The target speeds the user keeps, slowest first.
  */
-targets: Array<CalibrationTarget>, run: CalibrationRunView | null, 
+targets: Array<CalibrationTarget>, 
+/**
+ * Counts each time Rust changes the saved points by itself (a run's
+ * save, UNDO), so a window knows to reload them.
+ */
+points_rev: number, run: CalibrationRunView | null, 
 /**
  * RUN ALL: the list being walked, if any.
  */

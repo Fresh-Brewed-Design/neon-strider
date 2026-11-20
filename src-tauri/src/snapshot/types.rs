@@ -731,7 +731,12 @@ pub enum Command {
     /// Labs: DECK_SWEEP steps the moving belt through every speed the profile
     /// has no reply for. A press; refused on a still belt or a program.
     DeckProfileSweepStart,
-    /// End DECK_SWEEP. The belt keeps going.
+    /// Labs: DECK_SWEEP steps the moving belt through every incline level the
+    /// profile has no reply for, up to the top level, then back to its
+    /// incline. A press; refused on a still belt or a program.
+    DeckProfileSweepInclineStart,
+    /// End DECK_SWEEP. The belt keeps going, back at the speed or incline
+    /// from before the sweep.
     DeckProfileSweepStop,
     /// Labs: the DECK_SWEEP switch on or off (persisted, off by default). Off
     /// also ends a sweep; the belt keeps going.
@@ -754,8 +759,12 @@ pub enum Command {
     /// the point appears in `calibration.run.result` once the taps agree.
     /// Never moves the belt.
     CalibrationTap,
-    /// TAP AGAIN: clear the run's taps and result. The belt keeps going.
+    /// The point a finished run measures is saved by itself. TAP AGAIN: take
+    /// that point back, clear the run's taps and result. The belt keeps going.
     CalibrationTapReset,
+    /// UNDO: put the saved points back as they were before this run. Stays
+    /// available until the next run starts or the run closes.
+    CalibrationUndo,
     /// BELT_LOOP: the belt loop's length in cm, kept for this treadmill.
     CalibrationBeltSet {
         cm: f32,
@@ -784,6 +793,15 @@ pub enum Command {
     },
     /// End the sweep and any run. The belt keeps going.
     CalibrationSweepEnd,
+    /// TAP STEPS (or TAP AGAIN on the steps): start the footstep phase on
+    /// the measured run; TAP then times footsteps. TAP AGAIN takes back a
+    /// stride the last one saved. Never moves the belt.
+    CalibrationStepsStart,
+    /// SKIP on the footsteps: the stride stays as it was.
+    CalibrationStepsSkip,
+    /// The stride a settled footstep phase measures is saved by itself.
+    /// UNDO: put the point back as the belt run left it.
+    CalibrationStepsUndo,
 
     // ---- GHOST_POD and WRIST_LINK (Labs) ----
     /// Labs: GHOST_POD on (`on`) or off. On, the PC advertises as a Bluetooth

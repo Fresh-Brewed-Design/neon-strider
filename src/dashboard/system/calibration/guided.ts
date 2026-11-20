@@ -55,14 +55,16 @@ const MATCH_PCT = 0.5;
 /**
  * The plain-words result of a tap run: how far the deck's display is from the
  * belt at the run's speed. `real` and `reported` are km/h.
+ * `status` ("saved") ends the sentence after a semicolon.
  */
-export function deckVerdict(speedKmh: number, realKmh: number, reportedKmh: number): string {
+export function deckVerdict(speedKmh: number, realKmh: number, reportedKmh: number, status?: string): string {
   const pct = (realKmh / reportedKmh - 1) * 100;
   const at = `At ${speedKmh.toFixed(1)} km/h`;
-  if (!Number.isFinite(pct)) return `${at} the taps gave no speed.`;
-  if (Math.abs(pct) < MATCH_PCT) return `${at} the deck matches the belt.`;
+  const end = status ? `; ${status}.` : ".";
+  if (!Number.isFinite(pct)) return `${at} the taps gave no speed${end}`;
+  if (Math.abs(pct) < MATCH_PCT) return `${at} the deck matches the belt${end}`;
   const size = Math.abs(pct) < 10 ? Math.abs(pct).toFixed(1) : Math.abs(pct).toFixed(0);
-  return `${at} the deck runs ${size} % ${pct < 0 ? "slow" : "fast"}.`;
+  return `${at} the deck runs ${size} % ${pct < 0 ? "slow" : "fast"}${end}`;
 }
 
 /** The line under a tap run's counter about taps dropped against the median, if any. */

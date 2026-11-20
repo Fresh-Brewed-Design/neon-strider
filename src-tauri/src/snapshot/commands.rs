@@ -299,6 +299,9 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             Ok(())
         }
         Command::DeckProfileSweepStart => ORCHESTRATOR.lock().await.profile_sweep_start(),
+        Command::DeckProfileSweepInclineStart => {
+            ORCHESTRATOR.lock().await.profile_sweep_incline_start()
+        }
         Command::DeckProfileSweepStop => {
             ORCHESTRATOR.lock().await.profile_sweep_stop();
             Ok(())
@@ -318,9 +321,35 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         Command::CalibrationTap => {
             // The moment of the press, before waiting on the lock.
             let at = std::time::Instant::now();
-            calibration::tap(&*ORCHESTRATOR.lock().await, at)
+            let saved = calibration::tap(&mut *ORCHESTRATOR.lock().await, at)?;
+            if let Some(points) = saved {
+                blocking(move || {
+                    calibration::persist_points(&app, &points);
+                    Ok(())
+                })
+                .await?;
+            }
+            Ok(())
         }
-        Command::CalibrationTapReset => calibration::retap(),
+        Command::CalibrationTapReset => {
+            let restored = calibration::retap(&mut *ORCHESTRATOR.lock().await)?;
+            if let Some(points) = restored {
+                blocking(move || {
+                    calibration::persist_points(&app, &points);
+                    Ok(())
+                })
+                .await?;
+            }
+            Ok(())
+        }
+        Command::CalibrationUndo => {
+            let points = calibration::undo(&mut *ORCHESTRATOR.lock().await)?;
+            blocking(move || {
+                calibration::persist_points(&app, &points);
+                Ok(())
+            })
+            .await
+        }
         Command::CalibrationBeltSet { cm } => {
             blocking(move || calibration::set_belt(&app, cm)).await
         }
@@ -361,6 +390,26 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         Command::CalibrationSweepEnd => {
             calibration::close_all();
             Ok(())
+        }
+        Command::CalibrationStepsStart => {
+            let restored = calibration::steps_start(&mut *ORCHESTRATOR.lock().await)?;
+            if let Some(points) = restored {
+                blocking(move || {
+                    calibration::persist_points(&app, &points);
+                    Ok(())
+                })
+                .await?;
+            }
+            Ok(())
+        }
+        Command::CalibrationStepsSkip => calibration::steps_skip(),
+        Command::CalibrationStepsUndo => {
+            let points = calibration::steps_undo(&mut *ORCHESTRATOR.lock().await)?;
+            blocking(move || {
+                calibration::persist_points(&app, &points);
+                Ok(())
+            })
+            .await
         }
 
         // ---- GHOST_POD and WRIST_LINK (Labs) ----

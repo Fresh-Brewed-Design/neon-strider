@@ -126,6 +126,20 @@ steady."
 - Two or three sessions a week with a day between is what the studies used. This is hard
   exercise: anyone with heart disease or risk factors should check with their doctor first.
 
+**Heart rate zones (#124):** each climb holds 85 to 95 % of your maximum heart rate, the
+intensity the 4x4 studies prescribe.
+
+- With HEART_LINK reading a sensor, each climb trims its speed by 0.1 km/h at most every 20 s,
+  within 1 km/h of 6.0 km/h, to keep the pulse in the zone. Without a reading the climbs run
+  their set speed, exactly as before.
+- The zone is a percentage of the maximum heart rate set in System, Heart rate; until one is
+  set it uses 190 bpm (220 minus age at 30). A measured or age-based maximum of your own makes
+  the zone right for you.
+- A pulse takes a minute or two to climb at the start of each effort, so expect the speed to
+  rise early in each climb and settle back once the pulse catches up.
+- Existing installs get the zones only on a VO2 max that was never edited; an edited one keeps
+  what you set.
+
 **In the app:** "Four hard 4-minute climbs with easy walks between train VO2 max."
 
 ## Idle nudge
