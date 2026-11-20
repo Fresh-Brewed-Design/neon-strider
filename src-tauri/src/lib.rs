@@ -235,22 +235,25 @@ async fn start_backend(app: tauri::AppHandle) {
     run_link_watchdog(&app).await;
 }
 
-/// Reconnect to the saved treadmill whenever the link is down, every
-/// `link::RETRY_EVERY` (or at once on "Retry now").
+/// Reconnect to the saved treadmill whenever the link is down, backing off
+/// while the PC is idle and the treadmill stays away (`link::retry_delay`), or at once on "Retry now".
 async fn run_link_watchdog(app: &tauri::AppHandle) -> ! {
     loop {
+        let mut delay = link::RETRY_EVERY;
         if !bluetooth::is_bluetooth_connected().await {
             let config = persistence::load_config(app);
             link::set_saved_device(config.last_device_id.is_some());
             if let Some(id) = config.last_device_id {
-                log::info!("Found last device ID: {}. Attempting auto-connect...", id);
-                link::count_retry();
-                let _ = bluetooth::connect_bluetooth_device(app.clone(), id).await;
+                link::count_retry(&id);
+                let linked = bluetooth::connect_bluetooth_device(app.clone(), id)
+                    .await
+                    .is_ok();
+                delay = link::retry_finished(linked);
             }
         }
-        // The windows count down to this.
-        link::set_wake(link::RETRY_EVERY);
-        link::wait_for_retry(link::RETRY_EVERY).await;
+        link::set_wake(delay);
+        // Re-checks the PC in slices and keeps the windows' countdown right.
+        link::wait_for_retry(delay).await;
     }
 }
 

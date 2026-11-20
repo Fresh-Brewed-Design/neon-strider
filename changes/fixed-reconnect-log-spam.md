@@ -1,0 +1,1 @@
+- While the treadmill is off, the app keeps retrying quickly (every 15 seconds) as long as you are using the PC, and slows down to every 2 minutes only once the PC has been idle for 5 minutes, so it no longer fills its log. Using the PC again, Connect, Retry now or scanning brings fast retries back.
