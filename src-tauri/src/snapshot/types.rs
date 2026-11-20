@@ -55,6 +55,7 @@ pub struct AppSnapshot {
     pub calibration: crate::calibration::CalibrationSnapshot,
     /// Labs: GHOST_POD, the PC as a foot pod for a watch (off by default).
     pub ghost_pod: crate::ghost_pod::GhostPodSnapshot,
+    pub heart_rate: crate::heart_rate::HeartRateSnapshot,
 }
 
 /// Strava as the windows see it. Tokens and the client secret never appear here.
@@ -228,6 +229,9 @@ pub struct DeckProfileSnapshot {
     /// The deck's floor and ceiling, calibrated km/h, once seen.
     pub floor_kmh: Option<f32>,
     pub ceiling_kmh: Option<f32>,
+    /// The same limits in the deck's own km/h, the unit of the min and max speed settings.
+    pub floor_hw_kmh: Option<f32>,
+    pub ceiling_hw_kmh: Option<f32>,
     /// Speeds asked that the deck changed or refused, calibrated km/h.
     pub skipped_kmh: Vec<f32>,
     /// Incline levels the deck has answered a target at.
@@ -368,6 +372,7 @@ pub enum HudWidget {
     Daily,
     Controls,
     Odometer,
+    HeartRate,
 }
 
 #[derive(Deserialize)]
@@ -385,6 +390,7 @@ enum HudWidgetRepr {
     Daily,
     Controls,
     Odometer,
+    HeartRate,
 }
 
 impl<'de> Deserialize<'de> for HudWidget {
@@ -407,6 +413,7 @@ impl From<HudWidgetRepr> for HudWidget {
             HudWidgetRepr::Daily => Self::Daily,
             HudWidgetRepr::Controls => Self::Controls,
             HudWidgetRepr::Odometer => Self::Odometer,
+            HudWidgetRepr::HeartRate => Self::HeartRate,
         }
     }
 }
@@ -677,11 +684,19 @@ pub enum Command {
     },
     /// Close the run (after saving its point, or to cancel). The belt keeps going.
     CalibrationRunClose,
-    /// RUN ALL: walk `targets_kmh` (deck km/h) slowest first, running the
-    /// first now. The press is his.
-    CalibrationSweepStart {
-        targets_kmh: Vec<f32>,
+    /// ADD_SPEED: put `kmh` (deck km/h, 0.1 steps, inside the treadmill's
+    /// min/max, not already listed) in the stored target list.
+    CalibrationTargetAdd {
+        kmh: f32,
     },
+    /// Take `kmh` out of the target list. Refused for a speed with a saved
+    /// point or the open run's speed.
+    CalibrationTargetRemove {
+        kmh: f32,
+    },
+    /// RUN ALL: walk the stored target list and the saved points' speeds
+    /// slowest first, running the first now. The press is his.
+    CalibrationSweepStart,
     /// RUN on the sweep's current speed. The press is his.
     CalibrationSweepRun,
     /// SAVE (`saved`) or SKIP the sweep's current speed and close its run.
@@ -696,9 +711,24 @@ pub enum Command {
     GhostPodSet {
         on: bool,
     },
+    /// HEART_LINK: scan for heart rate sensors (about 5 s); the result is
+    /// `heart_rate.found`.
+    HeartRateScan,
+    /// HEART_LINK: read the heart rate from this sensor (one from the scan).
+    HeartRatePick {
+        id: String,
+        name: String,
+    },
+    /// HEART_LINK: stop reading and forget the sensor (the default).
+    HeartRateForget,
     /// Labs: GHOST_POD's power switch. On, the pod also serves running power
     /// (the Cycling Power service) while GHOST_POD is on.
     GhostPodPowerSet {
+        on: bool,
+    },
+    /// Labs: WRIST_LINK on (`on`) or off. On, the PC also serves the service
+    /// the watch's Connect IQ data field reads the belt from. Needs GHOST_POD.
+    WristLinkSet {
         on: bool,
     },
 }
@@ -964,6 +994,19 @@ mod tests {
         assert_eq!(c, Command::TrafficRecord { on: true });
         let c: Command = serde_json::from_str(r#"{"type":"ghost_pod_set","on":true}"#).unwrap();
         assert_eq!(c, Command::GhostPodSet { on: true });
+        let c: Command = serde_json::from_str(r#"{"type":"heart_rate_scan"}"#).unwrap();
+        assert_eq!(c, Command::HeartRateScan);
+        let c: Command =
+            serde_json::from_str(r#"{"type":"heart_rate_pick","id":"A1","name":"Watch"}"#).unwrap();
+        assert_eq!(
+            c,
+            Command::HeartRatePick {
+                id: "A1".into(),
+                name: "Watch".into()
+            }
+        );
+        let c: Command = serde_json::from_str(r#"{"type":"heart_rate_forget"}"#).unwrap();
+        assert_eq!(c, Command::HeartRateForget);
         let c: Command =
             serde_json::from_str(r#"{"type":"ghost_pod_power_set","on":true}"#).unwrap();
         assert_eq!(c, Command::GhostPodPowerSet { on: true });

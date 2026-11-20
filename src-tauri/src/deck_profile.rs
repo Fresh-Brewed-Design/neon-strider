@@ -7,19 +7,28 @@
 //! step only to bytes the deck runs, and to bound speeds by the deck's real
 //! floor and ceiling once they are seen.
 //!
+//! One profile per treadmill, by its saved Bluetooth identity: each is one JSON
+//! value in the settings table (`key_for`), holding both the speed bytes and
+//! the incline levels, since two maps of at most 256 entries are small, read
+//! when the connection switches to its treadmill and rewritten whole, so they
+//! need no table of their own.
+//!
 //! Incline levels are learned the same way from the same replies (the echo's
 //! incline byte, a nack of a packet that changed only the incline), in a map
 //! of their own: level 0 is flat, a real level, and is never skipped.
-//!
-//! Stored as one JSON value in the settings table (`KEY`): a map of at most
-//! 256 bytes is small, read once at startup and rewritten whole, so it needs
-//! no table of its own.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// The settings key the profile is stored under.
-pub const KEY: &str = "deckProfile";
+/// The settings key the one app-wide profile was stored under, before there
+/// was one per treadmill. The first treadmill to connect adopts it.
+pub const LEGACY_KEY: &str = "deckProfile";
+
+/// The settings key the profile of the treadmill with this normalized device
+/// id is stored under.
+pub fn key_for(device_id: &str) -> String {
+    format!("{}:{}", LEGACY_KEY, device_id)
+}
 
 /// A floor or ceiling is only read from a change of at least this many bytes:
 /// a deck that skips an in-between speed moves it to a neighbour, and taking
@@ -429,5 +438,11 @@ mod tests {
         assert!(!old.has_levels());
         p.clear();
         assert_eq!(p.take_unsaved(), Some(None));
+    }
+
+    #[test]
+    fn each_treadmill_has_its_own_key() {
+        assert_ne!(key_for("AABB"), key_for("CCDD"));
+        assert_ne!(key_for("AABB"), LEGACY_KEY);
     }
 }

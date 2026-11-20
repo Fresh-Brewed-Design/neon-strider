@@ -1,11 +1,21 @@
 import { describe, expect, it } from "vitest";
 import type { DeckProfileSnapshot, DeckSpeedStep } from "../ipc";
-import { inclineSummary, profileSummary, roundSpeed, snapToDeck, snapToLevel } from "./deckSpeeds";
+import {
+  deckLimitOffer,
+  inclineSummary,
+  limitsText,
+  profileSummary,
+  roundSpeed,
+  snapToDeck,
+  snapToLevel,
+} from "./deckSpeeds";
 
 const none: DeckProfileSnapshot = {
   learned: 0,
   floor_kmh: null,
   ceiling_kmh: null,
+  floor_hw_kmh: null,
+  ceiling_hw_kmh: null,
   skipped_kmh: [],
   learned_levels: 0,
   ceiling_level: null,
@@ -41,6 +51,33 @@ describe("snapToDeck", () => {
 
   it("rounds a snapped speed to 0.01 km/h", () => {
     expect(roundSpeed(1.2345)).toBe(1.23);
+  });
+});
+
+describe("deckLimitOffer", () => {
+  const known = { ...none, learned: 9, floor_hw_kmh: 0.6, ceiling_hw_kmh: 4 };
+
+  it("offers the deck's limits over looser settings", () => {
+    expect(deckLimitOffer(known, 0.3, 12)).toEqual({ minSpeed: 0.6, maxSpeed: 4 });
+  });
+
+  it("leaves settings that match or that you tightened", () => {
+    expect(deckLimitOffer(known, 0.6, 4)).toBeNull();
+    expect(deckLimitOffer(known, 1, 3)).toBeNull();
+    expect(deckLimitOffer(known, 1, 12)).toEqual({ maxSpeed: 4 });
+  });
+
+  it("offers nothing before the limits are seen", () => {
+    expect(deckLimitOffer(none, 0.6, 12)).toBeNull();
+  });
+});
+
+describe("limitsText", () => {
+  it("names the limits in the deck's own km/h, the settings' unit", () => {
+    expect(limitsText({ ...none, floor_kmh: 0.5, ceiling_kmh: 3.6, floor_hw_kmh: 0.6, ceiling_hw_kmh: 4 })).toBe(
+      "0.6 to 4.0 km/h",
+    );
+    expect(limitsText({ ...none, ceiling_hw_kmh: 4 })).toBe("no faster than 4.0 km/h");
   });
 });
 

@@ -11,7 +11,7 @@
 //! - Pointer: the cursor position and primary button, for dragging the HUD.
 //! - Idle time: how long since the last keyboard or mouse input anywhere in
 //!   the session (auto-install of updates).
-//! - Bluetooth peripheral: the GATT services the app serves to other devices,
+//! - Bluetooth peripheral: one GATT service the app serves to other devices,
 //!   such as a watch (GHOST_POD, `crate::ghost_pod`). The treadmill link is a
 //!   central and goes through btleplug instead.
 //!
@@ -79,17 +79,29 @@ pub fn input_idle_for() -> Option<std::time::Duration> {
     imp::input_idle_for()
 }
 
-/// One characteristic of a peripheral service. UUIDs are 16-bit Bluetooth SIG
-/// numbers.
+/// A 16-bit Bluetooth SIG number as a full UUID (on the Bluetooth base UUID).
+pub const fn sig_uuid(short: u16) -> u128 {
+    0x0000_0000_0000_1000_8000_0080_5f9b_34fb | ((short as u128) << 96)
+}
+
+/// One characteristic of a peripheral service.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PeripheralCharacteristic {
-    pub uuid: u16,
-    /// A fixed value to answer reads with; `None` when it can't be read.
+    pub uuid: u128,
+    /// The value to answer reads with at first (`peripheral_notify` keeps it
+    /// current); `None` when it can't be read.
     pub read: Option<Vec<u8>>,
     pub notify: bool,
     pub indicate: bool,
     /// Writable (with response).
     pub write: bool,
+}
+
+/// A service the app serves, with its characteristics.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PeripheralService {
+    pub uuid: u128,
+    pub characteristics: Vec<PeripheralCharacteristic>,
 }
 
 /// What the peripheral reports, from a Bluetooth thread.
@@ -100,24 +112,16 @@ pub enum PeripheralEvent {
     /// Advertising stopped by itself; the reason in plain English.
     Failed(String),
     /// How many devices are subscribed to this characteristic now.
-    Subscribers { uuid: u16, count: u32 },
+    Subscribers { uuid: u128, count: u32 },
     /// A device wrote this value (already acknowledged).
-    Write { uuid: u16, value: Vec<u8> },
+    Write { uuid: u128, value: Vec<u8> },
 }
 
 pub type PeripheralEvents = std::sync::Arc<dyn Fn(PeripheralEvent) + Send + Sync>;
 
-/// One GATT service of the peripheral. A 16-bit Bluetooth SIG number.
-#[derive(Debug, Clone, PartialEq)]
-pub struct PeripheralService {
-    pub uuid: u16,
-    pub characteristics: Vec<PeripheralCharacteristic>,
-}
-
-/// Serve `services` and start advertising them, together. Blocking (a second
-/// or so). Starting again replaces every service. Characteristic UUIDs must
-/// differ across the services. The error is one plain sentence (no adapter,
-/// no peripheral role, Bluetooth off).
+/// Serve `services` and start advertising them. Blocking (a second or so).
+/// Starting again replaces what was served. The error is one plain sentence
+/// (no adapter, no peripheral role, Bluetooth off).
 pub fn peripheral_start(
     services: &[PeripheralService],
     events: PeripheralEvents,
@@ -125,14 +129,13 @@ pub fn peripheral_start(
     imp::peripheral_start(services, events)
 }
 
-/// Send `value` to every device subscribed to `uuid`, in whichever service
-/// has it (a notification or an indication, as the characteristic was
-/// declared). Does not wait.
-pub fn peripheral_notify(uuid: u16, value: &[u8]) -> Result<(), String> {
+/// Send `value` to every device subscribed to `uuid` (a notification or an
+/// indication, as the characteristic was declared). Does not wait.
+pub fn peripheral_notify(uuid: u128, value: &[u8]) -> Result<(), String> {
     imp::peripheral_notify(uuid, value)
 }
 
-/// Stop advertising and drop every service. Fine to call when not started.
+/// Stop advertising and drop the service. Fine to call when not started.
 pub fn peripheral_stop() {
     imp::peripheral_stop()
 }

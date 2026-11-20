@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { AppSnapshot, DeckSnapshot } from "../../ipc";
 import { linkView } from "../../state/linkStatus";
 import { snapToDeck, snapToLevel } from "../../state/deckSpeeds";
@@ -62,8 +62,21 @@ function headerNotice(s: AppSnapshot): ReactNode {
   );
 }
 
+/** The Live page control a target came from. */
+type NoteFrom = "speed" | "tilt";
+
 export function LivePage() {
   const s = useAppSnapshot();
+  // Which control sent last, and the deck's note showing at that press: that
+  // note is about an older target (a program step, the HUD), so it stays off
+  // the control. A press on the control that already shows a note keeps it.
+  const [sent, setSent] = useState<{ from: NoteFrom; before: string | null } | null>(null);
+  if (s && !s.deck.target_note && sent) setSent(null);
+  const sentFrom = (from: NoteFrom) => {
+    if (sent?.from !== from) setSent({ from, before: s?.deck.target_note ?? null });
+  };
+  const noteFor = (from: NoteFrom) =>
+    sent?.from === from && s?.deck.target_note !== sent.before ? (s?.deck.target_note ?? null) : null;
   if (!s) return <Waiting />;
   const { deck } = s;
   const offline = !s.connection.connected;
@@ -89,8 +102,15 @@ export function LivePage() {
             presets={SPEED_PRESETS}
             formatPreset={(v) => v.toFixed(1)}
             disabled={offline}
-            onSet={(kmh) => send({ type: "set_speed", kmh })}
-            onNudge={(up) => send({ type: "nudge_speed", up })}
+            onSet={(kmh) => {
+              sentFrom("speed");
+              send({ type: "set_speed", kmh });
+            }}
+            onNudge={(up) => {
+              sentFrom("speed");
+              send({ type: "nudge_speed", up });
+            }}
+            note={noteFor("speed")}
             snap={(kmh) => snapToDeck(kmh, deck)}
             pin={{ widget: "VELOCITY", pinned: pinned.has("VELOCITY") }}
           />
@@ -106,8 +126,15 @@ export function LivePage() {
             presets={tiltPresets(deck)}
             formatPreset={(v) => `${Math.round(v * 10) / 10}%`}
             disabled={offline}
-            onSet={(pct) => send({ type: "set_incline_level", level: levelForPct(deck, pct) })}
-            onNudge={(up) => send({ type: "nudge_incline", up })}
+            onSet={(pct) => {
+              sentFrom("tilt");
+              send({ type: "set_incline_level", level: levelForPct(deck, pct) });
+            }}
+            onNudge={(up) => {
+              sentFrom("tilt");
+              send({ type: "nudge_incline", up });
+            }}
+            note={noteFor("tilt")}
             pin={{ widget: "INCLINE", pinned: pinned.has("INCLINE") }}
           />
         </div>

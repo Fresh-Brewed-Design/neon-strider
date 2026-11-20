@@ -13,6 +13,10 @@ learned: number,
  */
 floor_kmh: number | null, ceiling_kmh: number | null, 
 /**
+ * The same limits in the deck's own km/h, the unit of the min and max speed settings.
+ */
+floor_hw_kmh: number | null, ceiling_hw_kmh: number | null, 
+/**
  * Speeds asked that the deck changed or refused, calibrated km/h.
  */
 skipped_kmh: Array<number>, 

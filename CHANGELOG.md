@@ -1,5 +1,51 @@
 # Changelog
 
+## 1.28.0 (2026-11-20)
+
+### New
+
+- When the deck changes or refuses a speed or tilt you set on the Live page, the DECK_ADJUSTED or DECK_REFUSED note now shows under that control, as it does on the HUD.
+
+### Changed
+
+- DECK_PROFILE is now kept per treadmill: each deck's learned speeds are saved under its Bluetooth identity and switch with the connection, so a second treadmill no longer starts from the first one's speeds. The profile learned so far goes to the treadmill you connect first.
+
+## 1.27.0 (2026-11-20)
+
+### New
+
+- Walks saved with heart rate now send it to Strava, in the automatic upload and in the file from "Save for Strava". Walks without heart rate upload as before.
+
+## 1.26.0 (2026-11-20)
+
+### New
+
+- With a heart rate sensor linked (HEART_LINK), each walk now saves its heart rate every second. History shows the walk's average and maximum heart rate.
+
+## 1.25.0 (2026-11-20)
+
+### New
+
+- Labs, GROUND_TRUTH: add a target speed with ADD_SPEED or remove one, so the list matches the speeds you walk at. The list is saved with your settings, and RUN ALL walks it. A saved speed outside the treadmill's range stays listed but is skipped.
+
+## 1.24.0 (2026-11-20)
+
+### New
+
+- WRIST_LINK (Labs, off by default): the PC serves a second Bluetooth service next to GHOST_POD so a Connect IQ data field on the watch can read the belt state. This is the link test only; nothing the watch sends moves the belt yet.
+
+## 1.23.0 (2026-11-20)
+
+### New
+
+- OCULAR_IMPLANT breaks now guide full blinks: close and hold, squeeze gently, open, 2 seconds each, 15 times in a 90-second break. The HUD card shows each step as `SHUTTER // CLOSE`, `SQUEEZE` and `OPEN`, and with Tones on each step has its own soft beep. The timing comes from a blinking-exercise trial; the sources are in docs/research.md.
+
+## 1.22.0 (2026-11-20)
+
+### New
+
+- Heart rate (HEART_LINK): pick a Bluetooth heart rate sensor, such as a Garmin watch with Broadcast Heart Rate on, in System -> Heart rate. It is off until you pick one and runs apart from the treadmill link. Heart rate shows as a new stat, PULSE_RATE, on the HUD and dashboard. It is not saved with sessions or sent to Strava yet, and it never moves the belt.
+
 ## 1.21.0 (2026-11-20)
 
 ### New
