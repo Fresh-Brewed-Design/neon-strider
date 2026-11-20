@@ -186,12 +186,13 @@ describe("GuidedCalibration", () => {
     expect(dispatched()).toContainEqual({ type: "calibration_sweep_start" });
   });
 
-  it("a sweep between speeds offers RUN on the next one and locks the row buttons", async () => {
+  it("a sweep between speeds offers RUN on the next one and hides the row buttons", async () => {
     current!.calibration.sweep = { targets_kmh: [2, 3, 4], marks: ["saved", "skipped", "pending"], current: 2 };
     render(<GuidedCalibration />);
     expect(screen.getByText("SWEEP 3/3")).toBeTruthy();
     expect(screen.queryByText("RUN ALL")).toBeNull();
-    for (const b of screen.getAllByText("RUN")) expect((b as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryAllByText("RUN")).toHaveLength(0);
+    expect(screen.queryAllByText("ADD RUN")).toHaveLength(0);
     await act(async () => fireEvent.click(screen.getByText("RUN 4.0 km/h")));
     expect(dispatched()).toContainEqual({ type: "calibration_sweep_run" });
     // STOP is there too, and nothing in the sweep starts the belt by itself.

@@ -80,6 +80,7 @@ describe("the guided walk's summary", () => {
   const view = (g: Partial<CalibrationGuideView>): CalibrationGuideView => ({
     slow_kmh: 0.6,
     top_kmh: 5,
+    note: null,
     speeds: [],
     checks: [],
     next_kmh: null,

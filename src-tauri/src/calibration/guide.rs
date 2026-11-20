@@ -137,6 +137,9 @@ pub struct CalibrationGuideView {
     pub next_kmh: Option<f32>,
     /// The largest error a finished check measured, %; none before any.
     pub remaining_error_pct: Option<f32>,
+    /// The last run measured another deck speed than the one asked, and
+    /// what the walk did about it.
+    pub note: Option<String>,
     /// `TOLERANCE`, %.
     pub tolerance_pct: f32,
 }
@@ -147,6 +150,7 @@ pub struct Guide {
     slow_kmh: f32,
     top_kmh: f32,
     outcomes: Vec<(f32, Outcome)>,
+    note: Option<String>,
 }
 
 struct Plan {
@@ -169,6 +173,7 @@ impl Guide {
             slow_kmh: slow,
             top_kmh: top,
             outcomes: vec![],
+            note: None,
         })
     }
 
@@ -188,20 +193,55 @@ impl Guide {
 
     /// The run at `target_kmh` was measured and saved: the deck ran
     /// `at_kmh` and the taps gave `scale`.
+    ///
+    /// A start at the treadmill or its remote can leave the deck at another
+    /// speed than RUN asked for. An end then moves to the speed the deck
+    /// ran, so the midpoint is planned from it; a check keeps its place and
+    /// its prediction uses the speed the deck ran.
     pub fn record(&mut self, target_kmh: f32, at_kmh: f32, scale: f32) {
-        if self.is_speed(target_kmh) {
-            self.set(target_kmh, Some(Outcome::Measured { at_kmh, scale }));
+        if !self.is_speed(target_kmh) {
+            return;
         }
+        self.note = None;
+        let ran = tenths(at_kmh);
+        let mut key = target_kmh;
+        if !same(ran, target_kmh) {
+            let asked = tenths(target_kmh);
+            if same(target_kmh, self.slow_kmh) && ran < self.top_kmh - 1e-3 {
+                self.set(target_kmh, None);
+                self.slow_kmh = ran;
+                key = ran;
+                self.note = Some(format!(
+                    "The deck ran {ran:.1}, not {asked:.1}, so {ran:.1} is the slowest speed."
+                ));
+            } else if same(target_kmh, self.top_kmh) && ran > self.slow_kmh + 1e-3 {
+                self.set(target_kmh, None);
+                self.top_kmh = ran;
+                key = ran;
+                self.note = Some(format!(
+                    "The deck ran {ran:.1}, not {asked:.1}, so {ran:.1} is the top speed."
+                ));
+            } else {
+                self.note = Some(format!(
+                    "The deck ran {ran:.1}, not {asked:.1}, so the check uses {ran:.1}."
+                ));
+            }
+        }
+        self.set(key, Some(Outcome::Measured { at_kmh, scale }));
     }
 
     /// UNDO or TAP AGAIN took the run at `target_kmh` back: it is up again.
-    pub fn forget(&mut self, target_kmh: f32) {
+    /// `ran_kmh` is the speed the deck ran, where a moved end now sits.
+    pub fn forget(&mut self, target_kmh: f32, ran_kmh: f32) {
+        self.note = None;
         self.set(target_kmh, None);
+        self.set(tenths(ran_kmh), None);
     }
 
     /// SKIP on the next speed. Refused once the walk is done.
     pub fn skip_next(&mut self) -> Result<(), String> {
         let next = self.next().ok_or("Every speed is done.")?;
+        self.note = None;
         self.set(next, Some(Outcome::Skipped));
         Ok(())
     }
@@ -322,6 +362,7 @@ impl Guide {
             next_kmh: plan.next,
             remaining_error_pct: remaining,
             tolerance_pct: TOLERANCE * 100.0,
+            note: self.note.clone(),
         }
     }
 }
@@ -468,12 +509,45 @@ mod tests {
         assert_eq!(v.remaining_error_pct, None);
     }
 
+    /// #169 follow-up: RUN asked 0.6, a start at the treadmill ran 1.2. The
+    /// slowest end moves to 1.2, the 0.6 row is gone, and the midpoint is
+    /// planned from 1.2. UNDO puts 1.2 back up as the slowest.
+    #[test]
+    fn an_end_the_deck_ran_at_another_speed_moves_to_that_speed() {
+        let mut g = Guide::new(0.6, 4.0).unwrap();
+        g.record(0.6, 1.2, 0.8);
+        let v = g.view();
+        assert_eq!(v.slow_kmh, 1.2);
+        assert!(!v.speeds.iter().any(|s| same(s.kmh, 0.6)));
+        assert!(v
+            .speeds
+            .iter()
+            .any(|s| same(s.kmh, 1.2) && s.mark == GuideMark::Saved));
+        assert_eq!(v.next_kmh, Some(4.0));
+        assert!(v.note.as_deref().unwrap().contains("1.2 is the slowest"));
+        g.record(4.0, 4.0, 0.8);
+        assert_eq!(g.next(), Some(midpoint(1.2, 4.0).unwrap()));
+        assert_eq!(g.view().note, None);
+        g.forget(1.2, 1.2);
+        assert_eq!(g.next(), Some(1.2));
+        // A top end the deck ran lower moves down; a check keeps its place.
+        let mut g = Guide::new(1.0, 6.0).unwrap();
+        g.record(1.0, 1.0, 1.0);
+        g.record(6.0, 5.8, 1.0);
+        assert_eq!(g.view().top_kmh, 5.8);
+        let mid = g.next().unwrap();
+        g.record(mid, mid + 0.1, 1.0);
+        let v = g.view();
+        assert_eq!(v.checks[0].verdict, CheckVerdict::Agreed);
+        assert!(v.note.unwrap().contains("the check uses"));
+    }
+
     #[test]
     fn undo_puts_a_speed_back_and_skip_leaves_the_span_unknown() {
         let mut g = Guide::new(1.0, 6.0).unwrap();
         g.record(1.0, 1.0, 1.0);
         g.record(6.0, 6.0, 1.0);
-        g.forget(6.0);
+        g.forget(6.0, 6.0);
         assert_eq!(g.next(), Some(6.0), "UNDO: the top speed is up again");
         g.record(6.0, 6.0, 1.0);
         g.skip_next().unwrap();

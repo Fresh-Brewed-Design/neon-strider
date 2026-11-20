@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronRight, Plus, Trash2, X } from "lucide-react";
 import {
   dispatch,
@@ -22,6 +22,7 @@ import {
   droppedLine,
   listedTarget,
   runRowFor,
+  settingSteps,
   type CalibrationRow,
 } from "./guided";
 import { GuidePanel, TopSpeedQuestion } from "./GuidePanel";
@@ -47,6 +48,10 @@ type Walk = "sweep" | "guide" | null;
  * `snapshot.calibration.run`, so it is back where it was when the dashboard
  * reopens mid-run. STOP is never disabled. The target list is a Rust setting
  * (`snapshot.calibration.targets`): ADD_SPEED and remove go through Rust.
+ * While a run is open its card (status, TAP, counter, STOP) sits at the top,
+ * above the walk and the rows, so the 760x600 window shows it without
+ * scrolling, and each new phase scrolls it into view. A walk's RUN is the one
+ * way on, so the rows' own RUN buttons hide while a walk is open.
  */
 export function GuidedCalibration() {
   const snap = useAppSnapshot();
@@ -62,8 +67,17 @@ export function GuidedCalibration() {
   const [editingBelt, setEditingBelt] = useState(false);
   // ADVANCED // TARGET_LIST is open (view state only).
   const [advanced, setAdvanced] = useState(false);
+  const minKmh = useTreadmillStore((s) => s.minSpeed);
   const maxKmh = useTreadmillStore((s) => s.maxSpeed);
   const cal = snap?.calibration;
+  const activeRef = useRef<HTMLDivElement>(null);
+  const phaseKey = cal?.run
+    ? `${cal.run.target_kmh}:${cal.run.phase}:${cal.run.steps?.phase ?? ""}:${cal.run.saved}`
+    : null;
+  // Each new phase brings the open run's card into view.
+  useEffect(() => {
+    if (phaseKey !== null) activeRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+  }, [phaseKey]);
   // The dashboard stays open and on top while a run, sweep or walk is open (#139).
   const active = Boolean(cal?.run || cal?.sweep || cal?.guide);
   useGuidedTask("ground_truth", active);
@@ -75,9 +89,14 @@ export function GuidedCalibration() {
   if (!cal) return null;
 
   const run = cal.run;
+  // The speed the deck ran: a start at the treadmill can differ from the one RUN asked.
+  const ranKmh = run ? (run.result?.point.speed ?? run.target_kmh) : null;
   // The run's speed always has a row, even if its point was deleted mid-run.
-  const rows = calibrationRows(points, [...cal.targets.map((t) => t.kmh), ...(run ? [run.target_kmh] : [])]);
-  const runRow = run ? runRowFor(rows, run.target_kmh) : null;
+  const rows = calibrationRows(points, [...cal.targets.map((t) => t.kmh), ...(ranKmh !== null ? [ranKmh] : [])]);
+  const runRow = ranKmh !== null ? runRowFor(rows, ranKmh) : null;
+  // The deck's own settings for the top speed stepper: DECK_PROFILE's, else the min and max settings.
+  const deckSteps = snap.deck.speed_steps.map((st) => st.hw_kmh);
+  const topSteps = deckSteps.length > 1 ? deckSteps : settingSteps(minKmh, maxKmh);
   const sweep = cal.sweep;
   const guide = cal.guide;
   const walk: Walk = guide ? "guide" : sweep ? "sweep" : null;
@@ -94,45 +113,43 @@ export function GuidedCalibration() {
       <div className="font-digital text-xs font-bold uppercase tracking-[0.18em] text-neon-cyan">
         NEON STRIDER // GROUND_TRUTH
       </div>
-      {!beltSet || editingBelt ? (
-        <BeltLoopStep
-          limits={cal.limits}
-          current={cal.belt_cm}
-          treadmillKnown={cal.belt_treadmill}
-          onSaved={() => setEditingBelt(false)}
-        />
-      ) : (
-        <div className="flex items-center justify-between gap-3">
-          <Readout label="BELT_LOOP" value={`${(cal.belt_cm ?? 0).toFixed(0)} cm`} className="text-white" />
-          <GhostButton disabled={run !== null} onClick={() => setEditingBelt(true)}>
-            CHANGE
-          </GhostButton>
+      {run && (
+        <div ref={activeRef} className="hacker-panel scroll-mt-2 rounded-lg border-neon-cyan/30 bg-white/[0.02] p-3">
+          <Readout label="DECK_VELOCITY" value={`${(ranKmh ?? run.target_kmh).toFixed(1)} km/h`} className="text-neon-cyan" />
+          <RunPanel
+            run={run}
+            limits={cal.limits}
+            rawKmh={snap.deck.raw_speed_kmh}
+            walk={walk}
+            onClosed={() => {
+              setPressed(null);
+              runAction.reset();
+            }}
+          />
         </div>
       )}
-      {beltSet && (
+      {!run &&
+        (!beltSet || editingBelt ? (
+          <BeltLoopStep
+            limits={cal.limits}
+            current={cal.belt_cm}
+            treadmillKnown={cal.belt_treadmill}
+            onSaved={() => setEditingBelt(false)}
+          />
+        ) : (
+          <div className="flex items-center justify-between gap-3">
+            <Readout label="BELT_LOOP" value={`${(cal.belt_cm ?? 0).toFixed(0)} cm`} className="text-white" />
+            <GhostButton onClick={() => setEditingBelt(true)}>CHANGE</GhostButton>
+          </div>
+        ))}
+      {beltSet && !run && (
         <Hint>
           Stick a strip of tape across the belt as a mark, press RUN, and tap each time the mark passes.
         </Hint>
       )}
-      {beltSet && guide && (
-        <>
-          <GuidePanel guide={guide} running={running} stop={<StopButton />} />
-          {run && (
-            <div className="hacker-panel rounded-lg border-white/5 bg-white/[0.02] p-3">
-              <Readout label="DECK_VELOCITY" value={`${run.target_kmh.toFixed(1)} km/h`} className="text-neon-cyan" />
-              <RunPanel
-                run={run}
-                limits={cal.limits}
-                rawKmh={snap.deck.raw_speed_kmh}
-                walk="guide"
-                onClosed={() => runAction.reset()}
-              />
-            </div>
-          )}
-        </>
-      )}
+      {beltSet && guide && <GuidePanel guide={guide} running={running} stop={<StopButton />} />}
       {beltSet && sweep && <SweepPanel sweep={sweep} running={running} />}
-      {beltSet && !guide && !sweep && !run && <TopSpeedQuestion maxKmh={maxKmh} />}
+      {beltSet && !guide && !sweep && !run && <TopSpeedQuestion steps={topSteps} />}
       <Label>POINTS</Label>
       <div className="space-y-2">
         {rows.map((row) => {
@@ -159,14 +176,16 @@ export function GuidedCalibration() {
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                <NeonButton
-                  onClick={() => start(row)}
-                  disabled={runAction.pending || walk !== null || outOfRange || !beltSet}
-                  className="px-3 py-1.5"
-                  tone={row.point ? "magenta" : "cyan"}
-                >
-                  {row.point ? "ADD RUN" : "RUN"}
-                </NeonButton>
+                {walk === null && (
+                  <NeonButton
+                    onClick={() => start(row)}
+                    disabled={runAction.pending || outOfRange || !beltSet}
+                    className="px-3 py-1.5"
+                    tone={row.point ? "magenta" : "cyan"}
+                  >
+                    {row.point ? "ADD RUN" : "RUN"}
+                  </NeonButton>
+                )}
                 {removable && (
                   <button
                     type="button"
@@ -209,18 +228,6 @@ export function GuidedCalibration() {
             )}
             {removing === row.targetKmh && (
               <ActionStatus pending={removeAction.pending} error={removeAction.error} className="mt-2" />
-            )}
-            {run && row === runRow && walk !== "guide" && (
-              <RunPanel
-                run={run}
-                limits={cal.limits}
-                rawKmh={snap.deck.raw_speed_kmh}
-                walk={walk}
-                onClosed={() => {
-                  setPressed(null);
-                  runAction.reset();
-                }}
-              />
             )}
           </div>
           );

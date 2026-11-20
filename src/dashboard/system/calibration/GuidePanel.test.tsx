@@ -31,6 +31,7 @@ function guide(g: Partial<CalibrationGuideView> = {}): CalibrationGuideView {
   return {
     slow_kmh: 0.6,
     top_kmh: 5,
+    note: null,
     speeds: [
       { kmh: 0.6, mark: "pending", end: true },
       { kmh: 5, mark: "pending", end: true },
@@ -71,15 +72,36 @@ beforeEach(() => {
 });
 
 describe("the guided walk", () => {
-  it("asks for the top speed, and START only plans", async () => {
+  it("asks for the top speed as the treadmill shows it, and START only plans", async () => {
+    useTreadmillStore.setState({ minSpeed: 0.6, maxSpeed: 4 });
     render(<GuidedCalibration />);
-    expect(screen.getByText("What's the fastest you'll walk?")).toBeTruthy();
-    const field = screen.getByLabelText("Top speed in deck km/h") as HTMLInputElement;
-    expect(field.value).toBe("5");
-    fireEvent.change(field, { target: { value: "5.5" } });
+    expect(screen.getByText("Fastest setting you'll walk at, as the treadmill shows it.")).toBeTruthy();
+    expect(screen.queryByText(/km\/h on the deck/)).toBeNull();
+    // The stepper starts at the deck's top and stops there.
+    expect(screen.getByLabelText("Top speed setting").textContent).toBe("4.0");
+    expect((screen.getByLabelText("Raise top speed setting") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByLabelText("Lower top speed setting"));
+    fireEvent.click(screen.getByLabelText("Lower top speed setting"));
     await act(async () => fireEvent.click(screen.getByText("START")));
-    expect(dispatched()).toContainEqual({ type: "calibration_guide_start", top_kmh: 5.5 });
+    expect(dispatched()).toContainEqual({ type: "calibration_guide_start", top_kmh: 3.8 });
     expect(beltMoves()).toEqual([]);
+  });
+
+  it("offers only the speeds DECK_PROFILE knows the deck runs, from its top", () => {
+    current!.deck.speed_steps = [0.8, 1, 1.2, 1.3].map((hw_kmh) => ({ hw_kmh, kmh: hw_kmh }));
+    render(<GuidedCalibration />);
+    expect(screen.getByLabelText("Top speed setting").textContent).toBe("1.3");
+    fireEvent.click(screen.getByLabelText("Lower top speed setting"));
+    expect(screen.getByLabelText("Top speed setting").textContent).toBe("1.2");
+    fireEvent.click(screen.getByLabelText("Lower top speed setting"));
+    expect(screen.getByLabelText("Top speed setting").textContent).toBe("1.0");
+    expect((screen.getByLabelText("Lower top speed setting") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("shows the walk's note when the deck ran another speed", () => {
+    current!.calibration.guide = guide({ note: "The deck ran 1.2, not 0.6, so 1.2 is the slowest speed." });
+    render(<GuidedCalibration />);
+    expect(screen.getByText("The deck ran 1.2, not 0.6, so 1.2 is the slowest speed.")).toBeTruthy();
   });
 
   it("shows Rust's refusal under START", async () => {
@@ -92,7 +114,7 @@ describe("the guided walk", () => {
   it("waits for RUN on each speed, with SKIP and STOP beside it", async () => {
     current!.calibration.guide = guide();
     render(<GuidedCalibration />);
-    expect(screen.queryByText("What's the fastest you'll walk?")).toBeNull();
+    expect(screen.queryByText("Fastest setting you'll walk at, as the treadmill shows it.")).toBeNull();
     expect(screen.getByText("RUN sets the belt to the next speed, 0.6 km/h.")).toBeTruthy();
     expect(screen.getByText("STOP")).toBeTruthy();
     expect(beltMoves()).toEqual([]);

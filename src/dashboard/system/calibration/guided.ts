@@ -124,3 +124,10 @@ export function guideSummary(g: CalibrationGuideView): string[] {
   if (ended.length > 0) lines.push("Each check run measured the error halfway between two calibrated speeds.");
   return lines;
 }
+
+/** Speeds a stepper may offer: the deck's own settings in 0.1 steps, from `min` to `max`. */
+export function settingSteps(min: number, max: number): number[] {
+  const out: number[] = [];
+  for (let b = Math.ceil(Math.max(min, 0.1) * 10 - 1e-6); b <= Math.round(max * 10); b++) out.push(b / 10);
+  return out;
+}

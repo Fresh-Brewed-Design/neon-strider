@@ -1762,6 +1762,74 @@ mod tests {
         assert_eq!(r.controls_since(mark, Control::Pause), 0);
     }
 
+    /// A calibration run's belt paused at the treadmill's own buttons.
+    fn paused_at_treadmill_during_a_run(kmh: f32) -> Rig {
+        let mut r = Rig::new();
+        r.run(5.0);
+        r.state.set_test_now(r.t);
+        crate::calibration::begin_run(&mut r.state, kmh).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(kmh), "{} km/h", r.deck.speed_kmh());
+        let t = r.t;
+        r.deck.press_pause(t);
+        r.run(5.0);
+        assert_eq!(r.state.last_status, protocol::MachineStatus::Paused);
+        r
+    }
+
+    /// GROUND_TRUTH (#169): the belt paused at the treadmill stays paused
+    /// with no press, and RUN at the speed it paused at resumes it, as GO
+    /// does, though the target is no higher than the paused speed.
+    #[test]
+    fn a_calibration_run_at_the_same_speed_resumes_a_belt_paused_at_the_treadmill() {
+        let mut r = paused_at_treadmill_during_a_run(3.0);
+        let mark = r.mark();
+        r.run(60.0);
+        assert_eq!(r.deck.status_code(), 10, "no resume without the press");
+        assert!(!app_starts(&r.commands_since(mark)));
+
+        r.state.set_test_now(r.t);
+        crate::calibration::begin_run(&mut r.state, 3.0).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+    }
+
+    /// GROUND_TRUTH (#169): RUN at another speed, slower than the paused
+    /// one, resumes the paused belt at the run's speed.
+    #[test]
+    fn a_calibration_run_at_another_speed_resumes_a_paused_belt_at_that_speed() {
+        let mut r = paused_at_treadmill_during_a_run(3.0);
+        r.run(10.0);
+        r.state.set_test_now(r.t);
+        crate::calibration::begin_run(&mut r.state, 2.0).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(2.0), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(r.state.hardware_speed, 2.0);
+    }
+
+    /// GROUND_TRUTH (#169): after STOP the belt stays still with no press,
+    /// and RUN starts it at the run's speed.
+    #[test]
+    fn a_calibration_run_starts_a_stopped_belt() {
+        let mut r = Rig::new();
+        r.run(5.0);
+        r.state.set_test_now(r.t);
+        crate::calibration::begin_run(&mut r.state, 3.0).unwrap();
+        r.run(20.0);
+        r.press(crate::engine::DeckAction::Stop);
+        r.run(15.0);
+        assert!(r.deck.belt_still());
+        let mark = r.mark();
+        r.run(60.0);
+        assert!(r.deck.belt_still(), "no start without the press");
+        assert!(!app_starts(&r.commands_since(mark)));
+
+        r.state.set_test_now(r.t);
+        crate::calibration::begin_run(&mut r.state, 3.0).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+    }
+
     /// GROUND_TRUTH: tapping the passes of the belt mark only reads the
     /// deck. Nine taps measure the belt without one packet that could move
     /// it; the belt keeps the run's speed; after STOP a tap on the still belt
@@ -2010,6 +2078,80 @@ mod tests {
         assert!(guide.remaining_error_pct.unwrap() < 2.0);
         assert_eq!(r.state.calibration_points.len(), 3);
         assert!(crate::calibration::guide_run(&mut r.state).is_err());
+        crate::calibration::close_all();
+    }
+
+    /// The owner's walk on hardware (#169): the belt paused at the treadmill,
+    /// RUN on the slowest speed resumes it there, then the remote takes the
+    /// deck 0.6 faster before the taps. The run is measured and saved at the
+    /// speed the deck ran, the walk's slowest end moves there and says so,
+    /// the belt keeps that speed, and the walk carries on to the top speed
+    /// and the midpoint check.
+    #[test]
+    fn a_guided_run_the_deck_ran_faster_moves_the_walk_to_that_speed() {
+        let _globals = crate::calibration::TEST_GLOBALS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        crate::calibration::close_all();
+        crate::calibration::set_belt_for_test(Some(300.0));
+        let mut r = Rig::new();
+        r.run(5.0);
+        crate::calibration::guide_start(&r.state, 4.0).unwrap();
+        let slow = crate::calibration::snapshot(&r.state)
+            .guide
+            .unwrap()
+            .slow_kmh;
+        r.state.set_test_now(r.t);
+        crate::calibration::guide_run(&mut r.state).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(slow), "{} km/h", r.deck.speed_kmh());
+        let t = r.t;
+        r.deck.press_pause(t);
+        r.run(5.0);
+        assert_eq!(r.state.last_status, protocol::MachineStatus::Paused);
+
+        // RUN on the paused belt at the same speed resumes it.
+        r.state.set_test_now(r.t);
+        crate::calibration::guide_run(&mut r.state).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(slow), "{} km/h", r.deck.speed_kmh());
+
+        // The remote takes the deck faster, then the taps.
+        r.remote_speed(true, 6);
+        r.run(10.0);
+        let ran = ((slow + 0.6) * 10.0).round() / 10.0;
+        assert!(r.deck.running_at(ran), "{} km/h", r.deck.speed_kmh());
+        assert!(tap_until_measured(&mut r, 0.9).is_some(), "saved");
+        r.run(20.0);
+        assert!(
+            r.deck.running_at(ran),
+            "the belt keeps {ran}: {}",
+            r.deck.speed_kmh()
+        );
+
+        let snap = crate::calibration::snapshot(&r.state);
+        let result = snap.run.as_ref().unwrap().result.as_ref().unwrap();
+        assert!((result.point.speed - ran).abs() < 0.05);
+        let speeds: Vec<f32> = r.state.calibration_points.iter().map(|p| p.speed).collect();
+        assert_eq!(speeds.len(), 1);
+        assert!((speeds[0] - ran).abs() < 0.05, "{speeds:?}");
+        let guide = snap.guide.unwrap();
+        assert!((guide.slow_kmh - ran).abs() < 0.05, "{guide:?}");
+        assert!(!guide.speeds.iter().any(|s| (s.kmh - slow).abs() < 0.05));
+        assert!(guide.note.as_deref().unwrap().contains("slowest"));
+        assert_eq!(guide.next_kmh, Some(4.0));
+
+        // The walk carries on: RUN on the top speed, then the midpoint.
+        r.state.set_test_now(r.t);
+        crate::calibration::guide_run(&mut r.state).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        assert!(tap_until_measured(&mut r, 0.9).is_some());
+        r.run(10.0);
+        let guide = crate::calibration::snapshot(&r.state).guide.unwrap();
+        let mid = guide.next_kmh.expect("the midpoint is next");
+        assert!(mid > ran && mid < 4.0, "{mid}");
+        assert_eq!(guide.note, None);
         crate::calibration::close_all();
     }
 

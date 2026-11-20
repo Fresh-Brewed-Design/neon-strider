@@ -1,0 +1,1 @@
+- GROUND_TRUTH asks for the fastest setting you'll walk at as the treadmill shows it, with a stepper that starts at the deck's top and offers only speeds it runs.

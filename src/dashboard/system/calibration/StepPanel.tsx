@@ -20,7 +20,9 @@ function droppedSteps(dropped: number): string | null {
 export function StepPanel({ run, limits }: { run: CalibrationRunView; limits: CalibrationLimits }) {
   const steps = run.steps;
   const start = useAction();
-  const kmh = run.target_kmh.toFixed(1);
+  // The speed the deck ran, which a start at the treadmill can set apart from RUN's.
+  const ranKmh = run.result?.point.speed ?? run.target_kmh;
+  const kmh = ranKmh.toFixed(1);
   // The stride joins the point the belt run saved; once UNDO took that back, TAP AGAIN on the belt comes first.
   if (steps === null && !run.saved) return null;
   return (
@@ -41,7 +43,7 @@ export function StepPanel({ run, limits }: { run: CalibrationRunView; limits: Ca
       ) : steps.result === null ? (
         <StepTapping steps={steps} limits={limits} />
       ) : (
-        <StepResult steps={steps} kmh={run.target_kmh} />
+        <StepResult steps={steps} kmh={ranKmh} />
       )}
     </div>
   );
