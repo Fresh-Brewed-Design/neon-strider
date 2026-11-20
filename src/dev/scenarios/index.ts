@@ -13,6 +13,7 @@ import { deskSync } from "./desksync";
 import { engage } from "./engage";
 import { eyeBreak } from "./eyebreak";
 import { ghostPod } from "./ghostpod";
+import { guided } from "./guided";
 import { heartRate } from "./heart";
 import { history } from "./history";
 import { hud } from "./hud";
@@ -54,4 +55,5 @@ export const SCENARIOS: Scenario[] = [
   heartRate,
   maintenance,
   history,
+  guided,
 ];

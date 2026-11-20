@@ -1,6 +1,7 @@
 //! The dashboard window: a tray popup that opens where the user last left it
 //! (or bottom-right of the primary display) and closes when it loses focus,
-//! unless pinned.
+//! unless pinned: by the user (`Pin open`) or by a guided task
+//! (`guided_task.rs`), which also keeps it on top.
 
 use crate::{persistence, placement};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -117,12 +118,35 @@ pub(crate) fn should_close_on_blur(app: &tauri::AppHandle) -> bool {
     if persistence::is_window_pinned(app) {
         log::debug!("Main window blurred but pinned. Keeping.");
         false
+    } else if crate::guided_task::pinned() {
+        log::debug!("Main window blurred during a guided task. Keeping.");
+        false
     } else if fresh {
         log::debug!("Main window blurred while opening. Keeping.");
         false
     } else {
         log::debug!("Main window blurred. Hiding tray menu.");
         true
+    }
+}
+
+/// A guided task pinned or unpinned the dashboard. Pinned: it shows and stays
+/// on top. Unpinned: a dashboard the user has left (no focus, no `Pin open`)
+/// closes the way a blur would have closed it, since no blur is coming to do
+/// it; one still in use stays until its next blur.
+pub(crate) fn on_guided_pin_changed(app: &tauri::AppHandle) {
+    let Some(window) = app.get_webview_window(DASHBOARD_LABEL) else {
+        return;
+    };
+    if crate::guided_task::pinned() {
+        let _ = window.set_always_on_top(true);
+        let _ = window.show();
+        return;
+    }
+    let focused = window.is_focused().unwrap_or(true);
+    if !focused && !persistence::is_window_pinned(app) {
+        log::debug!("Guided task over and the dashboard has no focus. Hiding.");
+        let _ = window.destroy();
     }
 }
 

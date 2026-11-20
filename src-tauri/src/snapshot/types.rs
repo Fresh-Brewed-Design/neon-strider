@@ -79,6 +79,10 @@ pub struct AppSnapshot {
 
     // ---- HEART_LINK ----
     pub heart_rate: crate::heart_rate::HeartRateSnapshot,
+
+    // ---- Guided tasks ----
+    /// The dashboard held open and on top during a guided task (GROUND_TRUTH).
+    pub guided_task: crate::guided_task::GuidedTaskSnapshot,
 }
 
 /// Strava as the windows see it. Tokens and the client secret never appear here.
@@ -814,6 +818,19 @@ pub enum Command {
     HeartRateMaxSet {
         bpm: u16,
     },
+
+    // ---- Guided tasks ----
+    /// Hold the dashboard open and on top while `task` runs (starting it again
+    /// restarts its timeout).
+    GuidedTaskStart {
+        task: crate::guided_task::GuidedTask,
+    },
+    /// `task` is over; the dashboard unpins once no task is left.
+    GuidedTaskEnd {
+        task: crate::guided_task::GuidedTask,
+    },
+    /// UNPIN: end every guided task's pin now.
+    GuidedTaskCancel,
 }
 
 #[cfg(test)]
@@ -1091,6 +1108,24 @@ mod tests {
         );
         let c: Command = serde_json::from_str(r#"{"type":"heart_rate_forget"}"#).unwrap();
         assert_eq!(c, Command::HeartRateForget);
+        let c: Command =
+            serde_json::from_str(r#"{"type":"guided_task_start","task":"ground_truth"}"#).unwrap();
+        assert_eq!(
+            c,
+            Command::GuidedTaskStart {
+                task: crate::guided_task::GuidedTask::GroundTruth
+            }
+        );
+        let c: Command =
+            serde_json::from_str(r#"{"type":"guided_task_end","task":"ground_truth"}"#).unwrap();
+        assert_eq!(
+            c,
+            Command::GuidedTaskEnd {
+                task: crate::guided_task::GuidedTask::GroundTruth
+            }
+        );
+        let c: Command = serde_json::from_str(r#"{"type":"guided_task_cancel"}"#).unwrap();
+        assert_eq!(c, Command::GuidedTaskCancel);
         let c: Command =
             serde_json::from_str(r#"{"type":"ghost_pod_power_set","on":true}"#).unwrap();
         assert_eq!(c, Command::GhostPodPowerSet { on: true });
