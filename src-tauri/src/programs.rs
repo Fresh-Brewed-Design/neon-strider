@@ -480,27 +480,34 @@ pub fn seed_programs() -> Vec<Program> {
         ),
         program(5, "Brisk", step(Some(30.0), 5.0, 0.0), None, NOTE_BRISK),
         vo2_max_program(6),
-        vo2_zone_program(7),
     ]
 }
 
 /// The Norwegian 4x4 for the deck: warm-up, four 4-minute climbs each followed
 /// by 3 minutes of easy walking, cool-down. The deck tops out at 8 km/h and
-/// 10 %, so the hard part is the incline (docs/research.md). Existing installs
-/// get it from `persistence::migration_4_vo2_max_program`, which keeps its own copy.
+/// 10 %, so the hard part is the incline (docs/research.md). Each climb holds
+/// 85 to 95 % of maximum heart rate, the intensity the 4x4 is prescribed at:
+/// with a heart rate reading the zone trims the climb's speed within 1 km/h,
+/// and without one the climb runs its set speed. Existing installs get the
+/// program from `persistence::migration_4_vo2_max_program` and the zones from
+/// `migration_7_vo2_max_zones`, which keep their own copies.
 fn vo2_max_program(id: u32) -> Program {
-    let step = |minutes: f32, speed_kmh: f32, incline_pct: f32| ProgramStep {
+    let step = |minutes: f32, speed_kmh: f32, incline_pct: f32, zone| ProgramStep {
         duration_minutes: Some(minutes),
         speed_kmh,
         incline_pct,
-        zone: None,
+        zone,
     };
-    let mut steps = vec![step(5.0, 4.5, 0.0)];
+    let climb_zone = Some(HeartZone {
+        low_pct: 85.0,
+        high_pct: 95.0,
+    });
+    let mut steps = vec![step(5.0, 4.5, 0.0, None)];
     for _ in 0..4 {
-        steps.push(step(4.0, 6.0, 10.0));
-        steps.push(step(3.0, 4.0, 0.0));
+        steps.push(step(4.0, 6.0, 10.0, climb_zone));
+        steps.push(step(3.0, 4.0, 0.0, None));
     }
-    steps.push(step(3.0, 3.0, 0.0));
+    steps.push(step(3.0, 3.0, 0.0, None));
     Program {
         id,
         name: "VO2 max".to_string(),
@@ -509,26 +516,6 @@ fn vo2_max_program(id: u32) -> Program {
         note: Some(NOTE_VO2_MAX.to_string()),
     }
 }
-
-/// The 4x4 with each climb held at 85 to 95 % of maximum heart rate, the
-/// intensity the Norwegian 4x4 is prescribed at (docs/research.md): the zone
-/// trims the climb's speed within 1 km/h instead of the user guessing it.
-/// Existing installs get it from `persistence::migration_7_vo2_zone_program`,
-/// which keeps its own copy.
-fn vo2_zone_program(id: u32) -> Program {
-    let mut p = vo2_max_program(id);
-    p.name = "VO2 zone".to_string();
-    p.note = Some(NOTE_VO2_ZONE.to_string());
-    for s in p.steps.iter_mut().filter(|s| s.incline_pct > 0.0) {
-        s.zone = Some(HeartZone {
-            low_pct: 85.0,
-            high_pct: 95.0,
-        });
-    }
-    p
-}
-
-pub const NOTE_VO2_ZONE: &str = "Four 4-minute climbs held at 85 to 95 % of max heart rate.";
 
 pub const NOTE_VO2_MAX: &str = "Four hard 4-minute climbs with easy walks between train VO2 max.";
 
@@ -2295,7 +2282,7 @@ mod tests {
         let l = initial_programs(None, None);
         assert!(l.seeded);
         assert_eq!(l.programs, seed_programs());
-        assert_eq!(l.next_id, 8);
+        assert_eq!(l.next_id, 7);
 
         // Present (even empty) is never reseeded.
         let l = initial_programs(Some("[]"), None);
@@ -3572,30 +3559,30 @@ mod tests {
         }
     }
 
-    /// VO2 zone is the VO2 max program with 85 to 95 % on each climb.
+    /// The seeded VO2 max holds 85 to 95 % on its four climbs and nowhere else.
     #[test]
-    fn the_seeded_vo2_zone_program_holds_its_climbs_in_the_zone() {
-        let seeds = seed_programs();
-        let max = seeds.iter().find(|p| p.name == "VO2 max").unwrap();
-        let zone = seeds.iter().find(|p| p.name == "VO2 zone").unwrap();
-        assert_eq!(zone.id, 7);
-        assert_eq!(zone.steps.len(), max.steps.len());
-        for (z, m) in zone.steps.iter().zip(&max.steps) {
+    fn the_seeded_vo2_max_holds_its_climbs_in_the_zone() {
+        let p = seed_programs()
+            .into_iter()
+            .find(|p| p.name == "VO2 max")
+            .unwrap();
+        assert_eq!(p.id, 6);
+        assert_eq!(p.steps.len(), 10);
+        for s in &p.steps {
+            let climb = s.incline_pct > 0.0;
             assert_eq!(
-                (z.duration_minutes, z.speed_kmh, z.incline_pct),
-                (m.duration_minutes, m.speed_kmh, m.incline_pct)
-            );
-            let climb = m.incline_pct > 0.0;
-            assert_eq!(
-                z.zone,
+                s.zone,
                 climb.then_some(HeartZone {
                     low_pct: 85.0,
                     high_pct: 95.0
-                })
+                }),
+                "{:?}",
+                s
             );
         }
+        assert_eq!(p.steps.iter().filter(|s| s.zone.is_some()).count(), 4);
         // At the default 190 bpm that is 161.5 to 180.5 bpm.
-        let (low, high) = zone.steps[1].zone.unwrap().bounds_bpm(190);
+        let (low, high) = p.steps[1].zone.unwrap().bounds_bpm(190);
         assert!((low - 161.5).abs() < 0.01 && (high - 180.5).abs() < 0.01);
     }
 
@@ -3606,16 +3593,16 @@ mod tests {
         let mut s = state();
         let seeded = seed_programs()
             .into_iter()
-            .find(|p| p.name == "VO2 zone")
+            .find(|p| p.name == "VO2 max")
             .unwrap();
         s.programs.push(seeded.clone());
         let mut edit = seeded.clone();
-        edit.name = "My zone".to_string();
+        edit.name = "My 4x4".to_string();
         edit.note = None;
         s.save_program(edit).unwrap();
         let saved = s.programs.iter().find(|p| p.id == seeded.id).unwrap();
         assert_eq!(saved.steps, seeded.steps);
-        assert_eq!(saved.note.as_deref(), Some(NOTE_VO2_ZONE));
+        assert_eq!(saved.note.as_deref(), Some(NOTE_VO2_MAX));
 
         let mut edit = saved.clone();
         edit.steps[1].zone = Some(HeartZone {

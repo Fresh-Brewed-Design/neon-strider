@@ -1133,22 +1133,36 @@ mod tests {
         );
     }
 
-    /// The seeded VO2 zone program against the deck: a high pulse leaves the
-    /// warm-up (no zone) alone and trims the first climb down by targets
-    /// alone; paused at the treadmill mid-climb with a low pulse, the belt
-    /// stays paused until a start press.
+    /// The seeded VO2 max against the deck. With no heart rate reading its
+    /// climb runs the set 6.0 km/h. With a pulse above the zone the warm-up
+    /// (no zone) is left alone and the climb is trimmed down by targets alone;
+    /// paused at the treadmill mid-climb with a low pulse, the belt stays
+    /// paused until a start press.
     #[test]
-    fn the_seeded_vo2_zone_program_trims_its_climbs_and_never_starts_a_still_belt() {
-        let mut r = Rig::new();
-        let p = crate::programs::seed_programs()
-            .into_iter()
-            .find(|p| p.name == "VO2 zone")
-            .expect("seeded");
-        let id = p.id;
-        r.state.programs.push(p);
-        r.state.max_heart_rate = 190; // The zone is 161.5 to 180.5 bpm.
-        r.run(1.0);
-        r.run_program(id);
+    fn the_seeded_vo2_max_trims_its_climbs_and_never_starts_a_still_belt() {
+        let seeded = || {
+            crate::programs::seed_programs()
+                .into_iter()
+                .find(|p| p.name == "VO2 max")
+                .expect("seeded")
+        };
+        let rig = || {
+            let mut r = Rig::new();
+            r.state.programs.push(seeded());
+            r.state.max_heart_rate = 190; // The zone is 161.5 to 180.5 bpm.
+            r.run(1.0);
+            r.run_program(seeded().id);
+            r
+        };
+
+        // No reading: the climb holds its set speed.
+        let mut r = rig();
+        r.run(330.0);
+        assert_eq!(r.program().step_index, 1);
+        r.run(90.0);
+        assert!(r.deck.running_at(6.0), "{} km/h", r.deck.speed_kmh());
+
+        let mut r = rig();
         r.run(20.0);
         assert!(r.deck.running_at(4.5), "{} km/h", r.deck.speed_kmh());
         r.state.heart_bpm = Some(185);

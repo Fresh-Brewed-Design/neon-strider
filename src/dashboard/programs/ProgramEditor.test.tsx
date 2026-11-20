@@ -25,11 +25,11 @@ beforeEach(() => {
   current.heart_rate = { ...current.heart_rate, max_bpm: 180, max_bpm_set: true };
 });
 
-const vo2Zone = () => current!.programs.find((p) => p.name === "VO2 zone")!;
+const vo2Max = () => current!.programs.find((p) => p.name === "VO2 max")!;
 
 describe("ProgramEditor heart zones", () => {
-  it("saves the seeded zone program with its zones intact", async () => {
-    const p = vo2Zone();
+  it("saves the seeded VO2 max with its zones intact", async () => {
+    const p = vo2Max();
     render(<ProgramEditor initial={toDraft(p)} onDone={() => {}} />);
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save" })));
     const [cmd] = saved();

@@ -347,65 +347,65 @@ fn vo2_max_program_v4(raw: &str, next_id: Option<&str>) -> Option<(String, u32)>
     Some((serde_json::to_string(&list).ok()?, id + 1))
 }
 
-/// Migration 7: the VO2 zone program (roadmap #124), the 4x4 with each climb
-/// holding 85 to 95 % of maximum heart rate. Added after the user's programs
-/// on the same terms as migration 4: not to an empty or unreadable list, nor
-/// when one has that name already.
+/// Migration 7: heart rate zones on the VO2 max program (roadmap #124): each
+/// 4-minute climb holds 85 to 95 % of maximum heart rate. Only a VO2 max the
+/// user hasn't touched (migration 4's name, steps, repeat and note) gains them;
+/// an edited one, or any other program, is left as it is. Nothing is removed.
 ///
 /// Frozen: the program is written out here, not read from `seed_programs`.
-fn migration_7_vo2_zone_program(tx: &Transaction) -> rusqlite::Result<()> {
+fn migration_7_vo2_max_zones(tx: &Transaction) -> rusqlite::Result<()> {
     let Some(raw) = get_setting_str(tx, "programs") else {
-        return Ok(()); // Never seeded: the first start seeds it.
+        return Ok(()); // Never seeded: the first start seeds it with zones.
     };
-    let next_id = get_setting_str(tx, "program_next_id");
-    if let Some((programs, next_id)) = vo2_zone_program_v7(&raw, next_id.as_deref()) {
-        for (key, value) in [
-            ("programs", programs),
-            ("program_next_id", next_id.to_string()),
-        ] {
-            tx.execute(
-                "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
-                params![key, value],
-            )?;
-        }
+    if let Some(programs) = vo2_max_zones_v7(&raw) {
+        tx.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('programs', ?1)",
+            params![programs],
+        )?;
     }
     Ok(())
 }
 
 /// Migration 7's change to the stored programs JSON; `None` when there is
-/// nothing to add or the value can't be read.
-fn vo2_zone_program_v7(raw: &str, next_id: Option<&str>) -> Option<(String, u32)> {
+/// nothing to change or the value can't be read.
+fn vo2_max_zones_v7(raw: &str) -> Option<String> {
     use serde_json::{json, Value};
     let mut list: Vec<Value> = serde_json::from_str(raw).ok()?;
-    if list.is_empty() || list.iter().any(|p| p["name"] == "VO2 zone") {
+    // Migration 4's VO2 max, step by step: (minutes, km/h, incline %).
+    let mut seeded = vec![(5.0, 4.5, 0.0)];
+    for _ in 0..4 {
+        seeded.push((4.0, 6.0, 10.0));
+        seeded.push((3.0, 4.0, 0.0));
+    }
+    seeded.push((3.0, 3.0, 0.0));
+    let untouched = |p: &Value| {
+        let Some(steps) = p["steps"].as_array() else {
+            return false;
+        };
+        p["name"] == "VO2 max"
+            && p["repeat_every_minutes"].is_null()
+            && p["note"] == "Four hard 4-minute climbs with easy walks between train VO2 max."
+            && steps.len() == seeded.len()
+            && steps.iter().zip(&seeded).all(|(s, &(min, kmh, pct))| {
+                s["duration_minutes"].as_f64() == Some(min)
+                    && s["speed_kmh"].as_f64() == Some(kmh)
+                    && s["incline_pct"].as_f64() == Some(pct)
+                    && s.get("zone").is_none_or(Value::is_null)
+            })
+    };
+    let mut changed = false;
+    for p in list.iter_mut().filter(|p| untouched(p)) {
+        for s in p["steps"].as_array_mut()? {
+            if s["incline_pct"].as_f64() == Some(10.0) {
+                s["zone"] = json!({ "low_pct": 85.0, "high_pct": 95.0 });
+            }
+        }
+        changed = true;
+    }
+    if !changed {
         return None;
     }
-    let max_id = list
-        .iter()
-        .filter_map(|p| p["id"].as_u64())
-        .max()
-        .unwrap_or(0) as u32;
-    let id = next_id
-        .and_then(|s| s.trim().trim_matches('"').parse::<u32>().ok())
-        .unwrap_or(0)
-        .max(max_id + 1);
-    let step = |minutes: f64, speed: f64, incline: f64| json!({ "duration_minutes": minutes, "speed_kmh": speed, "incline_pct": incline });
-    let mut steps = vec![step(5.0, 4.5, 0.0)];
-    for _ in 0..4 {
-        let mut climb = step(4.0, 6.0, 10.0);
-        climb["zone"] = json!({ "low_pct": 85.0, "high_pct": 95.0 });
-        steps.push(climb);
-        steps.push(step(3.0, 4.0, 0.0));
-    }
-    steps.push(step(3.0, 3.0, 0.0));
-    list.push(json!({
-        "id": id,
-        "name": "VO2 zone",
-        "steps": steps,
-        "repeat_every_minutes": null,
-        "note": "Four 4-minute climbs held at 85 to 95 % of max heart rate.",
-    }));
-    Some((serde_json::to_string(&list).ok()?, id + 1))
+    serde_json::to_string(&list).ok()
 }
 
 type Migration = fn(&Transaction) -> rusqlite::Result<()>;
@@ -419,7 +419,7 @@ const MIGRATIONS: &[Migration] = &[
     migration_4_vo2_max_program,
     migration_5_desk_days,
     migration_6_heart_rate,
-    migration_7_vo2_zone_program,
+    migration_7_vo2_max_zones,
 ];
 
 fn schema_version(conn: &Connection) -> rusqlite::Result<u32> {
@@ -1867,7 +1867,7 @@ mod db_tests {
         assert_eq!(stored_programs(&conn), crate::programs::seed_programs());
         assert_eq!(
             get_setting_str(&conn, "program_next_id").as_deref(),
-            Some("8")
+            Some("7")
         );
         assert_eq!(
             get_setting_str(&conn, "seated_minutes").as_deref(),
@@ -1894,14 +1894,7 @@ mod db_tests {
         let names: Vec<&str> = list.iter().map(|p| p.name.as_str()).collect();
         assert_eq!(
             names,
-            [
-                "Post-meal",
-                "Workday",
-                "Brisk",
-                "Micro-break",
-                "VO2 max",
-                "VO2 zone"
-            ]
+            ["Post-meal", "Workday", "Brisk", "Micro-break", "VO2 max"]
         );
         // The edited Post-meal is untouched; the unedited Workday gains its note.
         assert_eq!(list[0].steps[0].duration_minutes, Some(15.0));
@@ -1913,10 +1906,9 @@ mod db_tests {
         assert_eq!(list[2].steps[0].speed_kmh, 4.5);
         assert_eq!(list[3].id, 9);
         assert_eq!(list[4].id, 10);
-        assert_eq!(list[5].id, 11);
         assert_eq!(
             get_setting_str(&conn, "program_next_id").as_deref(),
-            Some("12")
+            Some("11")
         );
         assert_eq!(
             get_setting_str(&conn, "seated_minutes").as_deref(),
@@ -1950,46 +1942,72 @@ mod db_tests {
         set(&conn, "programs", own);
         migrate(&mut conn).unwrap();
         let l = list(&conn);
-        assert_eq!(
-            l.len(),
-            4,
-            "Micro-break and Brisk come from migration 3, VO2 zone from 7"
-        );
+        assert_eq!(l.len(), 3, "Micro-break and Brisk come from migration 3");
         assert_eq!(l.iter().filter(|p| p.name == "VO2 max").count(), 1);
         assert_eq!(l[0].steps.len(), 1);
     }
 
     #[test]
-    fn migration_7_adds_vo2_zone_once_with_zones_on_the_climbs() {
+    fn migration_7_puts_zones_on_an_untouched_vo2_max_only() {
+        let zoned =
+            |p: &crate::programs::Program| p.steps.iter().filter(|s| s.zone.is_some()).count();
         let mut conn = migrated_to_v2();
         set(&conn, "programs", V1_SEEDS);
         migrate(&mut conn).unwrap();
         let l = stored_programs(&conn);
-        let zone: Vec<_> = l.iter().filter(|p| p.name == "VO2 zone").collect();
-        assert_eq!(zone.len(), 1);
-        let p = zone[0];
-        assert_eq!(p.id, l.iter().map(|p| p.id).max().unwrap());
-        crate::programs::validate_program(p, 1.0, 8.0).unwrap();
-        for s in &p.steps {
+        assert_eq!(l.len(), 6, "nothing added or removed");
+        let vo2 = l.iter().find(|p| p.name == "VO2 max").unwrap();
+        assert_eq!(zoned(vo2), 4);
+        for s in &vo2.steps {
             let want = (s.incline_pct > 0.0).then_some(crate::programs::HeartZone {
                 low_pct: 85.0,
                 high_pct: 95.0,
             });
             assert_eq!(s.zone, want, "{:?}", s);
         }
-        assert_eq!(p.steps.iter().filter(|s| s.zone.is_some()).count(), 4);
+        assert!(vo2.note.is_some(), "the note stays");
+        assert!(l
+            .iter()
+            .filter(|p| p.name != "VO2 max")
+            .all(|p| zoned(p) == 0));
         // Forced to run again, nothing changes.
         let before = get_setting_str(&conn, "programs");
         conn.execute_batch("PRAGMA user_version = 6").unwrap();
         migrate(&mut conn).unwrap();
         assert_eq!(get_setting_str(&conn, "programs"), before);
 
-        // An empty list (every program deleted) stays empty.
-        let mut conn = migrated_to_v2();
+        // A VO2 max the user edited (a faster climb, so no note) is left alone,
+        // and so is a renamed copy of the seed.
+        let mut list = stored_programs(&conn);
+        for p in &mut list {
+            for s in &mut p.steps {
+                s.zone = None;
+            }
+        }
+        let mut renamed = list.iter().find(|p| p.name == "VO2 max").unwrap().clone();
+        renamed.id = 99;
+        renamed.name = "My 4x4".to_string();
+        let edited = list.iter_mut().find(|p| p.name == "VO2 max").unwrap();
+        edited.steps[1].speed_kmh = 6.5;
+        edited.note = None;
+        list.push(renamed);
+        let raw = serde_json::to_string(&list).unwrap();
+        set(&conn, "programs", &raw);
         conn.execute_batch("PRAGMA user_version = 6").unwrap();
-        set(&conn, "programs", "[]");
         migrate(&mut conn).unwrap();
-        assert_eq!(get_setting_str(&conn, "programs").as_deref(), Some("[]"));
+        assert_eq!(
+            get_setting_str(&conn, "programs").as_deref(),
+            Some(raw.as_str())
+        );
+
+        // An empty or unreadable list stays as it is.
+        for raw in ["[]", "not json"] {
+            let mut conn = migrated_to_v2();
+            set(&conn, "programs", raw);
+            conn.execute_batch("PRAGMA user_version = 6").unwrap();
+            migrate(&mut conn).unwrap();
+            assert_eq!(get_setting_str(&conn, "programs").as_deref(), Some(raw));
+        }
     }
 
     #[test]
