@@ -14,6 +14,7 @@ class BeltField extends WatchUi.SimpleDataField {
     }
 
     function compute(info as Activity.Info) as Numeric or Time.Duration or String or Null {
+        _link.check();
         if (_link.speedKmh == null) {
             return _link.status;
         }
