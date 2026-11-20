@@ -46,6 +46,20 @@ describe("EyeBreakCard", () => {
     expect(sent()).toEqual([{ command: { type: "eye_break_skip" } }]);
   });
 
+  it("shows each guided blink step as text", () => {
+    const { rerender } = render(<EyeBreakCard snapshot={withEye({ phase: "break", remaining_s: 72, blink: "close" })} />);
+    expect(screen.getByText("SHUTTER // CLOSE")).toBeInTheDocument();
+    expect(screen.getByText("Close your eyes and hold them closed.")).toBeInTheDocument();
+    rerender(<EyeBreakCard snapshot={withEye({ phase: "break", remaining_s: 70, blink: "squeeze" })} />);
+    expect(screen.getByText("SHUTTER // SQUEEZE")).toBeInTheDocument();
+    expect(screen.getByText("Squeeze your eyelids gently.")).toBeInTheDocument();
+    rerender(
+      <EyeBreakCard snapshot={withEye({ phase: "break", remaining_s: 68, blink: "open", holds_belt: true })} />,
+    );
+    expect(screen.getByText("SHUTTER // OPEN")).toBeInTheDocument();
+    expect(screen.getByText("Open your eyes and look far away. The belt is paused.")).toBeInTheDocument();
+  });
+
   it("says the belt is paused while the break holds it", () => {
     render(<EyeBreakCard snapshot={withEye({ phase: "break", remaining_s: 30, holds_belt: true })} />);
     expect(screen.getByText("Look away from the screen. The belt is paused.")).toBeInTheDocument();

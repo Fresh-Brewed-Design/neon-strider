@@ -1,7 +1,7 @@
 // The persistent HUD cards. Unlike toasts, each stays until it is acted on.
 
 import { useEffect, useState } from "react";
-import type { AppSnapshot } from "../ipc";
+import type { AppSnapshot, BlinkStep } from "../ipc";
 import { formatDuration } from "../format";
 import { formatChange } from "../dashboard/history/weekly";
 import { describePlan } from "../dashboard/programs/format";
@@ -145,9 +145,17 @@ export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
  * rest (`at_rest`) waits for it and pauses nothing. Otherwise a walking belt is
  * paused for it (with "Pause the belt" on); after the break, while that pause holds, the card asks
  * RESUME (a press: GO or the treadmill's resume) or STAY STILL. Nothing here
- * starts the belt by itself. Rust counts the time and owns the pause; the tones
- * are played by the HUD (`useEyeBreakTones`).
+ * starts the belt by itself. During the break the card shows the guided blink
+ * step (`blink`: SHUTTER // CLOSE, SQUEEZE, OPEN). Rust counts the time and owns
+ * the pause; the tones are played by the HUD (`useEyeBreakTones`).
  */
+/** What each guided blink step asks, for when the tones are off. */
+const BLINK_HINT: Record<BlinkStep, string> = {
+  close: "Close your eyes and hold them closed.",
+  squeeze: "Squeeze your eyelids gently.",
+  open: "Open your eyes and look far away.",
+};
+
 export function EyeBreakCard({ snapshot }: { snapshot: AppSnapshot }) {
   const { send, error } = useHudSend();
   const e = snapshot.eye_break;
@@ -173,9 +181,11 @@ export function EyeBreakCard({ snapshot }: { snapshot: AppSnapshot }) {
       {onBreak ? (
         <div className="hud-toast-body">
           <span className="hud-toast-message">OCULAR_IMPLANT // COOLDOWN</span>
+          {e.blink && <span className="hud-eyebreak-cue">SHUTTER // {e.blink.toUpperCase()}</span>}
           <span className="hud-eyebreak-count">{e.remaining_s} S</span>
           <span className="hud-sub">
-            Look away from the screen.{e.holds_belt ? " The belt is paused." : ""}
+            {e.blink ? BLINK_HINT[e.blink] : "Look away from the screen."}
+            {e.holds_belt ? " The belt is paused." : ""}
           </span>
         </div>
       ) : (
