@@ -1,0 +1,1 @@
+- The slowest speed now follows your calibration: a speed set under the belt's real floor (e.g. 1.2 km/h when the deck's 0.6 runs that fast) runs at the floor instead of below it, and programs, the slider and the engage speed all use the same calibrated minimum.
