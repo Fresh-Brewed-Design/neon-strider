@@ -73,8 +73,7 @@ function PlacementRow({ anchor, custom }: { anchor: HudAnchor; custom: boolean }
       </div>
       <ActionStatus pending={reset.pending} error={reset.error} />
       <Hint>
-        Drag the NEON STRIDER logo to move the HUD, onto another display too; near a corner, the HUD snaps into the
-        corner.
+        Drag the NEON STRIDER logo to move the HUD to any display. Near a corner, the HUD snaps into place.
       </Hint>
     </div>
   );

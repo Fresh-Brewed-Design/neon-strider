@@ -92,7 +92,7 @@ export function TreadmillSection() {
         step={0.5}
         value={inclineOffset}
         format={(v) => `${v > 0 ? "+" : ""}${v.toFixed(1)}%`}
-        hint="Added to every incline reading for adjustable feet or a sloping floor; the motor's zero point stays put."
+        hint="Corrects incline readings for adjustable feet or a sloping floor without moving the motor's zero point."
         onCommit={(v) => updateSettings({ inclineOffset: v })}
       />
     </Section>

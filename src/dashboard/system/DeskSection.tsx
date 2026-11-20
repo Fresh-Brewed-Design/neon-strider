@@ -192,7 +192,7 @@ export function DeskSection() {
     <Section
       id="sys-desk"
       title="Desk"
-      description="Small nudges for a day at the PC; none of them can start the belt."
+      description="Small nudges that never start the belt."
     >
       <Toggle
         label="Idle nudge"
