@@ -692,11 +692,12 @@ function closeCal() {
   snapshot.calibration.run = null;
 }
 /** ?calwizard: two saved points and a 3 m belt loop. */
+// ?calwizard=oldpoint adds a point stored at 0.15, below the limit.
 const CAL_CONFIG = {
   belt_length: 300,
   calibration_points: [
     { speed: 3, stride_length_cm: 68.4, distance_scale: 0.912 },
-    { speed: 4.5, stride_length_cm: 74.1, distance_scale: 0.887 },
+    { speed: 4.5, stride_length_cm: 74.1, distance_scale: calFlag === "oldpoint" ? 0.15 : 0.887 },
   ],
 };
 /** The preview runs no settings sync: the store settings ?calwizard starts with. */
@@ -704,7 +705,7 @@ export function previewSettings() {
   return calFlag === null ? null : { beltLength: CAL_CONFIG.belt_length, calibrationPoints: CAL_CONFIG.calibration_points };
 }
 if (calFlag !== null) {
-  snapshot.calibration.wizard_enabled = true;
+  snapshot.calibration.wizard_enabled = calFlag !== "oldpoint";
   if (calFlag === "counting" || calFlag === "counted") Object.assign(snapshot.deck, { raw_speed_kmh: 3, speed_kmh: 3.3 });
   if (calFlag === "counting") calRun(3, "counting", 23);
   if (calFlag === "counted") calRun(3, "counted", 62.4);

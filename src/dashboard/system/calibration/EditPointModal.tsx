@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Edit } from "lucide-react";
 import type { CalibrationPoint } from "../../../store/types";
-import { retimedPoint } from "./math";
+import { ActionStatus } from "../../../components/ActionStatus";
+import { useAppState } from "../../../state/useAppState";
+import { retimedPoint, scaleRefusal } from "./math";
 
 /** Adjusts one point: re-time 50 steps with a stopwatch, or type the factor in. */
 export function EditPointModal({
@@ -28,6 +30,8 @@ export function EditPointModal({
 
   const { realKmh, scale: calculatedScale } = retimedPoint(stride, seconds, point.speed);
   const finalScale = autoMode ? calculatedScale : manualScale;
+  const limits = useAppState((s) => s.calibration.limits);
+  const refusal = scaleRefusal(finalScale, limits, "Change the time or the factor.");
 
   return (
     <div className="fixed inset-0 z-[70] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4">
@@ -143,19 +147,25 @@ export function EditPointModal({
           </div>
         </div>
 
-        <div className="flex gap-2 pt-2">
-          <button
-            onClick={onClose}
-            className="flex-1 py-3 bg-white/5 hover:bg-white/10 rounded font-black text-[11px] tracking-widest transition-all"
-          >
-            ABORT
-          </button>
-          <button
-            onClick={() => onSave({ ...point, stride_length_cm: stride, distance_scale: finalScale })}
-            className="flex-1 py-3 bg-neon-cyan text-black hover:bg-white rounded font-black text-[11px] tracking-widest shadow-[0_0_20px_rgba(0,243,255,0.4)] transition-all"
-          >
-            COMMIT_FIX
-          </button>
+        <div className="space-y-2 pt-2">
+          <ActionStatus error={refusal} />
+          <div className="flex gap-2">
+            <button
+              onClick={onClose}
+              className="flex-1 py-3 bg-white/5 hover:bg-white/10 rounded font-black text-[11px] tracking-widest transition-all"
+            >
+              ABORT
+            </button>
+            <button
+              disabled={refusal !== null}
+              onClick={() => {
+                if (refusal === null) onSave({ ...point, stride_length_cm: stride, distance_scale: finalScale });
+              }}
+              className="flex-1 py-3 bg-neon-cyan text-black hover:bg-white rounded font-black text-[11px] tracking-widest shadow-[0_0_20px_rgba(0,243,255,0.4)] transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              COMMIT_FIX
+            </button>
+          </div>
         </div>
       </div>
     </div>
