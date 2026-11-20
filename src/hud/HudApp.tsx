@@ -1,7 +1,8 @@
 import { useRef } from "react";
 import { useAppSnapshot } from "../state/useAppState";
 import { statWidget } from "../widgets/registry";
-import { MaintenanceCard, SeatedCard, UpdateCard, WalkAwayCard, WeeklyCard } from "./HudCards";
+import { EyeBreakCard, MaintenanceCard, SeatedCard, UpdateCard, WalkAwayCard, WeeklyCard } from "./HudCards";
+import { useEyeBreakTones } from "./eyeBreakTones";
 import { HudHeader } from "./HudHeader";
 import { HudNote } from "./HudNote";
 import { Controls, NeuralLine, ProgramsModule, StatCell } from "./HudPanel";
@@ -33,6 +34,8 @@ export function HudApp() {
   const logo = useLogoDrag(panelRef, drag.report);
   const relink = useRelink(snapshot?.connection ?? null);
 
+  useEyeBreakTones(snapshot?.eye_break);
+
   const widgets = snapshot?.hud.widgets ?? [];
   const view = snapshot?.hud_view ?? "full";
   const full = view === "full";
@@ -52,10 +55,11 @@ export function HudApp() {
   const maintenanceDue = snapshot?.maintenance.due ?? false;
   const weeklyCard = snapshot?.weekly.show_card ?? false;
   const seatedCard = snapshot?.seated.show_card ?? false;
+  const eyeBreakCard = (snapshot?.eye_break.phase ?? "idle") !== "idle";
   const walkawayCard = (snapshot?.walkaway.card ?? "none") !== "none";
   const updateCard = snapshot?.update.hud_card ?? false;
   const hasContent =
-    hasPanel || toasts.length > 0 || maintenanceDue || weeklyCard || seatedCard || walkawayCard || updateCard;
+    hasPanel || toasts.length > 0 || maintenanceDue || weeklyCard || seatedCard || eyeBreakCard || walkawayCard || updateCard;
 
   useHitRegion(contentRef, hasContent);
 
@@ -110,6 +114,7 @@ export function HudApp() {
         )}
         {walkawayCard && snapshot && <WalkAwayCard snapshot={snapshot} />}
         {seatedCard && snapshot && <SeatedCard snapshot={snapshot} />}
+        {eyeBreakCard && snapshot && <EyeBreakCard snapshot={snapshot} />}
         {maintenanceDue && snapshot && <MaintenanceCard snapshot={snapshot} />}
         {weeklyCard && snapshot && <WeeklyCard snapshot={snapshot} />}
         {updateCard && snapshot && <UpdateCard snapshot={snapshot} />}

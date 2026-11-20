@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.11.0 (2026-11-20)
+
+### New
+
+- Eye breaks (off by default, under System -> Desk): after 20 minutes of screen use the HUD warns a minute ahead, then asks you to look into the distance for 90 seconds, with a blink tone every 10 seconds and a tone at the end. The belt is never touched. Both times and the tones can be changed.
+
+### Fixed
+
+- Calibration no longer saves a 0 km/h point when the belt has already stopped; it tells you to run it again.
+
+## 1.10.0 (2026-11-20)
+
+### New
+
+- New *VO2 max* example program: a Norwegian 4x4 for the deck (warm-up, four 4-minute climbs at 6.0 km/h and 10 % with 3 easy minutes between, cool-down). It is added to your programs, and docs/research.md has the sources.
+
 ## 1.9.1 (2026-11-20)
 
 ### Fixed
