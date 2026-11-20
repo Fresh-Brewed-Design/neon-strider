@@ -831,6 +831,8 @@ mod tests {
             neural_ticks: 0,
             last_hardware_time: 0,
             hardware_time_offset: 0,
+            avg_heart_rate: None,
+            max_heart_rate: None,
         }
     }
 
@@ -1226,6 +1228,7 @@ mod tests {
             steps: 0.0,
             raw_steps: 0.0,
             raw_speed: speed,
+            heart_rate: None,
         }
     }
 

@@ -20,6 +20,9 @@ export const SessionSchema = z.object({
   neural_heat: z.number().default(0),
   neural_ticks: z.number().default(0),
   last_hardware_time: z.number().default(0),
+  /** Beats per minute over the walk; null for a walk without a heart rate sensor. */
+  avg_heart_rate: z.number().nullable().default(null),
+  max_heart_rate: z.number().nullable().default(null),
 });
 
 export const SampleSchema = z.object({
@@ -33,6 +36,8 @@ export const SampleSchema = z.object({
   raw_distance: z.number().default(0),
   steps: z.number().default(0),
   raw_steps: z.number().default(0),
+  /** Beats per minute from HEART_LINK in that second; null without a reading. */
+  heart_rate: z.number().nullable().default(null),
 });
 
 export type Session = z.infer<typeof SessionSchema>;
