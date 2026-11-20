@@ -24,7 +24,7 @@ const BELT = ["calibration_run_start", "calibration_sweep_start", "calibration_s
 const beltMoves = () => types().filter((t) => BELT.includes(t));
 
 function check(c: Partial<GuideCheck>): GuideCheck {
-  return { lo_kmh: 0.6, hi_kmh: 5, mid_kmh: 2.8, verdict: "pending", error_pct: null, ...c };
+  return { lo_kmh: 0.6, hi_kmh: 5, mid_kmh: 2.8, halfway_kmh: null, ran_kmh: null, verdict: "pending", error_pct: null, ...c };
 }
 
 function guide(g: Partial<CalibrationGuideView> = {}): CalibrationGuideView {
@@ -33,8 +33,8 @@ function guide(g: Partial<CalibrationGuideView> = {}): CalibrationGuideView {
     top_kmh: 5,
     note: null,
     speeds: [
-      { kmh: 0.6, mark: "pending", end: true },
-      { kmh: 5, mark: "pending", end: true },
+      { kmh: 0.6, ran_kmh: null, mark: "pending", end: true },
+      { kmh: 5, ran_kmh: null, mark: "pending", end: true },
     ],
     checks: [],
     next_kmh: 0.6,
@@ -127,9 +127,9 @@ describe("the guided walk", () => {
   it("says how the midpoint check measures the error", () => {
     current!.calibration.guide = guide({
       speeds: [
-        { kmh: 0.6, mark: "saved", end: true },
-        { kmh: 2.8, mark: "pending", end: false },
-        { kmh: 5, mark: "saved", end: true },
+        { kmh: 0.6, ran_kmh: null, mark: "saved", end: true },
+        { kmh: 2.8, ran_kmh: null, mark: "pending", end: false },
+        { kmh: 5, ran_kmh: null, mark: "saved", end: true },
       ],
       checks: [check({})],
       next_kmh: 2.8,
@@ -137,6 +137,41 @@ describe("the guided walk", () => {
     render(<GuidedCalibration />);
     expect(screen.getByText("A check run measures the distance error halfway between two calibrated speeds.")).toBeTruthy();
     expect(screen.getByText("0.6 to 5.0 km/h: the check at 2.8 km/h waits for RUN.")).toBeTruthy();
+  });
+
+  it("says when the check moved off a halfway speed the deck skips", () => {
+    current!.calibration.guide = guide({
+      speeds: [
+        { kmh: 0.6, ran_kmh: null, mark: "saved", end: true },
+        { kmh: 2.7, ran_kmh: null, mark: "pending", end: false },
+        { kmh: 5, ran_kmh: null, mark: "saved", end: true },
+      ],
+      checks: [check({ mid_kmh: 2.7, halfway_kmh: 2.8 })],
+      next_kmh: 2.7,
+    });
+    render(<GuidedCalibration />);
+    expect(screen.getByText("0.6 to 5.0 km/h: the deck skips 2.8, so the check at 2.7 km/h waits for RUN.")).toBeTruthy();
+    expect(screen.getByText("RUN 2.7 km/h")).toBeTruthy();
+  });
+
+  it("shows the speed the deck ran on a check's chip and line, as the note says", () => {
+    current!.calibration.guide = guide({
+      speeds: [
+        { kmh: 0.6, ran_kmh: null, mark: "saved", end: true },
+        { kmh: 2.8, ran_kmh: 2.9, mark: "saved", end: false },
+        { kmh: 5, ran_kmh: null, mark: "saved", end: true },
+      ],
+      checks: [check({ ran_kmh: 2.9, verdict: "agreed", error_pct: 0.4 })],
+      next_kmh: null,
+      remaining_error_pct: 0.4,
+      note: "The deck ran 2.9, not 2.8, so the check uses 2.9.",
+    });
+    render(<GuidedCalibration />);
+    const chips = screen.getByRole("list", { name: "Walk speeds" }).textContent ?? "";
+    expect(chips).toContain("2.9");
+    expect(chips).not.toContain("2.8");
+    expect(screen.getByText("0.6 to 5.0 km/h: 0.4 % off at 2.9 km/h, within 2.0 %.")).toBeTruthy();
+    expect(screen.getByText("Calibrated 0.6, 2.9 and 5.0 km/h.")).toBeTruthy();
   });
 
   it("taps inside the walk, where Close skips the speed and the row buttons wait", async () => {
@@ -167,7 +202,7 @@ describe("the guided walk", () => {
 
   it("sums up the speeds calibrated and the error left", () => {
     current!.calibration.guide = guide({
-      speeds: [0.6, 1.7, 2.8, 3.9, 5].map((kmh) => ({ kmh, mark: "saved" as const, end: kmh === 0.6 || kmh === 5 })),
+      speeds: [0.6, 1.7, 2.8, 3.9, 5].map((kmh) => ({ kmh, ran_kmh: null, mark: "saved" as const, end: kmh === 0.6 || kmh === 5 })),
       checks: [
         check({ verdict: "split", error_pct: 3.16 }),
         check({ lo_kmh: 0.6, hi_kmh: 2.8, mid_kmh: 1.7, verdict: "agreed", error_pct: 0.54 }),

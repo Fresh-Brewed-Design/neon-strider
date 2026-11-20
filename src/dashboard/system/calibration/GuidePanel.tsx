@@ -112,7 +112,8 @@ export function GuidePanel({
               className={cx("flex items-center gap-1 rounded border px-2 py-1 font-digital text-xs", MARK_CLASS[key])}
             >
               {s.mark === "saved" && <Check size={12} aria-hidden />}
-              {s.kmh.toFixed(1)}
+              {/* The speed the deck ran, when Rust measured another than planned. */}
+              {(s.ran_kmh ?? s.kmh).toFixed(1)}
               <span className="sr-only">{key}</span>
             </li>
           );

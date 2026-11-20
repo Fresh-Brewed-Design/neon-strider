@@ -1259,10 +1259,29 @@ pub(crate) fn close_all() {
 
 /// The slowest speed the deck runs, in tenths (rounded up, so the deck can
 /// run it).
-/// DECK_PROFILE's floor, once seen, is the slowest the deck holds.
+/// DECK_PROFILE's floor, once seen, is the slowest the deck holds, and a
+/// speed it skips above that moves up to the next one it runs.
 fn slowest(state: &OrchestratorState) -> f32 {
     let floor = state.deck_profile.floor().map_or(0.0, |b| b as f32 / 10.0);
-    (state.min_speed.max(floor).max(0.1) * 10.0 - 1e-3).ceil() / 10.0
+    let first = (state.min_speed.max(floor).max(0.1) * 10.0 - 1e-3).ceil() as u8;
+    let last = (state.max_speed * 10.0).round() as u8;
+    let byte = (first..=last.max(first))
+        .find(|b| !state.deck_profile.skips(*b))
+        .unwrap_or(first);
+    f32::from(byte) / 10.0
+}
+
+/// The speeds from `slow_kmh` to `top_kmh` DECK_PROFILE knows the deck
+/// skips, so the walk's checks pick ones it runs.
+fn skipped_between(state: &OrchestratorState, slow_kmh: f32, top_kmh: f32) -> Vec<f32> {
+    let (lo, hi) = (
+        (slow_kmh * 10.0).round() as u8,
+        (top_kmh * 10.0).round() as u8,
+    );
+    (lo..=hi)
+        .filter(|b| state.deck_profile.skips(*b))
+        .map(|b| f32::from(b) / 10.0)
+        .collect()
 }
 
 /// "What's the fastest you'll walk?": open the guided walk from the deck's
@@ -1279,7 +1298,9 @@ pub(crate) fn guide_start(state: &OrchestratorState, top_kmh: f32) -> Result<(),
             state.max_speed
         ));
     }
-    let walk = guide::Guide::new(slowest(state), top_kmh)?;
+    let slow = slowest(state);
+    let walk =
+        guide::Guide::new(slow, top_kmh)?.with_skipped(skipped_between(state, slow, top_kmh));
     log::info!("Calibration walk to {top_kmh:.1} km/h");
     with_run(|r| *r = None);
     with_sweep(|s| *s = None);
@@ -2259,6 +2280,36 @@ mod tests {
         assert_eq!(snapshot(&state).guide.unwrap().next_kmh, Some(5.0));
         close_all();
         assert_eq!(snapshot(&state).guide, None);
+    }
+
+    /// #166: the walk starts at a speed the deck runs and picks its check
+    /// from DECK_PROFILE's runnable speeds.
+    #[test]
+    fn the_guided_walk_plans_only_speeds_the_deck_runs() {
+        use crate::deck_profile::Outcome::Took;
+        let _globals = TEST_GLOBALS.lock().unwrap_or_else(|e| e.into_inner());
+        close_all();
+        let mut state = OrchestratorState {
+            min_speed: 0.6,
+            max_speed: 8.0,
+            ..Default::default()
+        };
+        // The deck changes 0.6 to 0.7 and 2.8 to 2.9.
+        state.deck_profile.learn(6, Took(7));
+        state.deck_profile.learn(28, Took(29));
+        assert_eq!(slowest(&state), 0.7);
+        assert_eq!(skipped_between(&state, 0.7, 5.0), vec![2.8]);
+        set_belt_for_test(Some(280.0));
+        guide_start(&state, 5.0).unwrap();
+        assert_eq!(snapshot(&state).guide.unwrap().slow_kmh, 0.7);
+        let mut walk = guide::Guide::new(0.7, 4.9)
+            .unwrap()
+            .with_skipped(skipped_between(&state, 0.7, 4.9));
+        walk.record(0.7, 0.7, 1.0);
+        walk.record(4.9, 4.9, 1.0);
+        let c = walk.view().checks[0];
+        assert_eq!((c.mid_kmh, c.halfway_kmh), (2.7, Some(2.8)));
+        close_all();
     }
 
     #[test]
