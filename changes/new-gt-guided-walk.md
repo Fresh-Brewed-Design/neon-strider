@@ -1,5 +1,0 @@
-- GROUND_TRUTH is out of Labs and always in System, Calibration. It asks one question, the fastest you'll walk, then times the deck's slowest speed and that top speed, and checks the speed halfway between. A check more than 2 % off becomes a point of its own and each half is checked again. The summary names the speeds calibrated and the error left. Every speed waits for your RUN.
-- A treadmill that connects with no calibration gets a "Calibrate this treadmill" card. SKIP is remembered for that treadmill.
-- The first GAIT_SYNC stride at a speed now replaces the stride a belt run borrowed, and later strides average only with measured ones.
-- Saving a point mid-run no longer nudges the belt off the run's speed.
-- The target list and RUN ALL are under ADVANCED // TARGET_LIST, and the old point editor under ADVANCED // POINT_EDITOR.
