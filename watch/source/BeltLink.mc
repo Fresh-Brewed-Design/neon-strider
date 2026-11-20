@@ -8,6 +8,17 @@ const SERVICE_UUID = BluetoothLowEnergy.stringToUuid("00b165d6-40c2-4f94-8df9-0f
 const STATE_UUID = BluetoothLowEnergy.stringToUuid("00b165d6-40c2-4f94-8df9-0f69431f21b0");
 // The standard Running Speed and Cadence service GHOST_POD always advertises.
 const RSC_UUID = BluetoothLowEnergy.stringToUuid("00001814-0000-1000-8000-00805f9b34fb");
+// The PC's WRIST_LINK beacon: manufacturer data for company 0xFFFF (the
+// Bluetooth SIG's "no company" ID) starting "NSTR". Keep in step with
+// BEACON_COMPANY and BEACON_MARKER in src-tauri/src/wrist_link.rs. The version
+// byte after the letters is not checked, so a later version still matches.
+const BEACON_PREFIX = [0xff, 0xff, 0x4e, 0x53, 0x54, 0x52]b;
+
+// Scan results at least this strong get their raw bytes in the log too. The
+// PC sat next to the watch at -46 to -48 dBm in the first scan log, and the
+// room's other devices were -64 dBm and weaker, so -60 keeps the log to the
+// devices near the treadmill.
+const LOG_RAW_RSSI = -60;
 
 // How long LINK may wait for the connection before the field gives up and
 // scans again. pairDevice has no timeout of its own: Garmin's docs only say
@@ -31,7 +42,6 @@ class BeltLink extends BluetoothLowEnergy.BleDelegate {
     var belt as Number = 0;
     var status as String = "SCAN";
 
-    private var _device as BluetoothLowEnergy.Device or Null = null;
     // When pairDevice was called (System.getTimer), or null when not waiting.
     private var _linkSince as Number or Null = null;
     // Scan results seen since the field started, shown as SCAN n so a test
@@ -79,18 +89,12 @@ class BeltLink extends BluetoothLowEnergy.BleDelegate {
         self.status = "BLOCKED";
     }
 
-    // Drop the pairing, so the BLE subsystem stops searching for the device.
-    private function forget() as Void {
-        var device = _device;
-        _device = null;
-        if (device != null) {
-            BluetoothLowEnergy.unpairDevice(device);
-        }
-    }
-
     function onScanResults(scanResults as BluetoothLowEnergy.Iterator) as Void {
-        // A WRIST_LINK advertisement wins over a foot pod one in the same batch.
+        // In one batch WRIST_LINK wins over the foot pod, and the foot pod
+        // over the beacon: the foot pod's advertisement is the GATT server's
+        // own, so it is the surest way to connect.
         var rsc = null;
+        var beacon = null;
         for (var result = scanResults.next(); result != null; result = scanResults.next()) {
             if (!(result instanceof BluetoothLowEnergy.ScanResult)) {
                 continue;
@@ -99,8 +103,8 @@ class BeltLink extends BluetoothLowEnergy.BleDelegate {
             if (_linkSince == null && self.status.find("SCAN") == 0) {
                 self.status = "SCAN " + _seen;
             }
-            logResult(result);
             var match = matchOf(result);
+            logResult(result, match);
             if (match == 'W') {
                 link(result, "LINK W");
                 return;
@@ -108,21 +112,26 @@ class BeltLink extends BluetoothLowEnergy.BleDelegate {
             if (match == 'R' && rsc == null) {
                 rsc = result;
             }
+            if (match == 'M' && beacon == null) {
+                beacon = result;
+            }
         }
         if (rsc != null) {
             link(rsc as BluetoothLowEnergy.ScanResult, "LINK R");
+        } else if (beacon != null) {
+            link(beacon as BluetoothLowEnergy.ScanResult, "LINK M");
         }
     }
 
     // LINK W: the advertisement carried the WRIST_LINK UUID. LINK R: it
-    // carried the foot pod's RSC UUID only (the PC leaves WRIST_LINK out of
-    // its advertisement, so R is the usual one).
+    // carried the foot pod's RSC UUID. LINK M: it carried the PC's beacon
+    // marker (a legacy advertisement the PC sends while WRIST_LINK is on).
     private function link(result as BluetoothLowEnergy.ScanResult, label as String) as Void {
         BluetoothLowEnergy.setScanState(BluetoothLowEnergy.SCAN_STATE_OFF);
         self.status = label;
         _linkSince = System.getTimer();
         try {
-            _device = BluetoothLowEnergy.pairDevice(result);
+            BluetoothLowEnergy.pairDevice(result);
         } catch (e) {
             // No free connection, or the pairing failed outright.
             _linkSince = null;
@@ -134,22 +143,35 @@ class BeltLink extends BluetoothLowEnergy.BleDelegate {
     // GARMIN\Apps\LOGS\NeonStriderBelt.TXT on the watch when that file exists.
     // It shows what the watch hears: each device's name, signal and advertised
     // service UUIDs, so a test can tell why the PC isn't matched.
+    // A strong result also logs its raw bytes in hex, so the log shows what
+    // the PC really sends.
     private var _logged as Number = 0;
-    private function logResult(result as BluetoothLowEnergy.ScanResult) as Void {
+    private function logResult(result as BluetoothLowEnergy.ScanResult, match as Char or Null) as Void {
         if (_logged >= LOG_LIMIT) {
             return;
         }
         _logged += 1;
-        var line = "scan " + _logged + " name=" + result.getDeviceName() + " rssi=" + result.getRssi() + " uuids=";
+        var rssi = result.getRssi();
+        var line = "scan " + _logged + " name=" + result.getDeviceName() + " rssi=" + rssi + " uuids=";
         for (var uuids = result.getServiceUuids(), u = uuids.next(); u != null; u = uuids.next()) {
             line += u.toString() + " ";
         }
         var raw = result.getRawData();
         line += "raw=" + (raw != null ? raw.size() : 0) + "B";
+        if (raw != null && rssi >= LOG_RAW_RSSI) {
+            line += " hex=";
+            for (var i = 0; i < raw.size(); i++) {
+                line += raw[i].format("%02x");
+            }
+        }
+        line += " match=" + (match != null ? match.toString() : "-");
         System.println(line);
     }
 
-    // 'W' for the WRIST_LINK service, 'R' for the foot pod, null for neither.
+    // 'W' for the WRIST_LINK service, 'R' for the foot pod, 'M' for the
+    // PC's beacon, null for none. The raw bytes are read too: Connect IQ's
+    // own UUID list has been reported to come back empty for some
+    // advertisements (Garmin forum bug report WERETECH-9123).
     private function matchOf(result as BluetoothLowEnergy.ScanResult) as Char or Null {
         var found = null;
         for (var uuids = result.getServiceUuids(), u = uuids.next(); u != null; u = uuids.next()) {
@@ -160,18 +182,62 @@ class BeltLink extends BluetoothLowEnergy.BleDelegate {
                 found = 'R';
             }
         }
+        if (found != null) {
+            return found;
+        }
+        var raw = result.getRawData();
+        return raw != null ? matchRaw(raw) : null;
+    }
+
+    // Walk the advertisement's sections: [length][type][data...]. Type 0x02
+    // or 0x03 lists 16-bit service UUIDs, little endian (0x1814 is 14 18);
+    // type 0xFF is manufacturer data, which carries the beacon.
+    private function matchRaw(raw as ByteArray) as Char or Null {
+        var found = null;
+        var i = 0;
+        while (i + 1 < raw.size()) {
+            var len = raw[i];
+            if (len == 0 || i + 1 + len > raw.size()) {
+                break;
+            }
+            // The section is raw[i + 1] (type) to raw[end - 1]; its data
+            // starts after the type.
+            var type = raw[i + 1];
+            var start = i + 2;
+            var end = i + 1 + len;
+            if (type == 0x02 || type == 0x03) {
+                for (var j = start; j + 1 < end; j += 2) {
+                    if (raw[j] == 0x14 && raw[j + 1] == 0x18) {
+                        return 'R';
+                    }
+                }
+            } else if (type == 0xff && end - start >= BEACON_PREFIX.size()) {
+                var same = true;
+                for (var k = 0; k < BEACON_PREFIX.size(); k++) {
+                    if (raw[start + k] != BEACON_PREFIX[k]) {
+                        same = false;
+                        break;
+                    }
+                }
+                if (same) {
+                    found = 'M';
+                }
+            }
+            i = end;
+        }
         return found;
     }
 
+    // A dropped connection keeps the pairing: the watch reconnects a paired
+    // device by itself, and unpairing a device the watch also has as its foot
+    // pod knocked the foot pod off (hardware test, 2026-11-20).
     function onConnectedStateChanged(device as BluetoothLowEnergy.Device, state as BluetoothLowEnergy.ConnectionState) as Void {
         _linkSince = null;
         if (state != BluetoothLowEnergy.CONNECTION_STATE_CONNECTED) {
             self.speedKmh = null;
-            forget();
-            scan();
+            self.status = "LOST";
             return;
         }
-        _device = device;
         var service = device.getService(SERVICE_UUID);
         var state_char = service != null ? service.getCharacteristic(STATE_UUID) : null;
         if (state_char == null) {
