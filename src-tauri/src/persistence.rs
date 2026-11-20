@@ -1706,6 +1706,57 @@ mod db_tests {
         assert!(json["max_heart_rate"].is_null());
     }
 
+    /// The upload path (auto-sync and "Save for Strava" both read the walk
+    /// back this way, then build the TCX with `plan_activity`).
+    fn uploaded_tcx(conn: &Connection, id: i64) -> String {
+        let session = saved_session(conn, id);
+        let samples = samples_of(conn, id).unwrap();
+        let plan = crate::strava_plan::plan_activity(
+            &[(session, samples)],
+            crate::strava_plan::Naming::Walk,
+            &crate::strava_template::Templates::default(),
+        );
+        let crate::strava_plan::Payload::Tcx(tcx) = plan.payload else {
+            panic!("expected a TCX")
+        };
+        tcx
+    }
+
+    fn saved_walk(conn: &mut Connection, rates: &[Option<u16>]) {
+        migrate(conn).unwrap();
+        conn.execute_batch("INSERT INTO sessions (id, start_time, end_time) VALUES (1, 0, 10000);")
+            .unwrap();
+        for (i, bpm) in rates.iter().enumerate() {
+            let mut sample = hr_sample(*bpm);
+            sample.distance = i as f32;
+            insert_sample(conn, 1, &sample, 1000 * (i as i64 + 1)).unwrap();
+        }
+        update_session(conn, 1, &walk_row(), 10000).unwrap();
+    }
+
+    #[test]
+    fn a_saved_walk_uploads_its_heart_rate() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        saved_walk(&mut conn, &[Some(98), Some(104), None, Some(117)]);
+        let tcx = uploaded_tcx(&conn, 1);
+        // One per trackpoint with a reading; the dropped second has none.
+        assert_eq!(tcx.matches("<Trackpoint>").count(), 4);
+        assert_eq!(tcx.matches("<HeartRateBpm>").count(), 3);
+        assert!(tcx.contains("<HeartRateBpm><Value>98</Value></HeartRateBpm>"));
+        assert!(tcx.contains("<HeartRateBpm><Value>117</Value></HeartRateBpm>"));
+        assert!(tcx.contains("<AverageHeartRateBpm><Value>106</Value></AverageHeartRateBpm>"));
+        assert!(tcx.contains("<MaximumHeartRateBpm><Value>117</Value></MaximumHeartRateBpm>"));
+    }
+
+    #[test]
+    fn a_saved_walk_without_heart_rate_uploads_as_before() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        saved_walk(&mut conn, &[None, None, None]);
+        let tcx = uploaded_tcx(&conn, 1);
+        assert_eq!(tcx.matches("<Trackpoint>").count(), 3);
+        assert!(!tcx.contains("HeartRate"));
+    }
+
     /// The programs JSON v1.6 seeded, as `persist` wrote it.
     const V1_SEEDS: &str = r#"[{"id":1,"name":"Post-meal","steps":[{"duration_minutes":10.0,"speed_kmh":4.0,"incline_pct":10.0}],"repeat_every_minutes":null},{"id":2,"name":"Workday","steps":[{"duration_minutes":5.0,"speed_kmh":3.0,"incline_pct":5.0}],"repeat_every_minutes":30.0},{"id":3,"name":"Focus","steps":[{"duration_minutes":null,"speed_kmh":2.5,"incline_pct":5.0}],"repeat_every_minutes":null}]"#;
 

@@ -370,6 +370,8 @@ pub struct Point {
     pub incline_percent: f32,
     /// Metres since the start of its own session.
     pub distance_m: f32,
+    /// Beats per minute, when HEART_LINK had a reading.
+    pub heart_rate: Option<u16>,
 }
 
 /// One session's telemetry. Samples are deduplicated by timestamp (the last one
@@ -414,9 +416,19 @@ fn build_points(session: &Session, samples: &[Sample]) -> Vec<Point> {
             } else {
                 0.0
             },
+            heart_rate: s.heart_rate.filter(|b| *b > 0),
         });
     }
     points
+}
+
+/// Average and maximum heart rate over these points, `None` without any.
+fn heart_rate_summary(points: &[Point]) -> Option<(u16, u16)> {
+    let rates: Vec<u16> = points.iter().filter_map(|p| p.heart_rate).collect();
+    let max = *rates.iter().max()?;
+    let sum: u32 = rates.iter().map(|&b| u32::from(b)).sum();
+    let avg = (sum as f64 / rates.len() as f64).round() as u16;
+    Some((avg, max))
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -582,14 +594,20 @@ fn generate_tcx(laps: &[Lap], start_ms: i64, description: &str) -> String {
       <Lap StartTime="{}">
         <TotalTimeSeconds>{}</TotalTimeSeconds>
         <DistanceMeters>{:.1}</DistanceMeters>
-        <Calories>{}</Calories>
+        <Calories>{}</Calories>{}
         <Intensity>Active</Intensity>
         <TriggerMethod>Manual</TriggerMethod>
         <Track>"#,
             iso(lap.start_ms),
             lap.total_time_s.max(0),
             lap.distance_m,
-            lap.calories.max(0.0) as i64
+            lap.calories.max(0.0) as i64,
+            heart_rate_summary(&lap.points).map_or(String::new(), |(avg, max)| format!(
+                "
+        <AverageHeartRateBpm><Value>{}</Value></AverageHeartRateBpm>
+        <MaximumHeartRateBpm><Value>{}</Value></MaximumHeartRateBpm>",
+                avg, max
+            ))
         ));
 
         let mut last_distance = 0.0_f64;
@@ -605,7 +623,7 @@ fn generate_tcx(laps: &[Lap], start_ms: i64, description: &str) -> String {
           <Trackpoint>
             <Time>{}</Time>
             <AltitudeMeters>{:.2}</AltitudeMeters>
-            <DistanceMeters>{:.2}</DistanceMeters>
+            <DistanceMeters>{:.2}</DistanceMeters>{}
             <Extensions>
               <TPX xmlns="http://www.garmin.com/xmlschemas/ActivityExtension/v2">
                 <Speed>{:.2}</Speed>
@@ -615,6 +633,11 @@ fn generate_tcx(laps: &[Lap], start_ms: i64, description: &str) -> String {
                 iso(p.timestamp_ms),
                 altitude,
                 offset + d,
+                p.heart_rate.map_or(String::new(), |b| format!(
+                    "
+            <HeartRateBpm><Value>{}</Value></HeartRateBpm>",
+                    b
+                )),
                 p.speed_kmh / 3.6
             ));
         }
@@ -1322,6 +1345,50 @@ mod tests {
         assert_eq!(plan.name, "NEON STRIDER // 1.00 KM UPLINK");
         assert!(tcx.contains("<Notes>DECK_CYCLES 10:00"));
         assert_eq!(plan.end_ms, 10 * MIN);
+    }
+
+    #[test]
+    fn heart_rate_goes_in_the_trackpoints_and_the_lap() {
+        let s = session(1, 0, 10);
+        let mut a = sample(1000, 3.0, 2.0, 0.0);
+        a.heart_rate = Some(100);
+        let b = sample(2000, 3.6, 2.0, 1.0); // no reading
+        let mut c = sample(3000, 3.6, 2.0, 2.0);
+        c.heart_rate = Some(121);
+        let plan = plan_activity(&[(s, vec![a, b, c])], Naming::Walk, &Templates::default());
+        let Payload::Tcx(tcx) = plan.payload else {
+            panic!("expected a TCX")
+        };
+        assert_eq!(tcx.matches("<HeartRateBpm>").count(), 2);
+        assert!(tcx.contains(
+            "<DistanceMeters>0.00</DistanceMeters>
+            <HeartRateBpm><Value>100</Value></HeartRateBpm>
+            <Extensions>"
+        ));
+        // TCX order: Calories, then the lap's average and maximum, then Intensity.
+        assert!(tcx.contains(
+            "</Calories>
+        <AverageHeartRateBpm><Value>111</Value></AverageHeartRateBpm>
+        <MaximumHeartRateBpm><Value>121</Value></MaximumHeartRateBpm>
+        <Intensity>"
+        ));
+    }
+
+    #[test]
+    fn without_heart_rate_the_tcx_has_none() {
+        let s = session(1, 0, 10);
+        let plan = plan_activity(
+            &[(
+                s,
+                vec![sample(1000, 3.0, 2.0, 0.0), sample(2000, 3.6, 2.0, 1.0)],
+            )],
+            Naming::Walk,
+            &Templates::default(),
+        );
+        let Payload::Tcx(tcx) = plan.payload else {
+            panic!("expected a TCX")
+        };
+        assert!(!tcx.contains("HeartRate"));
     }
 
     #[test]
