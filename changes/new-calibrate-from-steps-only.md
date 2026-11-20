@@ -1,0 +1,1 @@
+- GROUND_TRUTH, the guided calibration, can now work from a step count alone for a belt with no mark to count: tick NO_MARK, enter your steps, and it sets the stride while the distance factor stays as it is.

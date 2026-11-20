@@ -77,4 +77,21 @@ describe("GuidedCalibration", () => {
     expect(screen.getByText("BELT_LOOPS")).toBeTruthy();
     expect(screen.getByText("REPLACE POINT")).toBeTruthy();
   });
+
+  it("counts steps alone when there is no mark on the belt", async () => {
+    current = structuredClone(mock);
+    current.calibration.wizard_enabled = true;
+    current.calibration.run = { target_kmh: 3, phase: "counted", elapsed_s: 62.4, reported_kmh: 3, result: null };
+    render(<GuidedCalibration />);
+    fireEvent.click(screen.getByLabelText(/NO_MARK/));
+    expect(screen.queryByText("BELT_LOOPS")).toBeNull();
+    const compute = screen.getByText("COMPUTE") as HTMLButtonElement;
+    expect(compute.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("STEP_COUNT"), { target: { value: "120" } });
+    await act(async () => fireEvent.click(compute));
+    expect(dispatched()).toContainEqual({
+      type: "calibration_run_count",
+      count: { method: "steps_only", steps: 120 },
+    });
+  });
 });

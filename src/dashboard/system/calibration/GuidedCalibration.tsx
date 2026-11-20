@@ -46,7 +46,8 @@ export function GuidedCalibration() {
       </div>
       <Hint>
         Mark the belt, press RUN, then press COUNT as the mark passes once the belt is steady. Count loops for at least a
-        minute, and steps to measure your stride.
+        minute, and steps to measure your stride. No mark on the belt? Count steps alone: that sets the stride and leaves
+        the distance factor as it is.
       </Hint>
       <NumberField
         label="BELT_LOOP"
@@ -154,6 +155,8 @@ function RunPanel({
   const tally = useAction();
   const [loops, setLoops] = useState("");
   const [steps, setSteps] = useState("");
+  // No mark on the belt to count: steps alone set the stride, the factor stays.
+  const [stepsOnly, setStepsOnly] = useState(false);
   const addPoint = useTreadmillStore((s) => s.addCalibrationPoint);
   const updatePoint = useTreadmillStore((s) => s.updateCalibrationPoint);
 
@@ -168,6 +171,12 @@ function RunPanel({
     close();
   };
   const compute = () => {
+    if (stepsOnly) {
+      void tally.run(() =>
+        dispatch({ type: "calibration_run_count", count: { method: "steps_only", steps: Math.round(Number(steps)) } }),
+      );
+      return;
+    }
     const stepCount = steps.trim() === "" ? null : Math.round(Number(steps));
     void tally.run(() =>
       dispatch({
@@ -232,21 +241,36 @@ function RunPanel({
       {run.phase === "counted" && (
         <div className="space-y-3">
           <Hint>
-            Timed at {(run.reported_kmh ?? 0).toFixed(2)} km/h on the deck. Enter the loops counted; steps are optional
-            (at least {limits.min_steps}).
+            Timed at {(run.reported_kmh ?? 0).toFixed(2)} km/h on the deck.{" "}
+            {stepsOnly
+              ? `Enter the steps counted (at least ${limits.min_steps}). The distance factor stays as it is.`
+              : `Enter the loops counted; steps are optional (at least ${limits.min_steps}).`}
           </Hint>
+          <label className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.15em] text-white/60">
+            <input
+              type="checkbox"
+              checked={stepsOnly}
+              onChange={(e) => {
+                setStepsOnly(e.target.checked);
+                tally.reset();
+              }}
+            />
+            NO_MARK // steps only
+          </label>
           <div className="flex flex-wrap items-end gap-3">
-            <label className="block">
-              <Label>BELT_LOOPS</Label>
-              <input
-                type="number"
-                min={0}
-                step={0.5}
-                value={loops}
-                onChange={(e) => setLoops(e.target.value)}
-                className={cx(INPUT_CLASS, "mt-1 block w-24")}
-              />
-            </label>
+            {!stepsOnly && (
+              <label className="block">
+                <Label>BELT_LOOPS</Label>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  value={loops}
+                  onChange={(e) => setLoops(e.target.value)}
+                  className={cx(INPUT_CLASS, "mt-1 block w-24")}
+                />
+              </label>
+            )}
             <label className="block">
               <Label>STEP_COUNT</Label>
               <input
@@ -258,7 +282,8 @@ function RunPanel({
                 className={cx(INPUT_CLASS, "mt-1 block w-24")}
               />
             </label>
-            <NeonButton className="px-3 py-1.5" disabled={tally.pending || loops.trim() === ""} onClick={compute}>
+            <NeonButton className="px-3 py-1.5" disabled={tally.pending || (stepsOnly ? steps.trim() === "" : loops.trim() === "")}
+              onClick={compute}>
               COMPUTE
             </NeonButton>
           </div>
