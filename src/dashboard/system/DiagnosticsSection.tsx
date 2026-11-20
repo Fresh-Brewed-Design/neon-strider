@@ -116,7 +116,7 @@ function LabsCalibrationSwitch() {
     <div>
       <Toggle
         label="LABS // GROUND_TRUTH: Guided calibration"
-        description="Try the new calibration wizard in place of the calibration panel. It walks you through several speeds and counts belt loops. Still being tested."
+        description="Swaps the calibration panel for a guided calibration that times belt loops at several speeds."
         checked={on}
         onChange={(next) => void toggle.run(() => dispatch({ type: "calibration_set_wizard", on: next }))}
       />

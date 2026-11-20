@@ -128,17 +128,17 @@ fn in_range(v: f32, lo: f32, hi: f32) -> bool {
 /// that changed are refused.
 pub fn summarize_samples(samples: &[f32]) -> Result<f32, String> {
     if samples.is_empty() {
-        return Err("No speed was read during the count. Run it again.".into());
+        return Err("No speed was read during the count. Run the speed again.".into());
     }
     let (min, max) = samples
         .iter()
         .fold((f32::MAX, f32::MIN), |(lo, hi), &s| (lo.min(s), hi.max(s)));
     if min < STOPPED_BELOW_KMH {
-        return Err("The belt stopped during the count. Run it again.".into());
+        return Err("The belt stopped during the count. Run the speed again.".into());
     }
     if max - min > MAX_SPREAD_KMH {
         return Err(format!(
-            "The speed changed during the count ({min:.1} to {max:.1} km/h). Run it again."
+            "The speed changed during the count ({min:.1} to {max:.1} km/h). Run the speed again."
         ));
     }
     Ok(samples.iter().sum::<f32>() / samples.len() as f32)
@@ -153,12 +153,12 @@ pub fn point_from_count(
 ) -> Result<CalibrationResult, String> {
     if !m.elapsed_s.is_finite() || m.elapsed_s < MIN_RUN_S {
         return Err(format!(
-            "Count for at least {MIN_RUN_S:.0} s. That one was {:.1} s.",
+            "Count for at least {MIN_RUN_S:.0} s. The count ran {:.1} s.",
             m.elapsed_s
         ));
     }
     if !m.reported_kmh.is_finite() || m.reported_kmh < STOPPED_BELOW_KMH {
-        return Err("The belt was not moving. Run it again.".into());
+        return Err("The belt was not moving. Run the speed again.".into());
     }
     let reported_m = m.reported_kmh / 3.6 * m.elapsed_s;
     let (real_m, steps) = match *count {
@@ -195,7 +195,7 @@ pub fn point_from_count(
     let scale = reported_m / real_m;
     if !in_range(scale, MIN_SCALE, MAX_SCALE) {
         return Err(format!(
-            "That gives a factor of {scale:.2}, outside {MIN_SCALE} to {MAX_SCALE}. Check the count and run it again."
+            "The loop count gives a factor of {scale:.2}, outside {MIN_SCALE} to {MAX_SCALE}. Check the loop count and run the speed again."
         ));
     }
     let measured_stride = match count {
@@ -205,7 +205,7 @@ pub fn point_from_count(
     let stride_cm = match measured_stride {
         Some(cm) if !in_range(cm, MIN_STRIDE_CM, MAX_STRIDE_CM) => {
             return Err(format!(
-                "That gives a {cm:.0} cm stride, outside {MIN_STRIDE_CM:.0} to {MAX_STRIDE_CM:.0} cm. Check the count."
+                "The step count gives a {cm:.0} cm stride, outside {MIN_STRIDE_CM:.0} to {MAX_STRIDE_CM:.0} cm. Check the step count."
             ));
         }
         Some(cm) => cm,

@@ -45,8 +45,8 @@ export function GuidedCalibration() {
         NEON STRIDER // GROUND_TRUTH
       </div>
       <Hint>
-        Put a mark on the belt. Press RUN for a speed, wait until it is steady, then press COUNT as the mark passes and
-        count loops for at least a minute. Count your steps too to measure your stride.
+        Mark the belt, press RUN, then press COUNT as the mark passes once the belt is steady. Count loops for at least a
+        minute, and steps to measure your stride.
       </Hint>
       <NumberField
         label="BELT_LOOP"
@@ -232,7 +232,7 @@ function RunPanel({
       {run.phase === "counted" && (
         <div className="space-y-3">
           <Hint>
-            Timed at {(run.reported_kmh ?? 0).toFixed(2)} km/h on the deck. Enter what you counted; steps are optional
+            Timed at {(run.reported_kmh ?? 0).toFixed(2)} km/h on the deck. Enter the loops counted; steps are optional
             (at least {limits.min_steps}).
           </Hint>
           <div className="flex flex-wrap items-end gap-3">
@@ -274,7 +274,7 @@ function RunPanel({
                   <Readout label="CADENCE" value={`${r.cadence_spm.toFixed(0)} /min`} className="text-white" />
                 )}
               </div>
-              {!r.stride_measured && <Hint>No steps counted, so the stride stays as the current calibration has it.</Hint>}
+              {!r.stride_measured && <Hint>No steps counted, so the calibrated stride is kept.</Hint>}
             </div>
           )}
           <div className="flex gap-2">
