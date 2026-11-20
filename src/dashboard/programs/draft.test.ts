@@ -58,6 +58,12 @@ describe("program drafts", () => {
     const bpm = withZoneUnit(d, "bpm", 190);
     expect(bpm.steps[0]).toMatchObject({ zoneLow: "162", zoneHigh: "181" });
     expect(withZoneUnit(bpm, "pct", 190).steps[0]).toMatchObject({ zoneLow: "85.3", zoneHigh: "95.3" });
+    // A saved zone shown in bpm and left alone saves exactly as it was.
+    const zoned: Program = { ...PROGRAM, steps: [{ ...PROGRAM.steps[0], zone: { low_pct: 85, high_pct: 95 } }] };
+    const shown = withZoneUnit(toDraft(zoned), "bpm", 178);
+    expect(shown.steps[0]).toMatchObject({ zoneLow: "151", zoneHigh: "169" });
+    expect(fromDraft(shown, 178)).toEqual(zoned);
+    expect(withZoneUnit(shown, "pct", 178).steps[0]).toMatchObject({ zoneLow: "85", zoneHigh: "95" });
     expect(zoneSummary(d.steps[0], "pct", 190)).toEqual({ pct: [85, 95], bpm: [162, 181] });
     expect(zoneSummary({ ...d.steps[0], zoneHigh: "" }, "pct", 190)).toBeNull();
   });

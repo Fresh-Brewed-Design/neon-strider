@@ -15,6 +15,8 @@ export interface StepDraft {
   /** The zone's bounds as typed, in the draft's `zoneUnit`. */
   zoneLow: string;
   zoneHigh: string;
+  /** The zone as saved (% of max), so a bpm round trip that changes nothing saves it unchanged. */
+  savedZone?: { low_pct: number; high_pct: number };
 }
 
 export interface Draft {
@@ -38,6 +40,11 @@ export const NEW_PROGRAM: Draft = {
   zoneUnit: "pct",
 };
 
+/** bpm back to % of max: the saved % when the bpm is still what it showed as, so nothing drifts. */
+function pctFromBpm(bpm: number, saved: number | undefined, maxBpm: number): number {
+  return saved !== undefined && toBpm(saved, maxBpm) === bpm ? saved : toPct(bpm, maxBpm);
+}
+
 /** % of max to bpm, whole beats. */
 const toBpm = (pct: number, maxBpm: number) => Math.round((pct / 100) * maxBpm);
 /** bpm to % of max, to 0.1 %: fine enough that every whole bpm comes back as itself. */
@@ -53,7 +60,9 @@ export function toDraft(p: Program): Draft {
       speed: s.speed_kmh.toFixed(1),
       incline: String(s.incline_pct),
       zone: s.zone != null,
-      ...(s.zone ? { zoneLow: String(s.zone.low_pct), zoneHigh: String(s.zone.high_pct) } : ZONE_DEFAULT),
+      ...(s.zone
+        ? { zoneLow: String(s.zone.low_pct), zoneHigh: String(s.zone.high_pct), savedZone: { ...s.zone } }
+        : ZONE_DEFAULT),
     })),
     repeat: p.repeat_every_minutes != null,
     repeatMinutes: p.repeat_every_minutes != null ? String(p.repeat_every_minutes) : "30",
@@ -64,15 +73,20 @@ export function toDraft(p: Program): Draft {
 /** Show the zones in `unit`, converting what was typed; text that isn't a number is left as typed. */
 export function withZoneUnit(d: Draft, unit: ZoneUnit, maxBpm: number): Draft {
   if (unit === d.zoneUnit) return d;
-  const convert = (text: string) => {
+  const convert = (text: string, saved: number | undefined) => {
     const v = Number(text);
     if (text.trim() === "" || !Number.isFinite(v)) return text;
-    return String(unit === "bpm" ? toBpm(v, maxBpm) : toPct(v, maxBpm));
+    if (unit === "bpm") return String(toBpm(v, maxBpm));
+    return String(pctFromBpm(v, saved, maxBpm));
   };
   return {
     ...d,
     zoneUnit: unit,
-    steps: d.steps.map((s) => ({ ...s, zoneLow: convert(s.zoneLow), zoneHigh: convert(s.zoneHigh) })),
+    steps: d.steps.map((s) => ({
+      ...s,
+      zoneLow: convert(s.zoneLow, s.savedZone?.low_pct),
+      zoneHigh: convert(s.zoneHigh, s.savedZone?.high_pct),
+    })),
   };
 }
 
@@ -106,7 +120,7 @@ export function fromDraft(d: Draft, maxBpm: number): Program | string {
       if (Number.isNaN(low) || Number.isNaN(high)) return `Step ${i + 1} needs both heart zone bounds.`;
       step.zone =
         d.zoneUnit === "bpm"
-          ? { low_pct: toPct(low, maxBpm), high_pct: toPct(high, maxBpm) }
+          ? { low_pct: pctFromBpm(low, s.savedZone?.low_pct, maxBpm), high_pct: pctFromBpm(high, s.savedZone?.high_pct, maxBpm) }
           : { low_pct: low, high_pct: high };
     }
     steps.push(step);

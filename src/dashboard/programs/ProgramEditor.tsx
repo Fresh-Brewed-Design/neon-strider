@@ -141,7 +141,7 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
               aria-label={`Heart zone on step ${i + 1}`}
               aria-pressed={s.zone}
               title="Hold a heart rate zone"
-              className={cx(s.zone && "text-neon-magenta")}
+              className={cx(s.zone && "text-neon-magenta!")}
               onClick={() => {
                 setError(null);
                 patchStep(i, { zone: !s.zone });
