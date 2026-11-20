@@ -110,7 +110,8 @@ export function Axis({
 
       <div className="flex gap-1">
         {presets
-          .filter((p) => p >= min - 1e-6 && p <= max + 1e-6)
+          // A preset the deck skips is left out.
+          .filter((p) => p >= min - 1e-6 && p <= max + 1e-6 && Math.abs(snap(p) - p) < 1e-6)
           .map((p) => (
             <button
               key={p}
