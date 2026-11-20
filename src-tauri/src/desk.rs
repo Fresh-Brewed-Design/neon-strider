@@ -20,8 +20,12 @@ use crate::util::{blocking, now_ms_u64 as now_ms};
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
+/// The desk features count in seconds (walk-away's 30 s warning, the eye-break
+/// blink steps of 2 s), so once a second is fine enough.
 const TICK: Duration = Duration::from_secs(1);
 /// How long a freshly created HUD window gets to load before a toast is sent to it.
+/// The HUD's small bundle loads in well under a second; 1.5 s leaves room on a
+/// slow start so the page is listening when the toast is sent.
 const HUD_LOAD_GRACE: Duration = Duration::from_millis(1500);
 
 const TOAST_QUIET: &str = "CALL DETECTED // QUIET MODE";

@@ -104,7 +104,7 @@ describe("the guided walk's summary", () => {
         remaining_error_pct: 2.6,
       }),
     );
-    expect(lines).toContain("Distance is still up to 2.6 % off between some of those speeds.");
+    expect(lines).toContain("Distance is still up to 2.6 % off between some calibrated speeds.");
   });
 
   it("says a skipped check leaves the error unknown", () => {
@@ -112,14 +112,14 @@ describe("the guided walk's summary", () => {
       speeds: saved([0.6, 5]),
       checks: [{ lo_kmh: 0.6, hi_kmh: 5, mid_kmh: 2.8, verdict: "skipped", error_pct: null }],
     });
-    expect(guideSummary(g)).toEqual(["Calibrated 0.6 and 5.0 km/h.", "A skipped check leaves the error there unknown."]);
+    expect(guideSummary(g)).toEqual(["Calibrated 0.6 and 5.0 km/h.", "A skipped check leaves the distance error at its midpoint unknown."]);
     expect(checkLine(g.checks[0], 2)).toBe("0.6 to 5.0 km/h: the check at 2.8 km/h was skipped, so the error there is unknown.");
   });
 
   it("says when no deck speed fits between the two ends", () => {
     expect(guideSummary(view({ top_kmh: 0.7, speeds: saved([0.6, 0.7]) }))).toEqual([
       "Calibrated 0.6 and 0.7 km/h.",
-      "The deck has no speed between those two to check.",
+      "The deck has no speed between the two calibrated speeds to check.",
     ]);
   });
 });

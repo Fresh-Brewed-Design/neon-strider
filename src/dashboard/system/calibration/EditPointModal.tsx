@@ -24,7 +24,7 @@ export function EditPointModal({
 
   useEffect(() => {
     if (startedAt === null) return;
-    const interval = setInterval(() => setSeconds((Date.now() - startedAt) / 1000), 100);
+    const interval = setInterval(() => setSeconds((Date.now() - startedAt) / 1000), 100); // the tenths it shows
     return () => clearInterval(interval);
   }, [startedAt]);
 
@@ -49,6 +49,7 @@ export function EditPointModal({
                 <span className="text-[11px] ml-1 opacity-40">CM</span>
               </div>
             </div>
+            {/* Walking strides; Rust accepts 20 to 200 cm (`calibration.limits`). */}
             <input
               type="range"
               min="40"
@@ -87,6 +88,7 @@ export function EditPointModal({
               </div>
 
               <div className="flex gap-2">
+                {/* 50 steps at 0.2 to 2.4 s a step. */}
                 <input
                   type="range"
                   min="10"
@@ -127,6 +129,7 @@ export function EditPointModal({
                   <span className="text-[11px] ml-1 opacity-40">x</span>
                 </div>
               </div>
+              {/* A fine slider; Rust refuses a factor outside `calibration.limits`. */}
               <input
                 type="range"
                 min="0.5"

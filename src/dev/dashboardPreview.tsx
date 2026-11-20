@@ -2,9 +2,11 @@
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 import { installMockBackend, previewSettings } from "./mockBackend";
+import { applyTextScale } from "./textScale";
 import "../index.css";
 
 installMockBackend();
+applyTextScale();
 
 const { DashboardApp } = await import("../dashboard/DashboardApp");
 const { useTreadmillStore } = await import("../store/treadmillStore");

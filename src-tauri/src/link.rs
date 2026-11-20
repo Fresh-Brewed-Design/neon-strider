@@ -13,14 +13,21 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 /// Connected but no telemetry frame for this long: the deck is asleep or out of range.
+/// About 16 missed polls of 600 ms: no BLE hiccup lasts that long on a live link.
 const NO_DATA_AFTER: Duration = Duration::from_secs(10);
 /// The watchdog's fast retry interval.
+/// Three treadmill scans' worth (5 s each) apart, so the radio is free most of
+/// the time and a deck switched on is found within a quarter of a minute.
 pub const RETRY_EVERY: Duration = Duration::from_secs(15);
 /// The PC counts as in use when it has had input this recently.
+/// Five minutes, as for the idle nudge's screen use (`seated::ACTIVE_WINDOW_MS`).
 const PC_ACTIVE_WITHIN: Duration = Duration::from_secs(300);
 /// The watchdog re-checks the PC this often while it waits.
+/// Coming back to the PC brings the fast retries back within 5 s.
 const WAIT_SLICE: Duration = Duration::from_secs(5);
 /// The slowest the watchdog retries while the treadmill stays away.
+/// Nobody steps on a treadmill they switched on and waits two minutes: past
+/// that the deck is off, and a scan every 2 min costs little.
 const RETRY_MAX: Duration = Duration::from_secs(120);
 
 /// How long the watchdog waits between tries. While the PC is in use it stays
@@ -31,6 +38,7 @@ pub fn retry_delay(idle_misses: u32, pc_active: bool) -> Duration {
     if pc_active {
         return RETRY_EVERY;
     }
+    // The cap only keeps the shift from overflowing; `RETRY_MAX` caps the wait.
     let secs = RETRY_EVERY.as_secs() << idle_misses.min(10);
     Duration::from_secs(secs).min(RETRY_MAX)
 }
@@ -91,6 +99,8 @@ impl Backoff {
     }
 }
 /// Connect tries inside one connect attempt (see `bluetooth.rs`).
+/// A Windows BLE connect often fails once and works on the next try; three
+/// tries, then the watchdog takes over.
 pub const CONNECT_TRIES: u32 = 3;
 
 /// What the link is doing.
@@ -279,6 +289,7 @@ pub fn derive(i: &Inputs) -> LinkState {
 // ---------------------------------------------------------------------------
 
 /// After an Engage, the deck has this long to report Starting or Running.
+/// The handshake plus the deck's 3 s countdown take about 4 s; 8 s is twice that.
 pub const START_TIMEOUT: Duration = Duration::from_secs(8);
 
 /// Shown under Engage (and in the HUD) when the deck never answered.
@@ -525,6 +536,7 @@ pub fn log_frame_flow() {
             l.last_status_byte
                 .map_or("none".to_string(), |b| b.to_string())
         );
+    // Frames are arriving again: about three polls apart at most.
     } else if quiet <= Duration::from_secs(2) && l.frames_quiet_logged {
         l.frames_quiet_logged = false;
         log::info!("status frames arriving again");

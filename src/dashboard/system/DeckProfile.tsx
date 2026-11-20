@@ -27,7 +27,7 @@ export function DeckProfile() {
   return (
     <div>
       <Label className="mb-1 block">DECK_PROFILE</Label>
-      <Hint>The speeds and incline levels the treadmill runs, learned from its replies while you walk.</Hint>
+      <Hint>DECK_PROFILE learns the treadmill's speeds and incline levels from its replies while you walk.</Hint>
       <div className="mt-2 flex flex-wrap items-center gap-3">
         <span className="font-mono text-[11px] text-white/70">{profileSummary(profile)}</span>
         <span className="font-mono text-[11px] text-white/70">{inclineSummary(profile)}</span>

@@ -7,6 +7,7 @@ import { STEPS_PER_RUN, isSavablePoint, scaleRefusal, wizardResult, type WizardM
 
 type Phase = "SETUP" | "COUNTDOWN" | "WALKING" | "RESULT";
 
+/** A 3, 2, 1 like the deck's own, time to look at the belt before the clock starts. */
 const COUNTDOWN_S = 3;
 
 /**
@@ -89,9 +90,9 @@ export function CalibrationWizard({ onClose, onSave }: { onClose: () => void; on
         {phase === "SETUP" && (
           <div className="space-y-6 text-center">
             <div className="text-xs text-white/60 font-mono leading-relaxed">
-              Set treadmill to your target calibration speed.
+              Set the treadmill to the target calibration speed.
               <br />
-              Once you are walking comfortably, we will begin.
+              Start once you are walking comfortably.
             </div>
             <div className="bg-white/5 p-4 rounded-xl border border-white/5 inline-block">
               <div className="text-[11px] uppercase tracking-widest text-white/50 mb-1">TARGET VELOCITY</div>
@@ -168,6 +169,7 @@ export function CalibrationWizard({ onClose, onSave }: { onClose: () => void; on
                     <span className="text-[11px] ml-1 opacity-40">CM</span>
                   </div>
                 </div>
+                {/* Walking strides; Rust accepts 20 to 200 cm (`calibration.limits`). */}
                 <input
                   type="range"
                   min="40"
