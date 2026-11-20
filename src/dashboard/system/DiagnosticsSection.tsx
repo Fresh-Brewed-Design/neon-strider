@@ -63,7 +63,7 @@ export function DiagnosticsSection() {
     <Section
       id="sys-diagnostics"
       title="Diagnostics"
-      description="The app keeps a log of what it does, which helps when something goes wrong. The other tools here are for working out the treadmill's protocol and are not normally needed."
+      description="Neon Strider's log for troubleshooting, plus protocol tools that are rarely needed."
     >
       <div>
         <NeonButton onClick={() => void logs.run(() => invoke("open_log_folder"))} className="px-3 py-1.5">
@@ -94,7 +94,7 @@ export function DiagnosticsSection() {
             <div>
               <Label className="mb-1 block">Command cycler</Label>
               <p className="mb-3 font-mono text-[11px] leading-relaxed text-white/50">
-                Can start the belt. Step off the treadmill first.
+                Raw commands can start the belt, so step off the treadmill first.
               </p>
               <CommandCycler onSend={sendRaw} />
               <ActionStatus error={raw.error && `Could not send: ${raw.error}`} className="mt-2" />

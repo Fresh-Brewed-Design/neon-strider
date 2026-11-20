@@ -114,13 +114,13 @@ export function guideSummary(g: CalibrationGuideView): string[] {
     const within = g.remaining_error_pct <= g.tolerance_pct;
     lines.push(
       within
-        ? `Between those speeds, distance is within ${pct(g.remaining_error_pct)} of the belt.`
-        : `Distance is still up to ${pct(g.remaining_error_pct)} off between some of those speeds.`,
+        ? `Between the calibrated speeds, distance is within ${pct(g.remaining_error_pct)} of the belt.`
+        : `Distance is still up to ${pct(g.remaining_error_pct)} off between some calibrated speeds.`,
     );
   } else if (saved.length >= 2 && g.checks.length === 0) {
-    lines.push("The deck has no speed between those two to check.");
+    lines.push("The deck has no speed between the two calibrated speeds to check.");
   }
-  if (g.checks.some((c) => c.verdict === "skipped")) lines.push("A skipped check leaves the error there unknown.");
+  if (g.checks.some((c) => c.verdict === "skipped")) lines.push("A skipped check leaves the distance error at its midpoint unknown.");
   if (ended.length > 0) lines.push("Each check run measured the error halfway between two calibrated speeds.");
   return lines;
 }

@@ -234,11 +234,14 @@ pub fn status_message(status: HeartStatus, error: Option<&str>, reading: bool) -
             "Scan for a heart rate sensor and pick your watch to show heart rate.".to_string()
         }
         HeartStatus::Searching => {
-            "Looking for the sensor; on a watch, switch on Broadcast Heart Rate.".to_string()
+            "Looking for the heart rate sensor. On a watch, switch on Broadcast Heart Rate."
+                .to_string()
         }
         HeartStatus::Waiting => WAITING_MESSAGE.to_string(),
         HeartStatus::Connected if reading => "Reading heart rate from the sensor.".to_string(),
-        HeartStatus::Connected => "Linked to the sensor and waiting for a reading.".to_string(),
+        HeartStatus::Connected => {
+            "Linked to the heart rate sensor, waiting for a reading.".to_string()
+        }
         HeartStatus::Error => error.unwrap_or("The heart rate link stopped.").to_string(),
     }
 }

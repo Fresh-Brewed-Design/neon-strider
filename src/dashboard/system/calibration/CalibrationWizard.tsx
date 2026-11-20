@@ -89,9 +89,9 @@ export function CalibrationWizard({ onClose, onSave }: { onClose: () => void; on
         {phase === "SETUP" && (
           <div className="space-y-6 text-center">
             <div className="text-xs text-white/60 font-mono leading-relaxed">
-              Set treadmill to your target calibration speed.
+              Set the treadmill to the target calibration speed.
               <br />
-              Once you are walking comfortably, we will begin.
+              Start once you are walking comfortably.
             </div>
             <div className="bg-white/5 p-4 rounded-xl border border-white/5 inline-block">
               <div className="text-[11px] uppercase tracking-widest text-white/50 mb-1">TARGET VELOCITY</div>

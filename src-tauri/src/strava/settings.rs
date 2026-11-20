@@ -170,7 +170,7 @@ pub fn set_credentials(
         return Err("Enter both the client ID and the client secret".to_string());
     }
     if id.len() > 100 || secret.len() > 200 {
-        return Err("Those credentials look too long".to_string());
+        return Err("The client ID or secret looks too long".to_string());
     }
     let changed = load_credentials(app).is_none_or(|(i, s)| i != id || s != secret);
     write(app, KEY_CLIENT_ID, id)?;
