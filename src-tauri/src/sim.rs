@@ -1751,7 +1751,7 @@ mod tests {
         assert!(crate::calibration::tap_listening());
         let mark = r.mark();
         for _ in 0..4 {
-            crate::calibration::tap(&r.state, r.t).unwrap();
+            crate::calibration::tap(&mut r.state, r.t).unwrap();
             r.run(3.6);
         }
         assert!(!moves_belt(&r.commands_since(mark)));

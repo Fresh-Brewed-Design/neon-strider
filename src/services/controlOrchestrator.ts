@@ -5,6 +5,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type { NeuralSensitivity } from "../ipc";
+import { subscribeAppSnapshot } from "../state/useAppState";
 import { DEFAULT_SETTINGS } from "../store/slices/settingsSlice";
 import { useTreadmillStore } from "../store/treadmillStore";
 import type { CalibrationPoint, Settings } from "../store/types";
@@ -75,6 +76,24 @@ export function startSettingsSync(): void {
     invoke("sync_orchestrator_config", { config: configFromSettings(state) }).catch((e) =>
       console.error("[settings] sync to Rust failed", e),
     );
+  });
+
+  // Rust saves a measured point by itself, and UNDO puts it back: when it says
+  // it changed the points, load them, so the next settings push carries them.
+  let seenRev: number | null = null;
+  subscribeAppSnapshot((snap) => {
+    const rev = snap.calibration.points_rev;
+    const first = seenRev === null;
+    if (rev === seenRev) return;
+    seenRev = rev;
+    if (first) return;
+    invoke<Partial<RustConfig>>("get_rust_config")
+      .then((config) => {
+        if (config.calibration_points) {
+          useTreadmillStore.getState().updateSettings({ calibrationPoints: config.calibration_points });
+        }
+      })
+      .catch((e) => console.error("[settings] reload of calibration points failed", e));
   });
 
   invoke<Partial<RustConfig>>("get_rust_config")
