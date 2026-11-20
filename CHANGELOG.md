@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.31.1 (2026-11-20)
+
+### Fixed
+
+- GHOST_POD keeps the watch's foot pod link when WRIST_LINK or the power switch is turned on or off. Before, either switch restarted the pod, and the watch lost the foot pod until it was reconnected by hand.
+- The log names each GHOST_POD service with its UUID and says in words what Windows did with its advertisement. It also records every watch or phone that connects, subscribes or disconnects.
+- A heart rate sensor that is not broadcasting yet, such as a Garmin watch outside an activity, now shows HEART_LINK // WAITING with what to do, instead of FAULT. It links by itself once the watch starts broadcasting. FAULT is kept for real errors such as Bluetooth being off.
+
 ## 1.31.0 (2026-11-20)
 
 ### New
