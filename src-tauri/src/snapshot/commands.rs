@@ -76,6 +76,7 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         Command::Pause => press("pause").await,
         Command::Stop => {
             calibration::on_stop();
+            ORCHESTRATOR.lock().await.profile_sweep_stop();
             press("stop").await
         }
         Command::ToggleStart => press("toggle-start").await,
@@ -273,6 +274,11 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         Command::TrafficOpenFolder => crate::traffic::open_folder(&app),
         Command::DeckProfileForget => {
             ORCHESTRATOR.lock().await.forget_deck_profile();
+            Ok(())
+        }
+        Command::DeckProfileSweepStart => ORCHESTRATOR.lock().await.profile_sweep_start(),
+        Command::DeckProfileSweepStop => {
+            ORCHESTRATOR.lock().await.profile_sweep_stop();
             Ok(())
         }
 

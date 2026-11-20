@@ -199,6 +199,7 @@ fn tick_each_second(
     let quiet = crate::snapshot::calls::quiet_active();
     state.update_neural_flow(keys, quiet, now, now_ms);
     crate::link::log_frame_flow();
+    state.tick_profile_sweep(now);
     state.tick_program(now)
 }
 

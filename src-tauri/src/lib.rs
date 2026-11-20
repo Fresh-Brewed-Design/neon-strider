@@ -31,6 +31,7 @@ pub mod neural;
 pub mod persistence;
 pub mod placement;
 mod platform;
+pub mod profile_sweep;
 pub mod programs;
 pub mod protocol;
 pub mod secrets;

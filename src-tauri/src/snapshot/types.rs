@@ -224,6 +224,8 @@ pub struct DeckProfileSnapshot {
     pub ceiling_kmh: Option<f32>,
     /// Speeds asked that the deck changed or refused, calibrated km/h.
     pub skipped_kmh: Vec<f32>,
+    /// DECK_SWEEP, while it runs.
+    pub sweep: Option<crate::profile_sweep::ProfileSweepView>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS)]
@@ -641,6 +643,11 @@ pub enum Command {
     /// Diagnostics: forget the speeds DECK_PROFILE learned from the deck's
     /// replies. Sends nothing to the treadmill.
     DeckProfileForget,
+    /// Labs: DECK_SWEEP steps the moving belt through every speed the profile
+    /// has no reply for. A press; refused on a still belt or a program.
+    DeckProfileSweepStart,
+    /// End DECK_SWEEP. The belt keeps going.
+    DeckProfileSweepStop,
     /// Lights out: a full Stop (any program ends) when the PC's
     /// display turns off.
     LightsOutSetConfig {

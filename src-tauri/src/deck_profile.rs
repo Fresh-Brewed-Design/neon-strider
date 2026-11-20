@@ -78,6 +78,11 @@ impl DeckProfile {
         }
     }
 
+    /// The deck has answered a target at `byte`.
+    pub fn knows(&self, byte: u8) -> bool {
+        self.bytes.contains_key(&byte)
+    }
+
     /// Forget everything learned.
     pub fn clear(&mut self) {
         if !self.bytes.is_empty() {

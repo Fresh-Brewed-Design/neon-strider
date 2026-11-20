@@ -193,6 +193,8 @@ pub struct OrchestratorState {
     /// Replies are filed in `deck_profile`. Off on the simulated deck, whose
     /// limits are not the treadmill's.
     pub(crate) profile_learning: bool,
+    /// DECK_SWEEP in progress (`profile_sweep.rs`).
+    pub(crate) profile_sweep: Option<crate::profile_sweep::ProfileSweep>,
 
     pub handshake_step: HandshakeStep,
     /// Whether the handshake under way is a pause (true) or a start. Decided
@@ -359,6 +361,7 @@ impl Default for OrchestratorState {
             target_speed_changed: false,
             deck_profile: Default::default(),
             profile_learning: true,
+            profile_sweep: None,
             deck_standby: false,
             hold_auto_start: true,
             engage_speed: None,
@@ -1144,7 +1147,7 @@ impl OrchestratorState {
     /// The physical speed of a hardware `byte`, which the transmit path
     /// (`calculate_hardware_bytes`, its exact inverse) turns back into that
     /// byte. The incline doesn't change the speed curve.
-    fn physical_for_byte(&self, byte: u8, _incline: u8) -> f32 {
+    pub(crate) fn physical_for_byte(&self, byte: u8, _incline: u8) -> f32 {
         self.to_physical_speed(byte as f32 / 10.0).max(0.0)
     }
 

@@ -612,6 +612,7 @@ impl Rig {
         }
         if now.duration_since(self.last_second) >= Duration::from_secs(1) {
             self.last_second = now;
+            self.state.tick_profile_sweep(now);
             self.toasts.extend(self.state.tick_program(now));
         }
         if let Some(packet) = self.engine.determine_next_packet(&mut self.state, now) {
@@ -1542,6 +1543,55 @@ mod tests {
         let snap = crate::calibration::snapshot(r.state.hardware_speed);
         assert_eq!(snap.sweep.unwrap().current, None, "both speeds done");
         crate::calibration::close_all();
+    }
+
+    /// DECK_SWEEP: on a moving belt it asks every unlearned speed in turn,
+    /// learns the deck's floor, ceiling and skipped speeds from the replies,
+    /// sends no start, pause or stop, and puts the belt back at its speed.
+    #[test]
+    fn a_deck_sweep_learns_every_speed_and_returns_the_belt() {
+        let mut r = walking_rig(8, 30);
+        r.deck.set_skip(15, 16);
+        r.state.max_speed = 3.5;
+        r.run(3.0);
+        let mark = r.mark();
+        r.state.profile_sweep_start().unwrap();
+        r.run(120.0);
+        assert!(r.state.profile_sweep.is_none(), "the sweep finished");
+        assert_eq!(r.state.deck_profile.floor(), Some(8));
+        assert_eq!(r.state.deck_profile.ceiling(), Some(30));
+        assert!(r.state.deck_profile.skips(15));
+        assert!(r.state.deck_profile.knows(22));
+        assert_eq!(r.controls_since(mark, Control::Stop), 0);
+        assert_eq!(r.controls_since(mark, Control::Pause), 0);
+        assert_eq!(r.controls_since(mark, Control::Start), 0);
+        assert!(r.deck.running_at(2.0), "{} km/h", r.deck.speed_kmh());
+    }
+
+    /// DECK_SWEEP only runs on a moving belt, and anything else that takes the
+    /// belt (STOP, a speed set by hand) ends it without starting anything.
+    #[test]
+    fn a_deck_sweep_needs_a_moving_belt_and_ends_when_the_belt_is_taken() {
+        let mut r = Rig::new();
+        r.run(5.0);
+        assert!(r.state.profile_sweep_start().is_err(), "a still belt");
+        assert!(r.deck.belt_still());
+
+        let mut r = walking_rig(0, u8::MAX);
+        r.state.profile_sweep_start().unwrap();
+        r.run(6.0);
+        assert!(r.state.profile_sweep.is_some());
+        r.set_speed(3.0);
+        r.run(5.0);
+        assert!(r.state.profile_sweep.is_none(), "a hand speed ends it");
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+
+        r.state.profile_sweep_start().unwrap();
+        r.run(4.0);
+        r.press(DeckAction::Stop);
+        r.run(10.0);
+        assert!(r.state.profile_sweep.is_none());
+        assert!(r.deck.belt_still(), "nothing restarts the belt");
     }
 
     #[test]
