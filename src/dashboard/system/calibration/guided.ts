@@ -48,3 +48,25 @@ export function chrono(seconds: number): string {
 export function listedTarget<T extends { kmh: number }>(targets: T[], kmh: number): T | null {
   return targets.find((t) => Math.abs(t.kmh - kmh) <= SAME_SPEED_KMH) ?? null;
 }
+
+/** A deck within this much of the belt reads as matching it: half a percent is under the deck's own 0.1 km/h step at a walk. */
+const MATCH_PCT = 0.5;
+
+/**
+ * The plain-words result of a tap run: how far the deck's display is from the
+ * belt at the run's speed. `real` and `reported` are km/h.
+ */
+export function deckVerdict(speedKmh: number, realKmh: number, reportedKmh: number): string {
+  const pct = (realKmh / reportedKmh - 1) * 100;
+  const at = `At ${speedKmh.toFixed(1)} km/h`;
+  if (!Number.isFinite(pct)) return `${at} the taps gave no speed.`;
+  if (Math.abs(pct) < MATCH_PCT) return `${at} the deck matches the belt.`;
+  const size = Math.abs(pct) < 10 ? Math.abs(pct).toFixed(1) : Math.abs(pct).toFixed(0);
+  return `${at} the deck runs ${size} % ${pct < 0 ? "slow" : "fast"}.`;
+}
+
+/** The line under a tap run's counter about taps dropped against the median, if any. */
+export function droppedLine(dropped: number): string | null {
+  if (dropped <= 0) return null;
+  return dropped === 1 ? "1 tap dropped as a miss or a double." : `${dropped} taps dropped as misses or doubles.`;
+}

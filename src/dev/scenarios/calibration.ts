@@ -1,25 +1,56 @@
-// The guided calibration (Labs). ?calwizard: the switch is on, with two saved
-// points. ?calwizard=counting: a count 23 s in (the clock ticks).
-// ?calwizard=counted: a timed count waiting for the loops.
+// GROUND_TRUTH, the guided calibration (Labs). ?calwizard: the switch is on,
+// a 280 cm belt loop and two saved points. ?calwizard=belt: no belt length
+// yet (the BELT_LOOP step). ?calwizard=tapping: a run at 3.0 km/h five passes
+// in (the clock ticks); =dropped the same with one tap dropped and a restart
+// note; =measured: the taps agreed and the result waits for SAVE POINT.
 // ?calwizard=sweep: RUN ALL with two speeds done and 4.0 km/h up next;
-// ?calwizard=sweeprun: the same sweep counting at 4.0. The math is a rough
-// stand-in for Rust's (calibration.rs, unit-tested there).
-import type { Command } from "../../ipc";
+// ?calwizard=sweeprun: the same sweep tapping at 4.0. The math is a rough
+// stand-in for Rust's (calibration.rs and calibration/tap.rs, unit-tested there).
+import type { CalibrationRunView, Command } from "../../ipc";
 import { PREVIEW_CONFIG, params, publish, snapshot } from "../mockState";
 import type { Scenario } from "./types";
 
 const calFlag = params.get("calwizard");
+const BELT_CM = 280;
 let calTimer: ReturnType<typeof setInterval> | null = null;
-function calRun(target_kmh: number, phase: "settling" | "counting" | "counted", elapsed_s = 0) {
+/** The mock's tap times, ms, since the tapping last started. */
+let taps: number[] = [];
+
+function median(v: number[]): number | null {
+  if (v.length === 0) return null;
+  const s = [...v].sort((a, b) => a - b);
+  const n = s.length;
+  return n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2;
+}
+
+/** Rust's tap maths in short: gaps within 15 % of the median count; eight settle the run. */
+function tapStats(times: number[]) {
+  const gaps = times.slice(1).map((t, i) => (t - times[i]) / 1000);
+  const m = median(gaps);
+  const kept = m === null ? [] : gaps.filter((g) => Math.abs(g - m) / m <= 0.15);
+  return { kept, dropped: gaps.length - kept.length, median: median(kept) };
+}
+
+function calRun(target_kmh: number, view: Partial<CalibrationRunView> = {}) {
   if (calTimer) clearInterval(calTimer);
   calTimer = null;
   snapshot.calibration.run = {
-    target_kmh, phase, elapsed_s, reported_kmh: phase === "counted" ? target_kmh : null, result: null,
+    target_kmh,
+    phase: "settling",
+    passes: 0,
+    kept: 0,
+    dropped: 0,
+    elapsed_s: 0,
+    measured_kmh: null,
+    reported_kmh: null,
+    note: null,
+    result: null,
+    ...view,
   };
-  if (phase === "counting") {
+  if (snapshot.calibration.run.phase === "tapping") {
     calTimer = setInterval(() => {
       const r = snapshot.calibration.run;
-      if (r?.phase === "counting") r.elapsed_s += 0.25;
+      if (r?.phase === "tapping") r.elapsed_s += 0.25;
       publish();
     }, 250);
   }
@@ -27,7 +58,40 @@ function calRun(target_kmh: number, phase: "settling" | "counting" | "counted", 
 function closeCal() {
   if (calTimer) clearInterval(calTimer);
   calTimer = null;
+  taps = [];
   snapshot.calibration.run = null;
+}
+/** A measured run's result: the deck at `reported`, the belt really at `real`. */
+function measured(target_kmh: number, real: number, reported: number, passes: number) {
+  const elapsed_s = ((passes - 1) * BELT_CM) / 100 / (real / 3.6);
+  const saved = CAL_CONFIG.calibration_points.find((p) => Math.abs(p.speed - target_kmh) <= 0.05);
+  const scale = reported / real;
+  const n = Math.max(1, saved?.runs ?? 1);
+  calRun(target_kmh, {
+    phase: "measured",
+    passes,
+    kept: passes - 1,
+    elapsed_s,
+    measured_kmh: real,
+    reported_kmh: reported,
+    result: {
+      point: { speed: Math.round(reported * 10) / 10, stride_length_cm: 72, distance_scale: scale, runs: 1 },
+      real_kmh: real,
+      reported_kmh: reported,
+      real_m: (real / 3.6) * elapsed_s,
+      reported_m: (reported / 3.6) * elapsed_s,
+      cadence_spm: null,
+      stride_measured: false,
+      averaged: saved
+        ? {
+            speed: saved.speed,
+            stride_length_cm: saved.stride_length_cm,
+            distance_scale: (saved.distance_scale * n + scale) / (n + 1),
+            runs: n + 1,
+          }
+        : null,
+    },
+  });
 }
 function sweepCurrent() {
   const s = snapshot.calibration.sweep;
@@ -38,9 +102,10 @@ function sweepCurrent() {
 }
 function runBelt(kmh: number) {
   Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: kmh, speed_kmh: kmh });
-  calRun(kmh, "settling");
+  taps = [];
+  calRun(kmh);
 }
-/** ?calwizard: two saved points and a 3 m belt loop. */
+/** ?calwizard: two saved points; the old app-wide belt length, 300 cm, prefills ?calwizard=belt. */
 // ?calwizard=oldpoint adds a point stored at 0.15, below the limit.
 const CAL_CONFIG = {
   belt_length: 300,
@@ -107,101 +172,84 @@ const CAL_COMMANDS: Partial<Record<Command["type"], (c: Command) => void>> = {
     snapshot.calibration.sweep = null;
     closeCal();
   },
-  // STOP: the belt stops; a run not yet timed closes.
+  // STOP: the belt stops; a run not yet measured closes.
   stop: () => {
     Object.assign(snapshot.deck, { status: "Stopped", raw_speed_kmh: 0, speed_kmh: 0 });
-    if (snapshot.calibration.run?.phase !== "counted") closeCal();
+    if (snapshot.calibration.run?.phase !== "measured") closeCal();
   },
-  calibration_count_start: () => {
+  calibration_belt_set: (c) => {
+    if (c.type !== "calibration_belt_set") return;
+    if (!(c.cm >= 50 && c.cm <= 1000)) throw "Belt length must be 50 to 1000 cm.";
+    snapshot.calibration.belt_cm = c.cm;
+  },
+  calibration_tap: () => {
     const r = snapshot.calibration.run;
     if (!r) throw "Press RUN on a speed first.";
-    if (snapshot.deck.raw_speed_kmh < 0.05) throw "The belt is not moving. Press RUN, then COUNT once it is up to speed.";
-    calRun(r.target_kmh, "counting");
-  },
-  calibration_count_stop: () => {
-    const r = snapshot.calibration.run;
-    if (!r || r.phase !== "counting") throw "Press COUNT first.";
-    if (r.elapsed_s < 15) throw `Keep counting: at least 15 s, so far ${r.elapsed_s.toFixed(0)} s.`;
-    if (snapshot.deck.raw_speed_kmh < 0.05) {
-      calRun(r.target_kmh, "settling");
-      throw "The belt stopped during the count. Run it again.";
-    }
-    calRun(r.target_kmh, "counted", r.elapsed_s);
-  },
-  calibration_run_count: (c) => {
-    const r = snapshot.calibration.run;
-    if (c.type !== "calibration_run_count" || !r?.reported_kmh) return;
-    if (c.count.method === "steps_only") {
-      // The factor stays the nearest saved point's; the stride is the distance it gives over the steps.
-      const near = CAL_CONFIG.calibration_points.reduce((a, b) =>
-        Math.abs(b.speed - r.reported_kmh!) < Math.abs(a.speed - r.reported_kmh!) ? b : a,
-      );
-      const reported_m = (r.reported_kmh / 3.6) * r.elapsed_s;
-      const real_m = reported_m / near.distance_scale;
-      const stride = (real_m / c.count.steps) * 100;
-      if (c.count.steps < 10) throw "Count at least 10 steps.";
-      if (stride < 20 || stride > 200) throw `The step count gives a ${stride.toFixed(0)} cm stride, outside 20 to 200 cm. Check the step count.`;
-      // Rust averages the stride into the saved point at the target and keeps its factor.
-      const saved = CAL_CONFIG.calibration_points.find((p) => Math.abs(p.speed - r.target_kmh) <= 0.05);
-      const n = Math.max(1, saved?.runs ?? 1);
-      r.result = {
-        point: { speed: Math.round(r.reported_kmh * 10) / 10, stride_length_cm: stride, distance_scale: near.distance_scale, runs: 1 },
-        real_kmh: (real_m / r.elapsed_s) * 3.6,
-        real_m,
-        reported_m,
-        cadence_spm: (c.count.steps / r.elapsed_s) * 60,
-        stride_measured: true,
-        averaged: saved
-          ? {
-              speed: saved.speed,
-              stride_length_cm: (saved.stride_length_cm * n + stride) / (n + 1),
-              distance_scale: saved.distance_scale,
-              runs: n + 1,
-            }
-          : null,
-      };
+    if (r.phase === "measured") {
+      r.note = "The run is measured. TAP AGAIN starts it over.";
       return;
     }
-    if (c.count.method !== "loops") return;
-    const { loops, belt_length_cm, steps } = c.count;
-    if (!(loops > 0)) throw "Enter how many loops you counted.";
-    const real_m = (loops * belt_length_cm) / 100;
-    const reported_m = (r.reported_kmh / 3.6) * r.elapsed_s;
-    const scale = reported_m / real_m;
-    if (scale < 0.2 || scale > 3) throw `That gives a factor of ${scale.toFixed(2)}, outside 0.2 to 3. Check the count and run it again.`;
-    const stride = steps ? (real_m / steps) * 100 : 74;
-    // Rust averages the run into the saved point at its target (calibration.rs averaged_point).
-    const saved = CAL_CONFIG.calibration_points.find((p) => Math.abs(p.speed - r.target_kmh) <= 0.05);
-    const n = Math.max(1, saved?.runs ?? 1);
-    const mean = (old: number, next: number) => (old * n + next) / (n + 1);
-    r.result = {
-      point: { speed: Math.round(r.reported_kmh * 10) / 10, stride_length_cm: stride, distance_scale: scale, runs: 1 },
-      real_kmh: (real_m / r.elapsed_s) * 3.6,
-      real_m,
-      reported_m,
-      cadence_spm: steps ? (steps / r.elapsed_s) * 60 : null,
-      stride_measured: steps !== null,
-      averaged: saved
-        ? {
-            speed: saved.speed,
-            stride_length_cm: steps ? mean(saved.stride_length_cm, stride) : saved.stride_length_cm,
-            distance_scale: mean(saved.distance_scale, scale),
-            runs: n + 1,
-          }
-        : null,
-    };
+    const reported = snapshot.deck.raw_speed_kmh;
+    if (reported < 0.05) {
+      taps = [];
+      calRun(r.target_kmh, { note: "The belt is not moving. Press RUN, then tap once it is up to speed." });
+      return;
+    }
+    const now = Date.now();
+    if (taps.length && now - taps[taps.length - 1] < 250) return;
+    taps.push(now);
+    const s = tapStats(taps);
+    const real = s.median === null ? null : (BELT_CM / 100 / s.median) * 3.6;
+    if (s.kept.length >= 8 && real !== null) {
+      measured(r.target_kmh, real, reported, taps.length);
+      return;
+    }
+    calRun(r.target_kmh, {
+      phase: "tapping",
+      passes: taps.length,
+      kept: s.kept.length,
+      dropped: s.dropped,
+      elapsed_s: (now - taps[0]) / 1000,
+      measured_kmh: real,
+      reported_kmh: reported,
+    });
+  },
+  calibration_tap_reset: () => {
+    const r = snapshot.calibration.run;
+    if (!r) throw "Press RUN on a speed first.";
+    taps = [];
+    calRun(r.target_kmh);
   },
   calibration_run_close: () => closeCal(),
 };
+
+/** A run `passes` taps in, as if tapped live, with the deck at `reported`. */
+function tappingRun(target: number, passes: number, reported: number, extra: Partial<CalibrationRunView> = {}) {
+  calRun(target, {
+    phase: "tapping",
+    passes,
+    kept: passes - 1,
+    elapsed_s: (passes - 1) * 3.6 + 1.4,
+    measured_kmh: 2.81,
+    reported_kmh: reported,
+    ...extra,
+  });
+}
 
 export const calibration: Scenario = {
   apply() {
     if (calFlag === null) return;
     snapshot.calibration.wizard_enabled = calFlag !== "oldpoint";
-    if (calFlag === "counting" || calFlag === "counted") Object.assign(snapshot.deck, { raw_speed_kmh: 3, speed_kmh: 3.3 });
-    if (calFlag === "counting") calRun(3, "counting", 23);
-    if (calFlag === "counted") calRun(3, "counted", 62.4);
-    // A stored 14.0 km/h the treadmill (12.0 max) can't run any more, and a 3.5 he added.
+    snapshot.calibration.belt_treadmill = true;
+    snapshot.calibration.belt_cm = calFlag === "belt" ? null : BELT_CM;
+    const live = ["tapping", "dropped", "measured"].includes(calFlag);
+    if (live) Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: 3, speed_kmh: 3.3 });
+    if (calFlag === "tapping") tappingRun(3, 5, 3);
+    if (calFlag === "dropped") {
+      tappingRun(3, 7, 3, { kept: 5, dropped: 1, note: "The speed changed (3.0 to 3.5 km/h), so tapping starts again." });
+    }
+    if (calFlag === "measured") measured(3, 2.82, 3, 9);
+    // A stored 14.0 km/h the treadmill (12.0 max) can't run any more, and a 3.5 the user added.
     if (calFlag === "targets") {
       snapshot.calibration.targets = [2, 3, 3.5, 4, 5, 6, 14].map((kmh) => ({ kmh, runnable: kmh <= 12 }));
     }
@@ -214,7 +262,7 @@ export const calibration: Scenario = {
       };
       if (calFlag === "sweeprun") {
         Object.assign(snapshot.deck, { raw_speed_kmh: 4, speed_kmh: 4.4 });
-        calRun(4, "counting", 31);
+        tappingRun(4, 6, 4, { measured_kmh: 3.78 });
       }
     }
   },

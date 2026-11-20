@@ -217,8 +217,10 @@ export const snapshot: AppSnapshot = {
     wizard_enabled: false,
     limits: {
       min_stride_cm: 20, max_stride_cm: 200, min_scale: 0.2, max_scale: 3, min_belt_cm: 50, max_belt_cm: 1000,
-      min_run_s: 15, min_steps: 10,
+      min_agreeing: 8,
     },
+    belt_cm: null,
+    belt_treadmill: false,
     targets: [2, 3, 4, 5, 6].map((kmh) => ({ kmh, runnable: true })),
     run: null,
     sweep: null,
