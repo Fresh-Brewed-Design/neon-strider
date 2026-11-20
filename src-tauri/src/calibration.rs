@@ -352,6 +352,15 @@ pub struct Run {
 }
 
 impl Run {
+    /// The deck speed the run measured: the result's point speed once
+    /// measured, else the speed RUN asked for. A start at the treadmill or
+    /// its remote can put the belt at another speed than the one asked.
+    pub fn ran_kmh(&self) -> f32 {
+        self.result
+            .as_ref()
+            .map_or(self.target_kmh, |r| r.point.speed)
+    }
+
     pub fn new(target_kmh: f32, belt_cm: f32) -> Self {
         Self {
             target_kmh,
@@ -489,7 +498,7 @@ impl Run {
         if self.saved.is_some() {
             return;
         }
-        let target = self.target_kmh;
+        let target = self.ran_kmh();
         if let Some(r) = self.result.as_mut() {
             r.averaged = points
                 .iter()
@@ -506,7 +515,7 @@ impl Run {
         }
         let result = self.result.as_ref()?;
         let (points, saved) = with_result_saved(&state.calibration_points, result);
-        Self::keep_points(self.target_kmh, state, points.clone());
+        Self::keep_points(self.ran_kmh(), state, points.clone());
         log::info!(
             "Calibration point at {:.1} km/h saved ({} runs)",
             saved.written.speed,
@@ -528,7 +537,7 @@ impl Run {
         self.undo_steps(state);
         self.steps = None;
         let points = with_save_undone(&state.calibration_points, &saved);
-        Self::keep_points(self.target_kmh, state, points.clone());
+        Self::keep_points(self.ran_kmh(), state, points.clone());
         self.undone = true;
         log::info!(
             "Calibration point at {:.1} km/h undone",
@@ -630,7 +639,7 @@ impl Run {
         now: Instant,
         state: &mut OrchestratorState,
     ) -> Option<Vec<CalibrationPoint>> {
-        let target = self.target_kmh;
+        let target = self.ran_kmh();
         let s = self.steps.as_mut()?;
         let was_measured = s.result().is_some();
         s.tap(now, state.hardware_speed, target, &state.calibration_points);
@@ -653,7 +662,7 @@ impl Run {
     fn undo_steps(&mut self, state: &mut OrchestratorState) -> Option<Vec<CalibrationPoint>> {
         let saved = self.steps.as_mut()?.take_saved()?;
         let points = with_save_undone(&state.calibration_points, &saved);
-        Self::keep_points(self.target_kmh, state, points.clone());
+        Self::keep_points(self.ran_kmh(), state, points.clone());
         log::info!(
             "Calibration stride at {:.1} km/h undone",
             saved.written.speed
@@ -1242,8 +1251,10 @@ pub(crate) fn close_all() {
 
 /// The slowest speed the deck runs, in tenths (rounded up, so the deck can
 /// run it).
+/// DECK_PROFILE's floor, once seen, is the slowest the deck holds.
 fn slowest(state: &OrchestratorState) -> f32 {
-    (state.min_speed.max(0.1) * 10.0 - 1e-3).ceil() / 10.0
+    let floor = state.deck_profile.floor().map_or(0.0, |b| b as f32 / 10.0);
+    (state.min_speed.max(floor).max(0.1) * 10.0 - 1e-3).ceil() / 10.0
 }
 
 /// "What's the fastest you'll walk?": open the guided walk from the deck's
@@ -1353,9 +1364,10 @@ pub(crate) fn tap(
 /// available until the next run starts or the run closes. Gives the points to
 /// keep.
 pub(crate) fn undo(state: &mut OrchestratorState) -> Result<Vec<CalibrationPoint>, String> {
-    let (target, points) = on_run(|run| run.undo(state).map(|p| (run.target_kmh, p)))?;
+    let (target, ran, points) =
+        on_run(|run| run.undo(state).map(|p| (run.target_kmh, run.ran_kmh(), p)))?;
     with_sweep(|s| s.iter_mut().for_each(|s| s.mark_pending(target)));
-    with_guide(|g| g.iter_mut().for_each(|g| g.forget(target)));
+    with_guide(|g| g.iter_mut().for_each(|g| g.forget(target, ran)));
     points_changed();
     Ok(points)
 }
@@ -1367,13 +1379,16 @@ pub(crate) fn retap(
     state: &mut OrchestratorState,
 ) -> Result<Option<Vec<CalibrationPoint>>, String> {
     let undone = on_run(|run| {
-        let points = run.undo(state).ok().map(|p| (run.target_kmh, p));
+        let points = run
+            .undo(state)
+            .ok()
+            .map(|p| (run.target_kmh, run.ran_kmh(), p));
         run.retap();
         Ok(points)
     })?;
-    Ok(undone.map(|(target, points)| {
+    Ok(undone.map(|(target, ran, points)| {
         with_sweep(|s| s.iter_mut().for_each(|s| s.mark_pending(target)));
-        with_guide(|g| g.iter_mut().for_each(|g| g.forget(target)));
+        with_guide(|g| g.iter_mut().for_each(|g| g.forget(target, ran)));
         points_changed();
         points
     }))

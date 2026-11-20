@@ -23,6 +23,11 @@ next_kmh: number | null,
  */
 remaining_error_pct: number | null, 
 /**
+ * The last run measured another deck speed than the one asked, and
+ * what the walk did about it.
+ */
+note: string | null, 
+/**
  * `TOLERANCE`, %.
  */
 tolerance_pct: number, };
