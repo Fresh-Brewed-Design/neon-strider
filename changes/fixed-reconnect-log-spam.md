@@ -1,0 +1,1 @@
+- While the treadmill is off, the app now retries less and less often (after the first minute, down to every 2 minutes) instead of every 15 seconds, so it no longer fills its log. Pressing Connect, Retry now or scanning goes back to fast retries.

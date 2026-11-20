@@ -466,6 +466,7 @@ async fn listen_for_status(
 #[tauri::command]
 pub async fn scan_bluetooth_devices() -> Result<Vec<BleDevice>, crate::link::LinkError> {
     let _scanning = crate::link::ScanGuard::new();
+    crate::link::reset_backoff();
     let result = match scan_inner().await {
         Ok(devices) => {
             crate::link::adapter_ok();
@@ -631,7 +632,7 @@ async fn connect_to(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
 
     let target = normalize_id(id);
     let mut peripherals = central.peripherals().await.map_err(|e| e.to_string())?;
-    log::info!(
+    log::debug!(
         "Discovered {} peripherals. Target: {}",
         peripherals.len(),
         id
@@ -641,7 +642,7 @@ async fn connect_to(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
         .iter()
         .any(|p| ids_match(&normalize_id(&p.id().to_string()), &target));
     if !known {
-        log::info!("Target {} not in cache. Starting 5s scan...", id);
+        log::debug!("Target {} not in cache. Starting 5s scan...", id);
         let _ = central.start_scan(ScanFilter::default()).await;
         tokio::time::sleep(SCAN_TIME).await;
         let _ = central.stop_scan().await;
