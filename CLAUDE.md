@@ -7,7 +7,10 @@ an always-on-top HUD overlay, saved programs, session history, and Strava export
 
 - **Tauri 2** (Rust backend) + **React 19** + **TypeScript** + **Vite 7**
 - **Tailwind CSS 4**, **framer-motion**, **lucide-react**, **sonner**; Orbitron bundled via `@fontsource/orbitron`
-- **ts-rs** generates TypeScript types for the IPC layer into `src/ipc/bindings/` (run `cargo test`)
+- **ts-rs** generates TypeScript types for the IPC layer into `src/ipc/bindings/` (run `cargo test`).
+  They are marked generated in `.gitattributes`. Regenerate, don't hand-merge: on a conflict there,
+  take either side and run `cargo test` in `src-tauri/`. CI exports them afresh and fails if the
+  committed files differ (changed, missing or stale).
 - **Zustand** for state, **Zod** for schema validation
 - Rust crates under `src-tauri/` own all Bluetooth I/O and BLE packet parsing.
 
@@ -105,7 +108,9 @@ HEART_LINK (`heart_rate.rs`: pure Heart Rate Measurement decoding and snapshot t
 - **Shared helpers** (`util.rs`): the clock (`now_ms`), duration text and `blocking` (run blocking
   work off the async runtime); `persistence::parse_setting` / `setting_in` read typed settings.
 - **Rust commands**: prefer adding a `Command` variant in `snapshot/types.rs` (handled in
-  `snapshot/commands.rs`) over a new `#[tauri::command]`; settings and sessions still use named commands via `invoke` (plus `strava_tcx_preview`, a query).
+  `snapshot/commands.rs`) over a new `#[tauri::command]`. Variants, their match arms and the
+  `AppSnapshot` fields are grouped by feature under `// ---- ... ----` markers: add to the end of
+  your feature's group, or start a new group; settings and sessions still use named commands via `invoke` (plus `strava_tcx_preview`, a query).
 
 ## Platform
 
