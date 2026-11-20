@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.22.0 (2026-11-20)
+
+### New
+
+- Heart rate (HEART_LINK): pick a Bluetooth heart rate sensor, such as a Garmin watch with Broadcast Heart Rate on, in System -> Heart rate. It is off until you pick one and runs apart from the treadmill link. Heart rate shows as a new stat, PULSE_RATE, on the HUD and dashboard. It is not saved with sessions or sent to Strava yet, and it never moves the belt.
+
+## 1.21.0 (2026-11-20)
+
+### New
+
+- DECK_PROFILE: the app learns which speeds the treadmill runs from its replies while you walk. The HUD stepper, the Live slider, the program editor and the speed settings then keep to speeds the deck takes, and its real slowest and fastest speeds. System -> Diagnostics can forget what it learned.
+
 ## 1.20.0 (2026-11-20)
 
 ### Changed

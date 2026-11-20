@@ -28,6 +28,10 @@ use tokio::sync::Mutex;
 
 /// The Bluetooth adapter, once found.
 static ADAPTER: Mutex<Option<Adapter>> = Mutex::const_new(None);
+/// One scan at a time on the shared adapter: a second `start_scan` replaces
+/// the first one's filter and its `stop_scan` ends both, so the treadmill
+/// link and HEART_LINK take this around every scan.
+pub(crate) static SCAN_LOCK: Mutex<()> = Mutex::const_new(());
 /// The treadmill of the current (or last) connection. Lock order: this before
 /// `ORCHESTRATOR`.
 pub(crate) static CONNECTED_DECK: Mutex<Option<DeckLink>> = Mutex::const_new(None);
@@ -519,6 +523,7 @@ fn listed_name(
 
 async fn scan_inner() -> Result<Vec<BleDevice>, String> {
     let central = find_central().await.map_err(|e| e.to_string())?;
+    let _scan = SCAN_LOCK.lock().await;
     let filter = ScanFilter {
         services: vec![FITSHOW_SERVICE],
     };
@@ -604,13 +609,13 @@ pub async fn is_bluetooth_connected() -> bool {
 }
 
 /// A device id without separators, upper case, for matching.
-fn normalize_id(id: &str) -> String {
+pub(crate) fn normalize_id(id: &str) -> String {
     id.replace([':', '-'], "").to_uppercase()
 }
 
 /// Two normalized ids name the same device. Either may be the shorter form
 /// (Windows ids carry a prefix the saved id may lack, or the other way round).
-fn ids_match(a: &str, b: &str) -> bool {
+pub(crate) fn ids_match(a: &str, b: &str) -> bool {
     a.contains(b) || b.contains(a)
 }
 
@@ -649,9 +654,11 @@ async fn connect_to(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
         .any(|p| ids_match(&normalize_id(&p.id().to_string()), &target));
     if !known {
         log::debug!("Target {} not in cache. Starting 5s scan...", id);
+        let scan = SCAN_LOCK.lock().await;
         let _ = central.start_scan(ScanFilter::default()).await;
         tokio::time::sleep(SCAN_TIME).await;
         let _ = central.stop_scan().await;
+        drop(scan);
         peripherals = central.peripherals().await.map_err(|e| e.to_string())?;
         log::debug!("Post-scan peripheral count: {}", peripherals.len());
         // A working radio always hears something in five seconds.

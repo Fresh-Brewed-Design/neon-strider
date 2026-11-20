@@ -23,6 +23,7 @@ mod display;
 pub mod engine;
 pub mod export;
 pub mod ghost_pod;
+pub mod heart_rate;
 mod hooks;
 mod hud;
 pub mod link;
@@ -232,6 +233,8 @@ async fn start_backend(app: tauri::AppHandle) {
     update::spawn(app.clone());
     ghost_pod::init(&app);
     ghost_pod::spawn(app.clone());
+    heart_rate::init(&app);
+    heart_rate::spawn(app.clone());
 
     if persistence::has_pinned_elements(&app) {
         log::info!("Pinned elements found. Auto-spawning HUD.");
