@@ -148,8 +148,8 @@ PR adds a release note file `changes/<new|changed|fixed>-<slug>.md` (see `change
 which the release folds into CHANGELOG.md. All work goes to `main` through PRs. CI runs on
 PRs and on `main` after each merge; the run on `main` saves the compiled Rust dependencies
 (`shared-key: ci`) and PR runs restore them, so a PR compiles only this crate.
-`build-roadmap-issue.yml` builds a roadmap issue when Jeremy labels one of his own issues
-`roadmap:next`: Claude opens a PR that closes it (secret `CLAUDE_CODE_OAUTH_TOKEN`). Only his
+`build-roadmap-issue.yml` builds a roadmap issue when Fresh Brewed Design labels one of its own issues
+`roadmap:next`: Claude opens a PR that closes it (secret `CLAUDE_CODE_OAUTH_TOKEN`). Only its
 account (user ID 3596382) can start it, as both the issue's author and whoever added the label.
 `pr-followup.yml` is how he asks for changes afterwards: a comment or review of his on a PR that
 says `@claude ...` starts a run that changes that PR's branch and replies there (again only his
