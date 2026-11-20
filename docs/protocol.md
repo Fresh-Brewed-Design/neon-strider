@@ -92,6 +92,40 @@ Another deck may use a different byte. To check what yours sends:
 If a deck's screen-off state has a byte other than `6`, add it to
 `status_from_byte` in `protocol.rs`.
 
+## What the deck answers in standby
+From a command cycler run on the Jogwell Ares 11 Elite in standby (`6`,
+2026-11-15):
+
+- All 256 control bytes `53 XX` got the bare echo `02 53 53 03`, the answer
+  the deck gives to any command it does not handle.
+- All 256 command bytes `XX 00` left the deck in standby (`02 51 06 02`).
+- Handled in standby: `51` (status), `50 00` (device info, answered
+  `02 50 00 30 00 f5 01 94 03`) and `60 00` (answered with its argument;
+  its meaning is unknown).
+
+## Names from qdomyos-zwift
+The open-source qdomyos-zwift project publishes names for the FitShow status
+byte and command families. They are recorded here as names only; no code is
+taken from it.
+
+| Status byte | Name there | In this app |
+|-------------|------------|-------------|
+| `0` | normal | Stopped |
+| `1` | end | Stopped (workout ended) |
+| `2` | start | Starting (countdown) |
+| `3` | running | Running |
+| `4` | stop | Stopping |
+| `5` | error | unknown, not handled |
+| `6` | safety | Stopped (standby on this deck) |
+| `7` | study | unknown, not handled |
+| `10` | paused | Paused |
+
+Command families (byte 1): `0x50` to `0x54`. This app sends `0x51` (status)
+and `0x53` (control); `0x50` is the device info the deck answers in standby.
+
+Bytes `5` and `7` are still unhandled: the engine keeps the last known status
+while one lasts (see "Status Byte").
+
 ## Traffic recordings
 System, Diagnostics, Show diagnostics, **TRAFFIC_TAP: Record treadmill traffic**
 writes every packet sent to the treadmill and every notification it sends
