@@ -757,7 +757,9 @@ mod mic {
 pub use peripheral::{peripheral_notify, peripheral_start, peripheral_stop};
 
 mod peripheral {
-    use super::super::{PeripheralCharacteristic, PeripheralEvent, PeripheralEvents};
+    use super::super::{
+        PeripheralCharacteristic, PeripheralEvent, PeripheralEvents, PeripheralService,
+    };
     use std::sync::{Mutex, MutexGuard, PoisonError};
     use windows::core::{IInspectable, Ref, GUID};
     use windows::Devices::Bluetooth::GenericAttributeProfile::{
@@ -772,7 +774,7 @@ mod peripheral {
     use windows::Storage::Streams::{DataReader, DataWriter, IBuffer};
 
     struct Server {
-        provider: GattServiceProvider,
+        providers: Vec<GattServiceProvider>,
         chars: Vec<(u16, GattLocalCharacteristic)>,
     }
 
@@ -828,8 +830,7 @@ mod peripheral {
     }
 
     pub fn peripheral_start(
-        service: u16,
-        characteristics: &[PeripheralCharacteristic],
+        services: &[PeripheralService],
         events: PeripheralEvents,
     ) -> Result<(), String> {
         peripheral_stop();
@@ -843,7 +844,28 @@ mod peripheral {
             );
         }
 
-        let created = GattServiceProvider::CreateAsync(sig_uuid(service))
+        let mut built = Server {
+            providers: Vec::new(),
+            chars: Vec::new(),
+        };
+        for service in services {
+            // On a failure, stop the services already advertising.
+            if let Err(e) = add_service(&mut built, service, &events) {
+                stop_server(built);
+                return Err(e);
+            }
+        }
+        *server() = Some(built);
+        Ok(())
+    }
+
+    /// One `GattServiceProvider` per service; Windows advertises them together.
+    fn add_service(
+        server: &mut Server,
+        service: &PeripheralService,
+        events: &PeripheralEvents,
+    ) -> Result<(), String> {
+        let created = GattServiceProvider::CreateAsync(sig_uuid(service.uuid))
             .and_then(|op| op.get())
             .map_err(win)?;
         let err = created.Error().map_err(win)?;
@@ -853,20 +875,20 @@ mod peripheral {
         let provider = created.ServiceProvider().map_err(win)?;
         let local = provider.Service().map_err(win)?;
 
-        let mut chars = Vec::new();
-        for c in characteristics {
-            let ch = add_characteristic(&local, c, &events)?;
-            chars.push((c.uuid, ch));
+        for c in &service.characteristics {
+            let ch = add_characteristic(&local, c, events)?;
+            server.chars.push((c.uuid, ch));
         }
 
         let on_status = events.clone();
+        let uuid = service.uuid;
         provider
             .AdvertisementStatusChanged(&TypedEventHandler::new(
                 move |_: Ref<GattServiceProvider>,
                       args: Ref<GattServiceProviderAdvertisementStatusChangedEventArgs>| {
                     let args = args.ok()?;
                     let status = args.Status()?;
-                    log::info!("GHOST_POD: advertisement status {}", status.0);
+                    log::info!("GHOST_POD: {:04X} advertisement status {}", uuid, status.0);
                     if status == GattServiceProviderAdvertisementStatus::Started
                         || status
                             == GattServiceProviderAdvertisementStatus::StartedWithoutAllAdvertisementData
@@ -886,7 +908,7 @@ mod peripheral {
         provider
             .StartAdvertisingWithParameters(&params)
             .map_err(win)?;
-        *server() = Some(Server { provider, chars });
+        server.providers.push(provider);
         Ok(())
     }
 
@@ -983,10 +1005,16 @@ mod peripheral {
 
     pub fn peripheral_stop() {
         if let Some(s) = server().take() {
-            if let Err(e) = s.provider.StopAdvertising() {
+            stop_server(s);
+            log::info!("GHOST_POD: stopped");
+        }
+    }
+
+    fn stop_server(s: Server) {
+        for provider in &s.providers {
+            if let Err(e) = provider.StopAdvertising() {
                 log::warn!("GHOST_POD: stop advertising failed: {}", e.message());
             }
-            log::info!("GHOST_POD: stopped");
         }
     }
 }

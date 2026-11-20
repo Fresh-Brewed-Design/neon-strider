@@ -181,7 +181,9 @@ export const snapshot: AppSnapshot = {
     seconds: 90,
     sound: true,
     pause_belt: true,
+    fit_rests: true,
     holds_belt: false,
+    at_rest: false,
     phase: "idle",
     remaining_s: 0,
     blink_seq: 0,
@@ -214,6 +216,7 @@ export const snapshot: AppSnapshot = {
       min_run_s: 15, min_steps: 10, default_targets_kmh: [2, 3, 4, 5, 6],
     },
     run: null,
+    sweep: null,
   },
   ghost_pod: {
     enabled: false,
@@ -222,6 +225,9 @@ export const snapshot: AppSnapshot = {
     message: "Switch it on to let a watch read the belt as a foot pod.",
     watches: 0,
     speed_kmh: 0,
+    power_enabled: false,
+    power_watches: 0,
+    power_w: 0,
   },
 };
 
@@ -422,9 +428,16 @@ if (weeklyFlag !== null) Object.assign(snapshot.weekly, { show_card: true }, WEE
 
 // ?eyebreak=upcoming|break|resume shows the eye-break (OCULAR_IMPLANT) HUD card: the
 // heads-up, the cooldown with the belt it paused, or the resume card after it
-// (RESUME / STAY STILL). ?eyebreak=still is the cooldown with the belt left alone.
+// (RESUME / STAY STILL). ?eyebreak=still is the cooldown with the belt left alone,
+// ?eyebreak=rest the heads-up for a break set for the program's rest.
 const eyeBreakFlag = params.get("eyebreak");
-if (eyeBreakFlag === "upcoming") Object.assign(snapshot.eye_break, { enabled: true, phase: "upcoming", remaining_s: 48 });
+if (eyeBreakFlag === "upcoming" || eyeBreakFlag === "rest")
+  Object.assign(snapshot.eye_break, {
+    enabled: true,
+    phase: "upcoming",
+    remaining_s: 48,
+    at_rest: eyeBreakFlag === "rest",
+  });
 if (eyeBreakFlag === "break" || eyeBreakFlag === "still")
   Object.assign(snapshot.eye_break, { enabled: true, phase: "break", remaining_s: 72, holds_belt: eyeBreakFlag === "break" });
 if (eyeBreakFlag === "resume") Object.assign(snapshot.eye_break, { enabled: true, phase: "complete", holds_belt: true });
@@ -467,6 +480,11 @@ if (params.get("neural") === "active") {
   Object.assign(snapshot.neural, { active: true, factor: 0.94, base_kmh: 3.5, target_kmh: 3.3, keys_per_min: 118 });
   Object.assign(snapshot.deck, { speed_kmh: 3.3, target_speed_kmh: 3.3 });
 }
+
+// ?decknote=refused|adjusted: the HUD note after the deck refuses or changes a target.
+const deckNoteFlag = params.get("decknote");
+if (deckNoteFlag === "refused") snapshot.deck.target_note = "DECK_REFUSED // 3.5 KM/H, TILT 6.3 %";
+if (deckNoteFlag === "adjusted") snapshot.deck.target_note = "DECK_ADJUSTED // 0.6 KM/H -> 0.8 KM/H, TILT 6.3 % -> 7.5 %";
 
 // ?engage=timeout: the deck's screen is off. It shows the last Engage's failure, and
 // Engage waits 8 s and fails again. ?status=N: the deck sent an unknown status byte N.
@@ -663,7 +681,9 @@ if (trafficFlag === "saved") {
 
 // The guided calibration (Labs). ?calwizard: the switch is on, with two saved
 // points. ?calwizard=counting: a count 23 s in (the clock ticks).
-// ?calwizard=counted: a timed count waiting for the loops. The math is a rough
+// ?calwizard=counted: a timed count waiting for the loops.
+// ?calwizard=sweep: RUN ALL with two speeds done and 4.0 km/h up next;
+// ?calwizard=sweeprun: the same sweep counting at 4.0. The math is a rough
 // stand-in for Rust's (calibration.rs, unit-tested there).
 const calFlag = params.get("calwizard");
 let calTimer: ReturnType<typeof setInterval> | null = null;
@@ -686,12 +706,24 @@ function closeCal() {
   calTimer = null;
   snapshot.calibration.run = null;
 }
+function sweepCurrent() {
+  const s = snapshot.calibration.sweep;
+  if (!s) return null;
+  const i = s.marks.indexOf("pending");
+  s.current = i < 0 ? null : i;
+  return s.current === null ? null : s.targets_kmh[s.current];
+}
+function runBelt(kmh: number) {
+  Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: kmh, speed_kmh: kmh });
+  calRun(kmh, "settling");
+}
 /** ?calwizard: two saved points and a 3 m belt loop. */
+// ?calwizard=oldpoint adds a point stored at 0.15, below the limit.
 const CAL_CONFIG = {
   belt_length: 300,
   calibration_points: [
     { speed: 3, stride_length_cm: 68.4, distance_scale: 0.912 },
-    { speed: 4.5, stride_length_cm: 74.1, distance_scale: 0.887 },
+    { speed: 4.5, stride_length_cm: 74.1, distance_scale: calFlag === "oldpoint" ? 0.15 : 0.887 },
   ],
 };
 /** The preview runs no settings sync: the store settings ?calwizard starts with. */
@@ -699,21 +731,63 @@ export function previewSettings() {
   return calFlag === null ? null : { beltLength: CAL_CONFIG.belt_length, calibrationPoints: CAL_CONFIG.calibration_points };
 }
 if (calFlag !== null) {
-  snapshot.calibration.wizard_enabled = true;
+  snapshot.calibration.wizard_enabled = calFlag !== "oldpoint";
   if (calFlag === "counting" || calFlag === "counted") Object.assign(snapshot.deck, { raw_speed_kmh: 3, speed_kmh: 3.3 });
   if (calFlag === "counting") calRun(3, "counting", 23);
   if (calFlag === "counted") calRun(3, "counted", 62.4);
+  if (calFlag === "sweep" || calFlag === "sweeprun") {
+    Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: 3, speed_kmh: 3.3 });
+    snapshot.calibration.sweep = {
+      targets_kmh: [2, 3, 4, 4.5, 5, 6],
+      marks: ["skipped", "saved", "pending", "pending", "pending", "pending"],
+      current: 2,
+    };
+    if (calFlag === "sweeprun") {
+      Object.assign(snapshot.deck, { raw_speed_kmh: 4, speed_kmh: 4.4 });
+      calRun(4, "counting", 31);
+    }
+  }
 }
 const CAL_COMMANDS: Partial<Record<Command["type"], (c: Command) => void>> = {
   calibration_set_wizard: (c) => {
     if (c.type !== "calibration_set_wizard") return;
     snapshot.calibration.wizard_enabled = c.on;
-    if (!c.on) closeCal();
+    if (!c.on) {
+      snapshot.calibration.sweep = null;
+      closeCal();
+    }
   },
   calibration_run_start: (c) => {
     if (c.type !== "calibration_run_start") return;
-    Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: c.target_kmh, speed_kmh: c.target_kmh });
-    calRun(c.target_kmh, "settling");
+    snapshot.calibration.sweep = null;
+    runBelt(c.target_kmh);
+  },
+  calibration_sweep_start: (c) => {
+    if (c.type !== "calibration_sweep_start") return;
+    const targets_kmh = [...new Set(c.targets_kmh)].sort((a, b) => a - b);
+    snapshot.calibration.sweep = { targets_kmh, marks: targets_kmh.map(() => "pending"), current: 0 };
+    runBelt(targets_kmh[0]);
+  },
+  calibration_sweep_run: () => {
+    const kmh = sweepCurrent();
+    if (kmh === null) throw "Every speed is done.";
+    runBelt(kmh);
+  },
+  calibration_sweep_next: (c) => {
+    const s = snapshot.calibration.sweep;
+    if (c.type !== "calibration_sweep_next" || !s || s.current === null) return;
+    s.marks[s.current] = c.saved ? "saved" : "skipped";
+    sweepCurrent();
+    closeCal();
+  },
+  calibration_sweep_end: () => {
+    snapshot.calibration.sweep = null;
+    closeCal();
+  },
+  // STOP: the belt stops; a run not yet timed closes.
+  stop: () => {
+    Object.assign(snapshot.deck, { status: "Stopped", raw_speed_kmh: 0, speed_kmh: 0 });
+    if (snapshot.calibration.run?.phase !== "counted") closeCal();
   },
   calibration_count_start: () => {
     const r = snapshot.calibration.run;
@@ -754,6 +828,8 @@ const CAL_COMMANDS: Partial<Record<Command["type"], (c: Command) => void>> = {
 
 // Labs: GHOST_POD. ?ghostpod=advertising|connected|error picks its status;
 // switching it on in the preview advertises, then a watch connects 3 s later.
+// ?ghostpower=waiting|linked turns its power switch on, with no watch reading
+// power yet or a watch getting 135 W.
 const GHOST_POD: Record<"off" | "starting" | "advertising" | "connected" | "error", [string, string]> = {
   off: ["OFFLINE", "Switch it on to let a watch read the belt as a foot pod."],
   starting: ["BOOTING", "Starting the pod."],
@@ -772,6 +848,15 @@ function setGhostPod(status: keyof typeof GHOST_POD) {
     watches: status === "connected" ? 1 : 0,
     speed_kmh: status === "connected" ? snapshot.deck.speed_kmh : 0,
   });
+  setGhostPower(snapshot.ghost_pod.power_enabled);
+}
+function setGhostPower(on: boolean, linked = snapshot.ghost_pod.status === "connected") {
+  const reading = on && snapshot.ghost_pod.enabled && linked;
+  Object.assign(snapshot.ghost_pod, {
+    power_enabled: on,
+    power_watches: reading ? 1 : 0,
+    power_w: reading ? 135 : 0,
+  });
 }
 function switchGhostPod(on: boolean) {
   if (ghostPodTimer) clearTimeout(ghostPodTimer);
@@ -786,6 +871,11 @@ function switchGhostPod(on: boolean) {
 }
 const ghostPodFlag = params.get("ghostpod");
 if (ghostPodFlag && ghostPodFlag in GHOST_POD) setGhostPod(ghostPodFlag as keyof typeof GHOST_POD);
+const ghostPowerFlag = params.get("ghostpower");
+if (ghostPowerFlag === "waiting" || ghostPowerFlag === "linked") {
+  if (!snapshot.ghost_pod.enabled) setGhostPod("connected");
+  setGhostPower(true, ghostPowerFlag === "linked");
+}
 
 // ?custom: the HUD sits where it was dragged (a custom position).
 if (params.has("custom")) snapshot.hud.custom = { dx: 400, top: 120 };
@@ -1027,8 +1117,8 @@ const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) =>
   },
   seated_snooze: () => Object.assign(snapshot.seated, { show_card: false, pending_program_id: null }),
   eye_break_set_config: (c) => {
-    const { enabled, minutes, seconds, sound, pause_belt } = c;
-    Object.assign(snapshot.eye_break, { enabled, minutes, seconds, sound, pause_belt });
+    const { enabled, minutes, seconds, sound, pause_belt, fit_rests } = c;
+    Object.assign(snapshot.eye_break, { enabled, minutes, seconds, sound, pause_belt, fit_rests });
     if (!c.enabled) Object.assign(snapshot.eye_break, { phase: "idle", remaining_s: 0, holds_belt: false });
   },
   eye_break_skip: () =>
@@ -1094,6 +1184,7 @@ const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) =>
   traffic_open_folder: () => {},
   ...CAL_COMMANDS,
   ghost_pod_set: (c) => switchGhostPod(c.on),
+  ghost_pod_power_set: (c) => setGhostPower(c.on),
   strava_set_credentials: () => (snapshot.strava.has_credentials = true),
   strava_connect: () => {
     Object.assign(snapshot.strava, { connected: true, athlete_name: "Preview Athlete" });

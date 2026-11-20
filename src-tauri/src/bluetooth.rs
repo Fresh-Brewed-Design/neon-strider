@@ -804,6 +804,8 @@ pub async fn sync_orchestrator_config(
     config: crate::persistence::AppConfig,
 ) -> Result<(), String> {
     let saved_id = config.last_device_id.clone();
+    let stored = crate::persistence::load_config(&app).calibration_points;
+    crate::calibration::check_point_scales(&config.calibration_points, &stored)?;
     {
         let mut state = ORCHESTRATOR.lock().await;
         state.sync_config(&config);
