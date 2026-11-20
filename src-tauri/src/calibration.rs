@@ -295,6 +295,13 @@ impl Run {
         else {
             return Err("Press COUNT first.".into());
         };
+        // Too early: the clock keeps running, so he can carry on counting.
+        let elapsed = now.duration_since(started).as_secs_f32();
+        if elapsed < MIN_RUN_S {
+            return Err(format!(
+                "Keep counting: at least {MIN_RUN_S:.0} s, so far {elapsed:.0} s."
+            ));
+        }
         self.samples.push(raw_kmh);
         let summary = summarize_samples(&self.samples);
         self.samples.clear();
@@ -623,6 +630,15 @@ mod tests {
 
         run.start_count(t, 3.0).unwrap();
         run.sample(3.0);
+        let early = run
+            .stop_count(t + Duration::from_secs(10), 3.0)
+            .unwrap_err();
+        assert!(early.contains("Keep counting"), "{early}");
+        assert_eq!(
+            run.view(t).phase,
+            CalibrationPhase::Counting,
+            "DONE too early keeps counting"
+        );
         run.sample(3.0);
         let later = t + Duration::from_secs(40);
         assert_eq!(run.view(t + Duration::from_secs(5)).elapsed_s, 5.0);
