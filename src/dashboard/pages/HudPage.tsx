@@ -73,8 +73,8 @@ function PlacementRow({ anchor, custom }: { anchor: HudAnchor; custom: boolean }
       </div>
       <ActionStatus pending={reset.pending} error={reset.error} />
       <Hint>
-        Drag the HUD by its NEON STRIDER logo to move it, onto another display too. Dropped near a corner, it
-        snaps into that corner.
+        Drag the NEON STRIDER logo to move the HUD, onto another display too; near a corner, the HUD snaps into the
+        corner.
       </Hint>
     </div>
   );
@@ -113,7 +113,7 @@ function MonitorPicker({ monitors, selected }: { monitors: HudMonitor[]; selecte
       </ul>
       {missing && (
         <p className="font-mono text-[11px] leading-relaxed text-neon-yellow/80">
-          The chosen display is not connected, so the HUD is on the primary one.
+          The chosen display is not connected, so the HUD sits on the primary display.
         </p>
       )}
     </div>
@@ -153,7 +153,7 @@ function IdleModePicker({ mode }: { mode: HudIdleMode }) {
         ))}
       </div>
       <ActionStatus pending={set.pending} error={set.error} />
-      <Hint>Cards that need an answer still show. Hide comes back when the belt moves.</Hint>
+      <Hint>Cards that need an answer still show, and a hidden HUD comes back when the belt moves.</Hint>
       <Hint>Alt + Insert shrinks the HUD to a strip at any time, and brings it back.</Hint>
     </div>
   );
@@ -184,7 +184,7 @@ export function HudPage() {
             </div>
             {widgets.length === 0 ? (
               <p className="px-1 py-3 font-mono text-xs text-white/45">
-                Nothing pinned, so the HUD is hidden. Add a widget below.
+                Nothing pinned, so the HUD is hidden. Add a widget from Available.
               </p>
             ) : (
               <ul className="flex flex-col gap-1">
@@ -241,8 +241,8 @@ export function HudPage() {
           <MonitorPicker monitors={s.hud_monitors} selected={monitor} />
           <IdleModePicker mode={s.hud.idle_mode} />
           <Hint>
-            Clicks pass through the HUD except on its panel. Speed and tilt pop-ups are hidden while those values are
-            on the panel.
+            Clicks pass through the HUD except on its panel. Speed and tilt pop-ups stay hidden while VEL or TILT is on
+            the HUD.
           </Hint>
         </Panel>
       </div>

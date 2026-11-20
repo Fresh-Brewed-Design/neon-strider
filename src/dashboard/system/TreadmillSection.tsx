@@ -20,7 +20,7 @@ export function TreadmillSection() {
     <Section
       id="sys-treadmill"
       title="Treadmill"
-      description="Limits and scaling for this machine. Changes apply as soon as you make them."
+      description="Limits and scaling for the treadmill, applied as soon as they change."
     >
       {deck && offer && (
         <div className="flex flex-wrap items-center gap-3">
@@ -81,7 +81,7 @@ export function TreadmillSection() {
         step={0.1}
         value={tiltMultiplier}
         format={(v) => `1 level = ${v.toFixed(1)}%`}
-        hint="The treadmill reports whole incline steps. Set how many percent of grade each step is."
+        hint="Percent of grade for each whole incline step the treadmill reports."
         onCommit={(v) => updateSettings({ tiltMultiplier: v })}
       />
       <SliderField
@@ -92,7 +92,7 @@ export function TreadmillSection() {
         step={0.5}
         value={inclineOffset}
         format={(v) => `${v > 0 ? "+" : ""}${v.toFixed(1)}%`}
-        hint="Added to every incline reading to account for adjustable feet or a sloping floor. It does not move the motor's zero point."
+        hint="Added to every incline reading for adjustable feet or a sloping floor; the motor's zero point stays put."
         onCommit={(v) => updateSettings({ inclineOffset: v })}
       />
     </Section>

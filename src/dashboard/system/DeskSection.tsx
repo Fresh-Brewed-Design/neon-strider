@@ -34,7 +34,8 @@ function WalkAwaySettings() {
           tone="yellow"
           checked={w.lock_enabled}
           onChange={(lock_enabled) => void lockAction.run(() => save({ lock_enabled }))}
-          description="Locking Windows (Win+L) pauses a moving belt at once, a running program too. The session is kept; it never restarts by itself, so the HUD asks to resume or end when you are back."
+          description="Locking Windows (Win+L) pauses a moving belt and any running program."
+          hint="The session is kept and the belt never restarts by itself: the HUD asks to resume or end."
         />
         <ActionStatus pending={lockAction.pending} error={lockAction.error} className="mt-1" />
       </div>
@@ -44,7 +45,8 @@ function WalkAwaySettings() {
           tone="yellow"
           checked={w.idle_enabled}
           onChange={(idle_enabled) => void idleAction.run(() => save({ idle_enabled }))}
-          description="After a long time without keyboard or mouse input, the HUD warns for 30 seconds, then pauses the belt. Any input, or STAY on the card, cancels it. Not during a call, so you can talk while you walk."
+          description={`After ${w.idle_minutes} minutes with no keyboard or mouse input, the HUD warns for 30 seconds, then pauses the belt.`}
+          hint="Any input or STAY on the HUD card cancels the pause, and a call never triggers one."
         />
         <ActionStatus pending={idleAction.pending} error={idleAction.error} className="mt-1" />
       </div>
@@ -190,14 +192,15 @@ export function DeskSection() {
     <Section
       id="sys-desk"
       title="Desk"
-      description="Small nudges for a day at the PC. The treadmill switches itself off when idle, so none of this can start it: a program you pick waits until the treadmill connects."
+      description="Small nudges for a day at the PC; none of them can start the belt."
     >
       <Toggle
         label="Idle nudge"
         tone="yellow"
         checked={seated.enabled}
         onChange={(enabled) => saveSeated({ enabled })}
-        description="After a while of keyboard and mouse use without walking, a card on the HUD offers a walk or a program. Only the time of the last input is kept, never which keys."
+        description="After a stretch of PC use without walking, a HUD card offers a walk or a program."
+        hint="A program picked on the card waits until the treadmill connects. Only the time of the last input is kept, never which keys."
       />
       {seated.enabled && (
         <>
@@ -220,7 +223,7 @@ export function DeskSection() {
             </div>
             {programs.length === 0 ? (
               <Hint className="mt-1">
-                Save a program on the Programs page and it will appear here.
+                Programs saved on the Programs page appear on the card.
               </Hint>
             ) : (
               <ul className="mt-1.5 flex flex-wrap gap-1.5" aria-label="Programs on the card">
@@ -277,7 +280,8 @@ export function DeskSection() {
         tone="yellow"
         checked={calls.enabled}
         onChange={(enabled) => saveCalls({ enabled })}
-        description="While an app is using the microphone, a running belt eases to a quiet speed (never faster than it was), and goes back 10 seconds after the call ends. A speed you change during the call is left alone."
+        description="While an app uses the microphone, a running belt eases to the quiet speed until 10 seconds after the call."
+        hint="The belt never speeds up for a call, and a speed changed during the call stays."
       />
       {calls.enabled && (
         <>

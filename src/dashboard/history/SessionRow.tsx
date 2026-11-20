@@ -176,7 +176,7 @@ export function SessionRow({
               title={
                 live
                   ? "Still recording. Save once the walk has ended."
-                  : "Save this walk as a file and open Strava's upload page (works without connecting an account)"
+                  : "Save the session as a TCX file for Strava's upload page; no linked account needed."
               }
               disabled={live || save.pending}
               onClick={() =>
@@ -218,7 +218,7 @@ export function SessionRow({
           </ActionStatus>
           {showSavedLine && !save.done && !save.pending && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] text-white/55">
-              <span>Saved for Strava. Once it is uploaded there:</span>
+              <span>Saved for Strava. After uploading the file to Strava:</span>
               <MarkUploaded pending={mark.pending} onClick={() => void mark.run(onMarkUploaded)} />
             </div>
           )}

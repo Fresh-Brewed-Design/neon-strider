@@ -45,7 +45,7 @@ export function ClassicCalibrationPanel() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <p className="font-mono text-xs leading-relaxed text-white/50">
-          Each point records how far the belt really moves at one speed. Speeds in between are interpolated.
+          Each point records how far the belt really moves at one speed, and speeds between points are interpolated.
         </p>
         <button
           onClick={() => setIsWizardOpen(true)}
@@ -60,7 +60,7 @@ export function ClassicCalibrationPanel() {
           <div className="p-8 text-center bg-white/5 rounded-xl border border-dashed border-white/10">
             <div className="text-[11px] text-white/50 uppercase font-mono">No calibration points yet.</div>
             <div className="text-[11px] text-white/50 uppercase font-mono mt-1 italic">
-              Distances use average human stride values until you add one.
+              Distances use average stride values until you add a point.
             </div>
           </div>
         ) : (

@@ -27,14 +27,16 @@ export function AutoSyncOptions({ strava }: { strava: StravaSnapshot }) {
     <div className="flex flex-col gap-4 border-t border-white/10 pt-4">
       <Toggle
         label="Auto-sync"
-        description="Uploads finished walks in the background, even with this window closed. Walks that ended before you turned it on stay manual (History)."
+        description="Uploads finished walks in the background, even with the dashboard closed."
+        hint="Walks that ended before auto-sync was on stay manual, in History."
         tone="magenta"
         checked={strava.auto_sync}
         onChange={(v) => void toggles.run(post({ type: "strava_set_auto_sync", enabled: v }))}
       />
       <Toggle
         label="Daily rollup"
-        description="Instead of one upload per walk, upload each day's walks as a single activity after the time below. A day missed while the app was closed is uploaded next time it runs."
+        description="Uploads each day's walks as one Strava activity after the rollup time."
+        hint="A day missed while Neon Strider was closed uploads on the next start."
         tone="magenta"
         checked={strava.daily_rollup}
         onChange={(v) =>
@@ -113,7 +115,7 @@ export function SyncActions({
           tone="cyan"
           disabled={save.pending}
           onClick={saveForStrava}
-          title="Save your latest walk as a file and open Strava's upload page. Works without connecting an account."
+          title="Save the latest walk as a TCX file for Strava's upload page; no linked account needed."
           className="flex shrink-0 items-center gap-2 px-3 py-2"
         >
           {save.pending ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
@@ -122,8 +124,7 @@ export function SyncActions({
       </div>
       {!connected && (
         <Hint>
-          Sync now needs a connected account. Save for Strava works without one: it saves the file and opens
-          Strava&apos;s upload page.
+          Sync now needs a connected account, and Save for Strava works without one.
         </Hint>
       )}
       {connected && !strava.auto_sync && (

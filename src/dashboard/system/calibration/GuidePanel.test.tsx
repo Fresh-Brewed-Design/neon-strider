@@ -135,7 +135,7 @@ describe("the guided walk", () => {
       next_kmh: 2.8,
     });
     render(<GuidedCalibration />);
-    expect(screen.getByText("A check run halfway between two calibrated speeds measures the error there.")).toBeTruthy();
+    expect(screen.getByText("A check run measures the distance error halfway between two calibrated speeds.")).toBeTruthy();
     expect(screen.getByText("0.6 to 5.0 km/h: the check at 2.8 km/h waits for RUN.")).toBeTruthy();
   });
 
@@ -178,7 +178,7 @@ describe("the guided walk", () => {
     });
     render(<GuidedCalibration />);
     expect(screen.getByText("Calibrated 0.6, 1.7, 2.8, 3.9 and 5.0 km/h.")).toBeTruthy();
-    expect(screen.getByText("Between those speeds, distance is within 1.2 % of the belt.")).toBeTruthy();
+    expect(screen.getByText("Between the calibrated speeds, distance is within 1.2 % of the belt.")).toBeTruthy();
     expect(screen.getByText("Each check run measured the error halfway between two calibrated speeds.")).toBeTruthy();
     expect(screen.getByText("Close")).toBeTruthy();
     expect(screen.queryByText(/^RUN \d/)).toBeNull();

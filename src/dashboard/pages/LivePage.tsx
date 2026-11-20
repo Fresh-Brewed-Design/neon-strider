@@ -47,11 +47,11 @@ function headerNotice(s: AppSnapshot): ReactNode {
   } else if (s.connection.connected && s.deck.unknown_status_code !== null) {
     notice = {
       label: "STATE ?",
-      title: "The treadmill sent a status this app doesn't know yet. The log records it.",
+      title: "Neon Strider doesn't know the treadmill's status code yet; the log records each one.",
       text: `Treadmill state unknown (code ${s.deck.unknown_status_code})`,
     };
   } else if (s.connection.connected && s.deck.standby) {
-    notice = { label: "DECK OFF", title: "Off or asleep. It can't be started from here.", text: "Treadmill is off or asleep" };
+    notice = { label: "DECK OFF", title: "The treadmill is off or asleep, and Neon Strider can't wake it.", text: "Treadmill is off or asleep" };
   } else {
     return null;
   }

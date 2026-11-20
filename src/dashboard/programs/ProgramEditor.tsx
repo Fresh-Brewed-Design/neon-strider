@@ -228,10 +228,9 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
       </div>
 
       <Hint>
-        When a program finishes or you end it, the treadmill goes back to what it was doing before: same speed if
-        you were walking, otherwise it pauses. Ending it while the belt is paused leaves it paused; Engage then
-        starts it at your earlier speed. A program never starts a still belt by itself: after a rest, or after a 0
-        km/h step, the next walk waits for you to press GO.
+        When a program ends, the treadmill goes back to the speed from before, or pauses if you weren&apos;t walking.
+        Ending a program on a paused belt leaves the belt paused, and Engage restarts the belt at the earlier speed.
+        A program never starts a still belt by itself: after a rest or a 0 km/h step, the next walk waits for GO.
       </Hint>
 
       <ActionStatus error={error ?? save.error} />
