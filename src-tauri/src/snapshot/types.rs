@@ -3,8 +3,8 @@
 //! included, so the `///` text here is part of the generated TypeScript.
 
 use super::{
-    CallsSnapshot, LightsOutSnapshot, MaintenanceBasis, MaintenanceSnapshot, OdometerSnapshot,
-    SeatedSnapshot, WalkAwaySnapshot, WeeklySummary,
+    CallsSnapshot, DeskSync, LightsOutSnapshot, MaintenanceBasis, MaintenanceSnapshot,
+    OdometerSnapshot, SeatedSnapshot, WalkAwaySnapshot, WeeklySummary,
 };
 use crate::link::{LastError, LinkState};
 use crate::placement;
@@ -32,8 +32,13 @@ pub struct AppSnapshot {
     pub maintenance: MaintenanceSnapshot,
     /// Last week against the week before, and this week so far.
     pub weekly: WeeklySummary,
+    /// DESK_SYNC: how many of the recent desk days (days the PC was used)
+    /// were walked on.
+    pub desk_sync: DeskSync,
     /// The idle nudge: its settings and whether the HUD card shows.
     pub seated: SeatedSnapshot,
+    /// Eye breaks: their settings, the phase and the tone counters.
+    pub eye_break: crate::snapshot::EyeBreakSnapshot,
     /// Slow down on calls: its settings and whether the microphone is in use.
     pub calls: CallsSnapshot,
     /// Distance and belt hours over every saved session plus the live one.
@@ -48,6 +53,8 @@ pub struct AppSnapshot {
     pub lights_out: LightsOutSnapshot,
     /// The guided calibration (Labs): its switch, limits and any run.
     pub calibration: crate::calibration::CalibrationSnapshot,
+    /// Labs: GHOST_POD, the PC as a foot pod for a watch (off by default).
+    pub ghost_pod: crate::ghost_pod::GhostPodSnapshot,
 }
 
 /// Strava as the windows see it. Tokens and the client secret never appear here.
@@ -533,6 +540,16 @@ pub enum Command {
     },
     /// SNOOZE 15 MIN on the card: hide it for 15 minutes; the idle time is kept.
     SeatedSnooze,
+    /// Eye-break settings: on or off, minutes of screen use between breaks (10 to
+    /// 120), seconds a break lasts (20 to 300) and whether the HUD plays tones.
+    EyeBreakSetConfig {
+        enabled: bool,
+        minutes: u32,
+        seconds: u32,
+        sound: bool,
+    },
+    /// SKIP on an eye-break card: no break now, and the count starts again.
+    EyeBreakSkip,
     /// Slow-down-on-calls settings: on or off, and the quiet speed 0.5 to 6 km/h.
     CallsSetConfig {
         enabled: bool,
@@ -601,6 +618,11 @@ pub enum Command {
     },
     /// Close the run (after saving its point, or to cancel). The belt keeps going.
     CalibrationRunClose,
+    /// Labs: GHOST_POD on (`on`) or off. On, the PC advertises as a Bluetooth
+    /// foot pod and sends the belt speed to a paired watch once a second.
+    GhostPodSet {
+        on: bool,
+    },
 }
 
 #[cfg(test)]
@@ -862,6 +884,8 @@ mod tests {
         assert_eq!(c, Command::UpdateAutoInstall { on: false });
         let c: Command = serde_json::from_str(r#"{"type":"traffic_record","on":true}"#).unwrap();
         assert_eq!(c, Command::TrafficRecord { on: true });
+        let c: Command = serde_json::from_str(r#"{"type":"ghost_pod_set","on":true}"#).unwrap();
+        assert_eq!(c, Command::GhostPodSet { on: true });
         let c: Command = serde_json::from_str(r#"{"type":"traffic_open_folder"}"#).unwrap();
         assert_eq!(c, Command::TrafficOpenFolder);
 

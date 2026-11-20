@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.12.0 (2026-11-20)
+
+### New
+
+- New DESK_SYNC card on the History page: "Walked on 9 of your last 10 desk days." A desk day is a day you used the PC, so days away from it never count against you. Days you walked before this update count as desk days.
+
+## 1.11.0 (2026-11-20)
+
+### New
+
+- Eye breaks (off by default, under System -> Desk): after 20 minutes of screen use the HUD warns a minute ahead, then asks you to look into the distance for 90 seconds, with a blink tone every 10 seconds and a tone at the end. The belt is never touched. Both times and the tones can be changed.
+
+### Fixed
+
+- Calibration no longer saves a 0 km/h point when the belt has already stopped; it tells you to run it again.
+
 ## 1.10.0 (2026-11-20)
 
 ### New

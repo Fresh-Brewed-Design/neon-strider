@@ -4,6 +4,9 @@ import type { CalibrationSnapshot } from "./CalibrationSnapshot";
 import type { CallsSnapshot } from "./CallsSnapshot";
 import type { ConnectionSnapshot } from "./ConnectionSnapshot";
 import type { DeckSnapshot } from "./DeckSnapshot";
+import type { DeskSync } from "./DeskSync";
+import type { EyeBreakSnapshot } from "./EyeBreakSnapshot";
+import type { GhostPodSnapshot } from "./GhostPodSnapshot";
 import type { HudConfig } from "./HudConfig";
 import type { HudMonitor } from "./HudMonitor";
 import type { HudView } from "./HudView";
@@ -35,9 +38,18 @@ hud_monitors: Array<HudMonitor>, strava: StravaSnapshot, maintenance: Maintenanc
  */
 weekly: WeeklySummary, 
 /**
+ * DESK_SYNC: how many of the recent desk days (days the PC was used)
+ * were walked on.
+ */
+desk_sync: DeskSync, 
+/**
  * The idle nudge: its settings and whether the HUD card shows.
  */
 seated: SeatedSnapshot, 
+/**
+ * Eye breaks: their settings, the phase and the tone counters.
+ */
+eye_break: EyeBreakSnapshot, 
 /**
  * Slow down on calls: its settings and whether the microphone is in use.
  */
@@ -65,4 +77,8 @@ lights_out: LightsOutSnapshot,
 /**
  * The guided calibration (Labs): its switch, limits and any run.
  */
-calibration: CalibrationSnapshot, };
+calibration: CalibrationSnapshot, 
+/**
+ * Labs: GHOST_POD, the PC as a foot pod for a watch (off by default).
+ */
+ghost_pod: GhostPodSnapshot, };

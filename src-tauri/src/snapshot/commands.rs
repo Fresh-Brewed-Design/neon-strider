@@ -1,8 +1,8 @@
 //! What each `Command` does. `snapshot::dispatch` is the IPC entry point.
 
 use super::{
-    calls, desk, hud, hud_drag, lights_out, maintenance, seated, stasis, walkaway, weekly, Command,
-    HudConfig, HudWidget,
+    calls, desk, eyebreak, hud, hud_drag, lights_out, maintenance, seated, stasis, walkaway,
+    weekly, Command, HudConfig, HudWidget,
 };
 use crate::bluetooth::{self, ORCHESTRATOR};
 use crate::calibration;
@@ -198,6 +198,16 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             desk::snooze();
             Ok(())
         }
+        Command::EyeBreakSetConfig {
+            enabled,
+            minutes,
+            seconds,
+            sound,
+        } => blocking(move || eyebreak::set_config(&app, enabled, minutes, seconds, sound)).await,
+        Command::EyeBreakSkip => {
+            eyebreak::with(|rt| rt.machine.skip());
+            Ok(())
+        }
         Command::CallsSetConfig { enabled, quiet_kmh } => {
             blocking(move || calls::set_config(&app, enabled, quiet_kmh)).await
         }
@@ -262,6 +272,9 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         Command::CalibrationRunClose => {
             calibration::close();
             Ok(())
+        }
+        Command::GhostPodSet { on } => {
+            blocking(move || crate::ghost_pod::set_enabled(&app, on)).await
         }
     }
 }
