@@ -34,7 +34,7 @@ describe("DESK_SYNC", () => {
     expect(deskSyncText(sync([true]))).toBe("Walked on your last desk day.");
     expect(deskSyncText(sync([false]))).toBe("No walk on your last desk day.");
     expect(deskSyncText(sync([]))).toBe("No desk days recorded yet.");
-    expect(deskSyncText(sync([], true))).toBe("Walk today to start the count.");
+    expect(deskSyncText(sync([], true))).toBe("Walk today to start the desk-day count.");
   });
 
   it("never celebrates", () => {
