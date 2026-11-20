@@ -1,0 +1,21 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+
+const css = readFileSync(new URL("./hud.css", import.meta.url), "utf8");
+const rule = (selector: string) => css.match(new RegExp(`^${selector.replace(/[.]/g, "\.")}\s*\{([^}]*)\}`, "m"))?.[1] ?? "";
+
+// At a larger Windows text size the HUD content is wider than at 100 %, so nothing may be
+// pinned to one line when a card's width is fixed.
+describe("HUD CSS at larger text sizes", () => {
+  it("lets the blink step name wrap instead of clipping", () => {
+    const cue = rule(".hud-eyebreak-cue");
+    expect(cue).not.toBe("");
+    expect(cue).not.toMatch(/white-space:\s*nowrap/);
+    expect(cue).toMatch(/overflow-wrap:\s*anywhere/);
+  });
+
+  it("keeps card button names on one line and wraps the row", () => {
+    expect(rule(".hud-seated-actions")).toMatch(/flex-wrap:\s*wrap/);
+    expect(css).toMatch(/\.hud-seated-actions \.hud-btn-sm\s*\{\s*white-space:\s*nowrap/);
+  });
+});
