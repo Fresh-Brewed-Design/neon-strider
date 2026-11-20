@@ -537,7 +537,9 @@ mod tests {
     #[test]
     fn a_point_already_stored_out_of_range_does_not_block_a_save() {
         let old = pt(3.0, 0.1);
-        assert!(check_point_scales(&[old.clone(), pt(5.0, 1.0)], std::slice::from_ref(&old)).is_ok());
+        assert!(
+            check_point_scales(&[old.clone(), pt(5.0, 1.0)], std::slice::from_ref(&old)).is_ok()
+        );
         // Changing that point to another bad factor is refused.
         assert!(check_point_scales(&[pt(3.0, 0.12)], &[old]).is_err());
     }
