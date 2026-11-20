@@ -1,0 +1,1 @@
+- Labs, GROUND_TRUTH: RUN ALL walks every calibration speed in turn with a progress strip, and each speed waits for your RUN. The run panel has its own STOP.
