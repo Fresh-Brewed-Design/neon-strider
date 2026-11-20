@@ -190,6 +190,9 @@ pub struct OrchestratorState {
     /// DECK_PROFILE: what the deck did with each speed byte asked, learned
     /// from its echoes and nacks (`deck_profile.rs`). Loaded at startup.
     pub deck_profile: crate::deck_profile::DeckProfile,
+    /// The settings key `deck_profile` is saved under: that of the treadmill
+    /// it belongs to. None until one is known.
+    pub deck_profile_key: Option<String>,
     /// Replies are filed in `deck_profile`. Off on the simulated deck, whose
     /// limits are not the treadmill's.
     pub(crate) profile_learning: bool,
@@ -358,6 +361,7 @@ impl Default for OrchestratorState {
             target_note: None,
             target_speed_changed: false,
             deck_profile: Default::default(),
+            deck_profile_key: None,
             profile_learning: true,
             deck_standby: false,
             hold_auto_start: true,

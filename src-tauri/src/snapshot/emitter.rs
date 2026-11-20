@@ -156,15 +156,21 @@ impl Loop {
     /// Write DECK_PROFILE when the deck taught it something (or it was
     /// forgotten), off the async threads.
     async fn save_deck_profile(&mut self) {
-        let Some(json) = ORCHESTRATOR.lock().await.deck_profile.take_unsaved() else {
-            return;
+        let (key, json) = {
+            let mut state = ORCHESTRATOR.lock().await;
+            let Some(key) = state.deck_profile_key.clone() else {
+                return;
+            };
+            let Some(json) = state.deck_profile.take_unsaved() else {
+                return;
+            };
+            (key, json)
         };
         let app = self.app.clone();
         let _detached = tauri::async_runtime::spawn_blocking(move || {
-            let key = crate::deck_profile::KEY;
             let result = match json {
-                Some(json) => crate::persistence::write_setting(&app, key, &json),
-                None => crate::persistence::delete_setting(&app, key),
+                Some(json) => crate::persistence::write_setting(&app, &key, &json),
+                None => crate::persistence::delete_setting(&app, &key),
             };
             if let Err(e) = result {
                 log::warn!("could not save the deck profile: {}", e);
