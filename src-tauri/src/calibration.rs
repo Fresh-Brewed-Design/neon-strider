@@ -12,6 +12,10 @@
 //! until DONE. Rust times the run itself and samples the deck's reported speed
 //! while he counts, so a belt that stopped or changed speed during the count
 //! is refused instead of saved as a 0 km/h point.
+//!
+//! RUN ALL walks the whole list as a sweep: Rust keeps which speeds are saved,
+//! skipped or still to do. Saving or skipping one never touches the belt; the
+//! next speed waits for his RUN.
 
 use crate::engine::OrchestratorState;
 use crate::protocol::CalibrationPoint;
@@ -45,6 +49,11 @@ const MAX_SPREAD_KMH: f32 = 0.25;
 const KEY_WIZARD: &str = "labs_calibration_wizard";
 static WIZARD_ON: AtomicBool = AtomicBool::new(false);
 static RUN: Mutex<Option<Run>> = Mutex::new(None);
+static SWEEP: Mutex<Option<Sweep>> = Mutex::new(None);
+/// Most speeds one sweep takes.
+const MAX_SWEEP_TARGETS: usize = 12;
+/// Targets this close together are one speed.
+const SAME_TARGET_KMH: f32 = 0.05;
 
 /// The limits as the UI sees them, so both sides use one set of numbers.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS)]
@@ -407,6 +416,88 @@ pub struct CalibrationSnapshot {
     pub wizard_enabled: bool,
     pub limits: CalibrationLimits,
     pub run: Option<CalibrationRunView>,
+    /// RUN ALL: the list being walked, if any.
+    pub sweep: Option<CalibrationSweepView>,
+}
+
+/// What became of one speed in a sweep.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
+pub enum SweepMark {
+    Pending,
+    Saved,
+    Skipped,
+}
+
+/// RUN ALL as the windows see it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
+pub struct CalibrationSweepView {
+    /// Deck km/h, slowest first.
+    pub targets_kmh: Vec<f32>,
+    /// One per target.
+    pub marks: Vec<SweepMark>,
+    /// The target being run or up next; none once every speed is done.
+    pub current: Option<usize>,
+}
+
+/// RUN ALL: the speeds to walk and what became of each.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Sweep {
+    targets: Vec<f32>,
+    marks: Vec<SweepMark>,
+}
+
+impl Sweep {
+    /// The speeds, sorted and without repeats. Refused when empty or too long.
+    pub fn new(targets_kmh: &[f32]) -> Result<Self, String> {
+        let mut targets: Vec<f32> = targets_kmh
+            .iter()
+            .copied()
+            .filter(|t| t.is_finite())
+            .collect();
+        targets.sort_by(f32::total_cmp);
+        targets.dedup_by(|a, b| (*a - *b).abs() <= SAME_TARGET_KMH);
+        if targets.is_empty() {
+            return Err("Add a speed to run first.".into());
+        }
+        if targets.len() > MAX_SWEEP_TARGETS {
+            return Err(format!("RUN ALL takes up to {MAX_SWEEP_TARGETS} speeds."));
+        }
+        Ok(Self {
+            marks: vec![SweepMark::Pending; targets.len()],
+            targets,
+        })
+    }
+
+    /// The first speed not yet saved or skipped.
+    pub fn current(&self) -> Option<usize> {
+        self.marks.iter().position(|m| *m == SweepMark::Pending)
+    }
+
+    pub fn current_target(&self) -> Option<f32> {
+        self.current().map(|i| self.targets[i])
+    }
+
+    /// The current speed is saved or skipped; the next one becomes current.
+    pub fn advance(&mut self, saved: bool) -> Result<(), String> {
+        let i = self.current().ok_or("Every speed is done.")?;
+        self.marks[i] = if saved {
+            SweepMark::Saved
+        } else {
+            SweepMark::Skipped
+        };
+        Ok(())
+    }
+
+    pub fn view(&self) -> CalibrationSweepView {
+        CalibrationSweepView {
+            targets_kmh: self.targets.clone(),
+            marks: self.marks.clone(),
+            current: self.current(),
+        }
+    }
 }
 
 /// The physical (calibrated) intent that puts `target_hw_kmh` on the deck
@@ -419,6 +510,19 @@ pub(crate) fn intent_for_target(state: &OrchestratorState, target_hw_kmh: f32) -
 /// RUN, his press: set the belt to the target, which starts a still belt.
 /// Refused while a program runs (it would take the speed back).
 pub(crate) fn begin_run(state: &mut OrchestratorState, target_hw_kmh: f32) -> Result<(), String> {
+    check_target(state, target_hw_kmh)?;
+    if state.active_program().is_some() {
+        return Err("End the program first, then calibrate.".into());
+    }
+    // A speed set by hand starts a still belt (`note_hand_speed`), so this
+    // is the same path as typing the speed in.
+    let speed = intent_for_target(state, target_hw_kmh);
+    crate::bluetooth::apply_manual_intent(state, Some(speed), None);
+    Ok(())
+}
+
+/// A target the deck can run.
+fn check_target(state: &OrchestratorState, target_hw_kmh: f32) -> Result<(), String> {
     if !target_hw_kmh.is_finite() || target_hw_kmh < state.min_speed.max(0.1) {
         return Err(format!(
             "Pick a speed of at least {:.1} km/h.",
@@ -431,13 +535,6 @@ pub(crate) fn begin_run(state: &mut OrchestratorState, target_hw_kmh: f32) -> Re
             state.max_speed
         ));
     }
-    if state.active_program().is_some() {
-        return Err("End the program first, then calibrate.".into());
-    }
-    // A speed set by hand starts a still belt (`note_hand_speed`), so this
-    // is the same path as typing the speed in.
-    let speed = intent_for_target(state, target_hw_kmh);
-    crate::bluetooth::apply_manual_intent(state, Some(speed), None);
     Ok(())
 }
 
@@ -454,6 +551,12 @@ pub fn init(app: &AppHandle) {
     WIZARD_ON.store(on, Ordering::Relaxed);
 }
 
+/// Tests: the Labs switch without a database.
+#[cfg(test)]
+pub(crate) fn set_wizard_for_test(on: bool) {
+    WIZARD_ON.store(on, Ordering::Relaxed);
+}
+
 pub fn wizard_enabled() -> bool {
     WIZARD_ON.load(Ordering::Relaxed)
 }
@@ -463,7 +566,7 @@ pub fn set_wizard(app: &AppHandle, on: bool) -> Result<(), String> {
     crate::persistence::write_setting(app, KEY_WIZARD, if on { "true" } else { "false" })?;
     WIZARD_ON.store(on, Ordering::Relaxed);
     if !on {
-        with_run(|r| *r = None);
+        close_all();
     }
     log::info!("Guided calibration {}", if on { "on" } else { "off" });
     Ok(())
@@ -477,13 +580,77 @@ fn require_wizard() -> Result<(), String> {
     }
 }
 
-/// RUN: a new run at `target_hw_kmh` (also "repeat this point").
-pub(crate) fn run_start(state: &mut OrchestratorState, target_hw_kmh: f32) -> Result<(), String> {
-    require_wizard()?;
+fn with_sweep<T>(f: impl FnOnce(&mut Option<Sweep>) -> T) -> T {
+    f(&mut SWEEP.lock().unwrap_or_else(|e| e.into_inner()))
+}
+
+fn open_run(state: &mut OrchestratorState, target_hw_kmh: f32) -> Result<(), String> {
     begin_run(state, target_hw_kmh)?;
     log::info!("Calibration run at {target_hw_kmh:.1} km/h");
     with_run(|r| *r = Some(Run::new(target_hw_kmh)));
     Ok(())
+}
+
+/// RUN: a new run at `target_hw_kmh` (also "repeat this point"). A single
+/// run leaves any sweep.
+pub(crate) fn run_start(state: &mut OrchestratorState, target_hw_kmh: f32) -> Result<(), String> {
+    require_wizard()?;
+    open_run(state, target_hw_kmh)?;
+    with_sweep(|s| *s = None);
+    Ok(())
+}
+
+/// RUN ALL, his press: a sweep over `targets_kmh` that runs the slowest now.
+pub(crate) fn sweep_start(
+    state: &mut OrchestratorState,
+    targets_kmh: &[f32],
+) -> Result<(), String> {
+    require_wizard()?;
+    let sweep = Sweep::new(targets_kmh)?;
+    for &t in &sweep.targets {
+        check_target(state, t)?;
+    }
+    open_run(state, sweep.targets[0])?;
+    log::info!("Calibration sweep over {} speeds", sweep.targets.len());
+    with_sweep(|s| *s = Some(sweep));
+    Ok(())
+}
+
+/// RUN on the sweep's current speed, his press.
+pub(crate) fn sweep_run(state: &mut OrchestratorState) -> Result<(), String> {
+    require_wizard()?;
+    let target = with_sweep(|s| s.as_ref().map(Sweep::current_target))
+        .ok_or("Press RUN ALL first.")?
+        .ok_or("Every speed is done.")?;
+    open_run(state, target)
+}
+
+/// SAVE or SKIP in a sweep: mark the current speed and close its run. The
+/// belt keeps its speed; the next one waits for RUN.
+pub(crate) fn sweep_next(saved: bool) -> Result<(), String> {
+    require_wizard()?;
+    with_sweep(|s| s.as_mut().ok_or("Press RUN ALL first.")?.advance(saved))?;
+    with_run(|r| *r = None);
+    Ok(())
+}
+
+/// End the sweep and any run. The belt keeps going.
+pub(crate) fn close_all() {
+    with_run(|r| *r = None);
+    with_sweep(|s| *s = None);
+}
+
+/// STOP was pressed: a run still settling or counting can't go on, so it
+/// closes (a sweep stays on its speed for the next RUN). A timed count
+/// waiting for his tally stays open.
+pub(crate) fn on_stop() {
+    with_run(|r| {
+        if r.as_ref()
+            .is_some_and(|run| run.phase != CalibrationPhase::Counted)
+        {
+            *r = None;
+        }
+    });
 }
 
 fn on_run<T>(f: impl FnOnce(&mut Run) -> Result<T, String>) -> Result<T, String> {
@@ -529,6 +696,7 @@ pub fn snapshot(raw_kmh: f32) -> CalibrationSnapshot {
         wizard_enabled: wizard_enabled(),
         limits: CalibrationLimits::default(),
         run,
+        sweep: with_sweep(|s| s.as_ref().map(Sweep::view)),
     }
 }
 
@@ -790,6 +958,27 @@ mod tests {
         run.stop_count(t + Duration::from_secs(20), 3.0).unwrap();
         run.sample(0.0); // he stopped the belt after DONE
         assert_eq!(run.view(t).reported_kmh, Some(3.0));
+    }
+
+    #[test]
+    fn a_sweep_walks_its_speeds_slowest_first_and_marks_each() {
+        let mut s = Sweep::new(&[4.0, 2.0, 3.0, 3.02, f32::NAN]).unwrap();
+        assert_eq!(s.targets, vec![2.0, 3.0, 4.0], "sorted, one per speed");
+        assert_eq!(s.current_target(), Some(2.0));
+        s.advance(true).unwrap();
+        s.advance(false).unwrap();
+        let v = s.view();
+        assert_eq!(v.current, Some(2));
+        assert_eq!(
+            v.marks,
+            vec![SweepMark::Saved, SweepMark::Skipped, SweepMark::Pending]
+        );
+        s.advance(true).unwrap();
+        assert_eq!(s.view().current, None, "every speed done");
+        assert!(s.advance(true).is_err());
+        assert!(Sweep::new(&[]).is_err());
+        let many: Vec<f32> = (0..13).map(|i| 1.0 + i as f32 * 0.5).collect();
+        assert!(Sweep::new(&many).is_err());
     }
 
     #[test]

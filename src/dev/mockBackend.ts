@@ -181,7 +181,9 @@ export const snapshot: AppSnapshot = {
     seconds: 90,
     sound: true,
     pause_belt: true,
+    fit_rests: true,
     holds_belt: false,
+    at_rest: false,
     phase: "idle",
     remaining_s: 0,
     blink_seq: 0,
@@ -214,6 +216,7 @@ export const snapshot: AppSnapshot = {
       min_run_s: 15, min_steps: 10, default_targets_kmh: [2, 3, 4, 5, 6],
     },
     run: null,
+    sweep: null,
   },
   ghost_pod: {
     enabled: false,
@@ -422,9 +425,16 @@ if (weeklyFlag !== null) Object.assign(snapshot.weekly, { show_card: true }, WEE
 
 // ?eyebreak=upcoming|break|resume shows the eye-break (OCULAR_IMPLANT) HUD card: the
 // heads-up, the cooldown with the belt it paused, or the resume card after it
-// (RESUME / STAY STILL). ?eyebreak=still is the cooldown with the belt left alone.
+// (RESUME / STAY STILL). ?eyebreak=still is the cooldown with the belt left alone,
+// ?eyebreak=rest the heads-up for a break set for the program's rest.
 const eyeBreakFlag = params.get("eyebreak");
-if (eyeBreakFlag === "upcoming") Object.assign(snapshot.eye_break, { enabled: true, phase: "upcoming", remaining_s: 48 });
+if (eyeBreakFlag === "upcoming" || eyeBreakFlag === "rest")
+  Object.assign(snapshot.eye_break, {
+    enabled: true,
+    phase: "upcoming",
+    remaining_s: 48,
+    at_rest: eyeBreakFlag === "rest",
+  });
 if (eyeBreakFlag === "break" || eyeBreakFlag === "still")
   Object.assign(snapshot.eye_break, { enabled: true, phase: "break", remaining_s: 72, holds_belt: eyeBreakFlag === "break" });
 if (eyeBreakFlag === "resume") Object.assign(snapshot.eye_break, { enabled: true, phase: "complete", holds_belt: true });
@@ -668,7 +678,9 @@ if (trafficFlag === "saved") {
 
 // The guided calibration (Labs). ?calwizard: the switch is on, with two saved
 // points. ?calwizard=counting: a count 23 s in (the clock ticks).
-// ?calwizard=counted: a timed count waiting for the loops. The math is a rough
+// ?calwizard=counted: a timed count waiting for the loops.
+// ?calwizard=sweep: RUN ALL with two speeds done and 4.0 km/h up next;
+// ?calwizard=sweeprun: the same sweep counting at 4.0. The math is a rough
 // stand-in for Rust's (calibration.rs, unit-tested there).
 const calFlag = params.get("calwizard");
 let calTimer: ReturnType<typeof setInterval> | null = null;
@@ -691,6 +703,17 @@ function closeCal() {
   calTimer = null;
   snapshot.calibration.run = null;
 }
+function sweepCurrent() {
+  const s = snapshot.calibration.sweep;
+  if (!s) return null;
+  const i = s.marks.indexOf("pending");
+  s.current = i < 0 ? null : i;
+  return s.current === null ? null : s.targets_kmh[s.current];
+}
+function runBelt(kmh: number) {
+  Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: kmh, speed_kmh: kmh });
+  calRun(kmh, "settling");
+}
 /** ?calwizard: two saved points and a 3 m belt loop. */
 // ?calwizard=oldpoint adds a point stored at 0.15, below the limit.
 const CAL_CONFIG = {
@@ -709,17 +732,59 @@ if (calFlag !== null) {
   if (calFlag === "counting" || calFlag === "counted") Object.assign(snapshot.deck, { raw_speed_kmh: 3, speed_kmh: 3.3 });
   if (calFlag === "counting") calRun(3, "counting", 23);
   if (calFlag === "counted") calRun(3, "counted", 62.4);
+  if (calFlag === "sweep" || calFlag === "sweeprun") {
+    Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: 3, speed_kmh: 3.3 });
+    snapshot.calibration.sweep = {
+      targets_kmh: [2, 3, 4, 4.5, 5, 6],
+      marks: ["skipped", "saved", "pending", "pending", "pending", "pending"],
+      current: 2,
+    };
+    if (calFlag === "sweeprun") {
+      Object.assign(snapshot.deck, { raw_speed_kmh: 4, speed_kmh: 4.4 });
+      calRun(4, "counting", 31);
+    }
+  }
 }
 const CAL_COMMANDS: Partial<Record<Command["type"], (c: Command) => void>> = {
   calibration_set_wizard: (c) => {
     if (c.type !== "calibration_set_wizard") return;
     snapshot.calibration.wizard_enabled = c.on;
-    if (!c.on) closeCal();
+    if (!c.on) {
+      snapshot.calibration.sweep = null;
+      closeCal();
+    }
   },
   calibration_run_start: (c) => {
     if (c.type !== "calibration_run_start") return;
-    Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: c.target_kmh, speed_kmh: c.target_kmh });
-    calRun(c.target_kmh, "settling");
+    snapshot.calibration.sweep = null;
+    runBelt(c.target_kmh);
+  },
+  calibration_sweep_start: (c) => {
+    if (c.type !== "calibration_sweep_start") return;
+    const targets_kmh = [...new Set(c.targets_kmh)].sort((a, b) => a - b);
+    snapshot.calibration.sweep = { targets_kmh, marks: targets_kmh.map(() => "pending"), current: 0 };
+    runBelt(targets_kmh[0]);
+  },
+  calibration_sweep_run: () => {
+    const kmh = sweepCurrent();
+    if (kmh === null) throw "Every speed is done.";
+    runBelt(kmh);
+  },
+  calibration_sweep_next: (c) => {
+    const s = snapshot.calibration.sweep;
+    if (c.type !== "calibration_sweep_next" || !s || s.current === null) return;
+    s.marks[s.current] = c.saved ? "saved" : "skipped";
+    sweepCurrent();
+    closeCal();
+  },
+  calibration_sweep_end: () => {
+    snapshot.calibration.sweep = null;
+    closeCal();
+  },
+  // STOP: the belt stops; a run not yet timed closes.
+  stop: () => {
+    Object.assign(snapshot.deck, { status: "Stopped", raw_speed_kmh: 0, speed_kmh: 0 });
+    if (snapshot.calibration.run?.phase !== "counted") closeCal();
   },
   calibration_count_start: () => {
     const r = snapshot.calibration.run;
@@ -1054,8 +1119,8 @@ const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) =>
   },
   seated_snooze: () => Object.assign(snapshot.seated, { show_card: false, pending_program_id: null }),
   eye_break_set_config: (c) => {
-    const { enabled, minutes, seconds, sound, pause_belt } = c;
-    Object.assign(snapshot.eye_break, { enabled, minutes, seconds, sound, pause_belt });
+    const { enabled, minutes, seconds, sound, pause_belt, fit_rests } = c;
+    Object.assign(snapshot.eye_break, { enabled, minutes, seconds, sound, pause_belt, fit_rests });
     if (!c.enabled) Object.assign(snapshot.eye_break, { phase: "idle", remaining_s: 0, holds_belt: false });
   },
   eye_break_skip: () =>
