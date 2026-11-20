@@ -1,1 +1,0 @@
-- The HUD and the eye-break cards now fit when Windows text size is larger.

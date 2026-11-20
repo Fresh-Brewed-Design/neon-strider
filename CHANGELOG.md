@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.41.5 (2026-11-20)
+
+### Fixed
+
+- The HUD and the eye-break cards now fit when Windows text size is larger.
+
 ## 1.41.4 (2026-11-20)
 
 ### Changed
