@@ -113,6 +113,7 @@ fn deck_snapshot(state: &OrchestratorState, max_incline_level: u8) -> DeckSnapsh
         max_incline_pct: incline_pct(max_incline_level, state),
         incline_offset_pct: state.incline_offset,
         incline_pct_per_level: state.tilt_multiplier,
+        target_note: state.current_target_note(),
     }
 }
 

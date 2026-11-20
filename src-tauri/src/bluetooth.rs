@@ -402,6 +402,9 @@ async fn listen_for_status(
             continue;
         }
         let Some(t) = protocol::parse_status(&data.value) else {
+            if let Some(reply) = protocol::parse_reply(&data.value) {
+                ORCHESTRATOR.lock().await.on_deck_reply(reply);
+            }
             continue;
         };
         crate::link::mark_frame();
