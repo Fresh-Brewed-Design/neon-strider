@@ -1,12 +1,13 @@
 import type { HeartRateSnapshot } from "../../ipc/bindings/HeartRateSnapshot";
 import type { StatusTone } from "../../state/linkStatus";
 
-/** The pill tone for HEART_LINK's status: cyan linked, yellow busy, red fault. */
+/** The pill tone for HEART_LINK's status: cyan linked, yellow busy or waiting for a watch to broadcast, red fault. */
 export function heartRateTone(h: HeartRateSnapshot): StatusTone {
   switch (h.status) {
     case "connected":
       return "ok";
     case "searching":
+    case "waiting":
       return "working";
     case "error":
       return "problem";

@@ -1041,7 +1041,8 @@ if (ghostPowerFlag === "waiting" || ghostPowerFlag === "linked") {
 }
 
 // HEART_LINK. ?heart=on picks a watch that reads about 112 bpm; scanning in
-// the preview finds one after a moment.
+// the preview finds one after a moment. ?heart=waiting picks one that is not
+// broadcasting yet.
 const PREVIEW_WATCH = { id: "AA:BB:CC:DD:EE:01", name: "Forerunner 265" };
 let heartTimer: ReturnType<typeof setInterval> | null = null;
 function pickHeartSensor(sensor: { id: string; name: string } | null) {
@@ -1058,6 +1059,16 @@ function pickHeartSensor(sensor: { id: string; name: string } | null) {
     });
     return;
   }
+  if (params.get("heart") === "waiting") {
+    Object.assign(h, {
+      sensor,
+      status: "waiting",
+      label: "WAITING",
+      message: "Waiting for heart rate. On a Garmin watch, start an activity or turn on Broadcast Heart Rate.",
+      bpm: null,
+    });
+    return;
+  }
   Object.assign(h, {
     sensor,
     status: "connected",
@@ -1070,7 +1081,7 @@ function pickHeartSensor(sensor: { id: string; name: string } | null) {
     publish();
   }, 1000);
 }
-if (params.get("heart") === "on") pickHeartSensor(PREVIEW_WATCH);
+if (params.get("heart") === "on" || params.get("heart") === "waiting") pickHeartSensor(PREVIEW_WATCH);
 
 // ?custom: the HUD sits where it was dragged (a custom position).
 if (params.has("custom")) snapshot.hud.custom = { dx: 400, top: 120 };

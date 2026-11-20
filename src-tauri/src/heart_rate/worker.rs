@@ -4,8 +4,8 @@
 //! (re)connects while a sensor is picked.
 
 use super::{
-    parse_measurement, status_label, status_message, HeartRateSensor, HeartRateSnapshot,
-    HeartStatus, HR_MEASUREMENT, HR_SERVICE,
+    describe_failure, parse_measurement, status_label, status_message, HeartRateSensor,
+    HeartRateSnapshot, HeartStatus, Step, HR_MEASUREMENT, HR_SERVICE, NOT_FOUND, NO_MEASUREMENT,
 };
 use crate::bluetooth::{find_central, ids_match, normalize_id};
 use crate::persistence;
@@ -57,6 +57,8 @@ struct Runtime {
     sensor: Option<HeartRateSensor>,
     status: HeartStatus,
     error: Option<String>,
+    /// The last failure's log line, so one reason logs once.
+    logged: Option<String>,
     /// A connect attempt is in flight.
     connecting: bool,
     /// Bumped on every pick or forget, so a stale link's tasks stand down.
@@ -157,6 +159,7 @@ fn drop_link(sensor: Option<HeartRateSensor>) {
         };
         rt.sensor = sensor;
         rt.error = None;
+        rt.logged = None;
         rt.bpm = None;
         rt.bpm_at = None;
         rt.failed_at = None;
@@ -276,52 +279,66 @@ async fn tick() {
                 .is_none_or(|t| t.elapsed() >= retry_after(rt.failures));
         if go {
             rt.connecting = true;
-            rt.status = HeartStatus::Searching;
+            // A sensor that is not broadcasting keeps showing as waiting
+            // while the retry looks, so the text does not flicker.
+            if rt.status != HeartStatus::Waiting {
+                rt.status = HeartStatus::Searching;
+            }
         }
         go.then(|| (rt.sensor.clone(), rt.generation))
     });
     let Some((Some(sensor), generation)) = start else {
         return;
     };
-    if let Err(why) = connect(&sensor, generation).await {
+    if let Err((step, raw)) = connect(&sensor, generation).await {
         with(|rt| {
             if rt.generation != generation {
                 return;
             }
             rt.connecting = false;
             rt.link = None;
-            if why == SCAN_BUSY {
+            if raw == SCAN_BUSY {
                 return;
             }
+            let failure = describe_failure(step, &raw);
             // Logged once per new reason, so an absent watch doesn't fill the log.
-            if rt.error.as_deref() != Some(why.as_str()) {
-                log::warn!("HEART_LINK: {}", why);
+            if rt.logged.as_deref() != Some(failure.log.as_str()) {
+                log::warn!("HEART_LINK: {}", failure.log);
+                rt.logged = Some(failure.log);
             }
-            rt.status = HeartStatus::Error;
-            rt.error = Some(why);
+            rt.status = if failure.waiting {
+                HeartStatus::Waiting
+            } else {
+                HeartStatus::Error
+            };
+            rt.error = Some(failure.message);
             rt.failed_at = Some(Instant::now());
             rt.failures = rt.failures.saturating_add(1);
         });
     }
 }
 
-async fn find(sensor: &HeartRateSensor) -> Result<Peripheral, String> {
+/// The step that failed and btleplug's raw reason.
+type StepError = (Step, String);
+
+async fn find(sensor: &HeartRateSensor) -> Result<Peripheral, StepError> {
     // The scan is shared with the treadmill link, which goes first: skip
     // this tick rather than wait, or stop its scan halfway.
     let Ok(_scan) = crate::bluetooth::SCAN_LOCK.try_lock() else {
-        return Err(SCAN_BUSY.to_string());
+        return Err((Step::Find, SCAN_BUSY.to_string()));
     };
-    let central = find_central().await.map_err(|e| e.to_string())?;
+    let fail = |e: &dyn std::fmt::Display| (Step::Find, e.to_string());
+    let central = find_central().await.map_err(|e| fail(&e))?;
     central
         .start_scan(ScanFilter {
             services: vec![short_uuid(HR_SERVICE)],
         })
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| fail(&e))?;
     let want = normalize_id(&sensor.id);
     let started = Instant::now();
     let found = loop {
-        let list = central.peripherals().await.map_err(|e| e.to_string())?;
+        let list = central.peripherals().await.map_err(|e| fail(&e))?;
         if let Some(p) = list
             .into_iter()
             .find(|p| ids_match(&normalize_id(&p.id().to_string()), &want))
@@ -334,25 +351,30 @@ async fn find(sensor: &HeartRateSensor) -> Result<Peripheral, String> {
         tokio::time::sleep(Duration::from_millis(500)).await;
     };
     let _ = central.stop_scan().await;
-    found.ok_or_else(|| {
-        "The heart rate sensor was not found; check Broadcast Heart Rate is on.".to_string()
-    })
+    found.ok_or_else(|| (Step::Find, NOT_FOUND.to_string()))
 }
 
-async fn connect(sensor: &HeartRateSensor, generation: u64) -> Result<(), String> {
+async fn connect(sensor: &HeartRateSensor, generation: u64) -> Result<(), StepError> {
     let p = find(sensor).await?;
-    p.connect().await.map_err(|e| e.to_string())?;
-    p.discover_services().await.map_err(|e| e.to_string())?;
+    p.connect()
+        .await
+        .map_err(|e| (Step::Connect, e.to_string()))?;
+    p.discover_services()
+        .await
+        .map_err(|e| (Step::DiscoverServices, e.to_string()))?;
     let measurement = short_uuid(HR_MEASUREMENT);
     let characteristic = p
         .characteristics()
         .into_iter()
         .find(|c| c.uuid == measurement)
-        .ok_or_else(|| "The device has no heart rate measurement.".to_string())?;
+        .ok_or_else(|| (Step::DiscoverServices, NO_MEASUREMENT.to_string()))?;
     p.subscribe(&characteristic)
         .await
-        .map_err(|e| e.to_string())?;
-    let mut stream = p.notifications().await.map_err(|e| e.to_string())?;
+        .map_err(|e| (Step::Subscribe, e.to_string()))?;
+    let mut stream = p
+        .notifications()
+        .await
+        .map_err(|e| (Step::Subscribe, e.to_string()))?;
 
     let current = with(|rt| {
         let current = rt.generation == generation;
@@ -362,6 +384,7 @@ async fn connect(sensor: &HeartRateSensor, generation: u64) -> Result<(), String
             rt.status = HeartStatus::Connected;
             rt.error = None;
             rt.failures = 0;
+            rt.logged = None;
         }
         current
     });
@@ -397,7 +420,9 @@ async fn connect(sensor: &HeartRateSensor, generation: u64) -> Result<(), String
             log::info!("HEART_LINK: sensor went away");
             rt.link = None;
             rt.bpm = None;
-            rt.status = HeartStatus::Searching;
+            // The watch stopped broadcasting: waiting, not a fault.
+            rt.status = HeartStatus::Waiting;
+            rt.error = None;
             rt.failed_at = Some(Instant::now());
             rt.failures = 1;
         });
