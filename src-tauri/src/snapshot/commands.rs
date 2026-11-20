@@ -5,6 +5,7 @@ use super::{
     weekly, Command, HudConfig, HudWidget,
 };
 use crate::bluetooth::{self, ORCHESTRATOR};
+use crate::calibration;
 use crate::engine::OrchestratorState;
 use crate::programs;
 use crate::strava;
@@ -248,6 +249,30 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         }
         Command::TrafficOpenFolder => crate::traffic::open_folder(&app),
 
+        Command::CalibrationSetWizard { on } => {
+            blocking(move || calibration::set_wizard(&app, on)).await
+        }
+        Command::CalibrationRunStart { target_kmh } => {
+            if !super::emitter::read_connection().await.0 {
+                return Err("Connect the treadmill first.".to_string());
+            }
+            calibration::run_start(&mut *ORCHESTRATOR.lock().await, target_kmh)
+        }
+        Command::CalibrationCountStart => {
+            let raw = ORCHESTRATOR.lock().await.hardware_speed;
+            calibration::count_start(raw)
+        }
+        Command::CalibrationCountStop => {
+            let raw = ORCHESTRATOR.lock().await.hardware_speed;
+            calibration::count_stop(raw)
+        }
+        Command::CalibrationRunCount { count } => {
+            calibration::count(&*ORCHESTRATOR.lock().await, &count)
+        }
+        Command::CalibrationRunClose => {
+            calibration::close();
+            Ok(())
+        }
         Command::GhostPodSet { on } => {
             blocking(move || crate::ghost_pod::set_enabled(&app, on)).await
         }

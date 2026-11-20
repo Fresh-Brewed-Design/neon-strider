@@ -51,6 +51,8 @@ pub struct AppSnapshot {
     pub traffic: crate::traffic::TrafficSnapshot,
     /// Lights out: stop the belt when the PC's display turns off.
     pub lights_out: LightsOutSnapshot,
+    /// The guided calibration (Labs): its switch, limits and any run.
+    pub calibration: crate::calibration::CalibrationSnapshot,
     /// Labs: GHOST_POD, the PC as a foot pod for a watch (off by default).
     pub ghost_pod: crate::ghost_pod::GhostPodSnapshot,
 }
@@ -597,6 +599,25 @@ pub enum Command {
     LightsOutSetConfig {
         enabled: bool,
     },
+    /// Labs: the guided calibration wizard on or off (persisted, off by default).
+    CalibrationSetWizard {
+        on: bool,
+    },
+    /// RUN (or REPEAT) on a target speed: set the belt to `target_kmh` (deck
+    /// km/h) and start it if it is still. The press is his.
+    CalibrationRunStart {
+        target_kmh: f32,
+    },
+    /// COUNT: start the run's clock (refused while the belt is still).
+    CalibrationCountStart,
+    /// DONE: stop the clock (refused if the belt stopped or changed speed).
+    CalibrationCountStop,
+    /// What he counted; the point appears in `calibration.run.result`.
+    CalibrationRunCount {
+        count: crate::calibration::CalibrationCount,
+    },
+    /// Close the run (after saving its point, or to cancel). The belt keeps going.
+    CalibrationRunClose,
     /// Labs: GHOST_POD on (`on`) or off. On, the PC advertises as a Bluetooth
     /// foot pod and sends the belt speed to a paired watch once a second.
     GhostPodSet {
