@@ -66,8 +66,12 @@ pub enum HeartStatus {
     Off,
     /// A sensor is picked and the link is being made.
     Searching,
+    /// A sensor is picked but not broadcasting yet (a watch outside an
+    /// activity); the retry links it as soon as it starts.
+    Waiting,
     /// Linked and subscribed.
     Connected,
+    /// A real failure, such as Bluetooth off or the adapter missing.
     Error,
 }
 
@@ -90,11 +94,105 @@ pub struct HeartRateSnapshot {
     pub found: Vec<HeartRateSensor>,
 }
 
+/// Shown while a picked sensor does not answer. A Garmin watch only
+/// broadcasts during an activity or with Broadcast Heart Rate on.
+pub const WAITING_MESSAGE: &str =
+    "Waiting for heart rate. On a Garmin watch, start an activity or turn on Broadcast Heart Rate.";
+
+/// The raw reason when a linked device has no heart rate measurement.
+pub const NO_MEASUREMENT: &str = "no heart rate measurement";
+/// The raw reason when the picked sensor is not in range.
+pub const NOT_FOUND: &str = "sensor not found";
+
+/// The step of making the link that failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Step {
+    Find,
+    Connect,
+    DiscoverServices,
+    Subscribe,
+}
+
+impl Step {
+    /// The step's name in the log.
+    pub fn name(self) -> &'static str {
+        match self {
+            Step::Find => "find",
+            Step::Connect => "connect",
+            Step::DiscoverServices => "discover services",
+            Step::Subscribe => "subscribe",
+        }
+    }
+}
+
+/// A failed step, in plain English.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Failure {
+    /// The sensor is not broadcasting yet: not a fault, and the retry links it.
+    pub waiting: bool,
+    /// The sentence the status shows.
+    pub message: String,
+    /// The log line: the step and the plain reason.
+    pub log: String,
+}
+
+/// Turn a btleplug error from `step` into a [`Failure`]. A picked sensor that
+/// cannot be found or connected is a watch that is not broadcasting, so that
+/// is `waiting`; Bluetooth being off or missing, or a sensor that links but
+/// will not share heart rate, is a real fault. Pure.
+pub fn describe_failure(step: Step, raw: &str) -> Failure {
+    use crate::link::LinkErrorKind as K;
+    let described = crate::link::describe(raw);
+    let (waiting, message, reason) = match described.kind {
+        K::AdapterOff | K::AdapterMissing | K::Permission => {
+            (false, described.message, "Bluetooth is not available")
+        }
+        _ if raw.to_lowercase().contains(NO_MEASUREMENT) => (
+            false,
+            "The picked device has no heart rate measurement. Pick a different sensor.".to_string(),
+            "the device has no heart rate measurement",
+        ),
+        kind => match step {
+            Step::Find if kind == K::NotFound => (
+                true,
+                WAITING_MESSAGE.to_string(),
+                "the sensor is not broadcasting",
+            ),
+            Step::Find => (
+                false,
+                "Could not scan for the heart rate sensor. Try again.".to_string(),
+                "the scan failed",
+            ),
+            Step::Connect => (
+                true,
+                WAITING_MESSAGE.to_string(),
+                "the sensor did not accept the connection",
+            ),
+            Step::DiscoverServices => (
+                false,
+                "Could not read the services of the heart rate sensor. Try again.".to_string(),
+                "the sensor's services could not be read",
+            ),
+            Step::Subscribe => (
+                false,
+                "Could not start readings from the heart rate sensor. Try again.".to_string(),
+                "the sensor would not start sending readings",
+            ),
+        },
+    };
+    Failure {
+        waiting,
+        message,
+        log: format!("{} failed: {reason} ({raw})", step.name()),
+    }
+}
+
 /// The status word, in the deck's voice.
 pub fn status_label(status: HeartStatus) -> &'static str {
     match status {
         HeartStatus::Off => "OFFLINE",
         HeartStatus::Searching => "SEEKING",
+        HeartStatus::Waiting => "WAITING",
         HeartStatus::Connected => "LINKED",
         HeartStatus::Error => "FAULT",
     }
@@ -110,6 +208,7 @@ pub fn status_message(status: HeartStatus, error: Option<&str>, reading: bool) -
         HeartStatus::Searching => {
             "Looking for the sensor; on a watch, switch on Broadcast Heart Rate.".to_string()
         }
+        HeartStatus::Waiting => WAITING_MESSAGE.to_string(),
         HeartStatus::Connected if reading => "Reading heart rate from the sensor.".to_string(),
         HeartStatus::Connected => "Linked to the sensor and waiting for a reading.".to_string(),
         HeartStatus::Error => error.unwrap_or("The heart rate link stopped.").to_string(),
@@ -175,6 +274,7 @@ mod tests {
         for s in [
             HeartStatus::Off,
             HeartStatus::Searching,
+            HeartStatus::Waiting,
             HeartStatus::Connected,
             HeartStatus::Error,
         ] {
@@ -185,5 +285,78 @@ mod tests {
             status_message(HeartStatus::Error, Some("No adapter"), false),
             "No adapter"
         );
+    }
+
+    #[test]
+    fn a_sensor_that_is_not_broadcasting_is_waiting_not_a_fault() {
+        let missing = describe_failure(Step::Find, NOT_FOUND);
+        assert!(missing.waiting);
+        assert_eq!(missing.message, WAITING_MESSAGE);
+        assert!(missing.log.starts_with("find failed: "));
+        for raw in [
+            "Not connected",
+            "Device not found",
+            "timed out",
+            "Other error: x",
+        ] {
+            let f = describe_failure(Step::Connect, raw);
+            assert!(f.waiting, "{raw}");
+            assert_eq!(f.message, WAITING_MESSAGE);
+            assert!(f.log.starts_with("connect failed: "));
+            assert!(f.log.contains(raw));
+        }
+        assert!(!status_label(HeartStatus::Waiting).contains("FAULT"));
+    }
+
+    #[test]
+    fn bluetooth_problems_are_real_faults_at_every_step() {
+        for step in [
+            Step::Find,
+            Step::Connect,
+            Step::DiscoverServices,
+            Step::Subscribe,
+        ] {
+            let off = describe_failure(step, "The Bluetooth radio is powered off");
+            assert!(!off.waiting);
+            assert_eq!(
+                off.message,
+                "Bluetooth is off. Turn it on in Windows settings."
+            );
+            let none = describe_failure(step, "No Bluetooth adapters found");
+            assert!(!none.waiting);
+            assert_eq!(none.message, "No Bluetooth adapter found on this PC.");
+            assert!(none.log.starts_with(&format!("{} failed: ", step.name())));
+        }
+    }
+
+    #[test]
+    fn a_linked_sensor_that_will_not_share_heart_rate_is_a_fault() {
+        let services = describe_failure(Step::DiscoverServices, "Other error: gatt");
+        assert!(!services.waiting);
+        assert!(services.message.contains("services"));
+        assert!(services.log.starts_with("discover services failed: "));
+        let sub = describe_failure(Step::Subscribe, "Other error: gatt");
+        assert!(!sub.waiting);
+        assert!(sub.log.starts_with("subscribe failed: "));
+        let none = describe_failure(Step::DiscoverServices, NO_MEASUREMENT);
+        assert!(!none.waiting);
+        assert!(none.message.contains("no heart rate measurement"));
+        let scan = describe_failure(Step::Find, "Other error: scan");
+        assert!(!scan.waiting);
+    }
+
+    #[test]
+    fn messages_are_short_and_have_no_dashes() {
+        let msgs = [
+            WAITING_MESSAGE.to_string(),
+            describe_failure(Step::Find, "Other error: x").message,
+            describe_failure(Step::DiscoverServices, "x").message,
+            describe_failure(Step::Subscribe, "x").message,
+            describe_failure(Step::Subscribe, NO_MEASUREMENT).message,
+        ];
+        for m in msgs {
+            assert!(!m.contains('\u{2014}') && !m.contains('\u{2013}'), "{m}");
+            assert!(m.len() < 120, "{m}");
+        }
     }
 }

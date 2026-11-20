@@ -1,0 +1,1 @@
+- A heart rate sensor that is not broadcasting yet, such as a Garmin watch outside an activity, now shows HEART_LINK // WAITING with what to do, instead of FAULT. It links by itself once the watch starts broadcasting. FAULT is kept for real errors such as Bluetooth being off.
