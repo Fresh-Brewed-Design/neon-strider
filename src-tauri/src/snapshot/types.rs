@@ -191,6 +191,9 @@ pub struct DeckSnapshot {
     /// incline_pct = level * incline_pct_per_level + incline_offset_pct.
     pub incline_offset_pct: f32,
     pub incline_pct_per_level: f32,
+    /// The deck changed or refused the last target ("asked X, got Y"), for a
+    /// few seconds; the HUD shows it under the speed controls.
+    pub target_note: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS)]
