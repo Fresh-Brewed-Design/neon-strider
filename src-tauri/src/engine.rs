@@ -451,6 +451,7 @@ pub(crate) fn slow_floor_config() -> persistence::AppConfig {
         speed,
         stride_length_cm: 60.0,
         distance_scale,
+        runs: 1,
     };
     persistence::AppConfig {
         calibration_points: vec![point(0.6, 0.5), point(6.0, 0.8)],
@@ -2783,6 +2784,7 @@ mod tests {
             speed,
             stride_length_cm: stride,
             distance_scale: scale,
+            runs: 1,
         }
     }
 

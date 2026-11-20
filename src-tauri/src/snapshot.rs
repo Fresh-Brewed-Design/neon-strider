@@ -386,11 +386,13 @@ mod tests {
                     speed: 1.0,
                     stride_length_cm: 70.0,
                     distance_scale: 2.0,
+                    runs: 1,
                 },
                 CalibrationPoint {
                     speed: 10.0,
                     stride_length_cm: 70.0,
                     distance_scale: 2.0,
+                    runs: 1,
                 },
             ],
             max_speed: 12.0,

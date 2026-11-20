@@ -876,11 +876,13 @@ mod tests {
                     speed: 2.0,
                     stride_length_cm: 60.0,
                     distance_scale: 0.9,
+                    runs: 1,
                 },
                 protocol::CalibrationPoint {
                     speed: 1.0,
                     stride_length_cm: 55.0,
                     distance_scale: 0.8,
+                    runs: 1,
                 },
             ],
             min_speed: 1.0,
