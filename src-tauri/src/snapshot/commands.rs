@@ -299,6 +299,9 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             Ok(())
         }
         Command::DeckProfileSweepStart => ORCHESTRATOR.lock().await.profile_sweep_start(),
+        Command::DeckProfileSweepInclineStart => {
+            ORCHESTRATOR.lock().await.profile_sweep_incline_start()
+        }
         Command::DeckProfileSweepStop => {
             ORCHESTRATOR.lock().await.profile_sweep_stop();
             Ok(())

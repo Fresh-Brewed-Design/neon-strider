@@ -48,7 +48,7 @@ const STOP_REISSUE_INTERVAL: Duration = Duration::from_secs(1);
 /// ...for at most this long, if the deck never reports the belt at rest.
 const STOP_TIMEOUT: Duration = Duration::from_secs(20);
 /// Incline levels above this are never sent, whatever the settings say.
-const INCLINE_LEVEL_LIMIT: u8 = 20;
+pub(crate) const INCLINE_LEVEL_LIMIT: u8 = 20;
 /// A sample is recorded at most this often...
 const SAMPLE_EVERY: Duration = Duration::from_secs(1);
 /// ...and the session row rewritten at most this often, so a crash loses little.
