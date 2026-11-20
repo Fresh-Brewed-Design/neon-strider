@@ -14,8 +14,6 @@ Some caveats apply to all of it:
   (oxygen cost = 0.1 × speed + 1.8 × speed × grade + 3.5, speed in m/min), not measurements. They
   are less accurate below about 3 km/h. The app's incline is a percent grade once calibrated
   (System, Calibration), so the equation's grade is the value shown.
-- None of this is medical advice. Anyone with heart disease or diabetes medication should check
-  with their doctor before exercising straight after meals.
 
 ## Post-meal
 
@@ -123,8 +121,7 @@ steady."
   fit runner may need a faster speed (edit the program) and a beginner a lower incline.
 - The warm-up and cool-down follow the same protocol. No step starts a still belt: the belt
   moves for the whole program, so it starts with one press, like any program.
-- Two or three sessions a week with a day between is what the studies used. This is hard
-  exercise: anyone with heart disease or risk factors should check with their doctor first.
+- Two or three sessions a week with a day between is what the studies used.
 
 **In the app:** "Four hard 4-minute climbs with easy walks between train VO2 max."
 
