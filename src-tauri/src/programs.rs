@@ -37,6 +37,22 @@ const MAX_STEPS: usize = 20;
 /// Below this a speed means "belt held still" (same threshold the engine uses).
 const MOVING_KMH: f32 = 0.05;
 const REST_WARNING_S: f64 = 30.0;
+/// A step with a heart rate zone changes the speed by this much at a time:
+/// one deck step, the smallest change the belt makes.
+const ZONE_TRIM_KMH: f32 = 0.1;
+/// No more often than this: a pulse takes 15 to 30 s to settle after the belt
+/// changes, so trimming faster would chase a reading that hasn't caught up.
+const ZONE_TRIM_EVERY: Duration = Duration::from_secs(20);
+/// Never further than this from the step's speed: the zone fine-tunes the
+/// speed the user chose for the step, and a pulse it can't reach within
+/// 1 km/h means the step doesn't suit the zone, not that the belt should run
+/// at a speed the user never picked.
+const ZONE_TRIM_RANGE_KMH: f32 = 1.0;
+/// A zone's lowest allowed bound, in % of maximum heart rate: below 30 % is
+/// resting heart rate for most people, which walking can't hold down to.
+const ZONE_MIN_PCT: f32 = 30.0;
+/// The highest: a zone can't go above the maximum heart rate itself.
+const ZONE_MAX_PCT: f32 = 100.0;
 /// A start at the treadmill counts once the deck has reported the belt moving
 /// (Starting or Running) for this long without a break, after reporting it
 /// still. The deck answers a status poll every 600 ms, so this spans at least
@@ -78,6 +94,28 @@ pub struct ProgramStep {
     pub speed_kmh: f32,
     /// Calibrated incline percentage as shown to the user.
     pub incline_pct: f32,
+    /// Hold this heart rate zone while the step walks: the speed is trimmed
+    /// around `speed_kmh` to keep the pulse inside it. None = plain step.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub zone: Option<HeartZone>,
+}
+
+/// A heart rate zone as percentages of the maximum heart rate, e.g. VO2 max
+/// at 85 to 95.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
+pub struct HeartZone {
+    pub low_pct: f32,
+    pub high_pct: f32,
+}
+
+impl HeartZone {
+    /// The zone's bounds in beats per minute for a maximum heart rate.
+    fn bounds_bpm(self, max_bpm: u32) -> (f32, f32) {
+        let max = max_bpm as f32;
+        (self.low_pct / 100.0 * max, self.high_pct / 100.0 * max)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
@@ -202,6 +240,8 @@ pub struct ProgramRun {
     /// Watches for a start at the treadmill while the run holds the belt still
     /// (paused, waiting for GO, or resting). Not saved.
     pub deck_start: DeckStartWatch,
+    /// When the speed was last trimmed to hold a heart rate zone. Not saved.
+    pub zone_trimmed_at: Option<Instant>,
 }
 
 /// What the deck has reported since the run began holding the belt still: a
@@ -367,6 +407,21 @@ fn validate_program(p: &Program, min_speed: f32, max_speed: f32) -> Result<(), S
         if !ok(s.incline_pct) {
             return Err(format!("Step {}: incline must be zero or more", n));
         }
+        if let Some(z) = s.zone {
+            if s.speed_kmh == 0.0 {
+                return Err(format!("Step {}: a zone needs a walking speed", n));
+            }
+            if !(z.low_pct.is_finite() && z.high_pct.is_finite())
+                || z.low_pct < ZONE_MIN_PCT
+                || z.high_pct > ZONE_MAX_PCT
+                || z.low_pct >= z.high_pct
+            {
+                return Err(format!(
+                    "Step {}: zone must be between 30 and 100 % of maximum heart rate, low below high",
+                    n
+                ));
+            }
+        }
     }
     if let Some(r) = p.repeat_every_minutes {
         if !ok(r) {
@@ -398,6 +453,7 @@ pub fn seed_programs() -> Vec<Program> {
         duration_minutes: minutes,
         speed_kmh,
         incline_pct,
+        zone: None,
     };
     vec![
         program(
@@ -436,6 +492,7 @@ fn vo2_max_program(id: u32) -> Program {
         duration_minutes: Some(minutes),
         speed_kmh,
         incline_pct,
+        zone: None,
     };
     let mut steps = vec![step(5.0, 4.5, 0.0)];
     for _ in 0..4 {
@@ -473,6 +530,7 @@ pub(crate) fn classic_programs() -> Vec<Program> {
             duration_minutes: minutes,
             speed_kmh,
             incline_pct,
+            zone: None,
         }],
         repeat_every_minutes: repeat,
         note: None,
@@ -841,6 +899,7 @@ impl OrchestratorState {
             restored: false,
             saved_at: None,
             deck_start: DeckStartWatch::default(),
+            zone_trimmed_at: None,
         };
         self.set_program_intent_from(&run);
         self.program = Some(run);
@@ -1111,6 +1170,8 @@ impl OrchestratorState {
             return Some(ProgramToast::WaitingForGo(why));
         }
 
+        self.trim_speed_to_zone(&mut run, now);
+
         let mut warning = None;
         if run.phase == ProgramPhase::Resting && !run.rest_warned {
             if let Some(len) = run.phase_len_s() {
@@ -1126,6 +1187,59 @@ impl OrchestratorState {
         }
         self.program = Some(run);
         warning
+    }
+
+    /// Hold the step's heart rate zone: above it slow the belt a notch, below
+    /// it speed it up, within a range around the step's speed. Heart rate only
+    /// trims a belt that is already running: it never starts, resumes or
+    /// stops it, and a missing reading changes nothing.
+    fn trim_speed_to_zone(&mut self, run: &mut ProgramRun, now: Instant) {
+        if run.phase != ProgramPhase::Walking
+            || run.paused
+            || run.wait.is_some()
+            || self.last_status != MachineStatus::Running
+        {
+            return;
+        }
+        let Some(step) = run.program.steps.get(run.step_index) else {
+            return;
+        };
+        let (Some(zone), Some(bpm)) = (step.zone, self.heart_bpm) else {
+            return;
+        };
+        if step.speed_kmh < MOVING_KMH
+            || run
+                .zone_trimmed_at
+                .is_some_and(|at| now.saturating_duration_since(at) < ZONE_TRIM_EVERY)
+        {
+            return;
+        }
+        let (low, high) = zone.bounds_bpm(self.max_heart_rate);
+        let bpm = bpm as f32;
+        let delta = if bpm > high {
+            -ZONE_TRIM_KMH
+        } else if bpm < low {
+            ZONE_TRIM_KMH
+        } else {
+            return;
+        };
+        // Step speeds are calibrated km/h, so the belt's limits are too.
+        let floor = (step.speed_kmh - ZONE_TRIM_RANGE_KMH).max(self.min_physical_speed());
+        let ceiling =
+            (step.speed_kmh + ZONE_TRIM_RANGE_KMH).min(self.to_physical_speed(self.top_hw_speed()));
+        // A speed set by hand outside the range is the user's choice: the zone
+        // leaves it alone rather than pull it back by up to a km/h at once.
+        if run.target.speed < floor - 0.001 || run.target.speed > ceiling + 0.001 {
+            return;
+        }
+        let speed = (run.target.speed + delta).clamp(floor, ceiling);
+        run.zone_trimmed_at = Some(now);
+        if (speed - run.target.speed).abs() < 0.001 {
+            return;
+        }
+        log::info!("Heart rate zone: {} bpm, speed {:.1} km/h", bpm, speed);
+        run.target.speed = speed;
+        self.set_program_intent_from(run);
     }
 
     /// Adjust the live step target (not saved to the program). Returns false
@@ -1379,6 +1493,7 @@ impl OrchestratorState {
             restored: true,
             saved_at: now.checked_sub(Duration::from_millis(age as u64)),
             deck_start: DeckStartWatch::default(),
+            zone_trimmed_at: None,
         };
         self.set_program_intent_from(&run);
         self.program = Some(run);
@@ -1676,6 +1791,7 @@ mod tests {
             duration_minutes: m,
             speed_kmh: kmh,
             incline_pct: 0.0,
+            zone: None,
         };
         let mut s = state();
         s.programs.push(Program {
@@ -1741,11 +1857,13 @@ mod tests {
                     duration_minutes: Some(2.0),
                     speed_kmh: 3.0,
                     incline_pct: 0.0,
+                    zone: None,
                 },
                 ProgramStep {
                     duration_minutes: Some(2.0),
                     speed_kmh: 5.0,
                     incline_pct: 2.0,
+                    zone: None,
                 },
             ],
             repeat_every_minutes: Some(10.0),
@@ -1883,6 +2001,7 @@ mod tests {
                 duration_minutes: Some(1.0),
                 speed_kmh: 0.0,
                 incline_pct: 0.0,
+                zone: None,
             }],
             repeat_every_minutes: None,
             note: None,
@@ -1994,6 +2113,7 @@ mod tests {
                 duration_minutes: Some(5.0),
                 speed_kmh: 3.0,
                 incline_pct: 2.0,
+                zone: None,
             }],
             repeat_every_minutes: None,
             note: None,
@@ -2063,6 +2183,7 @@ mod tests {
                 duration_minutes: None,
                 speed_kmh: 3.0,
                 incline_pct: 0.0,
+                zone: None,
             },
         );
         assert!(err(&p).contains("Step 1"));
@@ -2112,6 +2233,7 @@ mod tests {
             duration_minutes: Some(5.0),
             speed_kmh: 4.0,
             incline_pct: 4.0,
+            zone: None,
         });
         moving(&mut s, 3.0, 0);
         let t0 = Instant::now();
@@ -2377,11 +2499,13 @@ mod tests {
                     duration_minutes: Some(1.0),
                     speed_kmh: 3.0,
                     incline_pct: 0.0,
+                    zone: None,
                 },
                 ProgramStep {
                     duration_minutes: Some(5.0),
                     speed_kmh: 4.0,
                     incline_pct: 0.0,
+                    zone: None,
                 },
             ],
             repeat_every_minutes: None,
@@ -2472,11 +2596,13 @@ mod tests {
                     duration_minutes: Some(1.0),
                     speed_kmh: 0.0,
                     incline_pct: 0.0,
+                    zone: None,
                 },
                 ProgramStep {
                     duration_minutes: Some(2.0),
                     speed_kmh: 3.0,
                     incline_pct: 0.0,
+                    zone: None,
                 },
             ],
             repeat_every_minutes: None,
@@ -2557,6 +2683,7 @@ mod tests {
             duration_minutes: Some(5.0),
             speed_kmh: 5.0,
             incline_pct: 0.0,
+            zone: None,
         });
         s.last_status = MachineStatus::Running;
         let t0 = Instant::now();
@@ -2809,11 +2936,13 @@ mod tests {
                     duration_minutes: Some(1.0),
                     speed_kmh: 3.0,
                     incline_pct: 0.0,
+                    zone: None,
                 },
                 ProgramStep {
                     duration_minutes: Some(1.0),
                     speed_kmh: 0.0,
                     incline_pct: 0.0,
+                    zone: None,
                 },
             ],
             repeat_every_minutes: None,
@@ -3271,5 +3400,107 @@ mod tests {
         assert!(!pauses_belt(&sent), "{sent:?}");
         assert_eq!(s.active_program().unwrap().phase, ProgramPhase::Resting);
         assert!((manual(&s).speed - 1.0).abs() < 0.05, "{:?}", manual(&s));
+    }
+
+    /// A 20 minute step at 5 km/h holding 85 to 95 % of 200 bpm (170 to 190).
+    fn zone_state(t0: Instant) -> OrchestratorState {
+        let mut s = state();
+        s.max_heart_rate = 200;
+        s.programs.push(Program {
+            id: 9,
+            name: "Zone".to_string(),
+            steps: vec![ProgramStep {
+                duration_minutes: Some(20.0),
+                speed_kmh: 5.0,
+                incline_pct: 0.0,
+                zone: Some(HeartZone {
+                    low_pct: 85.0,
+                    high_pct: 95.0,
+                }),
+            }],
+            repeat_every_minutes: None,
+            note: None,
+        });
+        moving(&mut s, 3.0, 0);
+        s.run_program(9, t0).unwrap();
+        s
+    }
+
+    fn program_speed(s: &OrchestratorState) -> f32 {
+        s.program_intent.expect("program intent").speed
+    }
+
+    #[test]
+    fn a_zone_slows_the_belt_above_it_and_speeds_it_up_below_it() {
+        let t0 = Instant::now();
+        let mut s = zone_state(t0);
+        s.heart_bpm = Some(195);
+        run_ticks(&mut s, t0, 0, 21);
+        assert!(program_speed(&s) < 5.0);
+        let slowed = program_speed(&s);
+        s.heart_bpm = Some(150);
+        run_ticks(&mut s, t0, 21, 80);
+        assert!(program_speed(&s) > slowed);
+        // Inside the zone nothing changes.
+        let held = program_speed(&s);
+        s.heart_bpm = Some(180);
+        run_ticks(&mut s, t0, 80, 200);
+        assert_eq!(program_speed(&s), held);
+    }
+
+    #[test]
+    fn a_zone_trims_slowly_and_within_a_range_of_the_step() {
+        let t0 = Instant::now();
+        let mut s = zone_state(t0);
+        s.heart_bpm = Some(195);
+        run_ticks(&mut s, t0, 0, 19);
+        assert_eq!(program_speed(&s), 5.0 - ZONE_TRIM_KMH);
+        run_ticks(&mut s, t0, 19, 900);
+        assert!((program_speed(&s) - (5.0 - ZONE_TRIM_RANGE_KMH)).abs() < 0.001);
+    }
+
+    #[test]
+    fn a_zone_changes_nothing_without_a_reading_or_a_running_belt() {
+        let t0 = Instant::now();
+        let mut s = zone_state(t0);
+        s.heart_bpm = None;
+        run_ticks(&mut s, t0, 0, 60);
+        assert_eq!(program_speed(&s), 5.0);
+        s.heart_bpm = Some(120);
+        s.last_status = MachineStatus::Paused;
+        run_ticks(&mut s, t0, 60, 120);
+        assert_eq!(program_speed(&s), 5.0);
+    }
+
+    #[test]
+    fn heart_rate_never_moves_a_paused_program() {
+        let t0 = Instant::now();
+        let mut s = zone_state(t0);
+        s.pause_program(t0 + secs(1)).unwrap();
+        s.heart_bpm = Some(120);
+        run_ticks(&mut s, t0, 1, 120);
+        assert!(s.active_program().unwrap().paused);
+        assert_eq!(s.active_program().unwrap().speed_kmh, 5.0);
+    }
+
+    #[test]
+    fn zones_are_checked_when_saving() {
+        let step = |speed_kmh: f32, low_pct: f32, high_pct: f32| ProgramStep {
+            duration_minutes: Some(5.0),
+            speed_kmh,
+            incline_pct: 0.0,
+            zone: Some(HeartZone { low_pct, high_pct }),
+        };
+        let program = |s: ProgramStep| Program {
+            id: 0,
+            name: "Z".to_string(),
+            steps: vec![s],
+            repeat_every_minutes: None,
+            note: None,
+        };
+        assert!(validate_program(&program(step(4.0, 85.0, 95.0)), 0.6, 12.0).is_ok());
+        assert!(validate_program(&program(step(4.0, 95.0, 85.0)), 0.6, 12.0).is_err());
+        assert!(validate_program(&program(step(4.0, 85.0, 120.0)), 0.6, 12.0).is_err());
+        assert!(validate_program(&program(step(0.0, 85.0, 95.0)), 0.6, 12.0).is_err());
     }
 }

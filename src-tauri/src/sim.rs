@@ -729,7 +729,9 @@ impl Rig {
 mod tests {
     use super::*;
     use crate::engine::DeckAction;
-    use crate::programs::{Program, ProgramPhase, ProgramStep, ProgramToast, ProgramWait};
+    use crate::programs::{
+        HeartZone, Program, ProgramPhase, ProgramStep, ProgramToast, ProgramWait,
+    };
 
     const POST_MEAL: u32 = 1; // 10 min at 4.0 km/h, 10 %
     const WORKDAY: u32 = 2; // 5 min at 3.0 km/h, every 30 min
@@ -1001,6 +1003,125 @@ mod tests {
         assert_eq!(r.program().wait, None);
     }
 
+    /// A 20 minute step at 4.0 km/h holding 85 to 95 % of 200 bpm (170 to 190).
+    const ZONE: u32 = 9;
+    fn zone_rig() -> Rig {
+        let mut r = Rig::new();
+        r.state.max_heart_rate = 200;
+        r.state.programs.push(Program {
+            id: ZONE,
+            name: "Zone".into(),
+            steps: vec![ProgramStep {
+                duration_minutes: Some(20.0),
+                speed_kmh: 4.0,
+                incline_pct: 0.0,
+                zone: Some(HeartZone {
+                    low_pct: 85.0,
+                    high_pct: 95.0,
+                }),
+            }],
+            repeat_every_minutes: None,
+            note: None,
+        });
+        r.run(1.0);
+        r
+    }
+
+    fn controls(sent: &[PacketKind]) -> Vec<PacketKind> {
+        sent.iter()
+            .copied()
+            .filter(|k| {
+                matches!(
+                    k,
+                    PacketKind::HandshakeReady
+                        | PacketKind::HandshakeStart
+                        | PacketKind::HandshakePausePrime
+                        | PacketKind::HandshakePause
+                        | PacketKind::AtomicAction
+                )
+            })
+            .collect()
+    }
+
+    /// A zone step trims a running belt's speed down above the zone and up
+    /// below it, by targets alone: no start, pause or stop.
+    #[test]
+    fn a_heart_rate_zone_trims_a_running_belt_and_sends_only_targets() {
+        let mut r = zone_rig();
+        r.run_program(ZONE);
+        r.run(20.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        let mark = r.mark();
+        r.state.heart_bpm = Some(195);
+        r.run(70.0);
+        assert!(
+            r.deck.speed_kmh() < 3.95,
+            "slowed: {} km/h",
+            r.deck.speed_kmh()
+        );
+        let slowed = r.deck.speed_kmh();
+        r.state.heart_bpm = Some(150);
+        r.run(70.0);
+        assert!(
+            r.deck.speed_kmh() > slowed + 0.05,
+            "sped up: {} km/h",
+            r.deck.speed_kmh()
+        );
+        assert_eq!(controls(&r.commands_since(mark)), vec![]);
+    }
+
+    /// The deck is paused at the treadmill just as the zone trims the speed up
+    /// (before the Paused status arrives): the higher target never resumes it.
+    #[test]
+    fn a_zone_trim_racing_a_pause_at_the_treadmill_never_resumes_the_belt() {
+        let mut r = zone_rig();
+        r.run_program(ZONE);
+        r.run(20.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        let mark = r.mark();
+        let t = r.t;
+        r.deck.press_pause(t);
+        r.state.heart_bpm = Some(120);
+        r.state.set_test_now(t);
+        r.state.tick_program(t);
+        assert!(
+            r.state.program_intent.expect("intent").speed > 4.05,
+            "the trim raised the target"
+        );
+        // The Paused frame lands before the engine sends the raised target.
+        let frame = r.deck.current_frame();
+        r.rx(&frame);
+        assert_eq!(r.state.last_status, protocol::MachineStatus::Paused);
+        r.run(60.0);
+        assert_eq!(r.deck.status_code(), 10, "still paused");
+        assert!(
+            !app_starts(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+    }
+
+    /// A zone step on a still belt (the program waits for GO) with a low heart
+    /// rate leaves the belt still.
+    #[test]
+    fn a_zone_never_starts_a_still_belt() {
+        let mut r = zone_rig();
+        r.run_program(ZONE);
+        r.run(20.0);
+        r.press(DeckAction::Pause);
+        r.run(10.0);
+        assert!(r.deck.belt_still());
+        let mark = r.mark();
+        r.state.heart_bpm = Some(120);
+        r.run(120.0);
+        assert!(r.deck.belt_still(), "{} km/h", r.deck.speed_kmh());
+        assert!(
+            !moves_belt(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+    }
+
     #[test]
     fn a_start_at_the_treadmill_on_a_waiting_program_is_its_go() {
         let mut r = Rig::new();
@@ -1012,11 +1133,13 @@ mod tests {
                     duration_minutes: Some(1.0),
                     speed_kmh: 0.0,
                     incline_pct: 0.0,
+                    zone: None,
                 },
                 ProgramStep {
                     duration_minutes: Some(2.0),
                     speed_kmh: 3.0,
                     incline_pct: 0.0,
+                    zone: None,
                 },
             ],
             repeat_every_minutes: None,

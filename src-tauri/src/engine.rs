@@ -171,6 +171,11 @@ pub struct OrchestratorState {
     pub manual_intent: Option<ControlIntent>,
     pub last_manual_interaction: Instant,
     pub program_intent: Option<ControlIntent>,
+    /// Heart rate now (none without a fresh reading) and the maximum that
+    /// zones are a percentage of; set each second. Only programs read them,
+    /// and only to trim the speed of a belt already running.
+    pub heart_bpm: Option<u32>,
+    pub max_heart_rate: u32,
 
     // The deck's latest telemetry, raw.
     pub last_status: MachineStatus,
@@ -325,6 +330,8 @@ impl Default for OrchestratorState {
             manual_intent: None,
             last_manual_interaction: before(now, Duration::from_secs(3600)),
             program_intent: None,
+            heart_bpm: None,
+            max_heart_rate: u32::from(crate::heart_rate::DEFAULT_MAX_BPM),
             last_status: MachineStatus::Stopped,
             hardware_speed: 0.0,
             hardware_incline: 0,
@@ -2175,9 +2182,14 @@ impl ProtocolEngine {
                     None => state.handshake_step = HandshakeStep::Priming,
                 }
             }
+            // Never for a program's own target: a program resumes a paused
+            // belt only through a press (GO, SKIP, Engage: `kick_resume`). A
+            // program raising its target (a heart rate zone trim, say) just as
+            // the deck is paused at the treadmill must not resume it.
             MachineStatus::Paused
                 if target_speed > self.last_physical_speed + STILL_KMH
                     && has_target
+                    && source != TargetSource::Program
                     && !state.start_blocked
                     && !state.hold_auto_start =>
             {
@@ -3751,6 +3763,7 @@ mod tests {
                         duration_minutes: Some(10.0),
                         speed_kmh: 3.0,
                         incline_pct: 0.0,
+                        zone: None,
                     }],
                     repeat_every_minutes: None,
                     note: None,
