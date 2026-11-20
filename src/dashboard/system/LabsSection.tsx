@@ -24,13 +24,13 @@ export function LabsSection() {
     <Section
       id="sys-labs"
       title="Labs"
-      description="Experiments. Each one is off until you switch it on."
+      description="Labs features stay off until you switch them on."
       status={<StatusPill tone={tone} label={ghostPodPill(pod)} title={pod.message} />}
     >
       <div>
         <Toggle
           label="GHOST_POD: Be a foot pod for my watch"
-          description="The PC advertises as a Bluetooth running pod and sends the belt speed, cadence and distance once a second. Pausing the belt sends 0 km/h, so the watch's Auto Pause can stop its timer."
+          description="Your watch reads belt speed, cadence and distance from the PC as a foot pod; a paused belt reads 0 km/h."
           checked={pod.enabled}
           onChange={(on) => void change.run(() => dispatch({ type: "ghost_pod_set", on }))}
         />
