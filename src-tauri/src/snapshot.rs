@@ -224,6 +224,7 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         lights_out: LightsOutSnapshot::default(),
         calibration: crate::calibration::CalibrationSnapshot::default(),
         ghost_pod: crate::ghost_pod::GhostPodSnapshot::default(),
+        heart_rate: crate::heart_rate::HeartRateSnapshot::default(),
     }
 }
 
