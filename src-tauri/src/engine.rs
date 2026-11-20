@@ -1984,6 +1984,9 @@ impl ProtocolEngine {
         self.sync_with_deck(state, now);
         self.notice_deck_changes(state, now);
         self.forget_sent_when_stopped(state);
+        // A pause at the treadmill pauses a walking program with it, so GO
+        // resumes the step (and the start watch below arms on that pause).
+        state.notice_deck_pause(now);
         // A start at the treadmill on a program holding the belt still is a
         // press; while it is being confirmed the target isn't followed (no
         // pause, no zero speed sent to the starting belt).
