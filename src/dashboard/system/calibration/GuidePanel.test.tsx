@@ -24,7 +24,7 @@ const BELT = ["calibration_run_start", "calibration_sweep_start", "calibration_s
 const beltMoves = () => types().filter((t) => BELT.includes(t));
 
 function check(c: Partial<GuideCheck>): GuideCheck {
-  return { lo_kmh: 0.6, hi_kmh: 5, mid_kmh: 2.8, verdict: "pending", error_pct: null, ...c };
+  return { lo_kmh: 0.6, hi_kmh: 5, mid_kmh: 2.8, halfway_kmh: null, verdict: "pending", error_pct: null, ...c };
 }
 
 function guide(g: Partial<CalibrationGuideView> = {}): CalibrationGuideView {
@@ -137,6 +137,21 @@ describe("the guided walk", () => {
     render(<GuidedCalibration />);
     expect(screen.getByText("A check run halfway between two calibrated speeds measures the error there.")).toBeTruthy();
     expect(screen.getByText("0.6 to 5.0 km/h: the check at 2.8 km/h waits for RUN.")).toBeTruthy();
+  });
+
+  it("says when the check moved off a halfway speed the deck skips", () => {
+    current!.calibration.guide = guide({
+      speeds: [
+        { kmh: 0.6, mark: "saved", end: true },
+        { kmh: 2.7, mark: "pending", end: false },
+        { kmh: 5, mark: "saved", end: true },
+      ],
+      checks: [check({ mid_kmh: 2.7, halfway_kmh: 2.8 })],
+      next_kmh: 2.7,
+    });
+    render(<GuidedCalibration />);
+    expect(screen.getByText("0.6 to 5.0 km/h: the deck skips 2.8, so the check at 2.7 km/h waits for RUN.")).toBeTruthy();
+    expect(screen.getByText("RUN 2.7 km/h")).toBeTruthy();
   });
 
   it("taps inside the walk, where Close skips the speed and the row buttons wait", async () => {

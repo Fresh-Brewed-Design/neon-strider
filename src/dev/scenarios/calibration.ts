@@ -10,7 +10,8 @@
 // from 0.6 to 5.0 km/h tapping at 5.0; =guidecheck both ends saved and the
 // midpoint check up next; =guidesplit the check 3.1 % off and split;
 // =guidedone the walk done with its summary; =guidemoved RUN asked 0.6, the
-// deck ran 1.2 (a start at the treadmill), and the walk's slowest moved there.
+// deck ran 1.2 (a start at the treadmill), and the walk's slowest moved there;
+// =guideskip both ends saved on a deck that skips 2.8, so the check moved to 2.7.
 // ?caloffer: a connected treadmill
 // with no calibration, so the first-connect card shows. The math is a rough
 // stand-in for Rust's (calibration.rs and calibration/tap.rs, unit-tested there).
@@ -226,6 +227,19 @@ let guideEnds: [number, number] | null = null;
 let guideNote: string | null = null;
 const guideOutcomes = new Map<number, { at: number; scale: number } | "skipped">();
 const key = (kmh: number) => Math.round(kmh * 10);
+/** Speeds DECK_PROFILE knows the deck skips, as tenths (Rust: `Guide::with_skipped`). */
+let guideSkips = new Set<number>();
+/** The check's speed between `lo` and `hi`: halfway, else the nearest the deck runs, slower first (Rust: `check_speed`). */
+function guideCheckSpeed(lo: number, hi: number): { mid: number; halfway: number | null } | null {
+  const half = Math.round((lo + hi) * 5);
+  const inside = (t: number) => t > key(lo) && t < key(hi);
+  if (!inside(half)) return null;
+  if (!guideSkips.has(half)) return { mid: half / 10, halfway: null };
+  for (let d = 1; inside(half - d) || inside(half + d); d++) {
+    for (const t of [half - d, half + d]) if (inside(t) && !guideSkips.has(t)) return { mid: t / 10, halfway: half / 10 };
+  }
+  return null;
+}
 function guideRecord(target: number, at: number, scale: number) {
   guideNote = null;
   if (guideEnds && key(at) !== key(target) && key(target) === key(guideEnds[0]) && at < guideEnds[1]) {
@@ -260,11 +274,12 @@ function guidePlan(): CalibrationGuideView | null {
     if (!guideOutcomes.has(key(end)) && next === null) next = end;
   }
   const walk = (lo: number, hi: number, depth: number) => {
-    const mid = Math.round((lo + hi) * 5) / 10;
-    if (mid - lo < 0.099 || hi - mid < 0.099) return;
+    const at = guideCheckSpeed(lo, hi);
+    if (!at) return;
+    const mid = at.mid;
     speeds.push({ kmh: mid, mark: mark(mid), end: false });
     const o = guideOutcomes.get(key(mid));
-    const check: GuideCheck = { lo_kmh: lo, hi_kmh: hi, mid_kmh: mid, verdict: "pending", error_pct: null };
+    const check: GuideCheck = { lo_kmh: lo, hi_kmh: hi, mid_kmh: mid, halfway_kmh: at.halfway, verdict: "pending", error_pct: null };
     checks.push(check);
     if (o === undefined) {
       if (next === null) next = mid;
@@ -305,8 +320,9 @@ function guidePublish() {
   snapshot.calibration.guide = guidePlan();
 }
 /** Load a walk from 0.6 to 5.0 with these speeds already measured, as factors. */
-function guideLoad(measured: [number, number][]) {
+function guideLoad(measured: [number, number][], skips: number[] = []) {
   guideEnds = [0.6, 5];
+  guideSkips = new Set(skips.map(key));
   guideOutcomes.clear();
   for (const [kmh, scale] of measured) guideOutcomes.set(key(kmh), { at: kmh, scale });
   guidePublish();
@@ -346,6 +362,7 @@ const CAL_COMMANDS: Partial<Record<Command["type"], (c: Command) => void>> = {
     if (c.top_kmh > 12) throw "The treadmill tops out at 12.0 km/h.";
     guideEnds = [0.6, Math.round(c.top_kmh * 10) / 10];
     guideOutcomes.clear();
+    guideSkips = new Set();
     snapshot.calibration.sweep = null;
     closeCal();
     guidePublish();
@@ -562,6 +579,7 @@ export const calibration: Scenario = {
       measured(0.6, 1.12, 1.2, 9);
     }
     if (calFlag === "guidecheck") guideLoad([[0.6, 0.86], [5, 1.04]]);
+    if (calFlag === "guideskip") guideLoad([[0.6, 0.86], [5, 1.04]], [2.8]);
     if (calFlag === "guidesplit") guideLoad([[0.6, 0.86], [5, 1.04], [2.8, 0.98]]);
     if (calFlag === "guidedone") guideLoad([[0.6, 0.86], [5, 1.04], [2.8, 0.98], [1.7, 0.925], [3.9, 1.015]]);
     if (calFlag.startsWith("guide") && calFlag !== "guiderun" && calFlag !== "guidemoved") {

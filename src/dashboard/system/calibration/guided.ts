@@ -93,7 +93,10 @@ export function checkLine(c: GuideCheck, tolerancePct: number): string {
   const off = c.error_pct === null ? "" : pct(c.error_pct);
   switch (c.verdict) {
     case "pending":
-      return `${span}: the check at ${at} km/h waits for RUN.`;
+      // Rust moved the check off a halfway speed the deck skips (DECK_PROFILE).
+      return c.halfway_kmh === null
+        ? `${span}: the check at ${at} km/h waits for RUN.`
+        : `${span}: the deck skips ${c.halfway_kmh.toFixed(1)}, so the check at ${at} km/h waits for RUN.`;
     case "agreed":
       return `${span}: ${off} off at ${at} km/h, within ${pct(tolerancePct)}.`;
     case "split":

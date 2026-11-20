@@ -10,6 +10,10 @@
 //! down to `MAX_DEPTH` levels. A span with no deck speed between its ends (in
 //! 0.1 km/h steps) needs no check.
 //!
+//! A check runs at a speed the deck runs: when DECK_PROFILE says the deck
+//! skips the halfway speed, the check moves to the nearest one it runs inside
+//! the span, and the view says so (`GuideCheck::halfway_kmh`).
+//!
 //! This is pure planning. Every move to a new speed is the user's RUN press
 //! (`calibration::guide_run`); nothing here touches the belt.
 
@@ -44,6 +48,28 @@ fn same(a: f32, b: f32) -> bool {
 pub fn midpoint(lo: f32, hi: f32) -> Option<f32> {
     let mid = tenths((lo + hi) / 2.0);
     (mid - lo >= STEP_KMH - 1e-3 && hi - mid >= STEP_KMH - 1e-3).then_some(mid)
+}
+
+/// The speed a check between `lo` and `hi` runs at: the halfway speed when
+/// the deck `runs` it, else the nearest speed inside the span it runs (the
+/// slower one on a tie, as DECK_PROFILE snaps), with the halfway speed it
+/// moved off. None when no speed inside the span runs.
+///
+/// No cap on how far it moves: any speed inside the span still measures how
+/// far the straight line is off there, and the nearest one is where it errs
+/// most.
+pub fn check_speed(lo: f32, hi: f32, runs: impl Fn(f32) -> bool) -> Option<(f32, Option<f32>)> {
+    let half = midpoint(lo, hi)?;
+    if runs(half) {
+        return Some((half, None));
+    }
+    let inside = |k: f32| k - lo >= STEP_KMH - 1e-3 && hi - k >= STEP_KMH - 1e-3;
+    (1u16..)
+        .map(|d| f32::from(d) * STEP_KMH)
+        .take_while(|d| inside(tenths(half - d)) || inside(tenths(half + d)))
+        .flat_map(|d| [tenths(half - d), tenths(half + d)])
+        .find(|k| inside(*k) && runs(*k))
+        .map(|k| (k, Some(half)))
 }
 
 /// The factor a straight line through `(lo_kmh, lo)` and `(hi_kmh, hi)` gives
@@ -98,7 +124,11 @@ pub enum CheckVerdict {
 pub struct GuideCheck {
     pub lo_kmh: f32,
     pub hi_kmh: f32,
+    /// The speed the check's RUN sets: halfway, or the nearest speed the deck
+    /// runs when it skips halfway.
     pub mid_kmh: f32,
+    /// The halfway speed, when the deck skips it and the check moved off it.
+    pub halfway_kmh: Option<f32>,
     pub verdict: CheckVerdict,
     /// The measured distance error at the midpoint, %, once run.
     pub error_pct: Option<f32>,
@@ -151,6 +181,10 @@ pub struct Guide {
     top_kmh: f32,
     outcomes: Vec<(f32, Outcome)>,
     note: Option<String>,
+    /// The speeds DECK_PROFILE knows the deck skips, in tenths, taken when
+    /// the walk opens. Kept fixed for the walk: a check's outcome is filed
+    /// under its speed, so the plan must pick the same speeds each time.
+    skipped: Vec<f32>,
 }
 
 struct Plan {
@@ -174,7 +208,19 @@ impl Guide {
             top_kmh: top,
             outcomes: vec![],
             note: None,
+            skipped: vec![],
         })
+    }
+
+    /// The walk, picking its checks only from speeds the deck runs:
+    /// `skipped_kmh` are the speeds DECK_PROFILE knows it skips.
+    pub fn with_skipped(mut self, skipped_kmh: impl IntoIterator<Item = f32>) -> Self {
+        self.skipped = skipped_kmh.into_iter().map(tenths).collect();
+        self
+    }
+
+    fn runs(&self, kmh: f32) -> bool {
+        !self.skipped.iter().any(|s| same(*s, kmh))
     }
 
     fn outcome(&self, kmh: f32) -> Option<Outcome> {
@@ -297,7 +343,7 @@ impl Guide {
     /// Check the span from `lo` to `hi` (each its target and `(at_kmh,
     /// scale)`), `depth` levels down, and the halves it splits into.
     fn walk(&self, lo: (f32, (f32, f32)), hi: (f32, (f32, f32)), depth: u32, plan: &mut Plan) {
-        let Some(mid) = midpoint(lo.0, hi.0) else {
+        let Some((mid, halfway)) = check_speed(lo.0, hi.0, |k| self.runs(k)) else {
             return;
         };
         plan.speeds.push(GuideSpeed {
@@ -309,6 +355,7 @@ impl Guide {
             lo_kmh: lo.0,
             hi_kmh: hi.0,
             mid_kmh: mid,
+            halfway_kmh: halfway,
             verdict: CheckVerdict::Pending,
             error_pct: None,
         };
@@ -571,5 +618,55 @@ mod tests {
         let c = g.view().checks[0];
         assert_eq!(c.verdict, CheckVerdict::Agreed);
         assert!(c.error_pct.unwrap() < 0.1, "{:?}", c.error_pct);
+    }
+    /// #166: a check runs at a speed the deck runs. Halfway when it runs,
+    /// else the nearest inside the span (the slower on a tie), none when no
+    /// speed inside runs.
+    #[test]
+    fn a_check_picks_a_speed_the_deck_runs() {
+        let all = |_: f32| true;
+        assert_eq!(check_speed(1.0, 6.0, all), Some((3.5, None)));
+        let skips = |s: &'static [f32]| move |k: f32| !s.iter().any(|x| same(*x, k));
+        assert_eq!(check_speed(1.0, 6.0, skips(&[3.5])), Some((3.4, Some(3.5))));
+        assert_eq!(
+            check_speed(1.0, 6.0, skips(&[3.4, 3.5])),
+            Some((3.6, Some(3.5)))
+        );
+        // Only the ends' neighbours are left: still inside the span.
+        assert_eq!(
+            check_speed(1.0, 1.4, skips(&[1.2, 1.1])),
+            Some((1.3, Some(1.2)))
+        );
+        assert_eq!(check_speed(1.0, 1.3, skips(&[1.1, 1.2])), None);
+        assert_eq!(check_speed(1.0, 1.1, all), None, "no deck speed between");
+    }
+
+    #[test]
+    fn the_walk_moves_a_check_off_a_speed_the_deck_skips_and_says_so() {
+        let mut g = Guide::new(1.0, 6.0).unwrap().with_skipped([3.5, 2.2]);
+        g.record(1.0, 1.0, 1.0);
+        g.record(6.0, 6.0, 1.0);
+        assert_eq!(g.next(), Some(3.4));
+        let c = g.view().checks[0];
+        assert_eq!((c.mid_kmh, c.halfway_kmh), (3.4, Some(3.5)));
+        assert!(g.view().speeds.iter().any(|s| same(s.kmh, 3.4)));
+        assert!(!g.view().speeds.iter().any(|s| same(s.kmh, 3.5)));
+        // Split: each half is checked at a speed the deck runs too.
+        g.record(3.4, 3.4, 1.05);
+        assert_eq!(g.view().checks[0].verdict, CheckVerdict::Split);
+        let c = g.view().checks[1];
+        assert_eq!((c.lo_kmh, c.hi_kmh), (1.0, 3.4));
+        assert_eq!((c.mid_kmh, c.halfway_kmh), (2.1, Some(2.2)));
+        assert_eq!(g.view().checks[2].halfway_kmh, None);
+        // A whole walk on such a deck never asks for a skipped speed.
+        let mut g = Guide::new(0.6, 5.0).unwrap().with_skipped([2.8, 1.7, 1.5]);
+        let bent = |k: f32| if k < 2.8 { 0.8 + 0.06 * k } else { 1.0 };
+        let ran = walk_all(&mut g, bent);
+        assert!(
+            ran.iter()
+                .all(|k| ![2.8, 1.7, 1.5].iter().any(|s| same(*s, *k))),
+            "{ran:?}"
+        );
+        assert!(ran.len() > 3, "the bend still splits: {ran:?}");
     }
 }

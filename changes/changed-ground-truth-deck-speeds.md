@@ -1,0 +1,1 @@
+- GROUND_TRUTH's guided walk checks only speeds the treadmill runs. When the treadmill skips the halfway speed between two calibrated ones, the check moves to the nearest speed the treadmill runs and the walk says so.
