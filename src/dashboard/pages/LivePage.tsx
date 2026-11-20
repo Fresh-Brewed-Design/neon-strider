@@ -4,6 +4,7 @@ import { linkView } from "../../state/linkStatus";
 import { snapToDeck, snapToLevel } from "../../state/deckSpeeds";
 import { useAppSnapshot } from "../../state/useAppState";
 import { STAT_WIDGETS } from "../../widgets/registry";
+import { Sparkline } from "../../widgets/Sparkline";
 import { Axis } from "../live/Axis";
 import { PinToggle } from "../live/PinToggle";
 import { Transport } from "../live/Transport";
@@ -146,6 +147,7 @@ export function LivePage() {
         <div className="grid grid-cols-3 gap-2">
           {stats.map((w) => {
             const { value, unit } = w.read(s);
+            const spark = w.spark?.(s);
             return (
               <Panel key={w.id} className="flex flex-col gap-0.5 px-3 py-1.5">
                 <div className="flex items-start justify-between gap-1">
@@ -156,6 +158,7 @@ export function LivePage() {
                   {value}
                   {unit && <span className="ml-1 font-mono text-[11px] text-white/40">{unit}</span>}
                 </span>
+                {spark && <Sparkline data={spark} className={cx("block h-5 w-full", TONE_TEXT[w.accent])} />}
               </Panel>
             );
           })}

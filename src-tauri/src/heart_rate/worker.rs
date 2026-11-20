@@ -3,6 +3,7 @@
 //! and the link, which is separate from the treadmill's. A 1 s tick
 //! (re)connects while a sensor is picked.
 
+use super::history::History;
 use super::{
     describe_failure, parse_measurement, status_label, status_message, HeartRateSensor,
     HeartRateSnapshot, HeartStatus, Step, HR_MEASUREMENT, HR_SERVICE, NOT_FOUND, NO_MEASUREMENT,
@@ -12,7 +13,7 @@ use crate::persistence;
 use btleplug::api::{Central, Peripheral as _, ScanFilter};
 use btleplug::platform::Peripheral;
 use futures::StreamExt;
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::sync::{LazyLock, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 use tauri::AppHandle;
@@ -24,6 +25,8 @@ const KEY_MAX: &str = "max_heart_rate";
 /// 30-year-old, the common estimate, so zones are near right before it is set.
 pub const DEFAULT_MAX_BPM: u16 = 190;
 static MAX_BPM: AtomicU16 = AtomicU16::new(DEFAULT_MAX_BPM);
+/// The user saved a maximum heart rate (else `MAX_BPM` is the default).
+static MAX_SET: AtomicBool = AtomicBool::new(false);
 /// How long the picker's scan listens: a sensor advertises about once a
 /// second, and the treadmill scan uses the same 5 s.
 const SCAN_TIME: Duration = Duration::from_secs(5);
@@ -71,7 +74,12 @@ struct Runtime {
     failures: u32,
     scanning: bool,
     found: Vec<HeartRateSensor>,
+    /// The PULSE_RATE chart's rolling window.
+    history: History,
 }
+
+/// The chart's monotonic clock, so a change to the PC's time can't shift it.
+static CLOCK: LazyLock<Instant> = LazyLock::new(Instant::now);
 
 static RT: LazyLock<Mutex<Runtime>> = LazyLock::new(|| Mutex::new(Runtime::default()));
 
@@ -91,6 +99,7 @@ pub fn init(app: &AppHandle) {
             .filter(|b| valid_max(*b))
     {
         MAX_BPM.store(bpm, Ordering::Relaxed);
+        MAX_SET.store(true, Ordering::Relaxed);
     }
     let id = persistence::read_setting(app, KEY_ID).filter(|s| !s.is_empty());
     let name = persistence::read_setting(app, KEY_NAME).unwrap_or_default();
@@ -122,6 +131,7 @@ pub fn set_max_heart_rate(app: &AppHandle, bpm: u16) -> Result<(), String> {
     }
     persistence::write_setting(app, KEY_MAX, &bpm.to_string())?;
     MAX_BPM.store(bpm, Ordering::Relaxed);
+    MAX_SET.store(true, Ordering::Relaxed);
     Ok(())
 }
 
@@ -165,6 +175,7 @@ fn drop_link(sensor: Option<HeartRateSensor>) {
         rt.failed_at = None;
         rt.failures = 0;
         rt.connecting = false;
+        rt.history.clear();
         rt.link.take()
     });
     if let Some(p) = old {
@@ -198,8 +209,17 @@ pub fn snapshot() -> HeartRateSnapshot {
             label: status_label(rt.status).to_string(),
             message: status_message(rt.status, rt.error.as_deref(), bpm.is_some()),
             bpm,
+            // No sensor, no chart.
+            history: if rt.sensor.is_some() {
+                rt.history.points()
+            } else {
+                Vec::new()
+            },
+            zone: None,
             scanning: rt.scanning,
             found: rt.found.clone(),
+            max_bpm: u32::from(max_heart_rate()),
+            max_bpm_set: MAX_SET.load(Ordering::Relaxed),
         }
     })
 }
@@ -264,7 +284,19 @@ pub fn spawn(_app: AppHandle) {
         every.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             every.tick().await;
+            record_history();
             tick().await;
+        }
+    });
+}
+
+/// Add this second's reading (or a gap) to the chart while a sensor is picked.
+fn record_history() {
+    let at_ms = u64::try_from(CLOCK.elapsed().as_millis()).unwrap_or(u64::MAX);
+    with(|rt| {
+        if rt.sensor.is_some() {
+            let bpm = fresh_bpm(rt);
+            rt.history.record(at_ms, bpm);
         }
     });
 }
@@ -433,6 +465,17 @@ async fn connect(sensor: &HeartRateSensor, generation: u64) -> Result<(), StepEr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_maximum_heart_rate_is_120_to_230_bpm() {
+        assert!(valid_max(DEFAULT_MAX_BPM));
+        for bpm in [120, 185, 230] {
+            assert!(valid_max(bpm), "{}", bpm);
+        }
+        for bpm in [0, 119, 231, 300] {
+            assert!(!valid_max(bpm), "{}", bpm);
+        }
+    }
 
     #[test]
     fn retries_back_off_to_a_minute() {

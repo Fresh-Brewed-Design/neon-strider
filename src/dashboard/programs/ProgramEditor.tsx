@@ -1,13 +1,22 @@
 import { useState, type ReactNode } from "react";
-import { Plus, X } from "lucide-react";
+import { HeartPulse, Plus, X } from "lucide-react";
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { dispatch } from "../../ipc";
 import { roundSpeed, snapToDeck, snapToLevel } from "../../state/deckSpeeds";
 import { useAppState } from "../../state/useAppState";
 import { GhostButton, Hint, Label, NeonButton, Panel } from "../ui";
+import { ChoiceGroup } from "../system/fields";
 import { cx } from "../util";
-import { fromDraft, type Draft, type StepDraft } from "./draft";
+import { fromDraft, withZoneUnit, zoneSummary, type Draft, type StepDraft, type ZoneUnit } from "./draft";
+
+/** Until Rust's snapshot arrives: the same estimate Rust starts from (220 minus age at 30). */
+const FALLBACK_MAX_BPM = 190;
+
+const ZONE_UNITS: readonly { value: ZoneUnit; label: string }[] = [
+  { value: "pct", label: "% max" },
+  { value: "bpm", label: "bpm" },
+];
 
 const field =
   "rounded border border-white/15 bg-black/50 px-2 py-1.5 font-mono text-xs text-white outline-none focus:border-neon-cyan/60 disabled:opacity-30";
@@ -29,6 +38,8 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
   const [error, setError] = useState<string | null>(null);
   const save = useAction();
   const deck = useAppState((snap) => snap.deck);
+  const maxBpm = useAppState((snap) => snap.heart_rate.max_bpm) || FALLBACK_MAX_BPM;
+  const anyZone = d.steps.some((s) => s.zone);
   // A typed speed moves to one the deck runs (DECK_PROFILE) when the field is left.
   const snapSpeedText = (text: string) => {
     const v = Number(text);
@@ -53,7 +64,7 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
     setD((prev) => ({ ...prev, steps: prev.steps.map((s, j) => (j === i ? { ...s, ...patch } : s)) }));
 
   const submit = async () => {
-    const program = fromDraft(d);
+    const program = fromDraft(d, maxBpm);
     if (typeof program === "string") {
       setError(program);
       return;
@@ -92,15 +103,17 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
       </Field>
 
       <div className="flex flex-col gap-2">
-        <div className="grid grid-cols-[2rem_1fr_1fr_1fr_2rem] items-end gap-2">
+        <div className="grid grid-cols-[2rem_1fr_1fr_1fr_2rem_2rem] items-end gap-2">
           <span />
           <Label>Minutes</Label>
           <Label>Speed km/h</Label>
           <Label>Incline %</Label>
           <span />
+          <span />
         </div>
         {d.steps.map((s, i) => (
-          <div key={i} className="grid grid-cols-[2rem_1fr_1fr_1fr_2rem] items-center gap-2">
+          <div key={i} className="flex flex-col gap-1.5">
+          <div className="grid grid-cols-[2rem_1fr_1fr_1fr_2rem_2rem] items-center gap-2">
             <span className="font-digital text-xs text-white/40">{i + 1}</span>
             <input
               className={input}
@@ -125,12 +138,26 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
               onBlur={() => patchStep(i, { incline: snapInclineText(s.incline) })}
             />
             <GhostButton
+              aria-label={`Heart zone on step ${i + 1}`}
+              aria-pressed={s.zone}
+              title="Hold a heart rate zone"
+              className={cx(s.zone && "text-neon-magenta!")}
+              onClick={() => {
+                setError(null);
+                patchStep(i, { zone: !s.zone });
+              }}
+            >
+              <HeartPulse size={14} />
+            </GhostButton>
+            <GhostButton
               aria-label={`Remove step ${i + 1}`}
               disabled={d.steps.length === 1}
               onClick={() => setD({ ...d, steps: d.steps.filter((_, j) => j !== i) })}
             >
               <X size={14} />
             </GhostButton>
+          </div>
+          {s.zone && <ZoneRow step={s} n={i + 1} unit={d.zoneUnit} maxBpm={maxBpm} onChange={(patch) => patchStep(i, patch)} />}
           </div>
         ))}
         <GhostButton
@@ -147,6 +174,25 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
           <Plus size={14} /> Add step
         </GhostButton>
       </div>
+
+      {anyZone && (
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-3">
+            <Label>Heart zones in</Label>
+            <ChoiceGroup
+              label="Heart zone unit"
+              tone="magenta"
+              options={ZONE_UNITS}
+              value={d.zoneUnit}
+              onChange={(unit) => setD(withZoneUnit(d, unit, maxBpm))}
+            />
+          </div>
+          <Hint>
+            A heart zone trims a moving step&apos;s speed by up to 1 km/h and never starts the belt. Zones are a share of
+            the {maxBpm} bpm max heart rate in System, Heart rate.
+          </Hint>
+        </div>
+      )}
 
       <div className="flex flex-col gap-2">
         <label className="flex items-center gap-2 font-mono text-xs text-white/70">
@@ -197,5 +243,50 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
         </NeonButton>
       </div>
     </Panel>
+  );
+}
+
+/** The low and high bounds of a step's heart zone, with the other unit beside them. */
+function ZoneRow({
+  step,
+  n,
+  unit,
+  maxBpm,
+  onChange,
+}: {
+  step: StepDraft;
+  n: number;
+  unit: ZoneUnit;
+  maxBpm: number;
+  onChange: (patch: Partial<StepDraft>) => void;
+}) {
+  const summary = zoneSummary(step, unit, maxBpm);
+  const other =
+    summary && (unit === "pct" ? `${summary.bpm[0]} to ${summary.bpm[1]} bpm` : `${summary.pct[0]} to ${summary.pct[1]} % of max`);
+  const unitText = unit === "pct" ? "% of max" : "bpm";
+  return (
+    <div className="grid grid-cols-[2rem_1fr] items-center gap-2">
+      <span />
+      <div className="flex flex-wrap items-center gap-2 font-mono text-xs text-white/70">
+        <span className="font-bold uppercase tracking-[0.12em] text-neon-magenta">Heart zone</span>
+        <input
+          className={cx(field, "w-16")}
+          inputMode="decimal"
+          aria-label={`Step ${n} heart zone low`}
+          value={step.zoneLow}
+          onChange={(e) => onChange({ zoneLow: e.target.value })}
+        />
+        <span>to</span>
+        <input
+          className={cx(field, "w-16")}
+          inputMode="decimal"
+          aria-label={`Step ${n} heart zone high`}
+          value={step.zoneHigh}
+          onChange={(e) => onChange({ zoneHigh: e.target.value })}
+        />
+        <span>{unitText}</span>
+        {other && <span className="text-white/40">{other}</span>}
+      </div>
+    </div>
   );
 }

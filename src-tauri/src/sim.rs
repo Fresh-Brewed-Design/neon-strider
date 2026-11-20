@@ -453,6 +453,16 @@ impl SimDeck {
         }
     }
 
+    /// Stop pressed on the deck's own buttons or remote, while running.
+    #[cfg(test)]
+    pub(crate) fn press_stop(&mut self, now: Instant) {
+        self.advance(now);
+        if self.phase == Phase::Running {
+            self.still_since = None;
+            self.set(Phase::Stopping, now);
+        }
+    }
+
     /// One speed press on the deck's own buttons or remote (`up` or down),
     /// 0.1 km/h, while running: the deck takes it as its own target and ramps
     /// to it, as it does for a target the app sends.
@@ -1111,16 +1121,86 @@ mod tests {
         r.run(20.0);
         r.press(DeckAction::Pause);
         r.run(10.0);
-        assert!(r.deck.belt_still());
+        assert_eq!(r.deck.status_code(), 10, "paused");
         let mark = r.mark();
         r.state.heart_bpm = Some(120);
         r.run(120.0);
-        assert!(r.deck.belt_still(), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(r.deck.status_code(), 10, "still paused");
         assert!(
             !moves_belt(&r.commands_since(mark)),
             "{:?}",
             r.commands_since(mark)
         );
+    }
+
+    /// The seeded VO2 max against the deck. With no heart rate reading its
+    /// climb runs the set 6.0 km/h. With a pulse above the zone the warm-up
+    /// (no zone) is left alone and the climb is trimmed down by targets alone;
+    /// paused at the treadmill mid-climb with a low pulse, the belt stays
+    /// paused until a start press.
+    #[test]
+    fn the_seeded_vo2_max_trims_its_climbs_and_never_starts_a_still_belt() {
+        let seeded = || {
+            crate::programs::seed_programs()
+                .into_iter()
+                .find(|p| p.name == "VO2 max")
+                .expect("seeded")
+        };
+        let rig = || {
+            let mut r = Rig::new();
+            r.state.programs.push(seeded());
+            r.state.max_heart_rate = 190; // The zone is 161.5 to 180.5 bpm.
+            r.run(1.0);
+            r.run_program(seeded().id);
+            r
+        };
+
+        // No reading: the climb holds its set speed.
+        let mut r = rig();
+        r.run(330.0);
+        assert_eq!(r.program().step_index, 1);
+        r.run(90.0);
+        assert!(r.deck.running_at(6.0), "{} km/h", r.deck.speed_kmh());
+
+        let mut r = rig();
+        r.run(20.0);
+        assert!(r.deck.running_at(4.5), "{} km/h", r.deck.speed_kmh());
+        r.state.heart_bpm = Some(185);
+        r.run(60.0);
+        assert!(
+            r.deck.running_at(4.5),
+            "warm-up: {} km/h",
+            r.deck.speed_kmh()
+        );
+
+        // Into the first climb (6.0 km/h at 10 %), still above the zone.
+        r.run(230.0);
+        assert_eq!(r.program().step_index, 1);
+        let mark = r.mark();
+        r.run(70.0);
+        let speed = r.deck.speed_kmh();
+        assert!((5.0..5.95).contains(&speed), "trimmed down: {} km/h", speed);
+        assert_eq!(controls(&r.commands_since(mark)), vec![]);
+
+        // Paused at the treadmill, a pulse below the zone never resumes it.
+        let t = r.t;
+        r.deck.press_pause(t);
+        r.run(10.0);
+        assert_eq!(r.deck.status_code(), 10, "paused");
+        let mark = r.mark();
+        r.state.heart_bpm = Some(120);
+        r.run(120.0);
+        assert_eq!(r.deck.status_code(), 10, "still paused");
+        assert!(
+            !moves_belt(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+
+        // A start press (Engage or RE-JACK) moves it again.
+        r.press(DeckAction::Start);
+        r.run(15.0);
+        assert!(r.deck.speed_kmh() > 4.0, "{} km/h", r.deck.speed_kmh());
     }
 
     #[test]
@@ -2028,6 +2108,266 @@ mod tests {
             .iter()
             .all(|k| *k != PacketKind::ControlSet));
         assert!(r.deck.running_at(2.0));
+    }
+
+    /// DECK_SWEEP over the incline levels: on a moving belt it asks every
+    /// unlearned level in turn, learns the deck's top level and a skipped
+    /// level from the replies, leaves the speed alone, sends no start, pause
+    /// or stop, and puts the incline back where it was.
+    #[test]
+    fn an_incline_sweep_learns_every_level_and_returns_the_incline() {
+        let mut r = walking_rig(0, u8::MAX);
+        r.deck.set_incline_ceiling(10);
+        r.deck.set_incline_skip(4, 5);
+        r.state.max_incline = 15;
+        r.press(DeckAction::InclineUp);
+        r.press(DeckAction::InclineUp);
+        r.run(5.0);
+        assert_eq!(r.deck.incline, 2);
+        r.state.profile_sweep_enabled = true;
+        let mark = r.mark();
+        r.state.profile_sweep_incline_start().unwrap();
+        assert_eq!(
+            r.state.profile_sweep_kind(),
+            Some(crate::profile_sweep::SweepKind::Incline)
+        );
+        let view = r.state.profile_sweep_view().expect("a view");
+        assert_eq!(view.level, Some(1), "lowest first");
+        r.run(20.0);
+        assert!(r.state.profile_sweep.is_some());
+        assert!(r.deck.running_at(2.0), "the speed stays");
+        r.run(100.0);
+        assert!(r.state.profile_sweep.is_none(), "the sweep finished");
+        let p = &r.state.deck_profile;
+        assert_eq!(p.incline_ceiling(), Some(10));
+        assert!(p.skips_level(4));
+        assert!(p.knows_level(1) && p.knows_level(9));
+        assert!(
+            !p.knows_level(14),
+            "nothing asked above the top level once seen"
+        );
+        assert_eq!(r.controls_since(mark, Control::Stop), 0);
+        assert_eq!(r.controls_since(mark, Control::Pause), 0);
+        assert_eq!(r.controls_since(mark, Control::Start), 0);
+        assert_eq!(r.deck.incline, 2, "back at the start incline");
+        assert!(r.deck.running_at(2.0), "{} km/h", r.deck.speed_kmh());
+        let err = r.state.profile_sweep_incline_start().unwrap_err();
+        assert!(err.contains("already learned"), "{err}");
+    }
+
+    /// The incline sweep never goes above the Highest incline level setting.
+    #[test]
+    fn an_incline_sweep_stops_at_the_highest_incline_level_setting() {
+        let mut r = walking_rig(0, u8::MAX);
+        r.state.max_incline = 5;
+        r.state.profile_sweep_enabled = true;
+        r.state.profile_sweep_incline_start().unwrap();
+        assert_eq!(r.state.profile_sweep_view().map(|v| v.total), Some(5));
+        let mut highest = 0;
+        for _ in 0..60 {
+            r.run(1.0);
+            highest = highest.max(r.deck.incline);
+        }
+        assert!(r.state.profile_sweep.is_none());
+        assert_eq!(highest, 5);
+        assert!(!r.state.deck_profile.knows_level(6));
+    }
+
+    /// The incline sweep needs the switch and a moving belt, one sweep runs at
+    /// a time, and an incline set by hand, a speed set by hand or STOP on the
+    /// sweep ends it. STOP on the sweep puts the incline back.
+    #[test]
+    fn an_incline_sweep_needs_a_moving_belt_and_ends_when_the_belt_is_taken() {
+        let mut r = Rig::new();
+        r.state.profile_sweep_enabled = true;
+        r.run(5.0);
+        assert!(
+            r.state.profile_sweep_incline_start().is_err(),
+            "a still belt"
+        );
+        assert!(r.deck.belt_still());
+
+        let mut r = walking_rig(0, u8::MAX);
+        r.state.max_incline = 15;
+        let err = r.state.profile_sweep_incline_start().unwrap_err();
+        assert!(err.contains("DECK_SWEEP"), "{err}");
+        r.state.profile_sweep_enabled = true;
+        r.state.profile_sweep_incline_start().unwrap();
+        assert!(
+            r.state.profile_sweep_start().is_err(),
+            "one sweep at a time"
+        );
+        r.run(9.0);
+        assert!(r.state.profile_sweep.is_some());
+        r.press(DeckAction::InclineDown);
+        r.run(3.0);
+        assert!(r.state.profile_sweep.is_none(), "an incline press ends it");
+        let pressed = r.deck.incline;
+        r.run(10.0);
+        assert_eq!(r.deck.incline, pressed, "the press stands");
+
+        r.state.profile_sweep_incline_start().unwrap();
+        r.run(9.0);
+        r.set_speed(2.5);
+        r.run(3.0);
+        assert!(r.state.profile_sweep.is_none(), "a hand speed ends it");
+        assert!(r.deck.running_at(2.5), "{} km/h", r.deck.speed_kmh());
+
+        let start = r.deck.incline;
+        r.state.profile_sweep_incline_start().unwrap();
+        r.run(9.0);
+        assert_ne!(r.deck.incline, start, "the sweep moved the incline");
+        let mark = r.mark();
+        r.state.profile_sweep_stop();
+        r.run(5.0);
+        assert_eq!(r.deck.incline, start, "STOP on the sweep puts it back");
+        assert!(r.deck.running_at(2.5), "the belt keeps going");
+        assert!(!app_starts(&r.commands_since(mark)));
+    }
+
+    /// A walking rig with an incline sweep running, from flat.
+    fn incline_sweeping_rig() -> Rig {
+        let mut r = walking_rig(0, u8::MAX);
+        r.state.max_incline = 15;
+        r.state.profile_sweep_enabled = true;
+        r.state.profile_sweep_incline_start().unwrap();
+        r.run(9.0);
+        assert!(r.state.profile_sweep.is_some());
+        assert!(r.deck.incline > 0);
+        r
+    }
+
+    /// A pause at the treadmill mid incline sweep: the next sweep step lands
+    /// before the deck's paused status arrives, and still nothing resumes the
+    /// belt. The incline goes back to the one from before the sweep, and GO
+    /// resumes the belt there.
+    #[test]
+    fn a_pause_at_the_treadmill_mid_incline_sweep_is_never_resumed() {
+        let mut r = incline_sweeping_rig();
+        let mark = r.mark();
+        r.deck.press_pause(r.t);
+        // Force the next step at once, while the engine still reads Running.
+        assert!(r.state.last_status.is_moving());
+        let before = r.state.manual_intent.expect("an intent").incline;
+        r.state.profile_sweep_step_due_for_test();
+        r.state.tick_profile_sweep(r.t);
+        let stepped = r.state.manual_intent.expect("an intent").incline;
+        assert!(
+            stepped > before,
+            "the sweep stepped up: {before} -> {stepped}"
+        );
+        // Then the paused status arrives before the engine sends that step.
+        let frame = r.deck.current_frame();
+        r.rx(&frame);
+        assert_eq!(r.state.last_status, protocol::MachineStatus::Paused);
+        r.last_second = r.t;
+        r.run(30.0);
+        assert!(r.state.profile_sweep.is_none(), "the pause ends the sweep");
+        assert!(!r.deck.running_at(0.1), "{} km/h", r.deck.speed_kmh());
+        assert!(!app_starts(&r.commands_since(mark)), "no start or resume");
+        assert_eq!(r.controls_since(mark, Control::Start), 0);
+        assert!(
+            r.state.hold_auto_start,
+            "automatic starts held until a press"
+        );
+        let back = r.state.manual_intent.expect("an intent");
+        assert_eq!(back.incline, 0, "back at the start incline");
+        assert!((back.speed - 2.0).abs() < 0.06, "and speed: {}", back.speed);
+
+        r.press(DeckAction::Start);
+        r.run(10.0);
+        assert!(
+            r.deck.running_at(2.0),
+            "GO resumes at {} km/h",
+            r.deck.speed_kmh()
+        );
+        assert_eq!(r.deck.incline, 0, "GO resumes flat");
+    }
+
+    /// The belt stopped at the treadmill mid incline sweep: nothing restarts
+    /// it, and the incline waits at the start one.
+    #[test]
+    fn a_stop_at_the_treadmill_mid_incline_sweep_restores_the_incline() {
+        let mut r = incline_sweeping_rig();
+        let mark = r.mark();
+        r.deck.press_stop(r.t);
+        r.run(30.0);
+        assert!(r.state.profile_sweep.is_none());
+        assert!(r.deck.belt_still());
+        assert!(!app_starts(&r.commands_since(mark)), "nothing restarts it");
+        assert!(r.state.hold_auto_start);
+        if let Some(i) = r.state.manual_intent {
+            assert_eq!(i.incline, 0, "the incline waits at the start one");
+        }
+    }
+
+    /// An incline press on the deck's own remote takes the belt: the incline
+    /// sweep ends and the remote's incline stands.
+    #[test]
+    fn a_remote_incline_press_ends_the_incline_sweep() {
+        let mut r = incline_sweeping_rig();
+        r.remote_incline(true, 2);
+        let deck_incline = r.deck.incline;
+        r.run(5.0);
+        assert!(r.state.profile_sweep.is_none(), "the remote ends it");
+        r.run(10.0);
+        assert_eq!(r.deck.incline, deck_incline);
+    }
+
+    /// Stop sweep on a speed sweep puts the belt back at the speed it had
+    /// before the sweep, and starts or stops nothing.
+    #[test]
+    fn stop_sweep_on_a_speed_sweep_returns_to_the_start_speed() {
+        let mut r = sweeping_rig();
+        assert!(
+            !r.deck.running_at(2.0),
+            "the sweep moved the belt: {} km/h",
+            r.deck.speed_kmh()
+        );
+        let mark = r.mark();
+        r.state.profile_sweep_stop();
+        assert!(r.state.profile_sweep.is_none());
+        r.run(8.0);
+        assert!(
+            r.deck.running_at(2.0),
+            "back at the start speed: {} km/h",
+            r.deck.speed_kmh()
+        );
+        assert_eq!(r.controls_since(mark, Control::Stop), 0);
+        assert_eq!(r.controls_since(mark, Control::Pause), 0);
+        assert!(!app_starts(&r.commands_since(mark)));
+    }
+
+    /// Stop sweep pressed just after a pause at the treadmill, before the
+    /// sweep's tick saw it: the start speed is put back without resuming
+    /// the belt, and automatic starts wait for a press.
+    #[test]
+    fn stop_sweep_on_a_paused_belt_never_resumes_it() {
+        let mut r = sweeping_rig();
+        let mark = r.mark();
+        r.deck.press_pause(r.t);
+        let frame = r.deck.current_frame();
+        r.rx(&frame);
+        assert_eq!(r.state.last_status, protocol::MachineStatus::Paused);
+        r.state.profile_sweep_stop();
+        r.run(30.0);
+        assert!(!r.deck.running_at(0.1), "{} km/h", r.deck.speed_kmh());
+        assert!(!app_starts(&r.commands_since(mark)), "no start or resume");
+        assert!(r.state.hold_auto_start);
+        let back = r.state.manual_intent.expect("an intent").speed;
+        assert!((back - 2.0).abs() < 0.06, "back at the start speed: {back}");
+    }
+
+    /// An incline press on the remote ends a speed sweep too, so the sweep's
+    /// next speed never puts the incline back to the app's.
+    #[test]
+    fn a_remote_incline_press_ends_the_speed_sweep() {
+        let mut r = sweeping_rig();
+        r.remote_incline(true, 3);
+        r.run(5.0);
+        assert!(r.state.profile_sweep.is_none(), "the remote ends it");
+        r.run(10.0);
+        assert_eq!(r.deck.incline, 3, "the remote's incline stands");
     }
 
     #[test]
