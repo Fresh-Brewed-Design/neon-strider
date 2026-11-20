@@ -1544,7 +1544,7 @@ mod tests {
         assert_eq!(eyes.shown(), EyeBreakPhase::Idle);
     }
 
-    /// Jeremy, 2026-11-19: eye breaks show even when nothing is running. With
+    /// Fresh Brewed Design, 2026-11-19: eye breaks show even when nothing is running. With
     /// no treadmill linked, the heads-up, the break with its blink tones and
     /// the end tone come at the screen-time interval, and nothing is sent.
     #[test]

@@ -557,7 +557,7 @@ mod tests {
         assert_eq!(m.shown_phase(), EyeBreakPhase::Idle);
     }
 
-    /// Jeremy, 2026-11-19: eye breaks show whenever he uses the PC, with the
+    /// Fresh Brewed Design, 2026-11-19: eye breaks show whenever the PC is in use, with the
     /// treadmill off or unlinked, the belt still and no program (all
     /// `Belt::Other` to the machine). The heads-up, the break with its blink
     /// tones and the end tone all come; nothing is sent to the belt.

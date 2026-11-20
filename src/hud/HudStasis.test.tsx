@@ -240,7 +240,7 @@ function nothingRunning(eye: Partial<AppSnapshot["eye_break"]>): AppSnapshot {
   });
 }
 
-// Jeremy, 2026-11-19: eye breaks show even when nothing is running.
+// Fresh Brewed Design, 2026-11-19: eye breaks show even when nothing is running.
 describe("HUD eye breaks with nothing running", () => {
   beforeAll(() => vi.stubGlobal("AudioContext", FakeAudioContext));
 
