@@ -1,21 +1,10 @@
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
-import { dispatch, type DeckProfileSnapshot } from "../../ipc";
+import { dispatch } from "../../ipc";
+import { profileSummary } from "../../state/deckSpeeds";
 import { useAppState } from "../../state/useAppState";
 import { useTreadmillStore } from "../../store/treadmillStore";
 import { GhostButton, Hint, Label } from "../ui";
-
-const kmh = (v: number) => `${v.toFixed(1)} km/h`;
-
-/** One line on what DECK_PROFILE knows. */
-export function profileSummary(p: DeckProfileSnapshot): string {
-  if (p.learned === 0) return "No speeds learned yet.";
-  const parts = [`${p.learned} ${p.learned === 1 ? "speed" : "speeds"} learned`];
-  if (p.floor_kmh != null) parts.push(`slowest ${kmh(p.floor_kmh)}`);
-  if (p.ceiling_kmh != null) parts.push(`fastest ${kmh(p.ceiling_kmh)}`);
-  if (p.skipped_kmh.length > 0) parts.push(`skips ${p.skipped_kmh.map((v) => v.toFixed(1)).join(", ")}`);
-  return `${parts.join(", ")}.`;
-}
 
 /** System -> Diagnostics: what DECK_PROFILE learned from the deck's replies, and FORGET. */
 export function DeckProfile() {

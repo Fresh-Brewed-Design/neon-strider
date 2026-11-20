@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DeckProfileSnapshot, DeckSpeedStep } from "../ipc";
-import { roundSpeed, snapToDeck } from "./deckSpeeds";
-import { profileSummary } from "../dashboard/system/DeckProfile";
+import { profileSummary, roundSpeed, snapToDeck } from "./deckSpeeds";
 
 const none: DeckProfileSnapshot = { learned: 0, floor_kmh: null, ceiling_kmh: null, skipped_kmh: [] };
 

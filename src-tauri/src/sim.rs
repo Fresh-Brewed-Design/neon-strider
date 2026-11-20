@@ -1011,11 +1011,15 @@ mod tests {
         r.run(5.0);
         assert!(r.deck.running_at(2.0));
         assert_eq!(r.state.current_target_note(), None, "taken as asked");
+        // Engage started at 0.6 and the deck took 0.8: DECK_PROFILE knows the
+        // floor, so 0.6 now goes out as 0.8 and needs no note.
+        assert_eq!(r.state.deck_profile.floor(), Some(8));
+        let mark = r.mark();
         r.set_speed(0.6);
         r.run(3.0);
         assert!(r.deck.running_at(0.8), "{} km/h", r.deck.speed_kmh());
-        let note = r.state.current_target_note().expect("a note");
-        assert!(note.contains("0.6") && note.contains("0.8"), "{note}");
+        assert_eq!(target_bytes_since(&r, mark), vec![8]);
+        assert_eq!(r.state.current_target_note(), None);
         r.set_speed(5.0);
         r.run(2.0);
         let note = r.state.current_target_note().expect("a note");
@@ -1071,21 +1075,20 @@ mod tests {
     /// shown, the stepper and a typed speed keep to them.
     #[test]
     fn the_deck_profile_learns_the_floor_and_ceiling_from_echoes() {
-        let mut r = walking_rig(6, 40);
-        assert_eq!(r.state.deck_profile.floor(), None);
+        // Engage starts at the 0.6 setting; the deck takes 0.8 and says so.
+        let mut r = walking_rig(8, 40);
+        assert_eq!(r.state.deck_profile.floor(), Some(8));
+        assert_eq!(r.state.deck_profile.ceiling(), None);
         let mark = r.mark();
-        r.set_speed(0.3);
-        r.run(3.0);
         r.set_speed(5.0);
         r.run(3.0);
         assert_eq!(
             target_bytes_since(&r, mark),
-            vec![3, 50],
+            vec![50],
             "nothing sent to learn"
         );
-        assert_eq!(r.state.deck_profile.floor(), Some(6));
         assert_eq!(r.state.deck_profile.ceiling(), Some(40));
-        assert!((r.state.min_physical_speed() - 0.6).abs() < 1e-5);
+        assert!((r.state.min_physical_speed() - 0.8).abs() < 1e-5);
         assert!((r.state.top_hw_speed() - 4.0).abs() < 1e-5);
         r.run(20.0);
         assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
@@ -1103,20 +1106,20 @@ mod tests {
         );
 
         let steps = r.state.deck_speeds();
-        assert_eq!(steps.first().map(|s| s.0), Some(0.6));
+        assert_eq!(steps.first().map(|s| s.0), Some(0.8));
         assert_eq!(steps.last().map(|s| s.0), Some(4.0));
 
         // Down to the floor and no further: a down press there sends nothing.
-        r.set_speed(0.7);
-        r.run(5.0);
+        r.set_speed(0.9);
+        r.run(8.0);
         r.press(DeckAction::SpeedDown);
-        r.run(2.0);
-        assert!(r.deck.running_at(0.6), "{} km/h", r.deck.speed_kmh());
+        r.run(5.0);
+        assert!(r.deck.running_at(0.8), "{} km/h", r.deck.speed_kmh());
         let mark = r.mark();
         r.press(DeckAction::SpeedDown);
         r.run(2.0);
         assert!(target_bytes_since(&r, mark).is_empty());
-        assert!(r.deck.running_at(0.6));
+        assert!(r.deck.running_at(0.8));
 
         // The profile outlives the connection.
         r.drop_link();
@@ -1166,10 +1169,8 @@ mod tests {
     /// reconnect to a still deck, a down press and a 0 speed send no start.
     #[test]
     fn a_learned_profile_never_starts_a_still_belt() {
-        let mut r = walking_rig(6, 40);
-        r.set_speed(0.3);
-        r.run(3.0);
-        assert_eq!(r.state.deck_profile.floor(), Some(6));
+        let mut r = walking_rig(8, 40);
+        assert_eq!(r.state.deck_profile.floor(), Some(8));
         r.press(DeckAction::Stop);
         r.run(15.0);
         assert!(r.deck.belt_still());
@@ -1190,10 +1191,14 @@ mod tests {
     /// The simulated deck in dev builds teaches the profile nothing.
     #[test]
     fn replies_are_not_learned_while_learning_is_off() {
-        let mut r = walking_rig(6, 40);
+        let mut r = Rig::new();
         r.state.profile_learning = false;
-        r.set_speed(0.3);
-        r.run(3.0);
+        r.deck.set_limits(8, 40);
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(5.0);
+        r.set_speed(5.0);
+        r.run(2.0);
         assert!(r.state.deck_profile.is_empty());
         assert!(r.state.current_target_note().is_some(), "still noted");
     }
