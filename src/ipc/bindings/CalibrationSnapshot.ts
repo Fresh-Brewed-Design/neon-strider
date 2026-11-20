@@ -13,7 +13,16 @@ export type CalibrationSnapshot = {
  */
 wizard_enabled: boolean, limits: CalibrationLimits, 
 /**
- * The target speeds he keeps, slowest first.
+ * The belt loop's length for this treadmill, cm; none until entered.
+ */
+belt_cm: number | null, 
+/**
+ * A treadmill is known (connected or saved), so a belt length can be
+ * kept for it.
+ */
+belt_treadmill: boolean, 
+/**
+ * The target speeds the user keeps, slowest first.
  */
 targets: Array<CalibrationTarget>, run: CalibrationRunView | null, 
 /**

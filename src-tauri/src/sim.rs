@@ -1678,18 +1678,86 @@ mod tests {
         assert_eq!(r.controls_since(mark, Control::Pause), 0);
     }
 
-    /// RUN ALL: the press runs the slowest speed. Saving it never moves the
-    /// belt; STOP stops it, closes the open run, and nothing starts the belt
-    /// again until his RUN on the next speed.
+    /// GROUND_TRUTH: tapping the passes of the belt mark only reads the
+    /// deck. Nine taps measure the belt without one packet that could move
+    /// it; the belt keeps the run's speed; after STOP a tap on the still belt
+    /// is not taken and nothing starts the belt again.
+    #[test]
+    fn tapping_a_calibration_run_never_moves_the_belt() {
+        let mut r = Rig::new();
+        r.run(5.0);
+        r.state.set_test_now(r.t);
+        crate::calibration::begin_run(&mut r.state, 3.0).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+
+        // A 3 m loop at 3.0 km/h passes every 3.6 s.
+        let mut run = crate::calibration::Run::new(3.0, 300.0);
+        let mark = r.mark();
+        for _ in 0..9 {
+            run.tap(r.t, r.state.hardware_speed, |_| 70.0);
+            r.run(3.6);
+            run.sample(r.state.hardware_speed);
+        }
+        assert!(
+            !moves_belt(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+        let v = run.view(r.t);
+        assert_eq!(v.phase, crate::calibration::CalibrationPhase::Measured);
+        let res = v.result.unwrap();
+        assert!((res.real_kmh - 3.0).abs() < 0.05, "{}", res.real_kmh);
+        assert!((res.point.distance_scale - 1.0).abs() < 0.02);
+
+        // STOP, then a tap on the still belt: not taken, nothing moves it.
+        r.press(crate::engine::DeckAction::Stop);
+        r.run(10.0);
+        assert!(r.deck.belt_still());
+        let mut run = crate::calibration::Run::new(3.0, 300.0);
+        let mark = r.mark();
+        for _ in 0..5 {
+            run.tap(r.t, r.state.hardware_speed, |_| 70.0);
+            r.run(3.6);
+        }
+        assert_eq!(run.view(r.t).passes, 0);
+        assert!(!moves_belt(&r.commands_since(mark)));
+        assert!(r.deck.belt_still(), "a tap never starts the belt");
+    }
+
+    /// RUN ALL: the press runs the slowest speed. Taps and saving never move
+    /// the belt; STOP stops it, closes the open run, and nothing starts the
+    /// belt again until his RUN on the next speed.
     #[test]
     fn a_calibration_sweep_only_moves_the_belt_on_his_run() {
         crate::calibration::set_wizard_for_test(true);
         let mut r = Rig::new();
         r.run(5.0);
         r.state.set_test_now(r.t);
+        crate::calibration::set_belt_for_test(None);
+        let refused = crate::calibration::sweep_start_over(&mut r.state, &[4.0, 3.0]).unwrap_err();
+        assert!(refused.contains("belt loop"), "{refused}");
+        r.run(5.0);
+        assert!(r.deck.belt_still(), "no belt length, no RUN");
+        crate::calibration::set_belt_for_test(Some(300.0));
+        r.state.set_test_now(r.t);
         crate::calibration::sweep_start_over(&mut r.state, &[4.0, 3.0]).unwrap();
         r.run(20.0);
         assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+
+        // Taps through the shared command path, as the TAP button and
+        // Alt+Space send them: the run listens, and nothing reaches the belt.
+        assert!(crate::calibration::tap_listening());
+        let mark = r.mark();
+        for _ in 0..4 {
+            crate::calibration::tap(&r.state, r.t).unwrap();
+            r.run(3.6);
+        }
+        assert!(!moves_belt(&r.commands_since(mark)));
+        let snap = crate::calibration::snapshot(&r.state);
+        assert_eq!(snap.run.as_ref().map(|v| v.passes), Some(4));
+        assert_eq!(snap.belt_cm, Some(300.0));
 
         // SAVE: the belt keeps 3.0 until RUN.
         crate::calibration::sweep_next(true).unwrap();

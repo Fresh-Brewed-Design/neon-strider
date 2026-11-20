@@ -3,4 +3,4 @@
 /**
  * Where a run is.
  */
-export type CalibrationPhase = "settling" | "counting" | "counted";
+export type CalibrationPhase = "settling" | "tapping" | "measured";

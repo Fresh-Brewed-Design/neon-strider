@@ -64,6 +64,12 @@ pub(crate) fn count_key() {
 }
 
 /// The key presses counted since the last call, and start again from zero.
+/// A GROUND_TRUTH tap run is listening, so Alt+Space is a tap. An atomic
+/// read, safe on the hook thread.
+pub(crate) fn tap_listening() -> bool {
+    crate::calibration::tap_listening()
+}
+
 pub(crate) fn take_key_count() -> u32 {
     u32::try_from(KEY_COUNT.swap(0, Ordering::SeqCst)).unwrap_or(u32::MAX)
 }
@@ -81,6 +87,9 @@ pub enum Shortcut {
     ToggleProgram,
     /// Minify the HUD to the running strip, or expand it again.
     ToggleMinified,
+    /// GROUND_TRUTH: the belt mark passed (Alt+Space, only while a tap run
+    /// listens). Never moves the belt.
+    CalibrationTap,
 }
 
 impl Shortcut {
@@ -93,7 +102,7 @@ impl Shortcut {
             Shortcut::InclineUp => Some(DeckAction::InclineUp),
             Shortcut::InclineDown => Some(DeckAction::InclineDown),
             Shortcut::ToggleStart => Some(DeckAction::ToggleStart),
-            Shortcut::ToggleProgram | Shortcut::ToggleMinified => None,
+            Shortcut::ToggleProgram | Shortcut::ToggleMinified | Shortcut::CalibrationTap => None,
         }
     }
 
@@ -101,6 +110,7 @@ impl Shortcut {
         match (self, self.deck_action()) {
             (_, Some(action)) => action.as_str(),
             (Shortcut::ToggleMinified, None) => "toggle-minified",
+            (Shortcut::CalibrationTap, None) => "calibration-tap",
             (_, None) => "toggle-automation",
         }
     }
@@ -111,6 +121,20 @@ pub(crate) fn shortcut_pressed(shortcut: Shortcut) {
     let Some(app) = crate::app_handle() else {
         return;
     };
+    if shortcut == Shortcut::CalibrationTap {
+        // The moment of the key press, taken on the hook thread before any
+        // lock, so the tap's time is the press's. Not logged: one a pass.
+        let at = Instant::now();
+        std::thread::spawn(move || {
+            tauri::async_runtime::block_on(async move {
+                let state = crate::bluetooth::ORCHESTRATOR.lock().await;
+                if let Err(e) = crate::calibration::tap(&state, at) {
+                    log::info!("calibration tap ignored: {e}");
+                }
+            });
+        });
+        return;
+    }
     std::thread::spawn(move || {
         log::info!("native shortcut action: {}", shortcut.label());
         // Shortcuts work with no window open; the HUD shows what they did.

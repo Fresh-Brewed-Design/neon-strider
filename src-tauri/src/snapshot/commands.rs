@@ -315,16 +315,14 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             }
             calibration::run_start(&mut *ORCHESTRATOR.lock().await, target_kmh)
         }
-        Command::CalibrationCountStart => {
-            let raw = ORCHESTRATOR.lock().await.hardware_speed;
-            calibration::count_start(raw)
+        Command::CalibrationTap => {
+            // The moment of the press, before waiting on the lock.
+            let at = std::time::Instant::now();
+            calibration::tap(&*ORCHESTRATOR.lock().await, at)
         }
-        Command::CalibrationCountStop => {
-            let raw = ORCHESTRATOR.lock().await.hardware_speed;
-            calibration::count_stop(raw)
-        }
-        Command::CalibrationRunCount { count } => {
-            calibration::count(&*ORCHESTRATOR.lock().await, &count)
+        Command::CalibrationTapReset => calibration::retap(),
+        Command::CalibrationBeltSet { cm } => {
+            blocking(move || calibration::set_belt(&app, cm)).await
         }
         Command::CalibrationRunClose => {
             calibration::close();

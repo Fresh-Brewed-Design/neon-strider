@@ -83,13 +83,16 @@ const VK_NEXT: u16 = 0x22;
 const VK_END: u16 = 0x23;
 const VK_HOME: u16 = 0x24;
 const VK_INSERT: u16 = 0x2D;
+const VK_SPACE: u16 = 0x20;
 const VK_OEM_PLUS: u16 = 0xBB;
 const VK_OEM_MINUS: u16 = 0xBD;
 
 /// The Alt shortcut a key press is, if any: Alt with volume up or down (or
 /// `=` and `-`) for speed, Page Up and Page Down for incline, Home to start or
-/// pause, End to run or end the last program, Insert to minify or expand the HUD.
-fn shortcut_for_key(vk: u16, alt_down: bool) -> Option<Shortcut> {
+/// pause, End to run or end the last program, Insert to minify or expand the HUD,
+/// and Space for a GROUND_TRUTH tap while a tap run listens (`tapping`); at any
+/// other time Alt+Space is left to Windows (the window menu).
+fn shortcut_for_key(vk: u16, alt_down: bool, tapping: bool) -> Option<Shortcut> {
     if !alt_down {
         return None;
     }
@@ -101,6 +104,7 @@ fn shortcut_for_key(vk: u16, alt_down: bool) -> Option<Shortcut> {
         VK_HOME => Some(Shortcut::ToggleStart),
         VK_END => Some(Shortcut::ToggleProgram),
         VK_INSERT => Some(Shortcut::ToggleMinified),
+        VK_SPACE if tapping => Some(Shortcut::CalibrationTap),
         _ => None,
     }
 }
@@ -145,7 +149,7 @@ unsafe extern "system" fn keyboard_proc(ncode: i32, wparam: WPARAM, lparam: LPAR
         // The hook flag alone misses Alt in some apps; the key state catches it.
         let alt_down =
             (key.flags.0 & LLKHF_ALTDOWN.0) != 0 || key_held(VK_LMENU) || key_held(VK_RMENU);
-        let shortcut = shortcut_for_key(key.vkCode as u16, alt_down);
+        let shortcut = shortcut_for_key(key.vkCode as u16, alt_down, crate::hooks::tap_listening());
 
         if let Some(s) = shortcut {
             crate::hooks::shortcut_pressed(s);
@@ -1393,7 +1397,7 @@ mod tests {
 
     #[test]
     fn alt_shortcuts_map_to_their_actions() {
-        let alt = |vk| shortcut_for_key(vk, true);
+        let alt = |vk| shortcut_for_key(vk, true, false);
         assert_eq!(alt(0xAF), Some(Shortcut::SpeedUp));
         assert_eq!(alt(0xBB), Some(Shortcut::SpeedUp));
         assert_eq!(alt(0xAE), Some(Shortcut::SpeedDown));
@@ -1403,12 +1407,20 @@ mod tests {
         assert_eq!(alt(0x24), Some(Shortcut::ToggleStart));
         assert_eq!(alt(0x23), Some(Shortcut::ToggleProgram));
         assert_eq!(alt(0x2D), Some(Shortcut::ToggleMinified));
+        // Alt+Space is a GROUND_TRUTH tap only while a tap run listens; plain
+        // Space never is (the dashboard takes it itself when focused).
+        assert_eq!(alt(0x20), None);
+        assert_eq!(
+            shortcut_for_key(0x20, true, true),
+            Some(Shortcut::CalibrationTap)
+        );
+        assert_eq!(shortcut_for_key(0x20, false, true), None);
         // Other keys with Alt, and the same keys without it, are not shortcuts.
         for vk in [0x41u16, 0x25, 0x09, 0x0D, 0x70] {
             assert_eq!(alt(vk), None, "{vk:#x}");
         }
         for vk in [0xAFu16, 0xAE, 0x21, 0x22, 0x23, 0x24, 0x2D, 0xBB, 0xBD] {
-            assert_eq!(shortcut_for_key(vk, false), None, "{vk:#x}");
+            assert_eq!(shortcut_for_key(vk, false, true), None, "{vk:#x}");
         }
     }
 

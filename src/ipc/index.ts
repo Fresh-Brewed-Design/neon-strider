@@ -10,7 +10,6 @@ import type { Command } from "./bindings/Command";
 export type { ActiveProgram } from "./bindings/ActiveProgram";
 export type { AppSnapshot } from "./bindings/AppSnapshot";
 export type { BlinkStep } from "./bindings/BlinkStep";
-export type { CalibrationCount } from "./bindings/CalibrationCount";
 export type { CalibrationLimits } from "./bindings/CalibrationLimits";
 export type { CalibrationPhase } from "./bindings/CalibrationPhase";
 export type { CalibrationResult } from "./bindings/CalibrationResult";
