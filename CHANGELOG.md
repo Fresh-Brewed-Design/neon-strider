@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.15.0 (2026-11-20)
+
+### New
+
+- The HUD now reads the treadmill's echo of each speed or incline you set. When the deck took something other than what was asked (it lifts speeds under its floor, say) or refused it, a short `DECK_ADJUSTED` or `DECK_REFUSED` note shows under the VEL and TILT controls for a few seconds, and the asked-versus-got values go to the log.
+
 ## 1.14.0 (2026-11-20)
 
 ### New

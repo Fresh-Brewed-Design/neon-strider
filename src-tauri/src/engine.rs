@@ -38,6 +38,10 @@ const COMMAND_GAP: Duration = Duration::from_millis(150);
 const HANDSHAKE_PRIME_GAP: Duration = Duration::from_millis(150);
 const HANDSHAKE_ACT_GAP: Duration = Duration::from_millis(400);
 /// How often the deck is asked for a status frame.
+/// A nack or echo this soon after a target packet is the deck's answer to it.
+const TARGET_REPLY_WINDOW: Duration = Duration::from_secs(2);
+/// How long the note on an adjusted or refused target stays up.
+const TARGET_NOTE_SHOWN: Duration = Duration::from_secs(8);
 const POLL_EVERY: Duration = Duration::from_millis(600);
 /// While a stop is in flight it is repeated this often...
 const STOP_REISSUE_INTERVAL: Duration = Duration::from_secs(1);
@@ -173,6 +177,13 @@ pub struct OrchestratorState {
     pub hardware_speed: f32,
     pub hardware_incline: u8,
     pub hardware_time: u16,
+
+    /// The target packet last sent (speed byte, incline byte, when) and not yet
+    /// echoed or nacked.
+    pub(crate) target_pending: Option<(u8, u8, Instant)>,
+    /// What the deck did with the last target when it was not what we asked:
+    /// plain words and when, for the windows to show for a while.
+    pub(crate) target_note: Option<(String, Instant)>,
 
     pub handshake_step: HandshakeStep,
     /// Whether the handshake under way is a pause (true) or a start. Decided
@@ -334,6 +345,8 @@ impl Default for OrchestratorState {
             start_blocked: false,
             start_sent_at: None,
             unknown_status_code: None,
+            target_pending: None,
+            target_note: None,
             deck_standby: false,
             hold_auto_start: true,
             engage_speed: None,
@@ -1258,6 +1271,64 @@ impl OrchestratorState {
 
     /// The link went down. A dropout mid-walk keeps the intents and the session
     /// for the reconnect; anything else starts over.
+    /// Take the deck's echo of a target, or a nack. The echo is what the deck
+    /// took: when it differs from what was sent, say so (log and note). A nack
+    /// shortly after a target is that target refused.
+    pub fn on_deck_reply(&mut self, reply: protocol::DeckReply) {
+        let now = self.now();
+        let pending = self
+            .target_pending
+            .take()
+            .filter(|(_, _, at)| now.saturating_duration_since(*at) < TARGET_REPLY_WINDOW);
+        let Some((asked_speed, asked_incline, _)) = pending else {
+            return;
+        };
+        let kmh = |b: u8| self.to_physical_speed(b as f32 / 10.0);
+        let note = match reply {
+            protocol::DeckReply::Nack => {
+                log::warn!(
+                    "Deck refused target: speed byte {asked_speed}, incline {asked_incline}"
+                );
+                Some(format!(
+                    "DECK_REFUSED // {:.1} km/h, level {} not taken",
+                    kmh(asked_speed),
+                    asked_incline
+                ))
+            }
+            protocol::DeckReply::TargetEcho { speed, incline }
+                if (speed, incline) != (asked_speed, asked_incline) =>
+            {
+                log::info!(
+                    "Deck took a different target: asked speed byte {asked_speed}, incline {asked_incline}; got {speed}, {incline}"
+                );
+                let mut parts = vec![];
+                if speed != asked_speed {
+                    parts.push(format!(
+                        "{:.1} KM/H -> {:.1} KM/H",
+                        kmh(asked_speed),
+                        kmh(speed)
+                    ));
+                }
+                if incline != asked_incline {
+                    parts.push(format!("LEVEL {asked_incline} -> {incline}"));
+                }
+                Some(format!("DECK_ADJUSTED // {}", parts.join(", ")))
+            }
+            protocol::DeckReply::TargetEcho { .. } => None,
+        };
+        match note {
+            Some(n) => self.target_note = Some((n, now)),
+            // The deck took it as asked: an older complaint is stale.
+            None => self.target_note = None,
+        }
+    }
+
+    /// The note on the last target, while it is fresh.
+    pub fn current_target_note(&self) -> Option<String> {
+        let (note, at) = self.target_note.as_ref()?;
+        (self.now().saturating_duration_since(*at) < TARGET_NOTE_SHOWN).then(|| note.clone())
+    }
+
     pub fn reset_connection(&mut self) {
         self.awaiting_first_packet = true;
         self.session_evaluated_on_connect = false;
@@ -1267,6 +1338,8 @@ impl OrchestratorState {
         self.start_blocked = false;
         self.start_sent_at = None;
         self.unknown_status_code = None;
+        self.target_pending = None;
+        self.target_note = None;
         self.deck_standby = false;
         self.last_handshake_tx = None;
         self.deck_set_speed = None;
@@ -1948,6 +2021,7 @@ impl ProtocolEngine {
                     );
                     self.last_sent_speed = h_speed;
                     self.last_sent_incline = h_inc;
+                    state.target_pending = Some((h_speed, h_inc, now));
                     // The deck takes the app's speed and incline from here.
                     state.deck_set_speed = None;
                     state.deck_set_incline = None;

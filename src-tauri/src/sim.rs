@@ -153,6 +153,10 @@ pub(crate) struct SimDeck {
     pub(crate) history: Vec<u8>,
     /// Control packets refused.
     pub(crate) nacks: u32,
+    /// The slowest and fastest speed byte a target is taken at: outside, the
+    /// deck clamps and echoes the byte it took.
+    floor: u8,
+    ceiling: u8,
 }
 
 impl SimDeck {
@@ -173,7 +177,16 @@ impl SimDeck {
             outbox: vec![],
             history: vec![0],
             nacks: 0,
+            floor: 0,
+            ceiling: u8::MAX,
         }
+    }
+
+    /// A deck that runs only `floor`..=`ceiling` (speed bytes, 0.1 km/h).
+    #[cfg(test)]
+    pub(crate) fn set_limits(&mut self, floor: u8, ceiling: u8) {
+        self.floor = floor;
+        self.ceiling = ceiling;
     }
 
     #[cfg(test)]
@@ -319,6 +332,7 @@ impl SimDeck {
             self.nacks += 1;
             return NACK.to_vec();
         };
+        let mut echo_speed = None;
         let accepted = match (self.phase, control) {
             // Standby refuses every start; the countdown and the stop's
             // wind-down refuse everything but polls (docs/protocol.md).
@@ -328,8 +342,12 @@ impl SimDeck {
                 true
             }
             (Running, Control::Target) => {
-                self.target = speed as f32 / 10.0;
+                // A speed outside the deck's range is clamped, and the echo
+                // below says which byte it took.
+                let taken = speed.clamp(self.floor, self.ceiling);
+                self.target = taken as f32 / 10.0;
                 self.incline = incline;
+                echo_speed = Some(taken);
                 true
             }
             (Running, Control::Pause) => {
@@ -359,7 +377,9 @@ impl SimDeck {
         }
         match control {
             Control::Ready => READY_ACK.to_vec(),
-            Control::Target => bytes.to_vec(),
+            Control::Target => {
+                protocol::control_packet(Control::Target, echo_speed.unwrap_or(speed), incline)
+            }
             // `02 53 03 50 03` for a Stop (docs); the same shape assumed for the rest.
             other => protocol::raw_packet(&[0x53, other as u8]).expect("echo"),
         }
@@ -544,7 +564,11 @@ impl Rig {
     /// Take one notification, as `bluetooth::listen_for_status` does.
     fn rx(&mut self, bytes: &[u8]) {
         let Some(t) = protocol::parse_status(bytes) else {
-            return; // an echo or nack: the app ignores these
+            if let Some(reply) = protocol::parse_reply(bytes) {
+                self.state.set_test_now(self.t);
+                self.state.on_deck_reply(reply);
+            }
+            return;
         };
         apply_telemetry(&mut self.state, &t);
         self.state.update_physics();
@@ -1000,6 +1024,51 @@ mod tests {
         r.run(10.0);
         assert_eq!(r.commands_since(0), vec![]);
         assert_eq!(r.deck.status_code(), 0);
+    }
+
+    /// The deck clamps a target to its floor and says so in the echo; the app
+    /// shows "asked X, got Y" and keeps the note only for a while.
+    #[test]
+    fn a_target_below_the_decks_floor_is_noted_from_the_echo() {
+        let mut r = Rig::new();
+        r.deck.set_limits(8, 40);
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(5.0);
+        r.set_speed(2.0);
+        r.run(5.0);
+        assert!(r.deck.running_at(2.0));
+        assert_eq!(r.state.current_target_note(), None, "taken as asked");
+        r.set_speed(0.6);
+        r.run(3.0);
+        assert!(r.deck.running_at(0.8), "{} km/h", r.deck.speed_kmh());
+        let note = r.state.current_target_note().expect("a note");
+        assert!(note.contains("0.6") && note.contains("0.8"), "{note}");
+        r.set_speed(5.0);
+        r.run(2.0);
+        let note = r.state.current_target_note().expect("a note");
+        assert!(note.contains("5.0") && note.contains("4.0"), "{note}");
+        r.run(20.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        r.run(10.0);
+        assert_eq!(r.state.current_target_note(), None, "the note fades");
+        r.set_speed(2.0);
+        r.run(3.0);
+        assert_eq!(r.state.current_target_note(), None);
+    }
+
+    #[test]
+    fn a_nack_just_after_a_target_is_that_target_refused() {
+        let mut r = Rig::new();
+        r.state.set_test_now(r.t);
+        r.state.target_pending = Some((30, 0, r.t));
+        r.state.on_deck_reply(protocol::DeckReply::Nack);
+        let note = r.state.current_target_note().expect("a note");
+        assert!(note.starts_with("DECK_REFUSED"), "{note}");
+        // A nack with no target in flight says nothing.
+        r.state.target_note = None;
+        r.state.on_deck_reply(protocol::DeckReply::Nack);
+        assert_eq!(r.state.current_target_note(), None);
     }
 
     #[test]
