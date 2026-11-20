@@ -204,6 +204,9 @@ pub struct OrchestratorState {
     /// Replies are filed in `deck_profile`. Off on the simulated deck, whose
     /// limits are not the treadmill's.
     pub(crate) profile_learning: bool,
+    /// When a speed was last set by hand with no target sent since, for the
+    /// log line saying why it hasn't gone out (`ProtocolEngine::note_unsent`).
+    pub(crate) press_unsent_since: Option<Instant>,
     /// DECK_SWEEP in progress (`profile_sweep.rs`).
     pub(crate) profile_sweep: Option<crate::profile_sweep::ProfileSweep>,
     /// The DECK_SWEEP Labs switch (persisted, off by default): a sweep starts
@@ -379,6 +382,7 @@ impl Default for OrchestratorState {
             deck_profile: Default::default(),
             deck_profile_key: None,
             profile_learning: true,
+            press_unsent_since: None,
             profile_sweep: None,
             profile_sweep_enabled: false,
             deck_standby: false,
@@ -1141,8 +1145,11 @@ impl OrchestratorState {
         let hw_byte = |phys: f32| self.speed_byte(phys);
         let cur_byte = deck_byte.unwrap_or_else(|| hw_byte(cur.speed)) as i32;
         let max_byte = (self.top_hw_speed() * 10.0).round() as i32;
-        // Down from a running speed stops at the deck's floor once it is known.
-        let floor = self.deck_profile.floor().map_or(0, i32::from);
+        // Down from a running speed stops at the slowest speed sent: the Min
+        // speed setting, or the deck's floor once DECK_PROFILE knows it. A
+        // byte below it would only be raised back to it when sent, so the
+        // next up press would do nothing.
+        let floor = (self.floor_hw_speed() * 10.0).round() as i32;
         let min_byte = if cur_byte >= floor { floor } else { 0 };
         let mut target_byte = (cur_byte + dir).clamp(min_byte, max_byte);
         // Two bytes with exactly the same km/h both send as the lower one, and
@@ -1167,9 +1174,9 @@ impl OrchestratorState {
             });
             self.note_hand_speed(self.now());
         }
-        log::debug!(
-            "SPEED NUDGE dir={} hw_byte {} -> {} (status={:?})",
-            dir,
+        log::info!(
+            "Speed press {}: deck byte {} -> {} (status {:?})",
+            if dir > 0 { "up" } else { "down" },
             cur_byte,
             target_byte,
             self.last_status
@@ -1598,6 +1605,7 @@ impl OrchestratorState {
     /// a deck that went quiet on a start may be asked again.
     pub(crate) fn note_hand_speed(&mut self, now: Instant) {
         self.speed_hand_epoch = self.speed_hand_epoch.wrapping_add(1);
+        self.press_unsent_since = Some(now);
         // The speed change that follows is the user's: toast it as usual.
         self.neural_changed_at = None;
         // A speed set by hand may start a still belt, as it always has, and
@@ -1871,6 +1879,11 @@ impl Packet {
     }
 }
 
+/// How long a speed set by hand may go unsent before the log says why: past
+/// the deck's start countdown (about 3 s), during which it takes no target,
+/// so a press made while the belt resumes isn't reported.
+const PRESS_UNSENT_REPORT: Duration = Duration::from_secs(4);
+
 /// How long the deck reports the same speed or incline, with no target sent
 /// in that time, before a value short of the app's target counts as the
 /// deck's own setting (`DeckWatch::check`).
@@ -2000,6 +2013,7 @@ impl ProtocolEngine {
         if packet.is_none() && state.handshake_step == HandshakeStep::Idle && !deck_start_pending {
             packet = self.control_packet(state, now);
         }
+        self.note_unsent(state, now, deck_start_pending);
         packet.or_else(|| Self::poll_packet(state, now))
     }
 
@@ -2249,8 +2263,9 @@ impl ProtocolEngine {
                 };
                 self.last_physical_speed = target_speed;
                 if h_speed != sent_speed || h_inc != sent_incline || state.resend_target {
-                    log::debug!(
-                        "SET -> Speed: {:.1}kmh (HW: {}), Incline: Level {} (HW: {}) [Source: {}]",
+                    state.press_unsent_since = None;
+                    log::info!(
+                        "SET -> Speed: {:.2}kmh (HW: {}), Incline: Level {} (HW: {}) [Source: {}]",
                         target_speed,
                         h_speed,
                         target_incline,
@@ -2276,6 +2291,47 @@ impl ProtocolEngine {
             _ => {}
         }
         None
+    }
+
+    /// A speed set by hand that hasn't gone out within `PRESS_UNSENT_REPORT`:
+    /// log once why, so a press that never reaches the deck explains itself.
+    fn note_unsent(&self, state: &mut OrchestratorState, now: Instant, deck_start_pending: bool) {
+        let Some(since) = state.press_unsent_since else {
+            return;
+        };
+        if now.saturating_duration_since(since) < PRESS_UNSENT_REPORT {
+            return;
+        }
+        state.press_unsent_since = None;
+        let (speed, incline, source) = state.resolve_target();
+        let why = if state.awaiting_first_packet {
+            "no frame from the deck yet".to_string()
+        } else if state.stop_requested {
+            "a stop is in flight".to_string()
+        } else if state.handshake_step != HandshakeStep::Idle {
+            format!("handshake at {:?}", state.handshake_step)
+        } else if deck_start_pending {
+            "confirming a start at the treadmill".to_string()
+        } else if !state.last_status.is_moving() {
+            format!("deck {:?}", state.last_status)
+        } else {
+            let raw = state.speed_byte(speed);
+            format!(
+                "target byte {} (snapped {}) equals the last sent {} (snapped {}), resend {}",
+                raw,
+                state.deck_profile.snap(raw),
+                self.last_sent_speed,
+                state.deck_profile.snap(self.last_sent_speed),
+                state.resend_target
+            )
+        };
+        log::info!(
+            "Speed press not sent after {} s: {why}; target {speed:.2} km/h, incline {incline} [{source}], deck {:.1} ({:?}), sweep {}",
+            PRESS_UNSENT_REPORT.as_secs(),
+            state.hardware_speed,
+            state.last_status,
+            state.profile_sweep.is_some()
+        );
     }
 
     /// A status request when one is due. The session totals are brought up to
@@ -3133,7 +3189,9 @@ mod tests {
     }
 
     /// Every speed-up press moves the deck up a byte until the top speed, and
-    /// every speed-down press down a byte until zero, whatever the curve.
+    /// every speed-down press down a byte until the Min speed setting,
+    /// whatever the curve: a byte below it is sent as the Min speed, so a
+    /// press there would do nothing and leave the next up press dead.
     #[test]
     fn speed_nudges_step_every_byte_from_zero_to_max_and_back() {
         for config in [
@@ -3157,14 +3215,15 @@ mod tests {
             }
             state.trigger_action(DeckAction::SpeedUp);
             assert_eq!(manual_byte(&state), max_byte, "held at the top");
-            for _ in 0..max_byte {
+            let min_byte = (state.min_speed * 10.0).round() as u8;
+            for _ in min_byte..max_byte {
                 state.trigger_action(DeckAction::SpeedDown);
                 let next = manual_byte(&state);
                 assert_eq!(next + 1, byte, "down from byte {byte}: {config:?}");
                 byte = next;
             }
             state.trigger_action(DeckAction::SpeedDown);
-            assert_eq!(manual_byte(&state), 0, "held at zero");
+            assert_eq!(manual_byte(&state), min_byte, "held at the Min speed");
         }
     }
 
