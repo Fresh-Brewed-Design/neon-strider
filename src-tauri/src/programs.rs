@@ -297,7 +297,9 @@ fn validate_program(p: &Program, min_speed: f32, max_speed: f32) -> Result<(), S
         if !ok(s.speed_kmh) {
             return Err(format!("Step {}: speed must be zero or more", n));
         }
-        if s.speed_kmh != 0.0 && (s.speed_kmh < min_speed || s.speed_kmh > max_speed) {
+        // The calibrated floor is rarely a round number; a speed typed as the
+        // floor shown (to 0.01 km/h) is not below it.
+        if s.speed_kmh != 0.0 && (s.speed_kmh < min_speed - 0.005 || s.speed_kmh > max_speed) {
             return Err(format!(
                 "Step {}: speed must be 0 or between {:.1} and {:.1} km/h",
                 n, min_speed, max_speed
@@ -516,7 +518,7 @@ impl OrchestratorState {
                     .unwrap_or_else(|| ControlIntent {
                         speed: self
                             .to_physical_speed(self.hardware_speed)
-                            .max(self.min_speed),
+                            .max(self.min_physical_speed()),
                         incline: self.hardware_incline,
                     }),
             )
@@ -1115,8 +1117,9 @@ impl OrchestratorState {
     /// Create (id 0) or replace a program after validating it.
     pub fn save_program(&mut self, mut program: Program) -> Result<(), String> {
         program.name = program.name.trim().to_string();
+        let min_speed = self.min_physical_speed();
         let max_speed = self.to_physical_speed(self.max_speed);
-        validate_program(&program, self.min_speed, max_speed)?;
+        validate_program(&program, min_speed, max_speed)?;
         if program.id == 0 {
             // Notes are Rust's; a new program has none.
             program.note = None;
@@ -1766,6 +1769,31 @@ mod tests {
         assert!(s.program.is_some());
         assert_eq!(s.toggle_program(t0), None);
         assert!(s.program.is_none());
+    }
+
+    /// Steps are calibrated km/h, so they're checked against the calibrated
+    /// floor, and a program started on a moving belt keeps at least that.
+    #[test]
+    fn programs_use_the_calibrated_speed_floor() {
+        let mut s = state();
+        s.sync_config(&crate::engine::slow_floor_config());
+        let floor = s.min_physical_speed();
+        assert!((floor - 1.2).abs() < 1e-4, "{floor}");
+        let mut p = s.programs[0].clone();
+        p.id = 0;
+        p.steps[0].speed_kmh = 0.8; // over hw 0.6, under the belt's 1.2 km/h
+        let err = s.save_program(p.clone()).unwrap_err();
+        assert!(err.contains("between 1.2 and"), "{err}");
+        p.steps[0].speed_kmh = 1.2;
+        s.save_program(p).unwrap();
+
+        // The deck reports its floor byte with no manual intent: the speed
+        // to return to is the calibrated floor, not the raw 0.6.
+        s.last_status = MachineStatus::Running;
+        s.hardware_speed = 0.3;
+        s.manual_intent = None;
+        let prev = s.capture_previous();
+        assert_eq!(prev.moving.map(|i| i.speed), Some(floor));
     }
 
     #[test]

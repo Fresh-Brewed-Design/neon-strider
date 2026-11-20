@@ -16,9 +16,9 @@ use tauri::AppHandle;
 const PAUSE_BELOW_KMH: f32 = 0.05;
 
 /// Manual speed: below the engine's pause threshold means "pause" (0),
-/// anything else is held inside [min_speed, calibrated max]. The engine would
-/// bump a small positive value up to min_speed anyway; doing it here keeps the
-/// stored intent honest.
+/// anything else is held inside [calibrated min, calibrated max]. The engine
+/// would bump a small positive value up to the floor anyway; doing it here
+/// keeps the stored intent honest.
 pub(super) fn clamp_manual_speed(state: &OrchestratorState, kmh: f32) -> Result<f32, String> {
     if !kmh.is_finite() {
         return Err("Speed must be a finite number".to_string());
@@ -27,7 +27,7 @@ pub(super) fn clamp_manual_speed(state: &OrchestratorState, kmh: f32) -> Result<
         return Ok(0.0);
     }
     let max = state.to_physical_speed(state.max_speed);
-    Ok(kmh.min(max).max(state.min_speed))
+    Ok(kmh.min(max).max(state.min_physical_speed()))
 }
 
 pub(super) fn clamp_incline_level(state: &OrchestratorState, level: u8) -> u8 {
@@ -262,6 +262,27 @@ mod tests {
 
         assert_eq!(clamp_incline_level(&state, 5), 5);
         assert_eq!(clamp_incline_level(&state, 200), 12);
+    }
+
+    /// `min_speed` is hardware units: with a calibration the clamp holds a
+    /// speed at the calibrated floor, which the deck gets as its floor byte.
+    #[test]
+    fn manual_speed_clamps_to_the_calibrated_floor() {
+        let mut state = OrchestratorState::default();
+        state.sync_config(&crate::engine::slow_floor_config());
+        let floor = state.min_physical_speed();
+        assert!((floor - 1.2).abs() < 1e-4, "{floor}");
+        let kmh = clamp_manual_speed(&state, 0.8).unwrap();
+        assert_eq!(kmh, floor);
+        let byte = crate::engine::calculate_hardware_bytes(
+            kmh,
+            0,
+            &state.calibration_points,
+            state.max_speed,
+        )
+        .0;
+        assert_eq!(byte, 6, "the deck's floor byte (0.6 hardware km/h)");
+        assert_eq!(clamp_manual_speed(&state, 3.0).unwrap(), 3.0);
     }
 
     #[test]

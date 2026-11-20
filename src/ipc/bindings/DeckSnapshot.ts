@@ -22,7 +22,11 @@ raw_speed_kmh: number,
 /**
  * Commanded target (resolve_target), calibrated.
  */
-target_speed_kmh: number, incline_level: number, incline_pct: number, target_incline_level: number, target_incline_pct: number, min_speed_kmh: number, 
+target_speed_kmh: number, incline_level: number, incline_pct: number, target_incline_level: number, target_incline_pct: number, 
+/**
+ * Calibrated, like `max_speed_kmh`: the belt's floor in km/h.
+ */
+min_speed_kmh: number, 
 /**
  * Calibrated.
  */

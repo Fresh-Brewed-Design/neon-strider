@@ -82,7 +82,7 @@ fn belt_view(state: &OrchestratorState) -> calls::Belt {
         running: belt_running(state),
         program,
         target_kmh,
-        min_kmh: state.min_speed,
+        min_kmh: state.min_physical_speed(),
     }
 }
 
