@@ -29,6 +29,23 @@ export function snapToDeck(
   return best;
 }
 
+/**
+ * `level` moved to the nearest incline level the deck runs, from
+ * `deck.incline_steps` (Rust's DECK_PROFILE). The lower one wins a tie.
+ * Unchanged while the list is empty, that is before the deck has answered an
+ * incline, and above the list's top (the highest incline setting can still be
+ * raised until the deck's own ceiling is known).
+ */
+export function snapToLevel(level: number, deck: Pick<DeckSnapshot, "incline_steps"> | null | undefined): number {
+  const steps = deck?.incline_steps ?? [];
+  if (steps.length === 0 || !Number.isFinite(level) || level > steps[steps.length - 1]) return level;
+  let best = steps[0];
+  for (const s of steps) {
+    if (Math.abs(s - level) < Math.abs(best - level)) best = s;
+  }
+  return best;
+}
+
 /** A snapped speed for a field: to 0.01 km/h, so a calibrated speed stays readable. */
 export function roundSpeed(v: number): number {
   return Math.round(v * 100) / 100;
@@ -43,5 +60,14 @@ export function profileSummary(p: DeckProfileSnapshot): string {
   if (p.floor_kmh != null) parts.push(`slowest ${kmh(p.floor_kmh)}`);
   if (p.ceiling_kmh != null) parts.push(`fastest ${kmh(p.ceiling_kmh)}`);
   if (p.skipped_kmh.length > 0) parts.push(`skips ${p.skipped_kmh.map((v) => v.toFixed(1)).join(", ")}`);
+  return `${parts.join(", ")}.`;
+}
+
+/** One line on the incline levels DECK_PROFILE knows. */
+export function inclineSummary(p: DeckProfileSnapshot): string {
+  if (p.learned_levels === 0) return "No incline levels learned yet.";
+  const parts = [`${p.learned_levels} ${p.learned_levels === 1 ? "incline level" : "incline levels"} learned`];
+  if (p.ceiling_level != null) parts.push(`top level ${p.ceiling_level}`);
+  if (p.skipped_levels.length > 0) parts.push(`skips ${p.skipped_levels.join(", ")}`);
   return `${parts.join(", ")}.`;
 }

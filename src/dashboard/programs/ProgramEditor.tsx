@@ -3,7 +3,7 @@ import { Plus, X } from "lucide-react";
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { dispatch } from "../../ipc";
-import { roundSpeed, snapToDeck } from "../../state/deckSpeeds";
+import { roundSpeed, snapToDeck, snapToLevel } from "../../state/deckSpeeds";
 import { useAppState } from "../../state/useAppState";
 import { GhostButton, Hint, Label, NeonButton, Panel } from "../ui";
 import { cx } from "../util";
@@ -35,6 +35,18 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
     if (text.trim() === "" || !Number.isFinite(v)) return text;
     const snapped = roundSpeed(snapToDeck(v, deck));
     return snapped === v ? text : String(snapped);
+  };
+
+  // A typed incline moves to the grade of a level the deck runs.
+  const snapInclineText = (text: string) => {
+    const pct = Number(text);
+    if (!deck) return text;
+    const per = deck.incline_pct_per_level;
+    if (text.trim() === "" || !Number.isFinite(pct) || Math.abs(per) < 1e-6) return text;
+    const level = Math.round((pct - deck.incline_offset_pct) / per);
+    const snapped = snapToLevel(level, deck);
+    if (snapped === level) return text;
+    return String(Math.round((deck.incline_offset_pct + snapped * per) * 100) / 100);
   };
 
   const patchStep = (i: number, patch: Partial<StepDraft>) =>
@@ -105,7 +117,13 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
               onChange={(e) => patchStep(i, { speed: e.target.value })}
               onBlur={() => patchStep(i, { speed: snapSpeedText(s.speed) })}
             />
-            <input className={input} inputMode="decimal" value={s.incline} onChange={(e) => patchStep(i, { incline: e.target.value })} />
+            <input
+              className={input}
+              inputMode="decimal"
+              value={s.incline}
+              onChange={(e) => patchStep(i, { incline: e.target.value })}
+              onBlur={() => patchStep(i, { incline: snapInclineText(s.incline) })}
+            />
             <GhostButton
               aria-label={`Remove step ${i + 1}`}
               disabled={d.steps.length === 1}

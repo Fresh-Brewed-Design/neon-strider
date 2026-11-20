@@ -133,6 +133,7 @@ fn deck_snapshot(state: &OrchestratorState, max_incline_level: u8) -> DeckSnapsh
             .into_iter()
             .map(|(hw_kmh, kmh)| DeckSpeedStep { hw_kmh, kmh })
             .collect(),
+        incline_steps: state.deck_incline_levels(),
         profile: profile_snapshot(state),
     }
 }
@@ -145,6 +146,9 @@ fn profile_snapshot(state: &OrchestratorState) -> DeckProfileSnapshot {
         floor_kmh: p.floor().map(kmh),
         ceiling_kmh: p.ceiling().map(kmh),
         skipped_kmh: p.skipped().into_iter().map(kmh).collect(),
+        learned_levels: p.level_count() as u32,
+        ceiling_level: p.incline_ceiling(),
+        skipped_levels: p.skipped_levels(),
     }
 }
 

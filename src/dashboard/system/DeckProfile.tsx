@@ -1,7 +1,7 @@
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { dispatch } from "../../ipc";
-import { profileSummary } from "../../state/deckSpeeds";
+import { inclineSummary, profileSummary } from "../../state/deckSpeeds";
 import { useAppState } from "../../state/useAppState";
 import { useTreadmillStore } from "../../store/treadmillStore";
 import { GhostButton, Hint, Label } from "../ui";
@@ -15,17 +15,18 @@ export function DeckProfile() {
   const ask = () =>
     useTreadmillStore.getState().confirm({
       title: "Forget DECK_PROFILE",
-      message: "The controls offer every speed again until the treadmill answers new targets.",
+      message: "The controls offer every speed and incline level again until the treadmill answers new targets.",
       onConfirm: () => void forget.run(() => dispatch({ type: "deck_profile_forget" })),
     });
 
   return (
     <div>
       <Label className="mb-1 block">DECK_PROFILE</Label>
-      <Hint>The speeds the treadmill runs, learned from its replies while you walk.</Hint>
+      <Hint>The speeds and incline levels the treadmill runs, learned from its replies while you walk.</Hint>
       <div className="mt-2 flex flex-wrap items-center gap-3">
         <span className="font-mono text-[11px] text-white/70">{profileSummary(profile)}</span>
-        {profile.learned > 0 && (
+        <span className="font-mono text-[11px] text-white/70">{inclineSummary(profile)}</span>
+        {(profile.learned > 0 || profile.learned_levels > 0) && (
           <GhostButton onClick={ask} disabled={forget.pending}>
             Forget
           </GhostButton>

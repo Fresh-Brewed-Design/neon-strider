@@ -48,4 +48,10 @@ target_note: string | null,
  * Empty until the deck has answered a target, and the controls then
  * behave as before.
  */
-speed_steps: Array<DeckSpeedStep>, profile: DeckProfileSnapshot, };
+speed_steps: Array<DeckSpeedStep>, 
+/**
+ * The incline levels the controls may offer, lowest first: flat up to
+ * the top level, without those DECK_PROFILE knows the deck skips. Empty
+ * until the deck has answered an incline.
+ */
+incline_steps: Array<number>, profile: DeckProfileSnapshot, };

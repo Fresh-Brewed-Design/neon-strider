@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { AppSnapshot, DeckSnapshot } from "../../ipc";
 import { linkView } from "../../state/linkStatus";
-import { snapToDeck } from "../../state/deckSpeeds";
+import { snapToDeck, snapToLevel } from "../../state/deckSpeeds";
 import { useAppSnapshot } from "../../state/useAppState";
 import { STAT_WIDGETS } from "../../widgets/registry";
 import { Axis } from "../live/Axis";
@@ -23,7 +23,10 @@ const LIVE_STATS = STAT_WIDGETS.filter((w) => w.id !== "VELOCITY" && w.id !== "I
  */
 function tiltPresets(deck: DeckSnapshot): number[] {
   const top = deck.max_incline_level;
-  const levels = [...new Set([0, Math.round(top / 3), Math.round((2 * top) / 3), top])];
+  // A level the deck skips is left out of the presets.
+  const levels = [
+    ...new Set([0, Math.round(top / 3), Math.round((2 * top) / 3), top].map((l) => snapToLevel(l, deck))),
+  ];
   return levels.map((l) => deck.incline_offset_pct + l * deck.incline_pct_per_level);
 }
 
@@ -31,7 +34,7 @@ function tiltPresets(deck: DeckSnapshot): number[] {
 function levelForPct(deck: DeckSnapshot, pct: number): number {
   const per = deck.incline_pct_per_level;
   const raw = Math.abs(per) < 1e-6 ? 0 : Math.round((pct - deck.incline_offset_pct) / per);
-  return Math.max(0, Math.min(deck.max_incline_level, raw));
+  return snapToLevel(Math.max(0, Math.min(deck.max_incline_level, raw)), deck);
 }
 
 /** A warning in the page header, where it costs no height: this page is sized to fit 760x600. */

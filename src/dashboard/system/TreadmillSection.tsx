@@ -1,4 +1,4 @@
-import { snapToDeck } from "../../state/deckSpeeds";
+import { snapToDeck, snapToLevel } from "../../state/deckSpeeds";
 import { useAppState } from "../../state/useAppState";
 import { useTreadmillStore } from "../../store/treadmillStore";
 import { NumberField, Section, SliderField } from "./fields";
@@ -37,7 +37,8 @@ export function TreadmillSection() {
           min={0}
           max={20}
           value={maxIncline}
-          hint="The treadmill's top incline step."
+          hint="The treadmill's top incline step, kept under the deck's own once DECK_PROFILE has seen it."
+          snap={(v) => snapToLevel(v, deck)}
           onCommit={(v) => updateSettings({ maxIncline: v })}
         />
         <NumberField
