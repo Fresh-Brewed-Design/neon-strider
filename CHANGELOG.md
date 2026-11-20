@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.34.1 (2026-11-20)
+
+### Fixed
+
+- WRIST_LINK: while it is on, the PC also sends a short Bluetooth beacon the BELT data field can find, and the field reads the foot pod's advertisement byte by byte. A dropped link no longer unpairs the PC on the watch.
+
 ## 1.34.0 (2026-11-20)
 
 ### New
