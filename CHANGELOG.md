@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.26.0 (2026-11-20)
+
+### New
+
+- With a heart rate sensor linked (HEART_LINK), each walk now saves its heart rate every second. History shows the walk's average and maximum heart rate.
+
 ## 1.25.0 (2026-11-20)
 
 ### New
