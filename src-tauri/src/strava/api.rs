@@ -9,10 +9,13 @@ use std::time::Duration;
 use tauri::AppHandle;
 
 const API: &str = "https://www.strava.com/api/v3";
+/// Strava's API answers in a second or two; 30 s covers a slow link.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 /// A TCX file can be large; give the upload itself longer.
+/// A long walk's TCX is a few MB.
 const UPLOAD_TIMEOUT: Duration = Duration::from_secs(60);
 /// How many of the athlete's activities one list call returns.
+/// One page covers any day's activities, so the duplicate check is one request.
 const LIST_PAGE_SIZE: &str = "50";
 /// Long enough for Strava's JSON error body to still parse.
 const EXCERPT_CHARS: usize = 600;

@@ -1,6 +1,6 @@
 import type { DeckProfileSnapshot, DeckSnapshot, DeckSpeedStep } from "../ipc";
 
-/** Below this a speed is the still belt, which is never snapped. */
+/** Below this a speed is the still belt, which is never snapped: Rust's `engine::STILL_KMH`. */
 const STILL_KMH = 0.05;
 
 /**

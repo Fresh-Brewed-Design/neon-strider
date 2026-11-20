@@ -51,6 +51,7 @@ const SCAN_BUSY: &str = "Another Bluetooth scan is running.";
 
 /// The wait before the next attempt after `failures` failures in a row.
 fn retry_after(failures: u32) -> Duration {
+    // Six doublings of 10 s pass `RETRY_MAX`; the cap only stops the overflow.
     let doublings = failures.saturating_sub(1).min(6);
     (RETRY_FIRST * 2u32.pow(doublings)).min(RETRY_MAX)
 }
@@ -114,9 +115,12 @@ pub fn init(app: &AppHandle) {
 
 /// A maximum heart rate outside 120 to 230 bpm is a typing slip: 220 minus
 /// age gives about 120 at 100 years old, and measured maxima above 230 are
-/// almost unheard of.
+/// almost unheard of. HeartRateSection reads the range from `SettingLimits`.
+pub const MIN_MAX_BPM: u16 = 120;
+pub const MAX_MAX_BPM: u16 = 230;
+
 fn valid_max(bpm: u16) -> bool {
-    (120..=230).contains(&bpm)
+    (MIN_MAX_BPM..=MAX_MAX_BPM).contains(&bpm)
 }
 
 /// The maximum heart rate that zones are a percentage of.
@@ -280,6 +284,7 @@ async fn scan_inner() -> Result<Vec<HeartRateSensor>, String> {
 /// The tick, for the life of the app.
 pub fn spawn(_app: AppHandle) {
     tauri::async_runtime::spawn(async {
+        // Sensors send about one reading a second (`STALE_AFTER`).
         let mut every = tokio::time::interval(Duration::from_secs(1));
         every.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
@@ -380,6 +385,7 @@ async fn find(sensor: &HeartRateSensor) -> Result<Peripheral, StepError> {
         if started.elapsed() >= FIND_TIME {
             break None;
         }
+        // Half the sensor's one-second advertising, so it is seen on its first advert.
         tokio::time::sleep(Duration::from_millis(500)).await;
     };
     let _ = central.stop_scan().await;

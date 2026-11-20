@@ -31,7 +31,7 @@ export function GuidedPinMarker() {
       </div>
       <p
         className="mt-1 text-[11px] leading-snug text-white/70"
-        title={minutes === null ? undefined : `The pin lets go by itself in ${minutes} min.`}
+        title={minutes === null ? undefined : `The dashboard unpins itself in ${minutes} min.`}
       >
         Dashboard held open for {name}.
       </p>

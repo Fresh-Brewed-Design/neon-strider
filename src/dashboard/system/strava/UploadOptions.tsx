@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
 import { ActionStatus } from "../../../components/ActionStatus";
 import { useAction, useBackendAction } from "../../../components/useAction";
-import type { MuteMode, StravaSnapshot } from "../../../ipc";
+import { SETTING_LIMITS, type MuteMode, type StravaSnapshot } from "../../../ipc";
 import { GhostButton, Hint, Label } from "../../ui";
 import { cx, post } from "../../util";
 import { ChoiceGroup, INPUT_CLASS } from "../fields";
@@ -10,7 +10,7 @@ import { TemplateEditor } from "./TemplateEditor";
 
 const MUTE_CHOICES: { value: MuteMode; label: string; hint: string }[] = [
   { value: "all", label: "Mute all", hint: "Every treadmill walk is hidden from your home feed." },
-  { value: "short", label: "Short walks", hint: "Only walks under the limit below are hidden." },
+  { value: "short", label: "Short walks", hint: "Only walks under the minute limit are hidden." },
   { value: "none", label: "Don't mute", hint: "Walks show in your home feed." },
 ];
 
@@ -78,7 +78,7 @@ function GearPicker({ strava }: { strava: StravaSnapshot }) {
       <Hint>
         {strava.needs_reconnect
           ? "Strava needs two more permissions (shoes, duplicate check). Disconnect, connect again and keep every box ticked."
-          : "Put on every upload. Distances are what Strava has logged for each pair."}
+          : "The chosen shoes go on every upload, and each pair shows Strava's logged distance."}
       </Hint>
     </div>
   );
@@ -117,8 +117,8 @@ function MuteChoice({ strava }: { strava: StravaSnapshot }) {
             <span className="font-mono text-[11px] text-white/60">Under</span>
             <input
               type="number"
-              min={1}
-              max={240}
+              min={SETTING_LIMITS.strava_mute_minutes.min}
+              max={SETTING_LIMITS.strava_mute_minutes.max}
               value={minutes}
               onChange={(e) => setMinutesDraft(e.target.value)}
               onBlur={commitMinutes}
