@@ -5,7 +5,13 @@ import { dispatch } from "../../ipc";
 import { useAppSnapshot } from "../../state/useAppState";
 import { Hint } from "../ui";
 import { Section, Toggle } from "./fields";
-import { ghostPodPill, ghostPodPowerReading, ghostPodReading, ghostPodTone } from "./ghostPod";
+import {
+  ghostPodPill,
+  ghostPodPowerReading,
+  ghostPodReading,
+  ghostPodTone,
+  wristLinkTone,
+} from "./ghostPod";
 
 /**
  * System -> Labs: experiments that are off until switched on. GHOST_POD makes
@@ -17,11 +23,14 @@ export function LabsSection() {
   const pod = useAppSnapshot()?.ghost_pod;
   const change = useAction();
   const power = useAction();
+  const wristChange = useAction();
   if (!pod) return null;
 
   const tone = ghostPodTone(pod);
   const reading = ghostPodReading(pod);
   const powerReading = ghostPodPowerReading(pod);
+  const wrist = pod.wrist_link;
+  const wristTone = wristLinkTone(pod);
 
   return (
     <Section
@@ -87,6 +96,32 @@ export function LabsSection() {
             </Hint>
           </div>
         )}
+      </div>
+      <div>
+        <Toggle
+          label="WRIST_LINK: Let the watch's data field read the belt"
+          description="Serves a second Bluetooth service next to the foot pod for a Connect IQ data field on the watch. It only reads the belt for now; nothing the watch sends moves it."
+          checked={wrist.enabled}
+          onChange={(on) => void wristChange.run(() => dispatch({ type: "wrist_link_set", on }))}
+        />
+        {wristChange.pending || wristChange.error ? (
+          <ActionStatus
+            pending={wristChange.pending}
+            error={wristChange.error && `Could not switch WRIST_LINK ${wrist.enabled ? "off" : "on"}: ${wristChange.error}`}
+            className="mt-1"
+          />
+        ) : (
+          wrist.enabled && (
+            <ActionStatus
+              ambient
+              pending={wristTone === "working" ? wrist.message : null}
+              done={wristTone === "ok" ? wrist.message : null}
+              error={wristTone === "problem" ? wrist.message : null}
+              className="mt-1"
+            />
+          )
+        )}
+        <Hint className="mt-0.5">Needs GHOST_POD on: the watch keeps its foot pod link and adds this one.</Hint>
       </div>
     </Section>
   );

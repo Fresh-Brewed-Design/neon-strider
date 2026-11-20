@@ -1,5 +1,5 @@
-// The guided calibration's list of speeds. Rust does the math (calibration.rs);
-// this only lays out which speeds to offer and which saved point each row is.
+// The guided calibration's rows. Rust does the math and keeps the target list
+// (calibration.rs); this only lays out which saved point each row is.
 import type { CalibrationPoint } from "../../../store/types";
 
 export interface CalibrationRow {
@@ -42,4 +42,9 @@ export function chrono(seconds: number): string {
   const m = Math.floor(tenths / 600);
   const rest = ((tenths - m * 600) / 10).toFixed(1).padStart(4, "0");
   return `${m}:${rest}`;
+}
+
+/** The list entry for a row's speed, if the row comes from the stored list. */
+export function listedTarget<T extends { kmh: number }>(targets: T[], kmh: number): T | null {
+  return targets.find((t) => Math.abs(t.kmh - kmh) <= SAME_SPEED_KMH) ?? null;
 }
