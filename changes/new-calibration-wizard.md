@@ -1,1 +1,0 @@
-- Labs: a guided calibration wizard, GROUND_TRUTH, off until you switch it on in System, Diagnostics. It lists several speeds; RUN sets the belt to one, you count belt loops (and steps, for your stride) between COUNT and DONE, and the app works out that point. REPEAT re-times just one saved point, and stride (20 to 200 cm) and factor (0.2 to 3.0) ranges are wider.
