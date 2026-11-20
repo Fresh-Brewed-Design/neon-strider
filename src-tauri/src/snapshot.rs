@@ -107,6 +107,9 @@ fn deck_snapshot(state: &OrchestratorState, max_incline_level: u8) -> DeckSnapsh
     // the next Engage will start it at, not the 0 that holds it still. Only
     // shown: the engine keeps following the manual intent.
     let target_speed = state.engage_preview().map_or(target_speed, |e| e.speed);
+    // What the deck will run: a speed DECK_PROFILE knows it skips shows as
+    // the one sent instead.
+    let target_speed = state.snap_speed(target_speed);
     DeckSnapshot {
         status: state.last_status,
         unknown_status_code: state.unknown_status_code,
@@ -119,12 +122,29 @@ fn deck_snapshot(state: &OrchestratorState, max_incline_level: u8) -> DeckSnapsh
         target_incline_level: target_incline,
         target_incline_pct: incline_pct(target_incline, state),
         min_speed_kmh: state.min_physical_speed(),
-        max_speed_kmh: state.to_physical_speed(state.max_speed),
+        max_speed_kmh: state.to_physical_speed(state.top_hw_speed()),
         max_incline_level,
         max_incline_pct: incline_pct(max_incline_level, state),
         incline_offset_pct: state.incline_offset,
         incline_pct_per_level: state.tilt_multiplier,
         target_note: state.current_target_note(),
+        speed_steps: state
+            .deck_speeds()
+            .into_iter()
+            .map(|(hw_kmh, kmh)| DeckSpeedStep { hw_kmh, kmh })
+            .collect(),
+        profile: profile_snapshot(state),
+    }
+}
+
+fn profile_snapshot(state: &OrchestratorState) -> DeckProfileSnapshot {
+    let p = &state.deck_profile;
+    let kmh = |b: u8| state.to_physical_speed(b as f32 / 10.0);
+    DeckProfileSnapshot {
+        learned: p.len() as u32,
+        floor_kmh: p.floor().map(kmh),
+        ceiling_kmh: p.ceiling().map(kmh),
+        skipped_kmh: p.skipped().into_iter().map(kmh).collect(),
     }
 }
 
@@ -386,11 +406,13 @@ mod tests {
                     speed: 1.0,
                     stride_length_cm: 70.0,
                     distance_scale: 2.0,
+                    runs: 1,
                 },
                 CalibrationPoint {
                     speed: 10.0,
                     stride_length_cm: 70.0,
                     distance_scale: 2.0,
+                    runs: 1,
                 },
             ],
             max_speed: 12.0,

@@ -403,7 +403,10 @@ async fn listen_for_status(
         }
         let Some(t) = protocol::parse_status(&data.value) else {
             if let Some(reply) = protocol::parse_reply(&data.value) {
-                ORCHESTRATOR.lock().await.on_deck_reply(reply);
+                let mut state = ORCHESTRATOR.lock().await;
+                // The simulated deck's limits are not the treadmill's.
+                state.profile_learning = !simulated;
+                state.on_deck_reply(reply);
             }
             continue;
         };
@@ -798,6 +801,22 @@ pub async fn init_from_config(config: &crate::persistence::AppConfig) {
     ORCHESTRATOR.lock().await.sync_config(config);
 }
 
+/// Load DECK_PROFILE from the settings table. Once, after the DB is initialised.
+pub async fn load_deck_profile(app: &tauri::AppHandle) {
+    let app_c = app.clone();
+    let raw = crate::util::blocking(move || {
+        Ok::<_, String>(crate::persistence::read_setting(
+            &app_c,
+            crate::deck_profile::KEY,
+        ))
+    })
+    .await
+    .unwrap_or(None);
+    let profile = crate::deck_profile::DeckProfile::from_stored(raw.as_deref());
+    log::info!("Deck profile loaded: {} speeds learned", profile.len());
+    ORCHESTRATOR.lock().await.deck_profile = profile;
+}
+
 #[tauri::command]
 pub async fn sync_orchestrator_config(
     app: tauri::AppHandle,
@@ -876,11 +895,13 @@ mod tests {
                     speed: 2.0,
                     stride_length_cm: 60.0,
                     distance_scale: 0.9,
+                    runs: 1,
                 },
                 protocol::CalibrationPoint {
                     speed: 1.0,
                     stride_length_cm: 55.0,
                     distance_scale: 0.8,
+                    runs: 1,
                 },
             ],
             min_speed: 1.0,

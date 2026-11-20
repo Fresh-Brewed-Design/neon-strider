@@ -398,6 +398,12 @@ impl EyeBreak {
         self.end_seq
     }
 
+    /// How many blink prompts (and the start of each break) there were.
+    #[cfg(test)]
+    pub fn blink_seq(&self) -> u32 {
+        self.blink_seq
+    }
+
     /// The phase the HUD shows: after a break, `Complete` while its pause holds.
     pub fn shown_phase(&self) -> EyeBreakPhase {
         match self.phase {
@@ -655,6 +661,29 @@ mod tests {
         // Paused by the user before the break: not the break's pause either.
         let (mut m, c) = (EyeBreak::default(), cfg());
         assert_eq!(run(&mut m, &c, 0, 1300, belt(PAUSED)), vec![]);
+        assert_eq!(m.shown_phase(), EyeBreakPhase::Idle);
+    }
+
+    /// Fresh Brewed Design, 2026-11-19: eye breaks show whenever the PC is in use, with the
+    /// treadmill off or unlinked, the belt still and no program (all
+    /// `Belt::Other` to the machine). The heads-up, the break with its blink
+    /// tones and the end tone all come; nothing is sent to the belt.
+    #[test]
+    fn with_nothing_running_the_whole_break_still_comes() {
+        let (mut m, c) = (EyeBreak::default(), cfg());
+        let mut fx = run(&mut m, &c, 0, 1141, belt(Belt::Other));
+        assert_eq!(m.shown_phase(), EyeBreakPhase::Upcoming);
+        assert!(m.remaining_s(&c) > 0);
+        fx.extend(run(&mut m, &c, 1142, 1200, belt(Belt::Other)));
+        assert_eq!(m.shown_phase(), EyeBreakPhase::Break);
+        assert_eq!(m.blink_seq, 1, "the tone at the start of the break");
+        fx.extend(run(&mut m, &c, 1201, 1245, away_with(Belt::Other)));
+        assert_eq!(m.blink_seq, 5, "a blink tone every ten seconds");
+        fx.extend(run(&mut m, &c, 1246, 1295, away_with(Belt::Other)));
+        assert_eq!(m.end_seq, 1, "the end tone");
+        assert_eq!(fx, vec![], "nothing for the belt");
+        assert!(!m.holds_belt());
+        // No resume card: the break paused nothing.
         assert_eq!(m.shown_phase(), EyeBreakPhase::Idle);
     }
 
