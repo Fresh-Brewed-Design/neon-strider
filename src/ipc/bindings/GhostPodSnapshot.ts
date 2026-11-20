@@ -27,6 +27,18 @@ watches: number,
  */
 speed_kmh: number, 
 /**
+ * The power switch (off by default): the pod also serves running power.
+ */
+power_enabled: boolean, 
+/**
+ * Watches subscribed to the power measurements.
+ */
+power_watches: number, 
+/**
+ * The watts being sent now (0 while the belt is still or power is off).
+ */
+power_w: number, 
+/**
  * WRIST_LINK, the watch data field's service served next to the pod.
  */
 wrist_link: WristLinkSnapshot, };

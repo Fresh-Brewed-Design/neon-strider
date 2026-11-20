@@ -68,31 +68,56 @@ fn walkaway_pause(state: &mut OrchestratorState, reason: walkaway::WalkAwayReaso
 }
 
 /// The belt as the eye-break machine sees it: walking (and how it would be
-/// paused), paused that way, or anything else.
+/// paused), paused that way, held still by a running program (a rest), or
+/// anything else.
 fn eye_belt(ready: bool, state: &OrchestratorState) -> eyebreak::Belt {
     use eyebreak::{Belt, Hold};
     if !ready {
         return Belt::Other;
     }
     let moving = belt_running(state) && !state.stop_requested;
+    let still = !state.last_status.is_moving() && !state.stop_requested;
     match &state.program {
         Some(r) if r.phase == ProgramPhase::Walking => {
             let hold = Hold::Program(r.program.id);
+            let hold_step = r.on_hold_step();
             if r.paused && r.wait.is_none() {
                 Belt::Paused(hold)
+            } else if (r.wait.is_some() || (hold_step && !r.paused)) && still {
+                // Waiting for GO, or on a 0 km/h step: the program holds it.
+                Belt::Rest
             } else if !r.paused && moving {
                 Belt::Walking(hold)
             } else {
                 Belt::Other
             }
         }
-        // Resting: still, and a later step will do the rest.
+        // Resting on a still belt; a rest that carries on a manual walk is
+        // left alone.
+        Some(_) if still => Belt::Rest,
         Some(_) => Belt::Other,
         None if moving => Belt::Walking(Hold::Manual),
         None if state.last_status == MachineStatus::Paused && !state.stop_requested => {
             Belt::Paused(Hold::Manual)
         }
         None => Belt::Other,
+    }
+}
+
+/// The running program's next still stretch for the eye-break machine: walking
+/// time until it, and how long it lasts; at a rest, what is left of it.
+fn eye_rest(belt: eyebreak::Belt, state: &OrchestratorState) -> (Option<u64>, Option<u64>) {
+    let ms = |s: f64| (s * 1000.0).round() as u64;
+    let Some(run) = state.program.as_ref() else {
+        return (None, None);
+    };
+    match belt {
+        eyebreak::Belt::Rest => (None, run.still_left_s().map(ms)),
+        eyebreak::Belt::Walking(_) => match run.next_still_s() {
+            Some((walk, len)) => (Some(ms(walk)), len.map(ms)),
+            None => (None, None),
+        },
+        _ => (None, None),
     }
 }
 
@@ -122,11 +147,17 @@ pub(crate) fn eye_break_tick(
     now: u64,
     idle_ms: Option<u64>,
     locked: bool,
+    display_off: bool,
 ) {
+    let belt = eye_belt(ready, state);
+    let (rest_in_ms, rest_len_ms) = eye_rest(belt, state);
     let tick = eyebreak::Tick {
         idle_ms,
         locked,
-        belt: eye_belt(ready, state),
+        display_off,
+        belt,
+        rest_in_ms,
+        rest_len_ms,
     };
     if let Some(eyebreak::Effect::Pause(hold)) = rt.machine.tick(&rt.cfg, now, &tick) {
         eye_break_pause(state, hold);
@@ -210,7 +241,8 @@ async fn step(
 
     // Eye breaks. First, so a break's pause is in before walk-away looks.
     let ready = treadmill_ready(connected, state);
-    eyebreak::with(|rt| eye_break_tick(state, rt, ready, now, idle_ms, locked));
+    let display_off = crate::platform::display_off();
+    eyebreak::with(|rt| eye_break_tick(state, rt, ready, now, idle_ms, locked, display_off));
 
     // Sit-too-long nudge.
     let tick = seated::Tick {

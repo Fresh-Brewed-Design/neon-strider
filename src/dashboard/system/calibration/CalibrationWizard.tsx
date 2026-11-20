@@ -3,7 +3,7 @@ import { Calculator } from "lucide-react";
 import { useAppState } from "../../../state/useAppState";
 import { useTreadmillStore } from "../../../store/treadmillStore";
 import type { CalibrationPoint } from "../../../store/types";
-import { STEPS_PER_RUN, isSavablePoint, wizardResult, type WizardMode } from "./math";
+import { STEPS_PER_RUN, isSavablePoint, scaleRefusal, wizardResult, type WizardMode } from "./math";
 
 type Phase = "SETUP" | "COUNTDOWN" | "WALKING" | "RESULT";
 
@@ -72,7 +72,9 @@ export function CalibrationWizard({ onClose, onSave }: { onClose: () => void; on
     reportedKmh: capturedTargetSpeed,
   });
 
-  const canSave = isSavablePoint(capturedTargetSpeed, result.scale);
+  const limits = useAppState((s) => s.calibration.limits);
+  const outOfRange = scaleRefusal(result.scale, limits, "Run the calibration again.");
+  const canSave = isSavablePoint(capturedTargetSpeed, result.scale) && !outOfRange;
 
   return (
     <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
@@ -223,9 +225,9 @@ export function CalibrationWizard({ onClose, onSave }: { onClose: () => void; on
 
             {!canSave && (
               <p role="alert" className="text-center font-mono text-xs text-neon-magenta">
-                {capturedTargetSpeed > 0
-                  ? "The calibration result is not valid. Run the calibration again."
-                  : "No belt speed was seen. Run the calibration again."}
+                {capturedTargetSpeed <= 0
+                  ? "No belt speed was seen. Run the calibration again."
+                  : (outOfRange ?? "The calibration result is not valid. Run the calibration again.")}
               </p>
             )}
 

@@ -66,7 +66,7 @@ fields Rust recomputes each snapshot. Strava's no-API fallback is `strava_save.r
 the upload page). In the UI, every button that can fail or take time uses `useAction` /
 `useBackendAction` (`src/components/useAction.ts`) and shows `<ActionStatus>` directly under
 itself; `send()` toasts rejections as a backstop, the HUD uses `useHudSend` + `<HudNote>`.
-GHOST_POD (`ghost_pod.rs`: pure RSC foot-pod encoding, Labs switch off by default; `ghost_pod/worker.rs`) advertises the belt's speed and cadence to a watch as a Running Speed and Cadence sensor. It only reports the belt; nothing from the watch moves it. See docs/watch-pod.md.
+GHOST_POD (`ghost_pod.rs`: pure RSC foot-pod encoding, Labs switch off by default; `ghost_pod/worker.rs`) advertises the belt's speed and cadence to a watch as a Running Speed and Cadence sensor. Its power switch (`ghost_pod_power`, off by default) also serves the Cycling Power service with watts from METABOLIC_BURN's estimate (`engine::walking_kcal_per_min`). It only reports the belt; nothing from the watch moves it. See docs/watch-pod.md.
 WRIST_LINK (`wrist_link.rs`, Labs switch off by default, served by the same worker) adds a second GATT service for the Connect IQ data field in `watch/`; phase 0 only sends the belt State, nothing from the watch is acted on. See docs/wrist-link.md.
 
 - **Windows**:
@@ -112,7 +112,7 @@ OS-specific code goes only in `src-tauri/src/platform/` (`mod.rs` is the interfa
 the Windows implementation, `other.rs` the stand-in for every other OS). It covers the input
 hooks, session lock, display power (`display_off`, for `LIGHTS_OUT` in `snapshot/lights_out.rs`),
 which apps use the microphone, the cursor and mouse button, the PC's idle time, and the BLE peripheral (the GHOST_POD running pod,
-WinRT `GattServiceProvider`). The rest of
+WinRT `GattServiceProvider`, one per service). The rest of
 the code calls `platform::...` and never the OS directly. macOS and Linux are on the roadmap, so
 new code must not import `windows::` (or other OS APIs) outside `platform/`.
 
@@ -132,7 +132,7 @@ cargo clippy --all-targets -- -D warnings   # in src-tauri/: lints, no warnings 
 
 Design without a treadmill: with a Vite server running, open `/hud-preview.html` or
 `/dashboard-preview.html`. Both run on a mocked backend (`src/dev/mockBackend.ts`); URL flags
-like `?idle`, `?offline`, `?daily=12.34` (today's km), `?noprogram`, `?toasts` (`?toasts=deck` for the deck-start GO toast), `?anchor=top_left`, `?neural=active`, `?engage=timeout`, `?status=9|countdown|stopping|standby`, `?walkaway=warning|paused|idle`, `?custom`, `?update=available|downloading|failed|whatsnew` (with `?autoinstall=off`), `?stasis=strip|hidden` (with `?deck=paused` for RE-JACK), `?minified` (the running strip; with `?program=resting|paused`, `?noprogram` or `?idle`), `?traffic=recording|saved`, `?sim` (the SIM tag), `?lightsout` (LIGHTS_OUT on; on the HUD preview its toast), `?desksync=open|new|few` (History's DESK_SYNC card), `?ghostpod=advertising|connected|error` (System -> Labs GHOST_POD), `?calwizard` (the Labs guided calibration; `=counting|counted` mid-run), `?eyebreak=upcoming|break|still|resume` (the OCULAR_IMPLANT cards: heads-up, cooldown with the belt paused or left alone, resume card) pick scenarios.
+like `?idle`, `?offline`, `?daily=12.34` (today's km), `?noprogram`, `?toasts` (`?toasts=deck` for the deck-start GO toast), `?anchor=top_left`, `?neural=active`, `?engage=timeout`, `?status=9|countdown|stopping|standby`, `?walkaway=warning|paused|idle`, `?custom`, `?update=available|downloading|failed|whatsnew` (with `?autoinstall=off`), `?stasis=strip|hidden` (with `?deck=paused` for RE-JACK), `?minified` (the running strip; with `?program=resting|paused`, `?noprogram` or `?idle`), `?traffic=recording|saved`, `?sim` (the SIM tag), `?decknote=refused|adjusted` (the HUD note after the deck refuses or changes a target), `?lightsout` (LIGHTS_OUT on; on the HUD preview its toast), `?desksync=open|new|few` (History's DESK_SYNC card), `?ghostpod=advertising|connected|error` (System -> Labs GHOST_POD), `?ghostpower=waiting|linked` (its power switch on, no watch or a watch reading 135 W), `?calwizard` (the Labs guided calibration; `=counting|counted` mid-run, `=sweep|sweeprun` RUN ALL between speeds or counting, `=oldpoint` a point stored below the factor limit), `?eyebreak=upcoming|rest|break|still|resume` (the OCULAR_IMPLANT cards: heads-up, heads-up set for a program rest, cooldown with the belt paused or left alone, resume card) pick scenarios.
 `?program=ready|hold|still|resting|paused` shows a program waiting for GO after a rest, after a
 0 km/h step, or after a reconnect found the belt still; mid-rest; or paused by the user.
 
@@ -149,8 +149,8 @@ PR adds a release note file `changes/<new|changed|fixed>-<slug>.md` (see `change
 which the release folds into CHANGELOG.md. All work goes to `main` through PRs. CI runs on
 PRs and on `main` after each merge; the run on `main` saves the compiled Rust dependencies
 (`shared-key: ci`) and PR runs restore them, so a PR compiles only this crate.
-`build-roadmap-issue.yml` builds a roadmap issue when Jeremy labels one of his own issues
-`roadmap:next`: Claude opens a PR that closes it (secret `CLAUDE_CODE_OAUTH_TOKEN`). Only his
+`build-roadmap-issue.yml` builds a roadmap issue when Fresh Brewed Design labels one of its own issues
+`roadmap:next`: Claude opens a PR that closes it (secret `CLAUDE_CODE_OAUTH_TOKEN`). Only its
 account (user ID 3596382) can start it, as both the issue's author and whoever added the label.
 `pr-followup.yml` is how he asks for changes afterwards: a comment or review of his on a PR that
 says `@claude ...` starts a run that changes that PR's branch and replies there (again only his

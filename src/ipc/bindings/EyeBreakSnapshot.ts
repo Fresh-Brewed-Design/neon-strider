@@ -19,9 +19,18 @@ sound: boolean,
  */
 pause_belt: boolean, 
 /**
+ * Breaks fit into a running program's rests.
+ */
+fit_rests: boolean, 
+/**
  * The belt is paused by the break (during the break, or on the resume card).
  */
-holds_belt: boolean, phase: EyeBreakPhase, 
+holds_belt: boolean, 
+/**
+ * Upcoming: the break is set for the program's next rest, so the belt
+ * won't be paused for it.
+ */
+at_rest: boolean, phase: EyeBreakPhase, 
 /**
  * Seconds until the break (upcoming) or until it ends (break).
  */
