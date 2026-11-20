@@ -10,7 +10,7 @@ export function SessionsSection() {
     <Section
       id="sys-sessions"
       title="Sessions"
-      description="Stopping and starting the treadmill creates separate records. Records close together are shown, counted and uploaded to Strava as one session."
+      description="Records close together are joined into one session for History and Strava."
     >
       <NumberField
         label="Join sessions closer than"

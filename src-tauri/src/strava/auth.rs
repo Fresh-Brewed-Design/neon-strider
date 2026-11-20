@@ -120,7 +120,7 @@ fn wait_for_callback(server: Server, generation: u64) -> Result<Callback, String
         };
         if let Some(code) = param("code") {
             let _ = request.respond(Response::from_string(
-                "Success! You can close this window and return to Neon Strider.",
+                "Strava is linked. Close the browser tab and go back to Neon Strider.",
             ));
             return Ok(Callback {
                 code,
@@ -128,7 +128,7 @@ fn wait_for_callback(server: Server, generation: u64) -> Result<Callback, String
             });
         }
         let _ = request.respond(Response::from_string(
-            "Strava was not authorized. You can close this window.",
+            "Strava was not authorized. Close the browser tab and go back to Neon Strider.",
         ));
         return Err(if param("error").as_deref() == Some("access_denied") {
             "Strava access was denied".to_string()

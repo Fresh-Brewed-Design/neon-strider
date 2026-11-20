@@ -57,12 +57,15 @@ export function Section({
 export function Toggle({
   label,
   description,
+  hint,
   checked,
   onChange,
   tone = "cyan",
 }: {
   label: string;
   description?: string;
+  /** A second line for caveats and detail, under the description. */
+  hint?: string;
   checked: boolean;
   onChange: (next: boolean) => void;
   tone?: Tone;
@@ -72,6 +75,7 @@ export function Toggle({
       <div className="min-w-0">
         <div className="font-mono text-xs font-bold uppercase tracking-[0.12em] text-white/85">{label}</div>
         {description && <Hint>{description}</Hint>}
+        {hint && <Hint className="mt-1">{hint}</Hint>}
       </div>
       <button
         type="button"

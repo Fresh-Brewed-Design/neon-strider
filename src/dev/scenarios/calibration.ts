@@ -229,7 +229,7 @@ const key = (kmh: number) => Math.round(kmh * 10);
 function guideRecord(target: number, at: number, scale: number) {
   guideNote = null;
   if (guideEnds && key(at) !== key(target) && key(target) === key(guideEnds[0]) && at < guideEnds[1]) {
-    guideNote = `The deck ran ${at.toFixed(1)}, not ${target.toFixed(1)}, so ${at.toFixed(1)} is the slowest speed.`;
+    guideNote = `The deck ran ${at.toFixed(1)} km/h when asked for ${target.toFixed(1)}, so ${at.toFixed(1)} km/h is the slowest speed.`;
     guideOutcomes.delete(key(target));
     guideEnds = [at, guideEnds[1]];
     target = at;
@@ -450,7 +450,7 @@ const CAL_COMMANDS: Partial<Record<Command["type"], (c: Command) => void>> = {
       return;
     }
     if (r.phase === "measured") {
-      r.note = "The run is measured. TAP AGAIN starts it over.";
+      r.note = "The run is measured. TAP AGAIN starts the run over.";
       return;
     }
     const reported = snapshot.deck.raw_speed_kmh;

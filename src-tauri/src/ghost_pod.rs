@@ -305,16 +305,16 @@ pub fn status_label(status: PodStatus) -> &'static str {
 /// The sentence for a status; `error` is the reason when it failed.
 pub fn status_message(status: PodStatus, error: Option<&str>) -> String {
     match status {
-        PodStatus::Off => "Switch it on to let a watch read the belt as a foot pod.".to_string(),
+        PodStatus::Off => "Switch GHOST_POD on to let a watch read the belt as a foot pod.".to_string(),
         PodStatus::Starting => "Starting the pod.".to_string(),
         PodStatus::Advertising => {
-            "Waiting for a watch. Add a foot pod sensor on it; the pod shows under this PC's Bluetooth name."
+            "Waiting for a watch. Add a foot pod sensor on the watch; GHOST_POD shows under the PC's Bluetooth name."
                 .to_string()
         }
         PodStatus::Connected => {
             "A watch is connected and gets the belt speed every second.".to_string()
         }
-        PodStatus::Error => error.unwrap_or("The pod stopped.").to_string(),
+        PodStatus::Error => error.unwrap_or("GHOST_POD stopped.").to_string(),
     }
 }
 

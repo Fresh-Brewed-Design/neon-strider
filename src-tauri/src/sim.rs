@@ -3269,4 +3269,67 @@ mod tests {
         r.run(2.0);
         assert_eq!(deck_byte(&r), 50, "up from the deck's 4.9");
     }
+
+    /// The owner's calibration from 2026-11-20: deck 1.2 runs 1.86 km/h, 2.3
+    /// runs 3.62 and 4.0 runs 6.20.
+    fn his_calibration() -> crate::persistence::AppConfig {
+        let point = |hw: f32, real: f32| protocol::CalibrationPoint {
+            speed: hw,
+            stride_length_cm: 60.0,
+            distance_scale: hw / real,
+            runs: 1,
+            stride_runs: 0,
+        };
+        crate::persistence::AppConfig {
+            calibration_points: vec![point(1.2, 1.86), point(2.3, 3.62), point(4.0, 6.20)],
+            max_speed: 6.0,
+            ..Default::default()
+        }
+    }
+
+    /// 2026-11-20 on the owner's treadmill: started at the treadmill on its
+    /// 0.6 floor, an incline sweep, then a down and up presses. Before
+    /// DECK_PROFILE knew the floor, the down press stored 0.6's step below
+    /// the Min speed setting, so the first up press only came back to 0.6
+    /// and sent nothing. Every up press now reaches the deck.
+    #[test]
+    fn a_down_press_at_the_min_speed_leaves_every_up_press_sending() {
+        let mut r = Rig::new();
+        r.state.sync_config(&his_calibration());
+        r.deck.set_limits(6, 60);
+        r.deck.set_incline_ceiling(6);
+        r.state.max_incline = 6;
+        r.run(10.0);
+        r.deck.press_start(r.t);
+        r.run(8.0);
+        assert!(r.deck.running_at(0.6), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(r.state.deck_profile.floor(), None, "floor not learned yet");
+        r.state.profile_sweep_enabled = true;
+        r.state.profile_sweep_incline_start().unwrap();
+        r.run(60.0);
+        assert!(r.state.profile_sweep.is_none(), "the sweep finished");
+        assert_eq!(r.deck.incline, 0, "back at the start incline");
+        r.run(10.0);
+
+        let mark = r.mark();
+        r.press(DeckAction::SpeedDown);
+        r.run(4.0);
+        assert!(target_bytes_since(&r, mark).is_empty(), "nothing below 0.6");
+        assert!(r.deck.running_at(0.6), "{} km/h", r.deck.speed_kmh());
+        let shown = r.state.resolve_target().0;
+        assert!((shown - 0.93).abs() < 0.01, "shown {shown}");
+        for want in [7u8, 8, 9] {
+            let mark = r.mark();
+            r.press(DeckAction::SpeedUp);
+            r.run(4.0);
+            assert_eq!(target_bytes_since(&r, mark), vec![want], "one byte a press");
+            assert!(
+                r.deck.running_at(want as f32 / 10.0),
+                "{} km/h",
+                r.deck.speed_kmh()
+            );
+        }
+        assert_eq!(r.controls_since(0, Control::Start), 0);
+        assert_eq!(r.controls_since(0, Control::Ready), 0);
+    }
 }

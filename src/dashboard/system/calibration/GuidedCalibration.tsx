@@ -340,7 +340,7 @@ function AddSpeed() {
   const submit = () => {
     if (value.trim() === "" || add.pending) return;
     void add
-      .run(() => dispatch({ type: "calibration_target_add", kmh: Number(value) }), { done: "Added to the list." })
+      .run(() => dispatch({ type: "calibration_target_add", kmh: Number(value) }), { done: "Added to the target list." })
       .then((r) => {
         if (r !== undefined) setValue("");
       });

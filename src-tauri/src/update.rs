@@ -434,7 +434,7 @@ pub fn whats_new_on_launch(saved: &SavedWhatsNew, running: &str, now_ms: u64) ->
 pub const OFFLINE: &str = "Can't reach GitHub. Check the internet connection, then try again.";
 pub const RATE_LIMITED: &str =
     "GitHub is limiting requests from this connection for now. Try again in an hour.";
-pub const SIGNATURE: &str = "The download isn't signed with Neon Strider's key, so it was not installed. Try again later; if it keeps happening, report it on GitHub.";
+pub const SIGNATURE: &str = "The download isn't signed with Neon Strider's key, so the update was not installed. Try again later, and report repeat failures on GitHub.";
 pub const NO_RELEASE: &str =
     "GitHub didn't send the update information (no release yet, or GitHub is busy). Try again later.";
 pub const DOWNLOAD_STOPPED: &str =

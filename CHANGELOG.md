@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.41.2 (2026-11-20)
+
+### Fixed
+
+- A speed down press at the slowest speed no longer leaves the next speed up press doing nothing.
+- The log now says why a speed press did not reach the treadmill.
+
 ## 1.41.1 (2026-11-20)
 
 ### Changed
