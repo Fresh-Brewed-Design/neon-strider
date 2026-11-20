@@ -1,8 +1,13 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
-const css = readFileSync(new URL("./hud.css", import.meta.url), "utf8");
-const rule = (selector: string) => css.match(new RegExp(`^${selector.replace(/[.]/g, "\.")}\s*\{([^}]*)\}`, "m"))?.[1] ?? "";
+const css = readFileSync(join(process.cwd(), "src/hud/hud.css"), "utf8");
+const rule = (selector: string) => {
+  const start = css.indexOf(`
+${selector} {`);
+  return start < 0 ? "" : css.slice(start, css.indexOf("}", start));
+};
 
 // At a larger Windows text size the HUD content is wider than at 100 %, so nothing may be
 // pinned to one line when a card's width is fixed.
