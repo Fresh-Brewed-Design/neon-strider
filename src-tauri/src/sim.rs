@@ -2123,7 +2123,11 @@ mod tests {
         assert!(r.deck.running_at(ran), "{} km/h", r.deck.speed_kmh());
         assert!(tap_until_measured(&mut r, 0.9).is_some(), "saved");
         r.run(20.0);
-        assert!(r.deck.running_at(ran), "the belt keeps {ran}: {}", r.deck.speed_kmh());
+        assert!(
+            r.deck.running_at(ran),
+            "the belt keeps {ran}: {}",
+            r.deck.speed_kmh()
+        );
 
         let snap = crate::calibration::snapshot(&r.state);
         let result = snap.run.as_ref().unwrap().result.as_ref().unwrap();

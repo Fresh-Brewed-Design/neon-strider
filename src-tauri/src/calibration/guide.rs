@@ -519,7 +519,10 @@ mod tests {
         let v = g.view();
         assert_eq!(v.slow_kmh, 1.2);
         assert!(!v.speeds.iter().any(|s| same(s.kmh, 0.6)));
-        assert!(v.speeds.iter().any(|s| same(s.kmh, 1.2) && s.mark == GuideMark::Saved));
+        assert!(v
+            .speeds
+            .iter()
+            .any(|s| same(s.kmh, 1.2) && s.mark == GuideMark::Saved));
         assert_eq!(v.next_kmh, Some(4.0));
         assert!(v.note.as_deref().unwrap().contains("1.2 is the slowest"));
         g.record(4.0, 4.0, 0.8);
