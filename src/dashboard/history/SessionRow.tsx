@@ -241,12 +241,12 @@ export function SessionRow({
             {s.avg_incline > 0 && <div>Avg incline <span className="text-white/80">{s.avg_incline.toFixed(1)}%</span></div>}
             {s.avg_heart_rate !== null && (
               <div>
-                Avg heart rate <span className="text-neon-magenta">{s.avg_heart_rate} bpm</span>
+                Avg heart rate <span className="text-white/80">{s.avg_heart_rate} bpm</span>
               </div>
             )}
             {s.max_heart_rate !== null && (
               <div>
-                Max heart rate <span className="text-neon-magenta">{s.max_heart_rate} bpm</span>
+                Max heart rate <span className="text-white/80">{s.max_heart_rate} bpm</span>
               </div>
             )}
             {rawDelta !== 0 && (
