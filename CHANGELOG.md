@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.18.0 (2026-11-20)
+
+### New
+
+- GHOST_POD can send running power to your watch (System -> Labs, GHOST_POD power, off by default). The PC also shows up as a Bluetooth power sensor, and the watts come from the same estimate as METABOLIC_BURN, so walking on an incline reads as more power. A paused belt sends 0 W. Your watch may only take running power from a Stryd: that's the first thing to try.
+
 ## 1.17.0 (2026-11-20)
 
 ### New

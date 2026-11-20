@@ -1,10 +1,10 @@
 name: Build roadmap issue
 
-# When Jeremy labels one of his own issues `roadmap:next`, Claude builds it and
+# When Fresh Brewed Design labels one of its own issues `roadmap:next`, Claude builds it and
 # opens a PR that closes the issue. Nobody else can start it: both the person
-# who added the label and the issue's author must be Jeremy's account (by user
+# who added the label and the issue's author must be Fresh Brewed Design's account (by user
 # ID, which never changes), and the public cannot add labels at all. Claude is
-# given only the issue's title and body and Jeremy's own comments, never other
+# given only the issue's title and body and Fresh Brewed Design's own comments, never other
 # people's. An issue-triggered workflow always runs the copy on main, so a PR
 # that edits this file changes nothing until it is merged.
 on:
@@ -25,7 +25,7 @@ concurrency:
 
 env:
   CARGO_PROFILE_DEV_DEBUG: 0
-  JEREMY_ID: "3596382"
+  OWNER_ID: "3596382"
 
 jobs:
   build:
@@ -113,7 +113,7 @@ jobs:
           include_comments_by_actor: freshbreweddesign
           # Without an allow-list every tool call is refused (nobody is there to
           # approve it) and Claude stops at once. The job runs on a throwaway
-          # machine with this repository's token only, on a task Jeremy wrote.
+          # machine with this repository's token only, on a task Fresh Brewed Design wrote.
           # WebSearch and WebFetch let it read docs and crates; the prompt treats
           # what they return as data.
           claude_args: >-
@@ -139,7 +139,7 @@ jobs:
             - Open the PR with `gh pr create --base main`, labelled `release:major`,
               `release:minor`, `release:patch` or `release:none` per CLAUDE.md. Its body
               says what changed and why, lists the checks with their results, and says
-              how Jeremy can test it on the treadmill if it changes how the app drives the
+              how you can test it on the treadmill if it changes how the app drives the
               belt. End the body with `Closes #${{ github.event.issue.number }}` if the PR
               builds the whole issue, or `Part of #${{ github.event.issue.number }}` if only
               a step.
