@@ -35,6 +35,7 @@ mod platform;
 pub mod programs;
 pub mod protocol;
 pub mod secrets;
+pub mod wrist_link;
 // The simulated deck: tests, and the dev builds' "simulated treadmill"
 // choice (`sim_link`). Never in release builds.
 #[cfg(any(test, debug_assertions))]

@@ -216,8 +216,9 @@ export const snapshot: AppSnapshot = {
     wizard_enabled: false,
     limits: {
       min_stride_cm: 20, max_stride_cm: 200, min_scale: 0.2, max_scale: 3, min_belt_cm: 50, max_belt_cm: 1000,
-      min_run_s: 15, min_steps: 10, default_targets_kmh: [2, 3, 4, 5, 6],
+      min_run_s: 15, min_steps: 10,
     },
+    targets: [2, 3, 4, 5, 6].map((kmh) => ({ kmh, runnable: true })),
     run: null,
     sweep: null,
   },
@@ -231,6 +232,12 @@ export const snapshot: AppSnapshot = {
     power_enabled: false,
     power_watches: 0,
     power_w: 0,
+    wrist_link: {
+      enabled: false,
+      serving: false,
+      watches: 0,
+      message: "Switch it on to let the watch's data field read the belt.",
+    },
   },
   heart_rate: {
     sensor: null,
@@ -769,6 +776,10 @@ if (calFlag !== null) {
   if (calFlag === "counting" || calFlag === "counted") Object.assign(snapshot.deck, { raw_speed_kmh: 3, speed_kmh: 3.3 });
   if (calFlag === "counting") calRun(3, "counting", 23);
   if (calFlag === "counted") calRun(3, "counted", 62.4);
+  // A stored 14.0 km/h the treadmill (12.0 max) can't run any more, and a 3.5 he added.
+  if (calFlag === "targets") {
+    snapshot.calibration.targets = [2, 3, 3.5, 4, 5, 6, 14].map((kmh) => ({ kmh, runnable: kmh <= 12 }));
+  }
   if (calFlag === "sweep" || calFlag === "sweeprun") {
     Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: 3, speed_kmh: 3.3 });
     snapshot.calibration.sweep = {
@@ -796,9 +807,27 @@ const CAL_COMMANDS: Partial<Record<Command["type"], (c: Command) => void>> = {
     snapshot.calibration.sweep = null;
     runBelt(c.target_kmh);
   },
-  calibration_sweep_start: (c) => {
-    if (c.type !== "calibration_sweep_start") return;
-    const targets_kmh = [...new Set(c.targets_kmh)].sort((a, b) => a - b);
+  calibration_target_add: (c) => {
+    if (c.type !== "calibration_target_add") return;
+    const t = snapshot.calibration.targets;
+    if (Math.abs(c.kmh * 10 - Math.round(c.kmh * 10)) > 1e-3) throw "Pick a speed in 0.1 km/h steps.";
+    if (c.kmh < 0.6) throw "Pick a speed of at least 0.6 km/h.";
+    if (c.kmh > 12) throw "The treadmill tops out at 12.0 km/h.";
+    if (t.some((x) => Math.abs(x.kmh - c.kmh) <= 0.05)) throw `${c.kmh.toFixed(1)} km/h is already in the list.`;
+    snapshot.calibration.targets = [...t, { kmh: Math.round(c.kmh * 10) / 10, runnable: true }].sort((a, b) => a.kmh - b.kmh);
+  },
+  calibration_target_remove: (c) => {
+    if (c.type !== "calibration_target_remove") return;
+    if (snapshot.calibration.run && Math.abs(snapshot.calibration.run.target_kmh - c.kmh) <= 0.05) {
+      throw `Close the run at ${c.kmh.toFixed(1)} km/h first.`;
+    }
+    snapshot.calibration.targets = snapshot.calibration.targets.filter((x) => Math.abs(x.kmh - c.kmh) > 0.05);
+  },
+  calibration_sweep_start: () => {
+    const listed = snapshot.calibration.targets.filter((t) => t.runnable).map((t) => t.kmh);
+    const targets_kmh = [...new Set([...listed, ...CAL_CONFIG.calibration_points.map((p) => p.speed)])].sort(
+      (a, b) => a - b,
+    );
     snapshot.calibration.sweep = { targets_kmh, marks: targets_kmh.map(() => "pending"), current: 0 };
     runBelt(targets_kmh[0]);
   },
@@ -948,6 +977,37 @@ function switchGhostPod(on: boolean) {
     }, 3000);
   }
 }
+// Labs: WRIST_LINK. ?wristlink=waiting|connected shows it on (with GHOST_POD on);
+// switching it on in the preview waits for the field, which connects 3 s later.
+const WRIST_LINK_MESSAGES = {
+  off: "Switch it on to let the watch's data field read the belt.",
+  needpod: "Waiting for GHOST_POD: the watch keeps its foot pod link while the field reads the belt.",
+  waiting: "Waiting for the watch's data field to connect.",
+  connected: "The watch's data field is connected and reads the belt.",
+};
+let wristLinkTimer: ReturnType<typeof setTimeout> | null = null;
+function setWristLink(state: keyof typeof WRIST_LINK_MESSAGES) {
+  Object.assign(snapshot.ghost_pod.wrist_link, {
+    enabled: state !== "off",
+    serving: state === "waiting" || state === "connected",
+    watches: state === "connected" ? 1 : 0,
+    message: WRIST_LINK_MESSAGES[state],
+  });
+}
+function switchWristLink(on: boolean) {
+  if (wristLinkTimer) clearTimeout(wristLinkTimer);
+  wristLinkTimer = null;
+  if (!on) return setWristLink("off");
+  if (!snapshot.ghost_pod.enabled) return setWristLink("needpod");
+  setWristLink("waiting");
+  wristLinkTimer = setTimeout(() => {
+    setWristLink("connected");
+    publish();
+  }, 3000);
+}
+const wristLinkFlag = params.get("wristlink");
+if (wristLinkFlag === "waiting" || wristLinkFlag === "connected") setWristLink(wristLinkFlag);
+
 const ghostPodFlag = params.get("ghostpod");
 if (ghostPodFlag && ghostPodFlag in GHOST_POD) setGhostPod(ghostPodFlag as keyof typeof GHOST_POD);
 const ghostPowerFlag = params.get("ghostpower");
@@ -1310,6 +1370,7 @@ const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) =>
   heart_rate_pick: (c) => pickHeartSensor({ id: c.id, name: c.name }),
   heart_rate_forget: () => pickHeartSensor(null),
   ghost_pod_power_set: (c) => setGhostPower(c.on),
+  wrist_link_set: (c) => switchWristLink(c.on),
   strava_set_credentials: () => (snapshot.strava.has_credentials = true),
   strava_connect: () => {
     Object.assign(snapshot.strava, { connected: true, athlete_name: "Preview Athlete" });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calibrationRows, chrono, runRowFor } from "./guided";
+import { calibrationRows, chrono, listedTarget, runRowFor } from "./guided";
 
 const point = (speed: number) => ({ speed, stride_length_cm: 70, distance_scale: 0.9 });
 
@@ -36,5 +36,13 @@ describe("runRowFor", () => {
     expect(runRowFor(rows, 2.96)?.index).toBe(0);
     expect(runRowFor(rows, 4)?.targetKmh).toBe(4);
     expect(runRowFor(rows, 5)).toBeNull();
+  });
+});
+
+describe("listedTarget", () => {
+  it("finds the list entry for a row's speed", () => {
+    const targets = [{ kmh: 2, runnable: true }, { kmh: 14, runnable: false }];
+    expect(listedTarget(targets, 14.02)).toEqual({ kmh: 14, runnable: false });
+    expect(listedTarget(targets, 3)).toBeNull();
   });
 });

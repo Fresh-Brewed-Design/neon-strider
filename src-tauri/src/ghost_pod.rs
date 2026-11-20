@@ -18,7 +18,7 @@
 #[path = "ghost_pod/worker.rs"]
 mod worker;
 
-pub use worker::{init, set_enabled, set_power, snapshot, spawn};
+pub use worker::{init, set_enabled, set_power, set_wrist_link, snapshot, spawn};
 
 use crate::engine::{OrchestratorState, STILL_KMH};
 use serde::{Deserialize, Serialize};
@@ -285,6 +285,8 @@ pub struct GhostPodSnapshot {
     pub power_watches: u32,
     /// The watts being sent now (0 while the belt is still or power is off).
     pub power_w: u16,
+    /// WRIST_LINK, the watch data field's service served next to the pod.
+    pub wrist_link: crate::wrist_link::WristLinkSnapshot,
 }
 
 /// The status word, in the deck's voice.
