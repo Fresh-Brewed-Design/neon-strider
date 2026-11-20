@@ -1,0 +1,1 @@
+- INSTALL on the HUD's update card now reliably opens the dashboard on System -> Updates, instead of the window sometimes vanishing again before you could see it.
