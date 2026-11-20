@@ -32,13 +32,13 @@ turn notifications on. Start the belt: byte 0 goes to 1 and bytes 1-2 follow the
 
 ### Test on the watch
 
-`watch/` is the data field (Monkey C, untested: no SDK was available when it was written). Install
+`watch/` is the data field (Monkey C; it builds with SDK 9.3.0 for the Venu X1, not yet run on the watch). Install
 the Connect IQ SDK, build it for the Venu X1 with the VS Code Monkey C extension (its own developer
 key, kept out of the repo), copy the `.prg` into `GARMIN\Apps` over USB, and add the **BELT** field to
 the Treadmill activity's data screen. With GHOST_POD paired and WRIST_LINK on, the field shows
 `SCAN`, then `LINK`, then the belt speed. This answers the open risk: can the Venu X1 hold the foot pod link
 and this one to the same PC? It also shows whether the PC's advertisement carries the 128-bit UUID
-(if the field stays on `SCAN`, it does not, and phase 0 finds the PC another way, for example by its name).
+(the field also tries any device advertising the foot pod's RSC service, so it still finds the PC when the WRIST_LINK UUID has no room; `NOSVC` means it connected to a device without WRIST_LINK).
 
 If it fails, Fresh Brewed Design picks the fallback from the plan (phone relay, drop the native foot pod, or a
 second Bluetooth adapter).
