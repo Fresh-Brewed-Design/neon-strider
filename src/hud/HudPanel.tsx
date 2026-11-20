@@ -121,7 +121,7 @@ export function Controls({ snapshot }: { snapshot: AppSnapshot }) {
           onUp={() => send({ type: "nudge_incline", up: true })}
         />
       </div>
-      <HudNote error={error ?? startFailure(snapshot)} />
+      <HudNote error={error ?? startFailure(snapshot) ?? deck.target_note} />
     </div>
   );
 }
