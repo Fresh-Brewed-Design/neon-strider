@@ -1,1 +1,0 @@
-- LIGHTS_OUT (System, Desk, off by default): when the PC's display turns off, the treadmill stops and any program ends, so the deck can go to sleep and its lights go out. Nothing starts again when the display comes back on.

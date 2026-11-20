@@ -1,1 +1,0 @@
-- The HUD speed buttons no longer get stuck partway (around 3.8 km/h with some calibrations): every press now moves the belt one step, all the way up to your max speed and back down.
