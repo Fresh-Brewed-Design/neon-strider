@@ -79,17 +79,29 @@ pub fn input_idle_for() -> Option<std::time::Duration> {
     imp::input_idle_for()
 }
 
-/// One characteristic of a peripheral service. UUIDs are 16-bit Bluetooth SIG
-/// numbers.
+/// A 16-bit Bluetooth SIG number as a full UUID (on the Bluetooth base UUID).
+pub const fn sig_uuid(short: u16) -> u128 {
+    0x0000_0000_0000_1000_8000_0080_5f9b_34fb | ((short as u128) << 96)
+}
+
+/// One characteristic of a peripheral service.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PeripheralCharacteristic {
-    pub uuid: u16,
-    /// A fixed value to answer reads with; `None` when it can't be read.
+    pub uuid: u128,
+    /// The value to answer reads with at first (`peripheral_notify` keeps it
+    /// current); `None` when it can't be read.
     pub read: Option<Vec<u8>>,
     pub notify: bool,
     pub indicate: bool,
     /// Writable (with response).
     pub write: bool,
+}
+
+/// A service the app serves, with its characteristics.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PeripheralService {
+    pub uuid: u128,
+    pub characteristics: Vec<PeripheralCharacteristic>,
 }
 
 /// What the peripheral reports, from a Bluetooth thread.
@@ -100,27 +112,26 @@ pub enum PeripheralEvent {
     /// Advertising stopped by itself; the reason in plain English.
     Failed(String),
     /// How many devices are subscribed to this characteristic now.
-    Subscribers { uuid: u16, count: u32 },
+    Subscribers { uuid: u128, count: u32 },
     /// A device wrote this value (already acknowledged).
-    Write { uuid: u16, value: Vec<u8> },
+    Write { uuid: u128, value: Vec<u8> },
 }
 
 pub type PeripheralEvents = std::sync::Arc<dyn Fn(PeripheralEvent) + Send + Sync>;
 
-/// Serve `service` with `characteristics` and start advertising it. Blocking
-/// (a second or so). One service at a time: starting again replaces it. The
-/// error is one plain sentence (no adapter, no peripheral role, Bluetooth off).
+/// Serve `services` and start advertising them. Blocking (a second or so).
+/// Starting again replaces what was served. The error is one plain sentence
+/// (no adapter, no peripheral role, Bluetooth off).
 pub fn peripheral_start(
-    service: u16,
-    characteristics: &[PeripheralCharacteristic],
+    services: &[PeripheralService],
     events: PeripheralEvents,
 ) -> Result<(), String> {
-    imp::peripheral_start(service, characteristics, events)
+    imp::peripheral_start(services, events)
 }
 
 /// Send `value` to every device subscribed to `uuid` (a notification or an
 /// indication, as the characteristic was declared). Does not wait.
-pub fn peripheral_notify(uuid: u16, value: &[u8]) -> Result<(), String> {
+pub fn peripheral_notify(uuid: u128, value: &[u8]) -> Result<(), String> {
     imp::peripheral_notify(uuid, value)
 }
 

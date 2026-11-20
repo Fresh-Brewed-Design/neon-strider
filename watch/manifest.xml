@@ -1,0 +1,11 @@
+<iq:manifest xmlns:iq="http://www.garmin.com/xml/connectiq" version="3">
+    <iq:application entry="NeonStriderApp" id="6f1d1d0e-3b0a-4d57-9a53-8f2c7d0a41b9" launcherIcon="@Drawables.LauncherIcon" minApiLevel="5.1.0" name="@Strings.AppName" type="datafield" version="0.1.0">
+        <iq:products>
+            <iq:product id="venux1"/>
+        </iq:products>
+        <iq:permissions>
+            <iq:uses-permission id="BluetoothLowEnergy"/>
+        </iq:permissions>
+        <iq:languages/>
+    </iq:application>
+</iq:manifest>

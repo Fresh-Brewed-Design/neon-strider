@@ -757,12 +757,15 @@ mod mic {
 pub use peripheral::{peripheral_notify, peripheral_start, peripheral_stop};
 
 mod peripheral {
-    use super::super::{PeripheralCharacteristic, PeripheralEvent, PeripheralEvents};
+    use super::super::{
+        PeripheralCharacteristic, PeripheralEvent, PeripheralEvents, PeripheralService,
+    };
+    use std::collections::HashMap;
     use std::sync::{Mutex, MutexGuard, PoisonError};
     use windows::core::{IInspectable, Ref, GUID};
     use windows::Devices::Bluetooth::GenericAttributeProfile::{
         GattCharacteristicProperties, GattLocalCharacteristic, GattLocalCharacteristicParameters,
-        GattLocalService, GattProtectionLevel, GattServiceProvider,
+        GattLocalService, GattProtectionLevel, GattReadRequestedEventArgs, GattServiceProvider,
         GattServiceProviderAdvertisementStatus,
         GattServiceProviderAdvertisementStatusChangedEventArgs,
         GattServiceProviderAdvertisingParameters, GattWriteOption, GattWriteRequestedEventArgs,
@@ -772,15 +775,17 @@ mod peripheral {
     use windows::Storage::Streams::{DataReader, DataWriter, IBuffer};
 
     struct Server {
-        provider: GattServiceProvider,
-        chars: Vec<(u16, GattLocalCharacteristic)>,
+        providers: Vec<GattServiceProvider>,
+        chars: Vec<(u128, GattLocalCharacteristic)>,
     }
 
     static SERVER: Mutex<Option<Server>> = Mutex::new(None);
+    /// The latest value of each readable characteristic, which reads answer
+    /// with (`peripheral_notify` updates it).
+    static VALUES: Mutex<Option<HashMap<u128, Vec<u8>>>> = Mutex::new(None);
 
-    /// A 16-bit SIG number on the Bluetooth base UUID.
-    fn sig_uuid(short: u16) -> GUID {
-        GUID::from_u128(0x0000_0000_0000_1000_8000_0080_5f9b_34fb | ((short as u128) << 96))
+    fn values() -> MutexGuard<'static, Option<HashMap<u128, Vec<u8>>>> {
+        VALUES.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     fn win(e: windows::core::Error) -> String {
@@ -828,8 +833,7 @@ mod peripheral {
     }
 
     pub fn peripheral_start(
-        service: u16,
-        characteristics: &[PeripheralCharacteristic],
+        services: &[PeripheralService],
         events: PeripheralEvents,
     ) -> Result<(), String> {
         peripheral_stop();
@@ -843,50 +847,73 @@ mod peripheral {
             );
         }
 
-        let created = GattServiceProvider::CreateAsync(sig_uuid(service))
-            .and_then(|op| op.get())
-            .map_err(win)?;
-        let err = created.Error().map_err(win)?;
-        if err != BluetoothError::Success {
-            return Err(bt_error(err));
-        }
-        let provider = created.ServiceProvider().map_err(win)?;
-        let local = provider.Service().map_err(win)?;
-
+        *values() = Some(HashMap::new());
+        let mut providers: Vec<GattServiceProvider> = Vec::new();
         let mut chars = Vec::new();
-        for c in characteristics {
-            let ch = add_characteristic(&local, c, &events)?;
-            chars.push((c.uuid, ch));
+        let built = serve(services, &events, &mut providers, &mut chars);
+        if let Err(why) = built {
+            for p in &providers {
+                let _ = p.StopAdvertising();
+            }
+            *values() = None;
+            return Err(why);
         }
+        *server() = Some(Server { providers, chars });
+        Ok(())
+    }
 
-        let on_status = events.clone();
-        provider
-            .AdvertisementStatusChanged(&TypedEventHandler::new(
-                move |_: Ref<GattServiceProvider>,
-                      args: Ref<GattServiceProviderAdvertisementStatusChangedEventArgs>| {
-                    let args = args.ok()?;
-                    let status = args.Status()?;
-                    log::info!("GHOST_POD: advertisement status {}", status.0);
-                    if status == GattServiceProviderAdvertisementStatus::Started
-                        || status
-                            == GattServiceProviderAdvertisementStatus::StartedWithoutAllAdvertisementData
-                    {
-                        on_status(PeripheralEvent::Advertising);
-                    } else if status == GattServiceProviderAdvertisementStatus::Aborted {
-                        on_status(PeripheralEvent::Failed(bt_error(args.Error()?)));
-                    }
-                    Ok(())
-                },
-            ))
-            .map_err(win)?;
+    /// Create, fill and advertise each service, pushing what exists so far
+    /// into `providers` and `chars` so the caller can undo a half start.
+    fn serve(
+        services: &[PeripheralService],
+        events: &PeripheralEvents,
+        providers: &mut Vec<GattServiceProvider>,
+        chars: &mut Vec<(u128, GattLocalCharacteristic)>,
+    ) -> Result<(), String> {
+        for service in services {
+            let created = GattServiceProvider::CreateAsync(GUID::from_u128(service.uuid))
+                .and_then(|op| op.get())
+                .map_err(win)?;
+            let err = created.Error().map_err(win)?;
+            if err != BluetoothError::Success {
+                return Err(bt_error(err));
+            }
+            let provider = created.ServiceProvider().map_err(win)?;
+            let local = provider.Service().map_err(win)?;
+            for c in &service.characteristics {
+                let ch = add_characteristic(&local, c, events)?;
+                chars.push((c.uuid, ch));
+            }
 
-        let params = GattServiceProviderAdvertisingParameters::new().map_err(win)?;
-        params.SetIsConnectable(true).map_err(win)?;
-        params.SetIsDiscoverable(true).map_err(win)?;
-        provider
-            .StartAdvertisingWithParameters(&params)
-            .map_err(win)?;
-        *server() = Some(Server { provider, chars });
+            let on_status = events.clone();
+            provider
+                .AdvertisementStatusChanged(&TypedEventHandler::new(
+                    move |_: Ref<GattServiceProvider>,
+                          args: Ref<GattServiceProviderAdvertisementStatusChangedEventArgs>| {
+                        let args = args.ok()?;
+                        let status = args.Status()?;
+                        log::info!("GHOST_POD: advertisement status {}", status.0);
+                        if status == GattServiceProviderAdvertisementStatus::Started
+                            || status
+                                == GattServiceProviderAdvertisementStatus::StartedWithoutAllAdvertisementData
+                        {
+                            on_status(PeripheralEvent::Advertising);
+                        } else if status == GattServiceProviderAdvertisementStatus::Aborted {
+                            on_status(PeripheralEvent::Failed(bt_error(args.Error()?)));
+                        }
+                        Ok(())
+                    },
+                ))
+                .map_err(win)?;
+
+            let params = GattServiceProviderAdvertisingParameters::new().map_err(win)?;
+            params.SetIsConnectable(true).map_err(win)?;
+            params.SetIsDiscoverable(true).map_err(win)?;
+            provider
+                .StartAdvertisingWithParameters(&params)
+                .map_err(win)?;
+            providers.push(provider);
+        }
         Ok(())
     }
 
@@ -918,13 +945,8 @@ mod peripheral {
                 .SetWriteProtectionLevel(GattProtectionLevel::Plain)
                 .map_err(win)?;
         }
-        if let Some(v) = &c.read {
-            params
-                .SetStaticValue(&buffer(v).map_err(win)?)
-                .map_err(win)?;
-        }
         let made = local
-            .CreateCharacteristicAsync(sig_uuid(c.uuid), &params)
+            .CreateCharacteristicAsync(GUID::from_u128(c.uuid), &params)
             .and_then(|op| op.get())
             .map_err(win)?;
         let err = made.Error().map_err(win)?;
@@ -934,6 +956,27 @@ mod peripheral {
         let ch = made.Characteristic().map_err(win)?;
         let uuid = c.uuid;
 
+        if let Some(v) = &c.read {
+            if let Some(map) = values().as_mut() {
+                map.insert(uuid, v.clone());
+            }
+            ch.ReadRequested(&TypedEventHandler::new(
+                move |_: Ref<GattLocalCharacteristic>, args: Ref<GattReadRequestedEventArgs>| {
+                    let args = args.ok()?;
+                    let deferral = args.GetDeferral()?;
+                    let request = args.GetRequestAsync()?.get()?;
+                    let value = values()
+                        .as_ref()
+                        .and_then(|map| map.get(&uuid).cloned())
+                        .unwrap_or_default();
+                    log::info!("GHOST_POD: read of {:x}", uuid);
+                    request.RespondWithValue(&buffer(&value)?)?;
+                    deferral.Complete()?;
+                    Ok(())
+                },
+            ))
+            .map_err(win)?;
+        }
         if c.notify || c.indicate {
             let ev = events.clone();
             ch.SubscribedClientsChanged(&TypedEventHandler::new(
@@ -966,13 +1009,18 @@ mod peripheral {
         Ok(ch)
     }
 
-    pub fn peripheral_notify(uuid: u16, value: &[u8]) -> Result<(), String> {
+    pub fn peripheral_notify(uuid: u128, value: &[u8]) -> Result<(), String> {
+        if let Some(map) = values().as_mut() {
+            if let Some(v) = map.get_mut(&uuid) {
+                *v = value.to_vec();
+            }
+        }
         let guard = server();
         let Some(server) = guard.as_ref() else {
             return Ok(());
         };
         let Some((_, ch)) = server.chars.iter().find(|(u, _)| *u == uuid) else {
-            return Err(format!("No characteristic {:04X} on the pod.", uuid));
+            return Err(format!("No characteristic {:x} on the pod.", uuid));
         };
         // Not awaited: Windows delivers it to each subscriber by itself.
         let _op = ch
@@ -983,9 +1031,12 @@ mod peripheral {
 
     pub fn peripheral_stop() {
         if let Some(s) = server().take() {
-            if let Err(e) = s.provider.StopAdvertising() {
-                log::warn!("GHOST_POD: stop advertising failed: {}", e.message());
+            for provider in &s.providers {
+                if let Err(e) = provider.StopAdvertising() {
+                    log::warn!("GHOST_POD: stop advertising failed: {}", e.message());
+                }
             }
+            *values() = None;
             log::info!("GHOST_POD: stopped");
         }
     }

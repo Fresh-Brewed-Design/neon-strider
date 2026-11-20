@@ -67,6 +67,7 @@ the upload page). In the UI, every button that can fail or take time uses `useAc
 `useBackendAction` (`src/components/useAction.ts`) and shows `<ActionStatus>` directly under
 itself; `send()` toasts rejections as a backstop, the HUD uses `useHudSend` + `<HudNote>`.
 GHOST_POD (`ghost_pod.rs`: pure RSC foot-pod encoding, Labs switch off by default; `ghost_pod/worker.rs`) advertises the belt's speed and cadence to a watch as a Running Speed and Cadence sensor. It only reports the belt; nothing from the watch moves it. See docs/watch-pod.md.
+WRIST_LINK (`wrist_link.rs`, Labs switch off by default, served by the same worker) adds a second GATT service for the Connect IQ data field in `watch/`; phase 0 only sends the belt State, nothing from the watch is acted on. See docs/wrist-link.md.
 
 - **Windows**:
   - `main` → `index.html` → `src/main.tsx` → `src/dashboard/DashboardApp.tsx` (760×600 tray

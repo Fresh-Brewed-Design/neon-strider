@@ -9,12 +9,16 @@ use super::{
 };
 use crate::bluetooth::ORCHESTRATOR;
 use crate::persistence;
-use crate::platform::{self, PeripheralCharacteristic, PeripheralEvent, PeripheralEvents};
+use crate::platform::{
+    self, sig_uuid, PeripheralCharacteristic, PeripheralEvent, PeripheralEvents, PeripheralService,
+};
+use crate::wrist_link;
 use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 use tauri::AppHandle;
 
 const KEY_ENABLED: &str = "ghost_pod_enabled";
+const KEY_WRIST_LINK: &str = "wrist_link_enabled";
 /// How often the pod sends a measurement.
 const TICK: Duration = Duration::from_secs(1);
 /// After a failure, try again this long later (while the switch is on).
@@ -23,6 +27,12 @@ const RETRY_AFTER: Duration = Duration::from_secs(30);
 #[derive(Default)]
 struct Runtime {
     enabled: bool,
+    /// The WRIST_LINK Labs switch: serve its service next to the pod.
+    wrist_enabled: bool,
+    /// Watches subscribed to WRIST_LINK's State.
+    wrist_watches: u32,
+    /// The services up now include WRIST_LINK.
+    wrist_serving: bool,
     /// The GATT server is up (advertising or serving a watch).
     running: bool,
     /// A start is in flight.
@@ -46,9 +56,18 @@ fn with<R>(f: impl FnOnce(&mut Runtime) -> R) -> R {
 pub fn init(app: &AppHandle) {
     let on = persistence::parse_setting(persistence::read_setting(app, KEY_ENABLED).as_deref())
         .unwrap_or(false);
-    with(|rt| rt.enabled = on);
+    let wrist =
+        persistence::parse_setting(persistence::read_setting(app, KEY_WRIST_LINK).as_deref())
+            .unwrap_or(false);
+    with(|rt| {
+        rt.enabled = on;
+        rt.wrist_enabled = wrist;
+    });
     if on {
         log::info!("GHOST_POD: on; starting the pod");
+    }
+    if wrist {
+        log::info!("WRIST_LINK: on");
     }
 }
 
@@ -67,7 +86,32 @@ pub fn set_enabled(app: &AppHandle, on: bool) -> Result<(), String> {
             rt.running = false;
             rt.status = PodStatus::Off;
             rt.watches = 0;
+            rt.wrist_watches = 0;
+            rt.wrist_serving = false;
             rt.speed_kmh = 0.0;
+        });
+    }
+    Ok(())
+}
+
+/// The WRIST_LINK Labs switch. It rides on the pod's server, which restarts
+/// within a tick to add or drop the service.
+pub fn set_wrist_link(app: &AppHandle, on: bool) -> Result<(), String> {
+    persistence::write_setting(app, KEY_WRIST_LINK, if on { "true" } else { "false" })?;
+    log::info!("WRIST_LINK {}", if on { "on" } else { "off" });
+    let restart = with(|rt| {
+        rt.wrist_enabled = on;
+        rt.wrist_watches = 0;
+        rt.running && rt.wrist_serving != on
+    });
+    if restart {
+        platform::peripheral_stop();
+        with(|rt| {
+            rt.running = false;
+            rt.wrist_serving = false;
+            rt.watches = 0;
+            rt.status = PodStatus::Starting;
+            rt.failed_at = None;
         });
     }
     Ok(())
@@ -92,6 +136,22 @@ pub fn snapshot() -> GhostPodSnapshot {
             } else {
                 rt.speed_kmh
             },
+            wrist_link: wrist_link::WristLinkSnapshot {
+                enabled: rt.wrist_enabled,
+                serving: rt.wrist_serving,
+                watches: rt.wrist_watches,
+                message: wrist_link::status_message(
+                    rt.wrist_enabled,
+                    rt.enabled,
+                    rt.wrist_serving,
+                    rt.wrist_watches,
+                    if rt.status == PodStatus::Error {
+                        rt.error.as_deref()
+                    } else {
+                        None
+                    },
+                ),
+            },
         }
     })
 }
@@ -108,24 +168,45 @@ pub fn spawn(_app: AppHandle) {
     });
 }
 
-fn characteristics() -> Vec<PeripheralCharacteristic> {
+/// What the server serves: the foot pod, and WRIST_LINK when it is on.
+fn services(wrist: bool) -> Vec<PeripheralService> {
+    let mut services = vec![PeripheralService {
+        uuid: sig_uuid(RSC_SERVICE),
+        characteristics: pod_characteristics(),
+    }];
+    if wrist {
+        services.push(PeripheralService {
+            uuid: wrist_link::SERVICE,
+            characteristics: vec![PeripheralCharacteristic {
+                uuid: wrist_link::STATE,
+                read: Some(wrist_link::WristState::default().encode()),
+                notify: true,
+                indicate: false,
+                write: false,
+            }],
+        });
+    }
+    services
+}
+
+fn pod_characteristics() -> Vec<PeripheralCharacteristic> {
     vec![
         PeripheralCharacteristic {
-            uuid: RSC_MEASUREMENT,
+            uuid: sig_uuid(RSC_MEASUREMENT),
             read: None,
             notify: true,
             indicate: false,
             write: false,
         },
         PeripheralCharacteristic {
-            uuid: RSC_FEATURE,
+            uuid: sig_uuid(RSC_FEATURE),
             read: Some(feature_value()),
             notify: false,
             indicate: false,
             write: false,
         },
         PeripheralCharacteristic {
-            uuid: SC_CONTROL_POINT,
+            uuid: sig_uuid(SC_CONTROL_POINT),
             read: None,
             notify: false,
             indicate: true,
@@ -153,8 +234,11 @@ fn on_event(event: PeripheralEvent) {
             rt.failed_at = Some(Instant::now());
         }),
         PeripheralEvent::Subscribers { uuid, count } => {
-            log::info!("GHOST_POD: {} subscribed to {:04X}", count, uuid);
-            if uuid == RSC_MEASUREMENT {
+            log::info!("GHOST_POD: {} subscribed to {:x}", count, uuid);
+            if uuid == wrist_link::STATE {
+                with(|rt| rt.wrist_watches = count);
+            }
+            if uuid == sig_uuid(RSC_MEASUREMENT) {
                 with(|rt| {
                     rt.watches = count;
                     if rt.running || rt.starting {
@@ -169,16 +253,16 @@ fn on_event(event: PeripheralEvent) {
         }
         PeripheralEvent::Write { uuid, value } => {
             log::info!(
-                "GHOST_POD: write to {:04X}: {}",
+                "GHOST_POD: write to {:x}: {}",
                 uuid,
                 crate::traffic::to_hex(&value)
             );
-            if uuid == SC_CONTROL_POINT {
+            if uuid == sig_uuid(SC_CONTROL_POINT) {
                 let (request, response) = control_point(&value);
                 if let ControlRequest::SetTotal(m) = request {
                     with(|rt| rt.meter.total_m = m);
                 }
-                if let Err(e) = platform::peripheral_notify(SC_CONTROL_POINT, &response) {
+                if let Err(e) = platform::peripheral_notify(sig_uuid(SC_CONTROL_POINT), &response) {
                     log::warn!("GHOST_POD: control point reply failed: {}", e);
                 }
             }
@@ -207,9 +291,9 @@ async fn tick() {
         return;
     }
 
-    let frame = {
+    let (frame, wrist) = {
         let state = ORCHESTRATOR.lock().await;
-        frame_for(&state)
+        (frame_for(&state), wrist_link::state_for(&state))
     };
     let now = Instant::now();
     let bytes = with(|rt| {
@@ -222,22 +306,27 @@ async fn tick() {
             ..frame
         })
     });
-    if let Err(e) = platform::peripheral_notify(RSC_MEASUREMENT, &bytes) {
+    if let Err(e) = platform::peripheral_notify(sig_uuid(RSC_MEASUREMENT), &bytes) {
         log::warn!("GHOST_POD: measurement not sent: {}", e);
+    }
+    if with(|rt| rt.wrist_serving) {
+        if let Err(e) = platform::peripheral_notify(wrist_link::STATE, &wrist.encode()) {
+            log::warn!("WRIST_LINK: state not sent: {}", e);
+        }
     }
 }
 
 async fn start_pod() {
     let events: PeripheralEvents = Arc::new(on_event);
-    let result = crate::util::blocking(move || {
-        platform::peripheral_start(RSC_SERVICE, &characteristics(), events)
-    })
-    .await;
+    let wrist = with(|rt| rt.wrist_enabled);
+    let result =
+        crate::util::blocking(move || platform::peripheral_start(&services(wrist), events)).await;
     let switched_off = with(|rt| {
         rt.starting = false;
         match &result {
             Ok(()) => {
                 rt.running = true;
+                rt.wrist_serving = wrist;
                 rt.last_tick = None;
                 rt.failed_at = None;
             }
@@ -255,6 +344,7 @@ async fn start_pod() {
         platform::peripheral_stop();
         with(|rt| {
             rt.running = false;
+            rt.wrist_serving = false;
             rt.status = PodStatus::Off;
         });
     }

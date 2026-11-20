@@ -41,14 +41,13 @@ pub fn input_idle_for() -> Option<std::time::Duration> {
 }
 
 pub fn peripheral_start(
-    _service: u16,
-    _characteristics: &[super::PeripheralCharacteristic],
+    _services: &[super::PeripheralService],
     _events: super::PeripheralEvents,
 ) -> Result<(), String> {
     Err("The watch pod only works on Windows for now.".to_string())
 }
 
-pub fn peripheral_notify(_uuid: u16, _value: &[u8]) -> Result<(), String> {
+pub fn peripheral_notify(_uuid: u128, _value: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
