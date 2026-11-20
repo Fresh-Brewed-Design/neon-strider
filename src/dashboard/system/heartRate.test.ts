@@ -8,6 +8,8 @@ const heart = (over: Partial<HeartRateSnapshot>): HeartRateSnapshot => ({
   label: "WAITING",
   message: "Waiting for heart rate. On a Garmin watch, start an activity or turn on Broadcast Heart Rate.",
   bpm: null,
+  history: [],
+  zone: null,
   scanning: false,
   found: [],
   ...over,

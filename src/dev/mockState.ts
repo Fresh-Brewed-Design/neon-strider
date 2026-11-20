@@ -250,6 +250,8 @@ export const snapshot: AppSnapshot = {
     label: "OFFLINE",
     message: "Scan for a heart rate sensor and pick your watch to show heart rate.",
     bpm: null,
+    history: [],
+    zone: null,
     scanning: false,
     found: [],
   },

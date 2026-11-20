@@ -9,9 +9,15 @@
 //! Each second of a walk saves the fresh reading with its sample
 //! (`current_bpm`), and the session row keeps the average and maximum.
 //!
+//! The PULSE_RATE spark chart reads `history` (`heart_rate/history.rs`): a
+//! rolling 10 minutes of readings, and `zone`, the running step's heart rate
+//! zone in bpm.
+//!
 //! It only reads. Nothing here sends to the treadmill, so a heart rate can
 //! never start or move the belt.
 
+#[path = "heart_rate/history.rs"]
+mod history;
 #[path = "heart_rate/worker.rs"]
 mod worker;
 
@@ -91,10 +97,25 @@ pub struct HeartRateSnapshot {
     pub message: String,
     /// Beats per minute now; none while there is no fresh reading.
     pub bpm: Option<u32>,
+    /// The PULSE_RATE chart: the last 10 minutes, one point per 5 s, oldest
+    /// first, always a full window; `None` is a step with no reading. Empty
+    /// while no sensor is picked, so there is no chart.
+    pub history: Vec<Option<u32>>,
+    /// The running program step's heart rate zone, for the chart's band;
+    /// none without a walking step that has a zone.
+    pub zone: Option<ZoneBand>,
     /// A scan is running.
     pub scanning: bool,
     /// What the last scan found.
     pub found: Vec<HeartRateSensor>,
+}
+
+/// A heart rate zone in beats per minute.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
+pub struct ZoneBand {
+    pub low_bpm: u32,
+    pub high_bpm: u32,
 }
 
 /// Shown while a picked sensor does not answer. A Garmin watch only

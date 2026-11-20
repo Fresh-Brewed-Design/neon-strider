@@ -72,6 +72,7 @@ export type { WalkAwaySnapshot } from "./bindings/WalkAwaySnapshot";
 export type { WeeklySummary } from "./bindings/WeeklySummary";
 export type { WeekStats } from "./bindings/WeekStats";
 export type { WhatsNew } from "./bindings/WhatsNew";
+export type { ZoneBand } from "./bindings/ZoneBand";
 export type { UnlistenFn };
 
 export function getSnapshot(): Promise<AppSnapshot> {

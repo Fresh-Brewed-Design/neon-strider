@@ -164,6 +164,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?guided`: a guided task (GROUND_TRUTH) holding the dashboard open and on top, with UNPIN
 - `?heart=on|waiting`: System -> Heart rate with a watch picked and reading, or not broadcasting yet; in History every other walk has an average and maximum heart rate
 - `?hours`: the belt reminder counts belt hours
+- `?hrspark=steady|climb|gap`: PULSE_RATE's spark chart with a watch reading: a steady walk, a climb into a heart rate zone step (its band shows), or a minute with no reading
 - `?idle`: the belt stopped
 - `?lightsout`: LIGHTS_OUT on; on the HUD preview its toast
 - `?link=scanning|connecting|reconnecting|nodata|bt-off|failed`: each treadmill link state
