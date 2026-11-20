@@ -24,4 +24,16 @@ watches: number,
 /**
  * What the pod is sending now, km/h (0 while the belt is still).
  */
-speed_kmh: number, };
+speed_kmh: number, 
+/**
+ * The power switch (off by default): the pod also serves running power.
+ */
+power_enabled: boolean, 
+/**
+ * Watches subscribed to the power measurements.
+ */
+power_watches: number, 
+/**
+ * The watts being sent now (0 while the belt is still or power is off).
+ */
+power_w: number, };

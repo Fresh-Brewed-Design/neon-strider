@@ -11,7 +11,7 @@
 //! - Pointer: the cursor position and primary button, for dragging the HUD.
 //! - Idle time: how long since the last keyboard or mouse input anywhere in
 //!   the session (auto-install of updates).
-//! - Bluetooth peripheral: one GATT service the app serves to other devices,
+//! - Bluetooth peripheral: the GATT services the app serves to other devices,
 //!   such as a watch (GHOST_POD, `crate::ghost_pod`). The treadmill link is a
 //!   central and goes through btleplug instead.
 //!
@@ -107,24 +107,32 @@ pub enum PeripheralEvent {
 
 pub type PeripheralEvents = std::sync::Arc<dyn Fn(PeripheralEvent) + Send + Sync>;
 
-/// Serve `service` with `characteristics` and start advertising it. Blocking
-/// (a second or so). One service at a time: starting again replaces it. The
-/// error is one plain sentence (no adapter, no peripheral role, Bluetooth off).
-pub fn peripheral_start(
-    service: u16,
-    characteristics: &[PeripheralCharacteristic],
-    events: PeripheralEvents,
-) -> Result<(), String> {
-    imp::peripheral_start(service, characteristics, events)
+/// One GATT service of the peripheral. A 16-bit Bluetooth SIG number.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PeripheralService {
+    pub uuid: u16,
+    pub characteristics: Vec<PeripheralCharacteristic>,
 }
 
-/// Send `value` to every device subscribed to `uuid` (a notification or an
-/// indication, as the characteristic was declared). Does not wait.
+/// Serve `services` and start advertising them, together. Blocking (a second
+/// or so). Starting again replaces every service. Characteristic UUIDs must
+/// differ across the services. The error is one plain sentence (no adapter,
+/// no peripheral role, Bluetooth off).
+pub fn peripheral_start(
+    services: &[PeripheralService],
+    events: PeripheralEvents,
+) -> Result<(), String> {
+    imp::peripheral_start(services, events)
+}
+
+/// Send `value` to every device subscribed to `uuid`, in whichever service
+/// has it (a notification or an indication, as the characteristic was
+/// declared). Does not wait.
 pub fn peripheral_notify(uuid: u16, value: &[u8]) -> Result<(), String> {
     imp::peripheral_notify(uuid, value)
 }
 
-/// Stop advertising and drop the service. Fine to call when not started.
+/// Stop advertising and drop every service. Fine to call when not started.
 pub fn peripheral_stop() {
     imp::peripheral_stop()
 }
