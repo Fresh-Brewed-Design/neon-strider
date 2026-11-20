@@ -37,12 +37,22 @@ const MAX_STEPS: usize = 20;
 /// Below this a speed means "belt held still" (same threshold the engine uses).
 const MOVING_KMH: f32 = 0.05;
 const REST_WARNING_S: f64 = 30.0;
-/// A step with a heart rate zone changes the speed by this much at a time,
-/// no more often than every `ZONE_TRIM_EVERY` (a pulse takes a while to follow
-/// the belt), and never further than `ZONE_TRIM_RANGE_KMH` from the step's speed.
+/// A step with a heart rate zone changes the speed by this much at a time:
+/// one deck step, the smallest change the belt makes.
 const ZONE_TRIM_KMH: f32 = 0.1;
+/// No more often than this: a pulse takes 15 to 30 s to settle after the belt
+/// changes, so trimming faster would chase a reading that hasn't caught up.
 const ZONE_TRIM_EVERY: Duration = Duration::from_secs(20);
+/// Never further than this from the step's speed: the zone fine-tunes the
+/// speed the user chose for the step, and a pulse it can't reach within
+/// 1 km/h means the step doesn't suit the zone, not that the belt should run
+/// at a speed the user never picked.
 const ZONE_TRIM_RANGE_KMH: f32 = 1.0;
+/// A zone's lowest allowed bound, in % of maximum heart rate: below 30 % is
+/// resting heart rate for most people, which walking can't hold down to.
+const ZONE_MIN_PCT: f32 = 30.0;
+/// The highest: a zone can't go above the maximum heart rate itself.
+const ZONE_MAX_PCT: f32 = 100.0;
 /// A start at the treadmill counts once the deck has reported the belt moving
 /// (Starting or Running) for this long without a break, after reporting it
 /// still. The deck answers a status poll every 600 ms, so this spans at least
@@ -402,8 +412,8 @@ fn validate_program(p: &Program, min_speed: f32, max_speed: f32) -> Result<(), S
                 return Err(format!("Step {}: a zone needs a walking speed", n));
             }
             if !(z.low_pct.is_finite() && z.high_pct.is_finite())
-                || z.low_pct < 30.0
-                || z.high_pct > 100.0
+                || z.low_pct < ZONE_MIN_PCT
+                || z.high_pct > ZONE_MAX_PCT
                 || z.low_pct >= z.high_pct
             {
                 return Err(format!(
@@ -1213,8 +1223,15 @@ impl OrchestratorState {
         } else {
             return;
         };
-        let floor = (step.speed_kmh - ZONE_TRIM_RANGE_KMH).max(self.min_speed);
-        let ceiling = (step.speed_kmh + ZONE_TRIM_RANGE_KMH).min(self.max_speed);
+        // Step speeds are calibrated km/h, so the belt's limits are too.
+        let floor = (step.speed_kmh - ZONE_TRIM_RANGE_KMH).max(self.min_physical_speed());
+        let ceiling =
+            (step.speed_kmh + ZONE_TRIM_RANGE_KMH).min(self.to_physical_speed(self.top_hw_speed()));
+        // A speed set by hand outside the range is the user's choice: the zone
+        // leaves it alone rather than pull it back by up to a km/h at once.
+        if run.target.speed < floor - 0.001 || run.target.speed > ceiling + 0.001 {
+            return;
+        }
         let speed = (run.target.speed + delta).clamp(floor, ceiling);
         run.zone_trimmed_at = Some(now);
         if (speed - run.target.speed).abs() < 0.001 {

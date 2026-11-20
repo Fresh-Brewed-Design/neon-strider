@@ -14,6 +14,7 @@ mod worker;
 
 pub use worker::{
     forget_sensor, init, max_heart_rate, pick_sensor, scan, set_max_heart_rate, snapshot, spawn,
+    DEFAULT_MAX_BPM,
 };
 
 use serde::{Deserialize, Serialize};

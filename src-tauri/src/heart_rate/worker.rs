@@ -20,7 +20,8 @@ use tauri::AppHandle;
 const KEY_ID: &str = "heart_rate_sensor_id";
 const KEY_NAME: &str = "heart_rate_sensor_name";
 const KEY_MAX: &str = "max_heart_rate";
-/// Used for zones until the user sets their own.
+/// Used for zones until the user sets their own: 220 minus age for a
+/// 30-year-old, the common estimate, so zones are near right before it is set.
 pub const DEFAULT_MAX_BPM: u16 = 190;
 static MAX_BPM: AtomicU16 = AtomicU16::new(DEFAULT_MAX_BPM);
 /// How long the picker's scan listens: a sensor advertises about once a
@@ -100,6 +101,9 @@ pub fn init(app: &AppHandle) {
     }
 }
 
+/// A maximum heart rate outside 120 to 230 bpm is a typing slip: 220 minus
+/// age gives about 120 at 100 years old, and measured maxima above 230 are
+/// almost unheard of.
 fn valid_max(bpm: u16) -> bool {
     (120..=230).contains(&bpm)
 }

@@ -325,7 +325,7 @@ impl Default for OrchestratorState {
             last_manual_interaction: before(now, Duration::from_secs(3600)),
             program_intent: None,
             heart_bpm: None,
-            max_heart_rate: 190,
+            max_heart_rate: u32::from(crate::heart_rate::DEFAULT_MAX_BPM),
             last_status: MachineStatus::Stopped,
             hardware_speed: 0.0,
             hardware_incline: 0,
@@ -2114,9 +2114,14 @@ impl ProtocolEngine {
                     None => state.handshake_step = HandshakeStep::Priming,
                 }
             }
+            // Never for a program's own target: a program resumes a paused
+            // belt only through a press (GO, SKIP, Engage: `kick_resume`). A
+            // program raising its target (a heart rate zone trim, say) just as
+            // the deck is paused at the treadmill must not resume it.
             MachineStatus::Paused
                 if target_speed > self.last_physical_speed + STILL_KMH
                     && has_target
+                    && source != TargetSource::Program
                     && !state.start_blocked
                     && !state.hold_auto_start =>
             {
