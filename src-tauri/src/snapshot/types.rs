@@ -793,6 +793,15 @@ pub enum Command {
     },
     /// End the sweep and any run. The belt keeps going.
     CalibrationSweepEnd,
+    /// TAP STEPS (or TAP AGAIN on the steps): start the footstep phase on
+    /// the measured run; TAP then times footsteps. TAP AGAIN takes back a
+    /// stride the last one saved. Never moves the belt.
+    CalibrationStepsStart,
+    /// SKIP on the footsteps: the stride stays as it was.
+    CalibrationStepsSkip,
+    /// The stride a settled footstep phase measures is saved by itself.
+    /// UNDO: put the point back as the belt run left it.
+    CalibrationStepsUndo,
 
     // ---- GHOST_POD and WRIST_LINK (Labs) ----
     /// Labs: GHOST_POD on (`on`) or off. On, the PC advertises as a Bluetooth

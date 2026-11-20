@@ -24,6 +24,7 @@ import {
   runRowFor,
   type CalibrationRow,
 } from "./guided";
+import { StepPanel } from "./StepPanel";
 
 /**
  * Labs: GROUND_TRUTH, the guided calibration. The belt loop's length comes
@@ -350,12 +351,14 @@ function RunPanel({
   const again = useAction();
   const undo = useAction();
   const listening = run.phase !== "measured";
+  // GAIT_SYNC's footsteps take the same keys once the belt is measured.
+  const keysListening = listening || (run.steps !== null && run.steps.phase !== "measured");
   const sendTap = tap.run;
 
   // Space taps while the dashboard has focus; Alt+Space reaches Rust's input
   // hook from any window, so the two never count one press twice.
   useEffect(() => {
-    if (!listening) return;
+    if (!keysListening) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== " " || e.altKey || e.ctrlKey || e.metaKey || typingInto(e.target)) return;
       // Also keeps a focused button from treating Space as its own click.
@@ -365,7 +368,7 @@ function RunPanel({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [listening, sendTap]);
+  }, [keysListening, sendTap]);
 
   // In a sweep, closing a run that has no saved point skips its speed.
   const close = () => {
@@ -481,6 +484,7 @@ function RunPanel({
           </div>
           <ActionStatus pending={undo.pending} error={undo.error} />
           <ActionStatus pending={again.pending} error={again.error} />
+          <StepPanel run={run} limits={limits} />
         </div>
       )}
     </div>

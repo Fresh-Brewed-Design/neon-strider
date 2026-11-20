@@ -391,6 +391,26 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             calibration::close_all();
             Ok(())
         }
+        Command::CalibrationStepsStart => {
+            let restored = calibration::steps_start(&mut *ORCHESTRATOR.lock().await)?;
+            if let Some(points) = restored {
+                blocking(move || {
+                    calibration::persist_points(&app, &points);
+                    Ok(())
+                })
+                .await?;
+            }
+            Ok(())
+        }
+        Command::CalibrationStepsSkip => calibration::steps_skip(),
+        Command::CalibrationStepsUndo => {
+            let points = calibration::steps_undo(&mut *ORCHESTRATOR.lock().await)?;
+            blocking(move || {
+                calibration::persist_points(&app, &points);
+                Ok(())
+            })
+            .await
+        }
 
         // ---- GHOST_POD and WRIST_LINK (Labs) ----
         Command::GhostPodSet { on } => {

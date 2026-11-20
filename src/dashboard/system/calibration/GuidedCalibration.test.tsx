@@ -46,6 +46,7 @@ function runView(view: Partial<CalibrationRunView>): CalibrationRunView {
     result: null,
     saved: false,
     undone: false,
+    steps: null,
     ...view,
   };
 }

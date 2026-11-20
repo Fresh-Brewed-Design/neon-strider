@@ -36,6 +36,20 @@ pub const MAX_STANDARD_ERROR: f32 = 0.01;
 /// in every four passes through.
 pub const MAX_DROPPED_SHARE: f32 = 0.25;
 
+/// When a set of taps is done: how many kept gaps, and how closely they agree.
+/// The belt and the footsteps need different amounts (see each constant).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Rules {
+    pub min_agreeing: usize,
+    pub max_standard_error: f32,
+}
+
+/// The belt mark's passes.
+pub const BELT: Rules = Rules {
+    min_agreeing: MIN_AGREEING,
+    max_standard_error: MAX_STANDARD_ERROR,
+};
+
 /// What a set of taps says so far.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TapStats {
@@ -45,6 +59,8 @@ pub struct TapStats {
     pub dropped: usize,
     /// The median of the kept gaps, s; none until there is a gap.
     pub median_s: Option<f64>,
+    /// The mean of the kept gaps, s; none until there is a gap.
+    pub mean_s: Option<f64>,
     /// Standard error of the kept gaps over their median; none below two.
     pub standard_error: Option<f32>,
     /// Enough kept gaps agree closely, and few enough were dropped: the run
@@ -83,11 +99,18 @@ pub fn kept_gaps(gaps: &[f64]) -> Vec<f64> {
         .collect()
 }
 
-/// Everything the taps at `taps_s` (seconds on one clock, in order) say.
+/// Everything the taps at `taps_s` (seconds on one clock, in order) say,
+/// against the belt's rules.
 pub fn analyse(taps_s: &[f64]) -> TapStats {
+    analyse_with(taps_s, &BELT)
+}
+
+/// The same, against `rules`.
+pub fn analyse_with(taps_s: &[f64], rules: &Rules) -> TapStats {
     let all = gaps(taps_s);
     let kept = kept_gaps(&all);
     let median_s = median(&kept);
+    let mean_s = (!kept.is_empty()).then(|| kept.iter().sum::<f64>() / kept.len() as f64);
     let standard_error = match (median_s, kept.len()) {
         (Some(m), n) if n >= 2 => {
             let mean = kept.iter().sum::<f64>() / n as f64;
@@ -100,9 +123,10 @@ pub fn analyse(taps_s: &[f64]) -> TapStats {
         kept: kept.len(),
         dropped: all.len() - kept.len(),
         median_s,
+        mean_s,
         standard_error,
-        settled: kept.len() >= MIN_AGREEING
-            && standard_error.is_some_and(|se| se <= MAX_STANDARD_ERROR)
+        settled: kept.len() >= rules.min_agreeing
+            && standard_error.is_some_and(|se| se <= rules.max_standard_error)
             && (all.len() - kept.len()) as f32 <= MAX_DROPPED_SHARE * all.len() as f32,
     }
 }
