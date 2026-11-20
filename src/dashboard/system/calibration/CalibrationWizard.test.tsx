@@ -78,7 +78,7 @@ describe("CalibrationWizard target speed", () => {
     fireEvent.click(screen.getByText("STOP (DONE)"));
 
     expect(screen.getByRole("alert").textContent).toBe(
-      "No belt speed was seen. Run it again.",
+      "No belt speed was seen. Run the calibration again.",
     );
     const save = screen.getByText("SAVE MULTI-AXIS DATA") as HTMLButtonElement;
     expect(save.disabled).toBe(true);

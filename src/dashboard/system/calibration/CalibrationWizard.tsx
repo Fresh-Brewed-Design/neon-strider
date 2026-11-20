@@ -224,8 +224,8 @@ export function CalibrationWizard({ onClose, onSave }: { onClose: () => void; on
             {!canSave && (
               <p role="alert" className="text-center font-mono text-xs text-neon-magenta">
                 {capturedTargetSpeed > 0
-                  ? "That result is not valid. Run it again."
-                  : "No belt speed was seen. Run it again."}
+                  ? "The calibration result is not valid. Run the calibration again."
+                  : "No belt speed was seen. Run the calibration again."}
               </p>
             )}
 
