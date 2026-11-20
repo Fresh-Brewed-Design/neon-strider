@@ -252,14 +252,18 @@ impl OrchestratorState {
         Ok(())
     }
 
-    /// STOP on the sweep. A speed sweep leaves the belt at the speed it has;
-    /// an incline sweep puts the incline back to the one from before, since a
-    /// steep level the sweep reached is not one the walker chose.
+    /// STOP on the sweep: the speed or incline goes back to the one from
+    /// before, since a step the sweep reached is not one the walker chose.
+    /// On a belt that stopped or paused before the sweep's tick saw it, that
+    /// is done as when the belt is lost (`sweep_belt_lost`): never as a hand
+    /// speed, which could resume a paused belt.
     pub fn profile_sweep_stop(&mut self) {
         if let Some(sweep) = self.profile_sweep.take() {
             log::info!("Deck sweep stopped");
-            if sweep.kind == SweepKind::Incline {
+            if self.last_status.is_moving() && !self.awaiting_first_packet {
                 self.sweep_restore(&sweep);
+            } else {
+                self.sweep_belt_lost(&sweep);
             }
         }
     }

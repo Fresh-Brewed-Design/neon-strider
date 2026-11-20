@@ -2164,6 +2164,50 @@ mod tests {
         assert_eq!(r.deck.incline, deck_incline);
     }
 
+    /// Stop sweep on a speed sweep puts the belt back at the speed it had
+    /// before the sweep, and starts or stops nothing.
+    #[test]
+    fn stop_sweep_on_a_speed_sweep_returns_to_the_start_speed() {
+        let mut r = sweeping_rig();
+        assert!(
+            !r.deck.running_at(2.0),
+            "the sweep moved the belt: {} km/h",
+            r.deck.speed_kmh()
+        );
+        let mark = r.mark();
+        r.state.profile_sweep_stop();
+        assert!(r.state.profile_sweep.is_none());
+        r.run(8.0);
+        assert!(
+            r.deck.running_at(2.0),
+            "back at the start speed: {} km/h",
+            r.deck.speed_kmh()
+        );
+        assert_eq!(r.controls_since(mark, Control::Stop), 0);
+        assert_eq!(r.controls_since(mark, Control::Pause), 0);
+        assert!(!app_starts(&r.commands_since(mark)));
+    }
+
+    /// Stop sweep pressed just after a pause at the treadmill, before the
+    /// sweep's tick saw it: the start speed is put back without resuming
+    /// the belt, and automatic starts wait for a press.
+    #[test]
+    fn stop_sweep_on_a_paused_belt_never_resumes_it() {
+        let mut r = sweeping_rig();
+        let mark = r.mark();
+        r.deck.press_pause(r.t);
+        let frame = r.deck.current_frame();
+        r.rx(&frame);
+        assert_eq!(r.state.last_status, protocol::MachineStatus::Paused);
+        r.state.profile_sweep_stop();
+        r.run(30.0);
+        assert!(!r.deck.running_at(0.1), "{} km/h", r.deck.speed_kmh());
+        assert!(!app_starts(&r.commands_since(mark)), "no start or resume");
+        assert!(r.state.hold_auto_start);
+        let back = r.state.manual_intent.expect("an intent").speed;
+        assert!((back - 2.0).abs() < 0.06, "back at the start speed: {back}");
+    }
+
     /// An incline press on the remote ends a speed sweep too, so the sweep's
     /// next speed never puts the incline back to the app's.
     #[test]
