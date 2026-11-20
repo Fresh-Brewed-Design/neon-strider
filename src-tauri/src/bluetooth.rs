@@ -1118,7 +1118,11 @@ mod tests {
                 assert!(!out.speed, "{} to {} km/h toasted", kmh(byte), kmh(wobble));
             }
             let out = t.on_frame(&frame(MachineStatus::Running, kmh(byte + 2), 0), false);
-            assert!(out.speed, "two steps up from {} km/h did not toast", kmh(byte));
+            assert!(
+                out.speed,
+                "two steps up from {} km/h did not toast",
+                kmh(byte)
+            );
         }
     }
 

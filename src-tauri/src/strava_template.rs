@@ -15,10 +15,10 @@ const DEFAULT_DESCRIPTION: &str = "DECK_CYCLES {duration} \u{b7} DISPLACEMENT {d
 
 /// Strava titles are cut to this many characters.
 /// Longer titles are cut in Strava's feed anyway.
-const MAX_TITLE_CHARS: usize = 100;
+pub const MAX_TITLE_CHARS: usize = 100;
 /// Longest template text accepted when saving.
 /// Room for placeholders that expand to fewer characters, but not a pasted page.
-/// TemplateEditor's `maxLength` is the same.
+/// TemplateEditor reads it from `SettingLimits`.
 pub const MAX_TITLE_TEMPLATE_CHARS: usize = 300;
 /// A long description with every placeholder, well under Strava's own limit.
 pub const MAX_DESCRIPTION_TEMPLATE_CHARS: usize = 2000;

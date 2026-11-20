@@ -35,8 +35,8 @@ const KEY_IDLE_MINUTES: &str = "walkaway_idle_minutes";
 /// Defaults and range: docs/research.md, Walk-away timings. DeskSection reads
 /// the range from `SettingLimits`.
 const DEFAULT_IDLE_MINUTES: u32 = 10;
-const MIN_IDLE_MINUTES: u32 = 2;
-const MAX_IDLE_MINUTES: u32 = 30;
+pub(crate) const MIN_IDLE_MINUTES: u32 = 2;
+pub(crate) const MAX_IDLE_MINUTES: u32 = 30;
 
 const SECOND: u64 = 1000;
 const MINUTE: u64 = 60 * SECOND;

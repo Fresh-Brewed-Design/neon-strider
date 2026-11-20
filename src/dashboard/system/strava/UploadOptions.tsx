@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
 import { ActionStatus } from "../../../components/ActionStatus";
 import { useAction, useBackendAction } from "../../../components/useAction";
-import type { MuteMode, StravaSnapshot } from "../../../ipc";
+import { SETTING_LIMITS, type MuteMode, type StravaSnapshot } from "../../../ipc";
 import { GhostButton, Hint, Label } from "../../ui";
 import { cx, post } from "../../util";
 import { ChoiceGroup, INPUT_CLASS } from "../fields";
@@ -117,8 +117,8 @@ function MuteChoice({ strava }: { strava: StravaSnapshot }) {
             <span className="font-mono text-[11px] text-white/60">Under</span>
             <input
               type="number"
-              min={1}
-              max={240}
+              min={SETTING_LIMITS.strava_mute_minutes.min}
+              max={SETTING_LIMITS.strava_mute_minutes.max}
               value={minutes}
               onChange={(e) => setMinutesDraft(e.target.value)}
               onBlur={commitMinutes}

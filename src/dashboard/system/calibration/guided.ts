@@ -12,7 +12,7 @@ export interface CalibrationRow {
   index: number | null;
 }
 
-/** A saved point this close to a target is that target's point. */
+/** A saved point this close to a target is that target's point: half a deck step, as `calibration.rs` `SAME_SPEED_KMH`. */
 const SAME_SPEED_KMH = 0.05;
 
 /**

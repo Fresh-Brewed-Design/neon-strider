@@ -17,7 +17,7 @@ pub const MIN_WALK_DISTANCE_M: f64 = 50.0;
 /// A coffee or a call between two walks is one walk on Strava; a lunch break is two.
 const DEFAULT_MERGE_MINUTES: u32 = 10;
 /// The "join walks closer than" range: a minute, up to an hour (longer gaps are
-/// separate outings). History's setting reads it from `SettingLimits`.
+/// separate outings). SessionsSection reads it from `SettingLimits`.
 pub const MIN_MERGE_MINUTES: u32 = 1;
 pub const MAX_MERGE_MINUTES: u32 = 60;
 pub const DEFAULT_SHIFT_END: &str = "18:00";
@@ -65,7 +65,10 @@ pub fn parse_shift_end(raw: &str) -> Option<NaiveTime> {
 pub fn parse_merge_minutes(raw: Option<&str>) -> u32 {
     raw.and_then(|s| s.trim().trim_matches('"').parse::<f64>().ok())
         .filter(|v| v.is_finite())
-        .map(|v| v.round().clamp(MIN_MERGE_MINUTES as f64, MAX_MERGE_MINUTES as f64) as u32)
+        .map(|v| {
+            v.round()
+                .clamp(MIN_MERGE_MINUTES as f64, MAX_MERGE_MINUTES as f64) as u32
+        })
         .unwrap_or(DEFAULT_MERGE_MINUTES)
 }
 
@@ -91,7 +94,10 @@ pub fn mute_mode_setting(mode: MuteMode) -> &'static str {
 pub fn parse_mute_minutes(raw: Option<&str>) -> u32 {
     raw.and_then(|s| s.trim().trim_matches('"').parse::<f64>().ok())
         .filter(|v| v.is_finite())
-        .map(|v| v.round().clamp(MIN_MUTE_MINUTES as f64, MAX_MUTE_MINUTES as f64) as u32)
+        .map(|v| {
+            v.round()
+                .clamp(MIN_MUTE_MINUTES as f64, MAX_MUTE_MINUTES as f64) as u32
+        })
         .unwrap_or(DEFAULT_MUTE_MINUTES)
 }
 

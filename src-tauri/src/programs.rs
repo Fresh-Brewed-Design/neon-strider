@@ -34,10 +34,10 @@ const RESUME_STILL_MAX_AGE_MS: i64 = 4 * 60 * 60 * 1000;
 const ACTIVE_RUN_SAVE_EVERY: Duration = Duration::from_secs(5);
 
 /// Fits a program button on the HUD and the idle-nudge card.
-const MAX_NAME_CHARS: usize = 40;
+pub(crate) const MAX_NAME_CHARS: usize = 40;
 /// A long interval program (the VO2 max one has 10 steps) with room to spare,
 /// while the editor stays one screen.
-const MAX_STEPS: usize = 20;
+pub(crate) const MAX_STEPS: usize = 20;
 /// Below this a speed means "belt held still": the engine's own threshold.
 const MOVING_KMH: f32 = STILL_KMH;
 /// Half a minute to finish a sentence before the belt stops for a rest.
@@ -735,7 +735,9 @@ impl OrchestratorState {
     /// resolve_target lets manual intent win for `MANUAL_LOCKOUT` after the last manual
     /// interaction; push that timestamp into the past so the program applies now.
     fn prioritize_program(&mut self, now: Instant) {
-        self.last_manual_interaction = now.checked_sub(crate::engine::MANUAL_LOCKOUT + Duration::from_secs(1)).unwrap_or(now);
+        self.last_manual_interaction = now
+            .checked_sub(crate::engine::MANUAL_LOCKOUT + Duration::from_secs(1))
+            .unwrap_or(now);
     }
 
     /// A paused deck only auto-resumes when the target exceeds the engine's

@@ -18,6 +18,7 @@ import { useSessionUploads } from "../history/useSessionUploads";
 import { GhostButton, Label, Page, Panel } from "../ui";
 import { cx } from "../util";
 
+/** Walks loaded at once: three a day for a year fill the 53-week calendar, and 1000 rows stay quick. */
 const LOAD_LIMIT = 1000;
 
 export function HistoryPage() {

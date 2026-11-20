@@ -27,6 +27,7 @@ pub mod guided_task;
 pub mod heart_rate;
 mod hooks;
 mod hud;
+pub mod limits;
 pub mod link;
 pub mod logging;
 pub mod neural;

@@ -214,7 +214,7 @@ export function SliderField({
           setDraft(v);
           pending.current = v;
           clearTimeout(timer.current);
-          timer.current = setTimeout(flush, 250);
+          timer.current = setTimeout(flush, 250); // one snapshot tick: a drag sends a few values, not one per pixel
         }}
         onPointerUp={flush}
         onKeyUp={flush}

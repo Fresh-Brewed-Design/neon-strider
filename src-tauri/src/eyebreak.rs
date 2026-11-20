@@ -61,11 +61,11 @@ const KEY_FIT_RESTS: &str = "eye_break_fit_rests";
 /// Defaults and ranges: docs/research.md, Eye breaks (20 min, 90 s; breaks up to
 /// 300 s for the myopia data). DeskSection reads the ranges from `SettingLimits`.
 const DEFAULT_MINUTES: u32 = 20;
-const MIN_MINUTES: u32 = 10;
-const MAX_MINUTES: u32 = 120;
+pub(crate) const MIN_MINUTES: u32 = 10;
+pub(crate) const MAX_MINUTES: u32 = 120;
 const DEFAULT_SECONDS: u32 = 90;
-const MIN_SECONDS: u32 = 20;
-const MAX_SECONDS: u32 = 300;
+pub(crate) const MIN_SECONDS: u32 = 20;
+pub(crate) const MAX_SECONDS: u32 = 300;
 
 const SECOND: u64 = 1000;
 const MINUTE: u64 = 60 * SECOND;

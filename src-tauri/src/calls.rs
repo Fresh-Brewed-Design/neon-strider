@@ -28,8 +28,8 @@ const KEY_QUIET_KMH: &str = "calls_quiet_kmh";
 const DEFAULT_QUIET_KMH: f32 = 2.0;
 /// Below a typical deck's slowest speed (0.5 to 1 km/h) the speed would only be
 /// raised to the floor. Above 6 km/h is a brisk walk, not quiet.
-const MIN_QUIET_KMH: f32 = 0.5;
-const MAX_QUIET_KMH: f32 = 6.0;
+pub(crate) const MIN_QUIET_KMH: f32 = 0.5;
+pub(crate) const MAX_QUIET_KMH: f32 = 6.0;
 
 /// The microphone must be free this long before a call counts as over.
 /// Call apps release the mic for a moment when muting, switching devices or

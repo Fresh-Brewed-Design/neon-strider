@@ -34,11 +34,11 @@ pub const KEY_PROGRAMS: &str = "seated_program_ids";
 /// Every 30 minutes: see docs/research.md (was 60 before migration 3).
 const DEFAULT_MINUTES: u32 = 30;
 /// Range 15 to 240: docs/research.md, Idle nudge. DeskSection reads it from `SettingLimits`.
-const MIN_MINUTES: u32 = 15;
-const MAX_MINUTES: u32 = 240;
+pub(crate) const MIN_MINUTES: u32 = 15;
+pub(crate) const MAX_MINUTES: u32 = 240;
 /// Program buttons on the card.
 /// Three buttons fit the HUD card's width (`HUD_STRIP_WIDTH`).
-const MAX_PROGRAM_BUTTONS: usize = 3;
+pub(crate) const MAX_PROGRAM_BUTTONS: usize = 3;
 
 const SECOND: u64 = 1000;
 const MINUTE: u64 = 60 * SECOND;

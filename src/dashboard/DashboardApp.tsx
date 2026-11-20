@@ -81,6 +81,7 @@ export function DashboardApp() {
         writePref(NOTES_SHOWN_KEY, String(at));
         writePref(PAGE_KEY, "system");
         setPage("system");
+        // 80 ms: a frame or so for the System page to render before scrolling to it.
         setTimeout(() => document.getElementById(UPDATES_SECTION_ID)?.scrollIntoView({ block: "start" }), 80);
       }),
     [],

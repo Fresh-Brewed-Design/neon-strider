@@ -39,14 +39,14 @@ const DEFAULT_INTERVAL_DAYS: u32 = 90;
 /// Ranges: a quarter of the sticker's 200 km up to 25 times it, and up to two years;
 /// wide enough for any deck's manual, narrow enough to catch a typo.
 /// Distance and days are shared with MaintenanceSection through `SettingLimits`.
-const MIN_INTERVAL_KM: f32 = 50.0;
-const MAX_INTERVAL_KM: f32 = 5000.0;
-const MAX_INTERVAL_DAYS: u32 = 730;
+pub(crate) const MIN_INTERVAL_KM: f32 = 50.0;
+pub(crate) const MAX_INTERVAL_KM: f32 = 5000.0;
+pub(crate) const MAX_INTERVAL_DAYS: u32 = 730;
 /// 200 km at a 4 km/h desk walk is 50 belt hours, the same service point.
 const DEFAULT_INTERVAL_HOURS: f32 = 50.0;
 /// One tenth to twenty times the default, as for distance.
-const MIN_INTERVAL_HOURS: f32 = 5.0;
-const MAX_INTERVAL_HOURS: f32 = 1000.0;
+pub(crate) const MIN_INTERVAL_HOURS: f32 = 5.0;
+pub(crate) const MAX_INTERVAL_HOURS: f32 = 1000.0;
 /// 2020-01-01T00:00:00Z. Earlier "service dates" are typos.
 const MIN_LAST_SERVICE_MS: i64 = 1_577_836_800_000;
 
