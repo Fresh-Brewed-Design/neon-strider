@@ -1,1 +1,0 @@
-- DECK_PROFILE: the app learns which speeds the treadmill runs from its replies while you walk. The HUD stepper, the Live slider, the program editor and the speed settings then keep to speeds the deck takes, and its real slowest and fastest speeds. System -> Diagnostics can forget what it learned.

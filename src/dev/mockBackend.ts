@@ -188,6 +188,7 @@ export const snapshot: AppSnapshot = {
     at_rest: false,
     phase: "idle",
     remaining_s: 0,
+    blink: null,
     blink_seq: 0,
     end_seq: 0,
   },
@@ -236,6 +237,15 @@ export const snapshot: AppSnapshot = {
       watches: 0,
       message: "Switch it on to let the watch's data field read the belt.",
     },
+  },
+  heart_rate: {
+    sensor: null,
+    status: "off",
+    label: "OFFLINE",
+    message: "Scan for a heart rate sensor and pick your watch to show heart rate.",
+    bpm: null,
+    scanning: false,
+    found: [],
   },
 };
 
@@ -451,8 +461,10 @@ if (weeklyFlag !== null) Object.assign(snapshot.weekly, { show_card: true }, WEE
 // ?eyebreak=upcoming|break|resume shows the eye-break (OCULAR_IMPLANT) HUD card: the
 // heads-up, the cooldown with the belt it paused, or the resume card after it
 // (RESUME / STAY STILL). ?eyebreak=still is the cooldown with the belt left alone,
-// ?eyebreak=rest the heads-up for a break set for the program's rest.
+// ?eyebreak=rest the heads-up for a break set for the program's rest. During the
+// cooldown, ?blink=squeeze|open picks the guided blink step (CLOSE by default).
 const eyeBreakFlag = params.get("eyebreak");
+const blinkFlag = params.get("blink");
 if (eyeBreakFlag === "upcoming" || eyeBreakFlag === "rest")
   Object.assign(snapshot.eye_break, {
     enabled: true,
@@ -461,7 +473,13 @@ if (eyeBreakFlag === "upcoming" || eyeBreakFlag === "rest")
     at_rest: eyeBreakFlag === "rest",
   });
 if (eyeBreakFlag === "break" || eyeBreakFlag === "still")
-  Object.assign(snapshot.eye_break, { enabled: true, phase: "break", remaining_s: 72, holds_belt: eyeBreakFlag === "break" });
+  Object.assign(snapshot.eye_break, {
+    enabled: true,
+    phase: "break",
+    remaining_s: 72,
+    holds_belt: eyeBreakFlag === "break",
+    blink: blinkFlag === "squeeze" || blinkFlag === "open" ? blinkFlag : "close",
+  });
 if (eyeBreakFlag === "resume") Object.assign(snapshot.eye_break, { enabled: true, phase: "complete", holds_belt: true });
 if (eyeBreakFlag === "break" || eyeBreakFlag === "resume") {
   // The break paused the walk: the program at its step, or the treadmill's pause.
@@ -975,6 +993,38 @@ if (ghostPowerFlag === "waiting" || ghostPowerFlag === "linked") {
   setGhostPower(true, ghostPowerFlag === "linked");
 }
 
+// HEART_LINK. ?heart=on picks a watch that reads about 112 bpm; scanning in
+// the preview finds one after a moment.
+const PREVIEW_WATCH = { id: "AA:BB:CC:DD:EE:01", name: "Forerunner 265" };
+let heartTimer: ReturnType<typeof setInterval> | null = null;
+function pickHeartSensor(sensor: { id: string; name: string } | null) {
+  if (heartTimer) clearInterval(heartTimer);
+  heartTimer = null;
+  const h = snapshot.heart_rate;
+  if (!sensor) {
+    Object.assign(h, {
+      sensor: null,
+      status: "off",
+      label: "OFFLINE",
+      message: "Scan for a heart rate sensor and pick your watch to show heart rate.",
+      bpm: null,
+    });
+    return;
+  }
+  Object.assign(h, {
+    sensor,
+    status: "connected",
+    label: "LINKED",
+    message: "Reading heart rate from the sensor.",
+    bpm: 112,
+  });
+  heartTimer = setInterval(() => {
+    h.bpm = 108 + Math.round(Math.random() * 8);
+    publish();
+  }, 1000);
+}
+if (params.get("heart") === "on") pickHeartSensor(PREVIEW_WATCH);
+
 // ?custom: the HUD sits where it was dragged (a custom position).
 if (params.has("custom")) snapshot.hud.custom = { dx: 400, top: 120 };
 
@@ -1282,6 +1332,15 @@ const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) =>
   traffic_open_folder: () => {},
   ...CAL_COMMANDS,
   ghost_pod_set: (c) => switchGhostPod(c.on),
+  heart_rate_scan: async () => {
+    snapshot.heart_rate.scanning = true;
+    publish();
+    await new Promise((r) => setTimeout(r, 1500));
+    snapshot.heart_rate.scanning = false;
+    snapshot.heart_rate.found = [PREVIEW_WATCH];
+  },
+  heart_rate_pick: (c) => pickHeartSensor({ id: c.id, name: c.name }),
+  heart_rate_forget: () => pickHeartSensor(null),
   ghost_pod_power_set: (c) => setGhostPower(c.on),
   wrist_link_set: (c) => switchWristLink(c.on),
   strava_set_credentials: () => (snapshot.strava.has_credentials = true),

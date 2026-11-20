@@ -89,6 +89,14 @@ export const STAT_WIDGETS: StatWidget[] = [
     // Whole km at 1000 and up, so the HUD cell never outgrows its column.
     read: (s) => ({ value: lifetimeKm(s.odometer.distance_km), unit: "KM" }),
   },
+  {
+    id: "HEART_RATE",
+    label: "HR",
+    codename: "PULSE_RATE",
+    accent: "magenta",
+    // "--" until a sensor is picked and sending.
+    read: (s) => ({ value: s.heart_rate.bpm === null ? "--" : s.heart_rate.bpm.toString(), unit: "BPM" }),
+  },
 ];
 
 const BY_ID = new Map(STAT_WIDGETS.map((w) => [w.id, w]));

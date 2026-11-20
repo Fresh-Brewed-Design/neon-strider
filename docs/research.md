@@ -155,6 +155,52 @@ close to every 30 minutes.
 warning, and an instant pause on lock. Kept. These are safety and comfort settings (watching a
 video while walking is normal), not health advice, so the literature has nothing to correct.
 
+## Eye breaks (OCULAR_IMPLANT)
+
+**Interval and length (was and is):** a 90-second break every 20 minutes of screen use. Kept.
+
+- The 20-20-20 rule (20 seconds every 20 minutes) is a mnemonic with little clinical support
+  (Boulet 2016). Focusing needs about 90 seconds or more to relax, hence the 90-second default.
+- 20-second breaks did little for eye strain symptoms in a controlled reading task (Johnson &
+  Rosenfield 2023). With reminders, following the rule for two weeks eased symptoms but changed no
+  tear-film signs (Talens-Estarelles et al. 2023).
+- For myopia, the animal data point to breaks of 5 minutes or more each hour (Pucker & Gawne
+  2023), so the break length goes up to 300 seconds.
+
+**Blink cue (was):** one beep every 10 seconds. That number had no source, and it is slower than
+people already blink at a screen (about 14 to 15 a minute, one every 4 seconds; Chu et al. 2014).
+A prompt to blink more often misses the problem anyway: screen reading lowers blink rate against
+looking around, but what sets screens apart from paper is the share of incomplete blinks, where
+the lids never meet (Chu et al. 2014: 7.0 % on screen against 4.3 % on paper; Argilés et al.
+2015: incomplete blinks rose only with electronic reading). Coles-Brennan et al. (2019) review
+how fewer and incomplete blinks drive tear evaporation and screen eye strain.
+
+**Blink cue (now):** a guided full blink, repeated through the break. Close the eyes and hold,
+squeeze gently, open, each step 2 seconds, so one full blink every 6 seconds.
+
+- Blinking exercises cut incomplete blinks. Kim et al. (2021) had 41 people with dry eye do a
+  10-second blinking exercise every 20 minutes for four weeks: incomplete blinks fell from 54 %
+  to 34 % of blinks, and symptoms and tear breakup time improved. Their every-20-minutes timing
+  matches the break interval.
+- Wolffsohn et al. (2025) compared routines in 98 people with dry eye, using an app. The best was
+  15 close-squeeze-open cycles, each step held for 2 s, three times a day. Adding the squeeze
+  step lowered symptom frequency compared with close-and-open only, and the best routine
+  reduced incomplete blinks (p < 0.001) and conjunctival staining in a second group of 28. The
+  benefits faded within two weeks of stopping, so the exercise works while it is kept up, which
+  a break that repeats it suits.
+- At 2 seconds a step, the default 90-second break is exactly 15 full blinks, the trial's
+  routine. Two of those breaks an hour come to about six sessions over a working morning, more
+  than the trial's three a day, with the same per-session dose.
+- Cue style: tones, one short beep (or pair) per step. Speech would say a word 45 times in a
+  90-second break, which nags; a soft sine beep stays calm, needs no voice or language on the PC
+  and sends nothing anywhere. The card shows the same step as text (`SHUTTER // CLOSE`,
+  `SQUEEZE`, `OPEN`) for when Tones is off.
+
+**Verdict:** change the 10-second blink beep to a guided full blink (2 s close and hold, 2 s
+squeeze, 2 s open). Caveats: both blinking trials were small and short, in people with dry eye,
+and one was run by the app's own developers (disclosed in the paper). No trial has tested the
+exercise inside a screen break, so this follows the trial's dose, not a tested break routine.
+
 ## Sources
 
 - Ainsworth BE, Haskell WL, Herrmann SD, et al. (2011). 2011 Compendium of Physical Activities:
@@ -162,9 +208,15 @@ video while walking is normal), not health advice, so the literature has nothing
   1575–1581. https://doi.org/10.1249/MSS.0b013e31821ece12
 - American College of Sports Medicine (2021). *ACSM's Guidelines for Exercise Testing and
   Prescription*, 11th ed. Wolters Kluwer. (Walking metabolic equation.)
+- Argilés M, Cardona G, Pérez-Cabré E, Rodríguez M (2015). Blink rate and incomplete blinks in
+  six different controlled hard-copy and electronic reading conditions. *Investigative
+  Ophthalmology & Visual Science* 56(11): 6679–6685. https://pubmed.ncbi.nlm.nih.gov/26517404/
 - Bacon AP, Carter RE, Ogle EA, Joyner MJ (2013). VO2max trainability and high intensity
   interval training in humans: a meta-analysis. *PLoS ONE* 8(9): e73182.
   https://doi.org/10.1371/journal.pone.0073182
+- Boulet C (2016). The "20/20/20 rule": when good intentions and axiomatic habit displace best
+  practices. *Canadian Journal of Optometry* 78(4).
+  https://openjournals.uwaterloo.ca/index.php/cjo/article/view/448
 - Buffey AJ, Herring MP, Langley CK, Donnelly AE, Carson BP (2022). The acute effects of
   interrupting prolonged sitting time in adults with standing and light-intensity walking on
   biomarkers of cardiometabolic health in adults: a systematic review and meta-analysis.
@@ -172,6 +224,10 @@ video while walking is normal), not health advice, so the literature has nothing
 - Bull FC, Al-Ansari SS, Biddle S, et al. (2020). World Health Organization 2020 guidelines on
   physical activity and sedentary behaviour. *British Journal of Sports Medicine* 54(24):
   1451–1462. https://doi.org/10.1136/bjsports-2020-102955
+- Chu CA, Rosenfield M, Portello JK (2014). Blink patterns: reading from a computer screen versus
+  hard copy. *Optometry and Vision Science* 91(3): 297–302. https://pubmed.ncbi.nlm.nih.gov/24413278/
+- Coles-Brennan C, Sulley A, Young G (2019). Management of digital eye strain. *Clinical and
+  Experimental Optometry* 102(1): 18–29. https://doi.org/10.1111/cxo.12798
 - Dempsey PC, Larsen RN, Sethi P, et al. (2016). Benefits for type 2 diabetes of interrupting
   prolonged sitting with brief bouts of light walking or simple resistance activities.
   *Diabetes Care* 39(6): 964–972. https://doi.org/10.2337/dc15-2336
@@ -197,6 +253,11 @@ video while walking is normal), not health advice, so the literature has nothing
 - John D, Bassett D, Thompson D, Fairbrother J, Baldwin D (2009). Effect of using a treadmill
   workstation on performance of simulated office work tasks. *Journal of Physical Activity and
   Health* 6(5): 617–624. https://doi.org/10.1123/jpah.6.5.617
+- Johnson S, Rosenfield M (2023). 20-20-20 rule: are these numbers justified? *Optometry and
+  Vision Science* 100(1): 52–56. https://pubmed.ncbi.nlm.nih.gov/36473088/
+- Kim AD, Muntz A, Lee J, Wang MTM, Craig JP (2021). Therapeutic benefits of blinking exercises in
+  dry eye disease. *Contact Lens and Anterior Eye* 44(3): 101329.
+  https://doi.org/10.1016/j.clae.2020.04.014
 - Levine JA, Miller JM (2007). The energy expenditure of using a "walk-and-work" desk for office
   workers with obesity. *British Journal of Sports Medicine* 41(9): 558–561.
   https://pmc.ncbi.nlm.nih.gov/articles/PMC2465387/
@@ -206,10 +267,15 @@ video while walking is normal), not health advice, so the literature has nothing
 - Podrekar N, Kozinc Ž, Šarabon N (2020). The effects of cycle and treadmill desks on work
   performance and cognitive function in sedentary workers: a review and meta-analysis. *Work*
   65(3): 537–545. https://doi.org/10.3233/WOR-203108
+- Pucker AD, Gawne TJ (2023). Fighting myopia with intermittent nearwork breaks: 20 seconds every
+  20 minutes might not be enough time. *Optometry and Vision Science* 100(1): 31–32.
 - Reynolds AN, Mann JI, Williams S, Venn BJ (2016). Advice to walk after meals is more effective
   for lowering postprandial glycaemia in type 2 diabetes mellitus than advice that does not
   specify timing: a randomised crossover study. *Diabetologia* 59(12): 2572–2578.
   https://doi.org/10.1007/s00125-016-4085-2
+- Talens-Estarelles C, Cerviño A, García-Lázaro S, Fogelton A, Sheppard A, Wolffsohn JS (2023).
+  The effects of breaks on digital eye strain, dry eye and binocular vision: testing the
+  20-20-20 rule. *Contact Lens and Anterior Eye* 46(2): 101744.
 - Tudor-Locke C, Aguiar EJ, Han H, et al. (2019). Walking cadence (steps/min) and intensity in
   21–40 year olds: CADENCE-adults. *International Journal of Behavioral Nutrition and Physical
   Activity* 16: 8. https://doi.org/10.1186/s12966-019-0769-6
@@ -219,3 +285,6 @@ video while walking is normal), not health advice, so the literature has nothing
 - Wisløff U, Støylen A, Loennechen JP, et al. (2007). Superior cardiovascular effect of aerobic
   interval training versus moderate continuous training in heart failure patients: a randomized
   study. *Circulation* 115(24): 3086–3094. https://doi.org/10.1161/CIRCULATIONAHA.106.675041
+- Wolffsohn JS, Travé Huarte S, Bahra I, Finch C, Anyaegbu U, Garcia-Porta N, Kingsnorth A (2025).
+  Optimisation of blinking exercises for dry eye disease. *Contact Lens and Anterior Eye* 48(5):
+  102453. https://doi.org/10.1016/j.clae.2025.102453
