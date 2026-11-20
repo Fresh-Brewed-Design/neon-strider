@@ -211,6 +211,15 @@ export const snapshot: AppSnapshot = {
     watches: 0,
     speed_kmh: 0,
   },
+  heart_rate: {
+    sensor: null,
+    status: "off",
+    label: "OFFLINE",
+    message: "Scan for a heart rate sensor and pick your watch to show heart rate.",
+    bpm: null,
+    scanning: false,
+    found: [],
+  },
 };
 
 /** Send the current snapshot to every listener, as Rust's `app-state` event does. */
@@ -675,6 +684,38 @@ function switchGhostPod(on: boolean) {
 const ghostPodFlag = params.get("ghostpod");
 if (ghostPodFlag && ghostPodFlag in GHOST_POD) setGhostPod(ghostPodFlag as keyof typeof GHOST_POD);
 
+// HEART_LINK. ?heart=on picks a watch that reads about 112 bpm; scanning in
+// the preview finds one after a moment.
+const PREVIEW_WATCH = { id: "AA:BB:CC:DD:EE:01", name: "Forerunner 265" };
+let heartTimer: ReturnType<typeof setInterval> | null = null;
+function pickHeartSensor(sensor: { id: string; name: string } | null) {
+  if (heartTimer) clearInterval(heartTimer);
+  heartTimer = null;
+  const h = snapshot.heart_rate;
+  if (!sensor) {
+    Object.assign(h, {
+      sensor: null,
+      status: "off",
+      label: "OFFLINE",
+      message: "Scan for a heart rate sensor and pick your watch to show heart rate.",
+      bpm: null,
+    });
+    return;
+  }
+  Object.assign(h, {
+    sensor,
+    status: "connected",
+    label: "LINKED",
+    message: "Reading heart rate from the sensor.",
+    bpm: 112,
+  });
+  heartTimer = setInterval(() => {
+    h.bpm = 108 + Math.round(Math.random() * 8);
+    publish();
+  }, 1000);
+}
+if (params.get("heart") === "on") pickHeartSensor(PREVIEW_WATCH);
+
 // ?custom: the HUD sits where it was dragged (a custom position).
 if (params.has("custom")) snapshot.hud.custom = { dx: 400, top: 120 };
 
@@ -969,6 +1010,15 @@ const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) =>
   traffic_record: (c) => (c.on ? startTraffic(0) : stopTraffic()),
   traffic_open_folder: () => {},
   ghost_pod_set: (c) => switchGhostPod(c.on),
+  heart_rate_scan: async () => {
+    snapshot.heart_rate.scanning = true;
+    publish();
+    await new Promise((r) => setTimeout(r, 1500));
+    snapshot.heart_rate.scanning = false;
+    snapshot.heart_rate.found = [PREVIEW_WATCH];
+  },
+  heart_rate_pick: (c) => pickHeartSensor({ id: c.id, name: c.name }),
+  heart_rate_forget: () => pickHeartSensor(null),
   strava_set_credentials: () => (snapshot.strava.has_credentials = true),
   strava_connect: () => {
     Object.assign(snapshot.strava, { connected: true, athlete_name: "Preview Athlete" });

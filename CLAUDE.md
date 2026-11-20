@@ -67,6 +67,7 @@ the upload page). In the UI, every button that can fail or take time uses `useAc
 `useBackendAction` (`src/components/useAction.ts`) and shows `<ActionStatus>` directly under
 itself; `send()` toasts rejections as a backstop, the HUD uses `useHudSend` + `<HudNote>`.
 GHOST_POD (`ghost_pod.rs`: pure RSC foot-pod encoding, Labs switch off by default; `ghost_pod/worker.rs`) advertises the belt's speed and cadence to a watch as a Running Speed and Cadence sensor. It only reports the belt; nothing from the watch moves it. See docs/watch-pod.md.
+HEART_LINK (`heart_rate.rs`: pure Heart Rate Measurement decoding and snapshot types; `heart_rate/worker.rs`: the picked sensor, scan and link, apart from the treadmill's) reads a standard 0x180D sensor such as a watch with Broadcast Heart Rate, off until one is picked (`heart_rate_sensor_id`), and feeds `snapshot.heart_rate` and the `HEART_RATE` stat. It only reads; it never moves the belt. Saving it with sessions, Strava and heart rate zone programs are still to do (#78).
 
 - **Windows**:
   - `main` → `index.html` → `src/main.tsx` → `src/dashboard/DashboardApp.tsx` (760×600 tray

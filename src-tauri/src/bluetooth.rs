@@ -598,13 +598,13 @@ pub async fn is_bluetooth_connected() -> bool {
 }
 
 /// A device id without separators, upper case, for matching.
-fn normalize_id(id: &str) -> String {
+pub(crate) fn normalize_id(id: &str) -> String {
     id.replace([':', '-'], "").to_uppercase()
 }
 
 /// Two normalized ids name the same device. Either may be the shorter form
 /// (Windows ids carry a prefix the saved id may lack, or the other way round).
-fn ids_match(a: &str, b: &str) -> bool {
+pub(crate) fn ids_match(a: &str, b: &str) -> bool {
     a.contains(b) || b.contains(a)
 }
 

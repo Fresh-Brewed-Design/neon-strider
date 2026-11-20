@@ -53,6 +53,7 @@ pub struct AppSnapshot {
     pub lights_out: LightsOutSnapshot,
     /// Labs: GHOST_POD, the PC as a foot pod for a watch (off by default).
     pub ghost_pod: crate::ghost_pod::GhostPodSnapshot,
+    pub heart_rate: crate::heart_rate::HeartRateSnapshot,
 }
 
 /// Strava as the windows see it. Tokens and the client secret never appear here.
@@ -321,6 +322,7 @@ pub enum HudWidget {
     Daily,
     Controls,
     Odometer,
+    HeartRate,
 }
 
 #[derive(Deserialize)]
@@ -338,6 +340,7 @@ enum HudWidgetRepr {
     Daily,
     Controls,
     Odometer,
+    HeartRate,
 }
 
 impl<'de> Deserialize<'de> for HudWidget {
@@ -360,6 +363,7 @@ impl From<HudWidgetRepr> for HudWidget {
             HudWidgetRepr::Daily => Self::Daily,
             HudWidgetRepr::Controls => Self::Controls,
             HudWidgetRepr::Odometer => Self::Odometer,
+            HudWidgetRepr::HeartRate => Self::HeartRate,
         }
     }
 }
@@ -602,6 +606,16 @@ pub enum Command {
     GhostPodSet {
         on: bool,
     },
+    /// HEART_LINK: scan for heart rate sensors (about 5 s); the result is
+    /// `heart_rate.found`.
+    HeartRateScan,
+    /// HEART_LINK: read the heart rate from this sensor (one from the scan).
+    HeartRatePick {
+        id: String,
+        name: String,
+    },
+    /// HEART_LINK: stop reading and forget the sensor (the default).
+    HeartRateForget,
 }
 
 #[cfg(test)]
@@ -865,6 +879,19 @@ mod tests {
         assert_eq!(c, Command::TrafficRecord { on: true });
         let c: Command = serde_json::from_str(r#"{"type":"ghost_pod_set","on":true}"#).unwrap();
         assert_eq!(c, Command::GhostPodSet { on: true });
+        let c: Command = serde_json::from_str(r#"{"type":"heart_rate_scan"}"#).unwrap();
+        assert_eq!(c, Command::HeartRateScan);
+        let c: Command =
+            serde_json::from_str(r#"{"type":"heart_rate_pick","id":"A1","name":"Watch"}"#).unwrap();
+        assert_eq!(
+            c,
+            Command::HeartRatePick {
+                id: "A1".into(),
+                name: "Watch".into()
+            }
+        );
+        let c: Command = serde_json::from_str(r#"{"type":"heart_rate_forget"}"#).unwrap();
+        assert_eq!(c, Command::HeartRateForget);
         let c: Command = serde_json::from_str(r#"{"type":"traffic_open_folder"}"#).unwrap();
         assert_eq!(c, Command::TrafficOpenFolder);
 

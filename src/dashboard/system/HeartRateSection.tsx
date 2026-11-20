@@ -1,0 +1,89 @@
+import { ActionStatus } from "../../components/ActionStatus";
+import { useAction } from "../../components/useAction";
+import { dispatch } from "../../ipc";
+import { useAppSnapshot } from "../../state/useAppState";
+import { StatusPill } from "../StatusPill";
+import { GhostButton, Hint, NeonButton } from "../ui";
+import { Section } from "./fields";
+import { heartRatePill, heartRateTone } from "./heartRate";
+
+/**
+ * System -> Heart rate: pick a Bluetooth heart rate sensor, such as a watch
+ * with Broadcast Heart Rate on (`snapshot.heart_rate`, Rust's `heart_rate.rs`).
+ * Off until a sensor is picked, and separate from the treadmill link. It only
+ * reads: a heart rate never moves the belt.
+ */
+export function HeartRateSection() {
+  const heart = useAppSnapshot()?.heart_rate;
+  const scan = useAction();
+  const pick = useAction();
+  if (!heart) return null;
+
+  const tone = heartRateTone(heart);
+  const others = heart.found.filter((f) => f.id !== heart.sensor?.id);
+  const scanning = scan.pending || heart.scanning;
+
+  return (
+    <Section
+      id="sys-heart"
+      title="Heart rate"
+      description="Read your heart rate from a Bluetooth sensor. On a Garmin watch, switch on Broadcast Heart Rate first."
+      status={<StatusPill tone={tone} label={heartRatePill(heart)} title={heart.message} />}
+    >
+      <div className="flex flex-col gap-2">
+        {heart.sensor && (
+          <>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0 truncate font-mono text-xs text-white/85">
+                <span className="font-bold uppercase tracking-[0.12em]">{heart.sensor.name || "Heart rate sensor"}</span>
+                {heart.bpm !== null && <span className="ml-2 text-neon-magenta">{heart.bpm} BPM</span>}
+              </div>
+              <GhostButton
+                disabled={pick.pending}
+                onClick={() => void pick.run(() => dispatch({ type: "heart_rate_forget" }))}
+              >
+                Forget
+              </GhostButton>
+            </div>
+            <ActionStatus
+              ambient
+              pending={tone === "working" ? heart.message : null}
+              done={tone === "ok" ? heart.message : null}
+              error={tone === "problem" ? heart.message : null}
+            />
+          </>
+        )}
+        <div>
+          <NeonButton
+            className="px-3 py-1.5"
+            disabled={scanning}
+            onClick={() => void scan.run(() => dispatch({ type: "heart_rate_scan" }))}
+          >
+            {scanning ? "Scanning..." : "Scan for sensors"}
+          </NeonButton>
+          <ActionStatus
+            pending={scan.pending ? "Listening for heart rate sensors for about 5 seconds." : null}
+            error={scan.error && `Could not scan: ${scan.error}`}
+            className="mt-1"
+          />
+        </div>
+        {others.map((f) => (
+          <div key={f.id} className="flex items-center justify-between gap-3">
+            <span className="min-w-0 truncate font-mono text-xs text-white/85">{f.name}</span>
+            <NeonButton
+              className="px-3 py-1"
+              disabled={pick.pending}
+              onClick={() => void pick.run(() => dispatch({ type: "heart_rate_pick", id: f.id, name: f.name }))}
+            >
+              Use
+            </NeonButton>
+          </div>
+        ))}
+        {pick.error && <ActionStatus error={`Could not change the sensor: ${pick.error}`} />}
+        {!heart.sensor && heart.found.length === 0 && !scanning && (
+          <Hint>No sensor picked, so heart rate stays off. Scan to find your watch.</Hint>
+        )}
+      </div>
+    </Section>
+  );
+}
