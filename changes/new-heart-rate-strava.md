@@ -1,1 +1,0 @@
-- Walks saved with heart rate now send it to Strava, in the automatic upload and in the file from "Save for Strava". Walks without heart rate upload as before.

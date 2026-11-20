@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.27.0 (2026-11-20)
+
+### New
+
+- Walks saved with heart rate now send it to Strava, in the automatic upload and in the file from "Save for Strava". Walks without heart rate upload as before.
+
 ## 1.26.0 (2026-11-20)
 
 ### New
