@@ -1958,6 +1958,7 @@ mod settings_tests {
                 speed: 3.0,
                 stride_length_cm: 70.0,
                 distance_scale: 0.9,
+                runs: 1,
             }],
             belt_length: 140.0,
             min_speed: 1.0,

@@ -157,6 +157,8 @@ pub(crate) struct SimDeck {
     /// deck clamps and echoes the byte it took.
     floor: u8,
     ceiling: u8,
+    /// In-between speeds the deck skips: (asked byte, byte it runs instead).
+    skips: Vec<(u8, u8)>,
 }
 
 impl SimDeck {
@@ -179,6 +181,7 @@ impl SimDeck {
             nacks: 0,
             floor: 0,
             ceiling: u8::MAX,
+            skips: vec![],
         }
     }
 
@@ -187,6 +190,12 @@ impl SimDeck {
     pub(crate) fn set_limits(&mut self, floor: u8, ceiling: u8) {
         self.floor = floor;
         self.ceiling = ceiling;
+    }
+
+    /// A deck that runs `took` when asked for `asked` (speed bytes).
+    #[cfg(test)]
+    pub(crate) fn set_skip(&mut self, asked: u8, took: u8) {
+        self.skips.push((asked, took));
     }
 
     #[cfg(test)]
@@ -344,7 +353,11 @@ impl SimDeck {
             (Running, Control::Target) => {
                 // A speed outside the deck's range is clamped, and the echo
                 // below says which byte it took.
-                let taken = speed.clamp(self.floor, self.ceiling);
+                let taken = self
+                    .skips
+                    .iter()
+                    .find(|(asked, _)| *asked == speed)
+                    .map_or(speed.clamp(self.floor, self.ceiling), |(_, took)| *took);
                 self.target = taken as f32 / 10.0;
                 self.incline = incline;
                 echo_speed = Some(taken);
@@ -1039,11 +1052,15 @@ mod tests {
         r.run(5.0);
         assert!(r.deck.running_at(2.0));
         assert_eq!(r.state.current_target_note(), None, "taken as asked");
+        // Engage started at 0.6 and the deck took 0.8: DECK_PROFILE knows the
+        // floor, so 0.6 now goes out as 0.8 and needs no note.
+        assert_eq!(r.state.deck_profile.floor(), Some(8));
+        let mark = r.mark();
         r.set_speed(0.6);
         r.run(3.0);
         assert!(r.deck.running_at(0.8), "{} km/h", r.deck.speed_kmh());
-        let note = r.state.current_target_note().expect("a note");
-        assert!(note.contains("0.6") && note.contains("0.8"), "{note}");
+        assert_eq!(target_bytes_since(&r, mark), vec![8]);
+        assert_eq!(r.state.current_target_note(), None);
         r.set_speed(5.0);
         r.run(2.0);
         let note = r.state.current_target_note().expect("a note");
@@ -1073,6 +1090,211 @@ mod tests {
         r.state.target_note = None;
         r.state.on_deck_reply(protocol::DeckReply::Nack);
         assert_eq!(r.state.current_target_note(), None);
+    }
+
+    /// Target bytes sent since `mark`.
+    fn target_bytes_since(r: &Rig, mark: usize) -> Vec<u8> {
+        r.sent[mark..]
+            .iter()
+            .filter(|p| {
+                p.bytes.len() == 15 && p.bytes[1] == 0x53 && p.bytes[2] == Control::Target as u8
+            })
+            .map(|p| p.bytes[3])
+            .collect()
+    }
+
+    fn walking_rig(floor: u8, ceiling: u8) -> Rig {
+        let mut r = Rig::new();
+        r.deck.set_limits(floor, ceiling);
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(5.0);
+        r.set_speed(2.0);
+        r.run(3.0);
+        assert!(r.deck.running_at(2.0));
+        r
+    }
+
+    /// DECK_PROFILE learns the floor and ceiling from the echoes alone: the
+    /// app sends only the targets it was asked for, and afterwards the limits
+    /// shown, the stepper and a typed speed keep to them.
+    #[test]
+    fn the_deck_profile_learns_the_floor_and_ceiling_from_echoes() {
+        // Engage starts at the 0.6 setting; the deck takes 0.8 and says so.
+        let mut r = walking_rig(8, 40);
+        assert_eq!(r.state.deck_profile.floor(), Some(8));
+        assert_eq!(r.state.deck_profile.ceiling(), None);
+        let mark = r.mark();
+        r.set_speed(5.0);
+        r.run(3.0);
+        assert_eq!(
+            target_bytes_since(&r, mark),
+            vec![50],
+            "nothing sent to learn"
+        );
+        assert_eq!(r.state.deck_profile.ceiling(), Some(40));
+        assert!((r.state.min_physical_speed() - 0.8).abs() < 1e-5);
+        assert!((r.state.top_hw_speed() - 4.0).abs() < 1e-5);
+        r.run(20.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+
+        // The deck already runs 4.0: asking 5.0 again sends nothing.
+        let mark = r.mark();
+        r.set_speed(4.5);
+        r.run(2.0);
+        assert!(target_bytes_since(&r, mark).is_empty());
+        r.press(DeckAction::SpeedUp);
+        r.run(2.0);
+        assert!(
+            target_bytes_since(&r, mark).is_empty(),
+            "the stepper stops at 4.0"
+        );
+
+        let steps = r.state.deck_speeds();
+        assert_eq!(steps.first().map(|s| s.0), Some(0.8));
+        assert_eq!(steps.last().map(|s| s.0), Some(4.0));
+
+        // Down to the floor and no further: a down press there sends nothing.
+        r.set_speed(0.9);
+        r.run(8.0);
+        r.press(DeckAction::SpeedDown);
+        r.run(5.0);
+        assert!(r.deck.running_at(0.8), "{} km/h", r.deck.speed_kmh());
+        let mark = r.mark();
+        r.press(DeckAction::SpeedDown);
+        r.run(2.0);
+        assert!(target_bytes_since(&r, mark).is_empty());
+        assert!(r.deck.running_at(0.8));
+
+        // The profile outlives the connection.
+        r.drop_link();
+        r.run(1.0);
+        assert!(r.reconnect());
+        assert_eq!(r.state.deck_profile.ceiling(), Some(40));
+    }
+
+    /// A skipped in-between speed is learned from its echo, and the stepper
+    /// then steps over it both ways.
+    #[test]
+    fn the_stepper_steps_over_a_speed_the_deck_skips() {
+        let mut r = walking_rig(6, 40);
+        r.deck.set_skip(15, 16);
+        r.set_speed(1.4);
+        r.run(3.0);
+        r.press(DeckAction::SpeedUp);
+        r.run(3.0);
+        assert!(r.deck.running_at(1.6), "{} km/h", r.deck.speed_kmh());
+        assert!(r.state.deck_profile.skips(15));
+        assert!(
+            r.state.current_target_note().is_some(),
+            "the first time is noted"
+        );
+        let shown = r.state.snap_speed(1.5);
+        assert!((shown - 1.6).abs() < 1e-5, "{shown}");
+
+        let mark = r.mark();
+        r.press(DeckAction::SpeedDown);
+        r.run(3.0);
+        r.press(DeckAction::SpeedUp);
+        r.run(3.0);
+        assert_eq!(
+            target_bytes_since(&r, mark),
+            vec![14, 16],
+            "1.5 never asked again"
+        );
+        assert!(r.deck.running_at(1.6));
+        assert!(!r
+            .state
+            .deck_speeds()
+            .iter()
+            .any(|s| (s.0 - 1.5).abs() < 1e-5));
+    }
+
+    /// After the remote moves the belt, a press steps from the deck's speed
+    /// and still steps over a speed the deck skips, and keeps to the floor.
+    #[test]
+    fn a_press_after_the_remote_steps_from_the_deck_and_over_a_skipped_speed() {
+        let mut r = walking_rig(6, 40);
+        r.deck.set_skip(15, 16);
+        r.set_speed(1.4);
+        r.run(3.0);
+        r.press(DeckAction::SpeedUp);
+        r.run(3.0);
+        assert!(r.deck.running_at(1.6), "{} km/h", r.deck.speed_kmh());
+        assert!(r.state.deck_profile.skips(15));
+
+        // Down to 1.4 on the remote; up on the HUD lands on the skipped 1.5,
+        // so 1.6 goes out, though the app last sent 1.6 itself.
+        r.remote_speed(false, 2);
+        r.run(5.0);
+        assert!(r.deck.running_at(1.4), "{} km/h", r.deck.speed_kmh());
+        let mark = r.mark();
+        r.press(DeckAction::SpeedUp);
+        r.run(3.0);
+        assert_eq!(target_bytes_since(&r, mark), vec![16], "1.5 skipped");
+        assert!(r.deck.running_at(1.6), "{} km/h", r.deck.speed_kmh());
+
+        // Up to 1.7 on the remote; down twice on the HUD steps 1.6, then
+        // over 1.5 to 1.4.
+        r.remote_speed(true, 1);
+        r.run(5.0);
+        assert!(r.deck.running_at(1.7), "{} km/h", r.deck.speed_kmh());
+        let mark = r.mark();
+        r.press(DeckAction::SpeedDown);
+        r.run(3.0);
+        r.press(DeckAction::SpeedDown);
+        r.run(3.0);
+        assert_eq!(target_bytes_since(&r, mark), vec![16, 14]);
+        assert!(r.deck.running_at(1.4), "{} km/h", r.deck.speed_kmh());
+
+        // Down to the floor on the remote; down on the HUD stays there.
+        r.remote_speed(false, 8);
+        r.run(5.0);
+        assert!(r.deck.running_at(0.6), "{} km/h", r.deck.speed_kmh());
+        let mark = r.mark();
+        r.press(DeckAction::SpeedDown);
+        r.run(3.0);
+        assert!(target_bytes_since(&r, mark).iter().all(|b| *b >= 6));
+        assert!(r.deck.running_at(0.6), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(r.controls_since(0, Control::Pause), 0);
+    }
+
+    /// DECK_PROFILE never moves a still belt: with a profile learned, a
+    /// reconnect to a still deck, a down press and a 0 speed send no start.
+    #[test]
+    fn a_learned_profile_never_starts_a_still_belt() {
+        let mut r = walking_rig(8, 40);
+        assert_eq!(r.state.deck_profile.floor(), Some(8));
+        r.press(DeckAction::Stop);
+        r.run(15.0);
+        assert!(r.deck.belt_still());
+        r.drop_link();
+        r.run(1.0);
+        assert!(r.reconnect());
+        let mark = r.mark();
+        r.run(5.0);
+        r.press(DeckAction::SpeedDown);
+        r.run(5.0);
+        r.set_speed(0.0);
+        r.run(5.0);
+        assert!(!app_starts(&r.commands_since(mark)));
+        assert!(r.deck.belt_still());
+        assert_eq!(r.state.snap_speed(0.0), 0.0);
+    }
+
+    /// The simulated deck in dev builds teaches the profile nothing.
+    #[test]
+    fn replies_are_not_learned_while_learning_is_off() {
+        let mut r = Rig::new();
+        r.state.profile_learning = false;
+        r.deck.set_limits(8, 40);
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(5.0);
+        r.set_speed(5.0);
+        r.run(2.0);
+        assert!(r.state.deck_profile.is_empty());
+        assert!(r.state.current_target_note().is_some(), "still noted");
     }
 
     #[test]
@@ -1166,16 +1388,19 @@ mod tests {
                     speed: 0.6,
                     stride_length_cm: 50.0,
                     distance_scale: 0.6 / 1.46,
+                    runs: 1,
                 },
                 protocol::CalibrationPoint {
                     speed: 1.5,
                     stride_length_cm: 60.0,
                     distance_scale: 1.5 / 4.84,
+                    runs: 1,
                 },
                 protocol::CalibrationPoint {
                     speed: 2.0,
                     stride_length_cm: 65.0,
                     distance_scale: 2.0 / 2.97,
+                    runs: 1,
                 },
             ],
             max_speed: 5.0,
@@ -1248,6 +1473,7 @@ mod tests {
                 speed: 4.0,
                 stride_length_cm: 70.0,
                 distance_scale: 0.8,
+                runs: 1,
             }],
             ..Default::default()
         });
@@ -1483,6 +1709,8 @@ mod tests {
     struct Eyes {
         rt: crate::snapshot::eyebreak::Runtime,
         t0: Instant,
+        /// The treadmill is linked (`desk.rs`'s `ready`).
+        linked: bool,
     }
 
     impl Eyes {
@@ -1499,7 +1727,11 @@ mod tests {
                 },
                 ..Default::default()
             };
-            Self { rt, t0: r.t }
+            Self {
+                rt,
+                t0: r.t,
+                linked: true,
+            }
         }
 
         /// Run the rig `secs` seconds with the user at the keyboard, ticking the
@@ -1511,7 +1743,7 @@ mod tests {
                 crate::snapshot::desk::eye_break_tick(
                     &mut r.state,
                     &mut self.rt,
-                    true,
+                    self.linked,
                     now,
                     Some(0),
                     false,
@@ -1701,6 +1933,55 @@ mod tests {
         assert_eq!(eyes.rt.machine.end_seq(), 1, "a break came and went");
         assert_eq!(r.commands_since(mark), vec![]);
         assert_eq!(eyes.shown(), EyeBreakPhase::Idle);
+    }
+
+    /// Fresh Brewed Design, 2026-11-19: eye breaks show even when nothing is running. With
+    /// no treadmill linked, the heads-up, the break with its blink tones and
+    /// the end tone come at the screen-time interval, and nothing is sent.
+    #[test]
+    fn an_eye_break_comes_with_no_treadmill_linked() {
+        use crate::snapshot::eyebreak::EyeBreakPhase;
+        let mut r = Rig::new();
+        let mut eyes = Eyes::new(&r);
+        eyes.linked = false;
+        let mark = r.mark();
+        eyes.run(&mut r, 560);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Upcoming);
+        eyes.run(&mut r, 45);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Break);
+        let blinks = eyes.rt.machine.blink_seq();
+        eyes.run(&mut r, 20);
+        assert!(eyes.rt.machine.blink_seq() > blinks, "blink tones");
+        assert_eq!(eyes.rt.machine.end_seq(), 1, "the end tone");
+        assert_eq!(eyes.shown(), EyeBreakPhase::Idle, "no resume card");
+        assert_eq!(r.commands_since(mark), vec![]);
+    }
+
+    /// The link drops mid-walk, so the last status still reads Running. A break
+    /// then still comes, and sends nothing: unlinked, the belt is not the
+    /// break's to pause.
+    #[test]
+    fn an_eye_break_after_the_link_drops_mid_walk_sends_nothing() {
+        use crate::snapshot::eyebreak::EyeBreakPhase;
+        let mut r = Rig::new();
+        let mut eyes = Eyes::new(&r);
+        eyes.run(&mut r, 5);
+        r.press(DeckAction::Start);
+        eyes.run(&mut r, 5);
+        r.set_speed(3.0);
+        eyes.run(&mut r, 20);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+        eyes.linked = false;
+        let mark = r.mark();
+        eyes.run(&mut r, 580);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Break);
+        assert!(!eyes.rt.machine.holds_belt());
+        assert_eq!(r.controls_since(mark, Control::Pause), 0);
+        assert!(
+            !moves_belt(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
     }
 
     /// A manual walk at 3.0 km/h, level, settled.

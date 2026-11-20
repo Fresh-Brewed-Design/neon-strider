@@ -9,6 +9,7 @@ import { useTreadmillStore } from "../../store/treadmillStore";
 import { readPref, writePref } from "../localPrefs";
 import { Label, NeonButton } from "../ui";
 import { CommandCycler } from "./CommandCycler";
+import { DeckProfile } from "./DeckProfile";
 import { Section, Toggle } from "./fields";
 import { TrafficRecorder } from "./TrafficRecorder";
 
@@ -72,6 +73,7 @@ export function DiagnosticsSection() {
         </NeonButton>
         <ActionStatus error={logs.error && `Could not open the log folder: ${logs.error}`} className="mt-1" />
       </div>
+      <DeckProfile />
       <LabsCalibrationSwitch />
       <button
         type="button"

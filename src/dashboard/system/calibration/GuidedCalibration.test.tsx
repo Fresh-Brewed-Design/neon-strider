@@ -19,7 +19,7 @@ const dispatched = () =>
     .mock.calls.filter(([cmd]) => cmd === "dispatch")
     .map(([, args]) => (args as { command: { type: string } }).command);
 
-const saved = { speed: 3, stride_length_cm: 68, distance_scale: 0.9 };
+const saved = { speed: 3, stride_length_cm: 68, distance_scale: 0.9, runs: 1 };
 
 beforeEach(() => {
   vi.mocked(invoke).mockClear();
@@ -32,15 +32,16 @@ describe("GuidedCalibration", () => {
   it("lists every target speed, repeats a saved one and runs a new one", async () => {
     render(<GuidedCalibration />);
     expect(screen.getAllByText("RUN")).toHaveLength(4);
-    expect(screen.getAllByText("REPEAT")).toHaveLength(1);
+    expect(screen.getAllByText("ADD RUN")).toHaveLength(1);
     await act(async () => fireEvent.click(screen.getAllByText("RUN")[1]));
     expect(dispatched()).toContainEqual({ type: "calibration_run_start", target_kmh: 4 });
   });
 
-  it("a repeated point's result replaces that point", async () => {
+  it("a repeated point saves Rust's average of the runs", async () => {
     const { rerender } = render(<GuidedCalibration />);
-    await act(async () => fireEvent.click(screen.getByText("REPEAT")));
-    const point = { speed: 3, stride_length_cm: 72.5, distance_scale: 0.95 };
+    await act(async () => fireEvent.click(screen.getByText("ADD RUN")));
+    const point = { speed: 3, stride_length_cm: 72, distance_scale: 1.0, runs: 1 };
+    const averaged = { speed: 3, stride_length_cm: 70, distance_scale: 0.95, runs: 2 };
     const next = structuredClone(mock);
     next.calibration.wizard_enabled = true;
     next.calibration.run = {
@@ -48,13 +49,13 @@ describe("GuidedCalibration", () => {
       phase: "counted",
       elapsed_s: 60,
       reported_kmh: 3,
-      result: { point, real_kmh: 3.16, real_m: 52.6, reported_m: 50, cadence_spm: 72, stride_measured: true },
+      result: { point, real_kmh: 3.16, real_m: 52.6, reported_m: 50, cadence_spm: 72, stride_measured: true, averaged },
     };
     current = next;
     rerender(<GuidedCalibration />);
-    expect(screen.getByText("72.5 cm")).toBeTruthy();
-    await act(async () => fireEvent.click(screen.getByText("REPLACE POINT")));
-    expect(useTreadmillStore.getState().calibrationPoints).toEqual([point]);
+    expect(screen.getByText("72.0 cm")).toBeTruthy();
+    await act(async () => fireEvent.click(screen.getByText("AVERAGE IN")));
+    expect(useTreadmillStore.getState().calibrationPoints).toEqual([averaged]);
     expect(dispatched()).toContainEqual({ type: "calibration_run_close" });
   });
 
@@ -93,17 +94,17 @@ describe("GuidedCalibration", () => {
     current = structuredClone(mock);
     current.calibration.wizard_enabled = true;
     current.calibration.sweep = { targets_kmh: [3, 4], marks: ["pending", "pending"], current: 0 };
-    const point = { speed: 3, stride_length_cm: 70, distance_scale: 0.9 };
+    const point = { speed: 3, stride_length_cm: 70, distance_scale: 0.9, runs: 1 };
     current.calibration.run = {
       target_kmh: 3,
       phase: "counted",
       elapsed_s: 60,
       reported_kmh: 3,
-      result: { point, real_kmh: 3.3, real_m: 55, reported_m: 50, cadence_spm: null, stride_measured: false },
+      result: { point, real_kmh: 3.3, real_m: 55, reported_m: 50, cadence_spm: null, stride_measured: false, averaged: null },
     };
     render(<GuidedCalibration />);
     expect(screen.getByText("STOP")).toBeTruthy();
-    await act(async () => fireEvent.click(screen.getByText("REPLACE POINT")));
+    await act(async () => fireEvent.click(screen.getByText("AVERAGE IN")));
     expect(dispatched()).toContainEqual({ type: "calibration_sweep_next", saved: true });
     expect(dispatched()).not.toContainEqual({ type: "calibration_run_close" });
   });
@@ -123,7 +124,7 @@ describe("GuidedCalibration", () => {
     render(<GuidedCalibration />);
     expect(screen.getByText("TALLY")).toBeTruthy();
     expect(screen.getByText("BELT_LOOPS")).toBeTruthy();
-    expect(screen.getByText("REPLACE POINT")).toBeTruthy();
+    expect(screen.getByText("AVERAGE IN")).toBeTruthy();
   });
 
   it("counts steps alone when there is no mark on the belt", async () => {

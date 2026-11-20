@@ -8,6 +8,8 @@ export interface CalibrationPoint {
   speed: number;
   stride_length_cm: number;
   distance_scale: number;
+  /** Timed runs this point averages; absent on points saved before runs were counted (one). */
+  runs?: number;
 }
 
 /** What Rust keeps in its config file. Every change is pushed back to Rust as a whole. */

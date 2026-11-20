@@ -1,9 +1,12 @@
+import { snapToDeck } from "../../state/deckSpeeds";
+import { useAppState } from "../../state/useAppState";
 import { useTreadmillStore } from "../../store/treadmillStore";
 import { NumberField, Section, SliderField } from "./fields";
 
 /** Speed and incline limits, incline scaling and body weight. Saved by Rust as part of its config. */
 export function TreadmillSection() {
   const maxSpeed = useTreadmillStore((s) => s.maxSpeed);
+  const deck = useAppState((s) => s.deck);
   const maxIncline = useTreadmillStore((s) => s.maxIncline);
   const tiltMultiplier = useTreadmillStore((s) => s.tiltMultiplier);
   const inclineOffset = useTreadmillStore((s) => s.inclineOffset);
@@ -24,7 +27,8 @@ export function TreadmillSection() {
           max={25}
           step={0.5}
           value={maxSpeed}
-          hint="The highest speed the controls will request."
+          hint="The highest speed the controls will request, kept under the deck's own top speed once DECK_PROFILE has seen it."
+          snap={(v) => snapToDeck(v, deck, "hw_kmh")}
           onCommit={(v) => updateSettings({ maxSpeed: v })}
         />
         <NumberField

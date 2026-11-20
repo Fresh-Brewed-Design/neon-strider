@@ -242,7 +242,7 @@ export function CalibrationWizard({ onClose, onSave }: { onClose: () => void; on
                 disabled={!canSave}
                 onClick={() => {
                   if (!canSave) return;
-                  onSave({ speed: capturedTargetSpeed, stride_length_cm: result.strideCm, distance_scale: result.scale });
+                  onSave({ speed: capturedTargetSpeed, stride_length_cm: result.strideCm, distance_scale: result.scale, runs: 1 });
                   onClose();
                 }}
                 className="flex-1 py-3 bg-neon-cyan text-black hover:bg-white rounded font-black text-[11px] tracking-widest shadow-[0_0_20px_rgba(0,243,255,0.3)] transition-all disabled:opacity-30 disabled:cursor-not-allowed"

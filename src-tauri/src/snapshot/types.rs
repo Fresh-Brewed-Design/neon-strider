@@ -195,6 +195,36 @@ pub struct DeckSnapshot {
     /// The deck changed or refused the last target ("asked X, got Y"), for a
     /// few seconds; the HUD shows it under the speed controls.
     pub target_note: Option<String>,
+    /// The speeds the controls may offer, slowest first: every speed from
+    /// the floor to the top that DECK_PROFILE does not know the deck skips.
+    /// Empty until the deck has answered a target, and the controls then
+    /// behave as before.
+    pub speed_steps: Vec<DeckSpeedStep>,
+    pub profile: DeckProfileSnapshot,
+}
+
+/// One speed the deck runs, or has not been asked yet.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
+pub struct DeckSpeedStep {
+    /// The deck's own km/h (the hardware byte / 10), the unit of the top
+    /// speed setting.
+    pub hw_kmh: f32,
+    /// Calibrated km/h, the unit of every other speed.
+    pub kmh: f32,
+}
+
+/// DECK_PROFILE, for System -> Diagnostics.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
+pub struct DeckProfileSnapshot {
+    /// Speeds the deck has answered a target at.
+    pub learned: u32,
+    /// The deck's floor and ceiling, calibrated km/h, once seen.
+    pub floor_kmh: Option<f32>,
+    pub ceiling_kmh: Option<f32>,
+    /// Speeds asked that the deck changed or refused, calibrated km/h.
+    pub skipped_kmh: Vec<f32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS)]
@@ -612,6 +642,9 @@ pub enum Command {
     },
     /// Show the folder the traffic recordings are saved in.
     TrafficOpenFolder,
+    /// Diagnostics: forget the speeds DECK_PROFILE learned from the deck's
+    /// replies. Sends nothing to the treadmill.
+    DeckProfileForget,
     /// Lights out: a full Stop (any program ends) when the PC's
     /// display turns off.
     LightsOutSetConfig {
