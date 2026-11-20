@@ -286,6 +286,17 @@ pub struct OrchestratorState {
     /// A Pause or Stop to send as soon as the command gap allows.
     pub pending_control: Option<Control>,
 
+    /// The speed byte the deck set by itself (its remote or its own buttons)
+    /// since the app last sent a target, if it did
+    /// (`ProtocolEngine::notice_deck_changes`): the next speed or incline
+    /// press steps from it.
+    pub deck_set_speed: Option<u8>,
+    /// The incline level the deck set by itself, as for `deck_set_speed`.
+    pub deck_set_incline: Option<u8>,
+    /// A press stepped from the deck's own setting: send the next target even
+    /// when its bytes match the last ones sent, since the deck runs others.
+    pub resend_target: bool,
+
     /// Tests only: the simulated instant `now()` reads instead of the real
     /// clock, so ticked time and the engine's own clock reads agree.
     #[cfg(test)]
@@ -347,6 +358,9 @@ impl Default for OrchestratorState {
             sorted_points: Vec::new(),
             hw_to_physical_lookup: Vec::new(),
             pending_control: None,
+            deck_set_speed: None,
+            deck_set_incline: None,
+            resend_target: false,
             #[cfg(test)]
             test_now: None,
         }
@@ -1060,13 +1074,15 @@ impl OrchestratorState {
     fn nudge_manual_speed(&mut self, dir: i32) {
         // After a program ended on a still belt the target shown is the speed
         // Engage will use: a nudge steps from that, as a speed set by hand.
-        let cur = self
-            .engage_preview()
-            .unwrap_or_else(|| self.editable_intent());
+        // Otherwise it steps from what the deck runs (`nudge_base`).
+        let (cur, deck_byte) = match self.engage_preview() {
+            Some(preview) => (preview, None),
+            None => self.nudge_base(),
+        };
         let hw_byte = |phys: f32| {
             calculate_hardware_bytes(phys, cur.incline, &self.calibration_points, self.max_speed).0
         };
-        let cur_byte = hw_byte(cur.speed) as i32;
+        let cur_byte = deck_byte.unwrap_or_else(|| hw_byte(cur.speed)) as i32;
         let max_byte = (self.max_speed * 10.0).round() as i32;
         let mut target_byte = (cur_byte + dir).clamp(0, max_byte);
         // Two bytes with exactly the same km/h both send as the lower one:
@@ -1079,7 +1095,8 @@ impl OrchestratorState {
             target_byte += dir;
         }
 
-        if target_byte != cur_byte {
+        // A press at the top speed still takes the deck's own setting.
+        if target_byte != cur_byte || deck_byte.is_some() {
             let phys = self.physical_for_byte(target_byte as u8, cur.incline);
             self.store_editable_intent(ControlIntent {
                 speed: phys,
@@ -1105,7 +1122,7 @@ impl OrchestratorState {
     }
 
     fn nudge_incline(&mut self, up: bool, now: Instant) {
-        let mut cur = self.editable_intent();
+        let (mut cur, _) = self.nudge_base();
         cur.incline = if up {
             (cur.incline + 1).min(self.max_incline)
         } else {
@@ -1113,6 +1130,34 @@ impl OrchestratorState {
         };
         self.store_editable_intent(cur);
         self.stamp_manual_interaction(now);
+    }
+
+    /// What a speed or incline press steps from: the editable intent, with
+    /// the speed and incline the deck set by itself (its remote or buttons)
+    /// since the app last sent a target in place of the intent's stale ones.
+    /// The press then steps from what the deck runs, and doesn't put the
+    /// other value back to the one from before the remote. Takes the deck's
+    /// settings, since the press stores them in the intent; also returns the
+    /// deck's speed byte when the speed came from the deck.
+    fn nudge_base(&mut self) -> (ControlIntent, Option<u8>) {
+        let mut cur = self.editable_intent();
+        let speed = self.deck_set_speed.take();
+        let incline = self.deck_set_incline.take();
+        if let Some(byte) = speed {
+            cur.speed = self.physical_for_byte(byte, cur.incline);
+        }
+        if let Some(level) = incline {
+            cur.incline = level.min(self.max_incline);
+        }
+        if speed.is_some() || incline.is_some() {
+            self.resend_target = true;
+            log::info!(
+                "Press steps from the deck's own setting: {:.2} km/h, incline {}",
+                cur.speed,
+                cur.incline
+            );
+        }
+        (cur, speed)
     }
 
     /// The intent manual nudges act on: the live step target while a program
@@ -1239,15 +1284,16 @@ impl OrchestratorState {
             return;
         };
         let kmh = |b: u8| self.to_physical_speed(b as f32 / 10.0);
+        let tilt = |level: u8| self.incline_pct(level);
         let note = match reply {
             protocol::DeckReply::Nack => {
                 log::warn!(
                     "Deck refused target: speed byte {asked_speed}, incline {asked_incline}"
                 );
                 Some(format!(
-                    "DECK_REFUSED // {:.1} km/h, level {} not taken",
+                    "DECK_REFUSED // {:.1} KM/H, TILT {:.1} %",
                     kmh(asked_speed),
-                    asked_incline
+                    tilt(asked_incline)
                 ))
             }
             protocol::DeckReply::TargetEcho { speed, incline }
@@ -1265,7 +1311,11 @@ impl OrchestratorState {
                     ));
                 }
                 if incline != asked_incline {
-                    parts.push(format!("LEVEL {asked_incline} -> {incline}"));
+                    parts.push(format!(
+                        "TILT {:.1} % -> {:.1} %",
+                        tilt(asked_incline),
+                        tilt(incline)
+                    ));
                 }
                 Some(format!("DECK_ADJUSTED // {}", parts.join(", ")))
             }
@@ -1297,6 +1347,9 @@ impl OrchestratorState {
         self.target_note = None;
         self.deck_standby = false;
         self.last_handshake_tx = None;
+        self.deck_set_speed = None;
+        self.deck_set_incline = None;
+        self.resend_target = false;
         // Nothing starts the belt on this connection until it is seen moving
         // or the user asks; a start half-sent before the drop is void too.
         self.hold_auto_start = true;
@@ -1614,6 +1667,52 @@ impl Packet {
     }
 }
 
+/// How long the deck reports the same speed or incline, with no target sent
+/// in that time, before a value short of the app's target counts as the
+/// deck's own setting (`DeckWatch::check`).
+const DECK_SETTLED: Duration = Duration::from_secs(3);
+
+/// One tick of `ProtocolEngine::notice_deck_changes`.
+struct DeckWatch {
+    /// The deck is running, with no stop or handshake under way.
+    running: bool,
+    /// `DECK_SETTLED` has passed since the app last sent a target.
+    settled_since_set: bool,
+    now: Instant,
+}
+
+impl DeckWatch {
+    /// Take one reported `value` (a speed byte or incline level) against the
+    /// one `seen` before it, the app's last `sent` one (255: none yet) and the
+    /// deck's own setting `own`. The deck is headed for `own`, else `sent`. A
+    /// change that brings the value closer is the deck getting there (a ramp
+    /// toward the app's target is the app's own change); any other change is
+    /// the deck's own setting, and so is a value short of the app's target
+    /// that holds for `DECK_SETTLED` with no target sent meanwhile.
+    fn check(&self, seen: &mut Option<(u8, Instant)>, value: u8, sent: u8, own: &mut Option<u8>) {
+        let prev = *seen;
+        if prev.is_none_or(|(v, _)| v != value) {
+            *seen = Some((value, self.now));
+        }
+        if !self.running || sent == 255 {
+            return;
+        }
+        let expected = own.unwrap_or(sent);
+        let deck_chose = match prev {
+            None => false,
+            Some((v, _)) if v != value => value.abs_diff(expected) >= v.abs_diff(expected),
+            Some((_, since)) => {
+                value != expected
+                    && self.settled_since_set
+                    && self.now.saturating_duration_since(since) >= DECK_SETTLED
+            }
+        };
+        if deck_chose {
+            *own = Some(value);
+        }
+    }
+}
+
 /// Decides the next packet. One per connection: what it last sent lives here.
 pub struct ProtocolEngine {
     pub last_sent_speed: u8,
@@ -1625,6 +1724,12 @@ pub struct ProtocolEngine {
     pub has_synced_reality: bool,
     stop_started: Option<Instant>,
     last_stop_issue: Option<Instant>,
+    /// The deck's last reported speed byte and incline, each with when it
+    /// was first reported, for `notice_deck_changes`.
+    seen_speed: Option<(u8, Instant)>,
+    seen_incline: Option<(u8, Instant)>,
+    /// When the last target was sent.
+    last_set_at: Option<Instant>,
 }
 
 impl Default for ProtocolEngine {
@@ -1642,6 +1747,9 @@ impl ProtocolEngine {
             has_synced_reality: false,
             stop_started: None,
             last_stop_issue: None,
+            seen_speed: None,
+            seen_incline: None,
+            last_set_at: None,
         }
     }
 
@@ -1657,6 +1765,7 @@ impl ProtocolEngine {
         state.release_hold_if_moving();
         self.drive_stop(state, now);
         self.sync_with_deck(state, now);
+        self.notice_deck_changes(state, now);
         self.forget_sent_when_stopped(state);
         // A start at the treadmill on a program holding the belt still is a
         // press; while it is being confirmed the target isn't followed (no
@@ -1753,6 +1862,46 @@ impl ProtocolEngine {
                 state.hardware_incline
             );
         }
+    }
+
+    /// Notice a speed or incline the deck set by itself (its remote or its own
+    /// buttons), for the next press to step from (`OrchestratorState::nudge_base`).
+    /// Nothing is sent for it. Only while running: a stopped deck forgets its
+    /// speed, and a paused or starting one winds the belt down or up.
+    fn notice_deck_changes(&mut self, state: &mut OrchestratorState, now: Instant) {
+        if state.last_status == MachineStatus::Stopped {
+            state.deck_set_speed = None;
+            state.deck_set_incline = None;
+            state.resend_target = false;
+            self.seen_speed = None;
+            self.seen_incline = None;
+            return;
+        }
+        if !self.has_synced_reality {
+            return;
+        }
+        let watch = DeckWatch {
+            running: state.last_status == MachineStatus::Running
+                && !state.stop_requested
+                && state.handshake_step == HandshakeStep::Idle,
+            settled_since_set: self
+                .last_set_at
+                .is_none_or(|t| now.saturating_duration_since(t) >= DECK_SETTLED),
+            now,
+        };
+        let speed = (state.hardware_speed * 10.0).round().clamp(0.0, 255.0) as u8;
+        watch.check(
+            &mut self.seen_speed,
+            speed,
+            self.last_sent_speed,
+            &mut state.deck_set_speed,
+        );
+        watch.check(
+            &mut self.seen_incline,
+            state.hardware_incline,
+            self.last_sent_incline,
+            &mut state.deck_set_incline,
+        );
     }
 
     /// A stopped deck forgets its speed: the next start runs at the deck's own
@@ -1863,7 +2012,10 @@ impl ProtocolEngine {
                     state.max_speed,
                 );
                 self.last_physical_speed = target_speed;
-                if h_speed != self.last_sent_speed || h_inc != self.last_sent_incline {
+                if h_speed != self.last_sent_speed
+                    || h_inc != self.last_sent_incline
+                    || state.resend_target
+                {
                     log::debug!(
                         "SET -> Speed: {:.1}kmh (HW: {}), Incline: Level {} (HW: {}) [Source: {}]",
                         target_speed,
@@ -1875,6 +2027,11 @@ impl ProtocolEngine {
                     self.last_sent_speed = h_speed;
                     self.last_sent_incline = h_inc;
                     state.target_pending = Some((h_speed, h_inc, now));
+                    // The deck takes the app's speed and incline from here.
+                    state.deck_set_speed = None;
+                    state.deck_set_incline = None;
+                    state.resend_target = false;
+                    self.last_set_at = Some(now);
                     return Some(Packet {
                         bytes: protocol::control_packet(Control::Target, h_speed, h_inc),
                         kind: PacketKind::ControlSet,

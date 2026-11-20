@@ -44,3 +44,21 @@ export function wizardResult(input: WizardInput) {
 /** A point worth saving: a real speed and a positive scale. */
 export const isSavablePoint = (speed: number, scale: number) =>
   Number.isFinite(speed) && Number.isFinite(scale) && speed > 0 && scale > 0;
+
+/** The factor limits Rust applies (`snapshot.calibration.limits`). */
+export interface ScaleLimits {
+  min_scale: number;
+  max_scale: number;
+}
+
+const inRange = (scale: number, l: ScaleLimits) => scale >= l.min_scale && scale <= l.max_scale;
+
+/** Why a factor can't be saved, or null when it is inside the limits (or the limits are not known yet). */
+export function scaleRefusal(scale: number, limits: ScaleLimits | null | undefined, advice: string): string | null {
+  if (!limits || !Number.isFinite(scale) || inRange(scale, limits)) return null;
+  return `Factor ${scale.toFixed(2)} is outside ${limits.min_scale.toFixed(1)} to ${limits.max_scale.toFixed(1)}. ${advice}`;
+}
+
+/** The factor Rust applies for a stored one: the stored value held inside the limits. */
+export const appliedScale = (scale: number, limits: ScaleLimits) =>
+  Math.min(limits.max_scale, Math.max(limits.min_scale, scale));

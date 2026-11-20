@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.15.3 (2026-11-20)
+
+### Fixed
+
+- After a speed or incline change on the treadmill's remote or its own buttons, the HUD, shortcut and dashboard + and - now step from what the deck is running, and a press of one no longer puts the other back to the value from before the remote.
+
+## 1.15.2 (2026-11-20)
+
+### Fixed
+
+- Calibration points outside the factor limits (0.2 to 3.0) are refused in the old wizard, the point editor and when saving, with the reason shown. A point stored outside the limits shows the value that is applied.
+
+## 1.15.1 (2026-11-20)
+
+### Fixed
+
+- The HUD note after the deck refuses or changes a target now shows tilt in percent, like the TILT stat, and writes KM/H in capitals both times.
+
 ## 1.15.0 (2026-11-20)
 
 ### New

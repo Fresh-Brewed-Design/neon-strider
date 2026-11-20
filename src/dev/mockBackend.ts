@@ -216,6 +216,7 @@ export const snapshot: AppSnapshot = {
       min_run_s: 15, min_steps: 10, default_targets_kmh: [2, 3, 4, 5, 6],
     },
     run: null,
+    sweep: null,
   },
   ghost_pod: {
     enabled: false,
@@ -477,6 +478,11 @@ if (params.get("neural") === "active") {
   Object.assign(snapshot.deck, { speed_kmh: 3.3, target_speed_kmh: 3.3 });
 }
 
+// ?decknote=refused|adjusted: the HUD note after the deck refuses or changes a target.
+const deckNoteFlag = params.get("decknote");
+if (deckNoteFlag === "refused") snapshot.deck.target_note = "DECK_REFUSED // 3.5 KM/H, TILT 6.3 %";
+if (deckNoteFlag === "adjusted") snapshot.deck.target_note = "DECK_ADJUSTED // 0.6 KM/H -> 0.8 KM/H, TILT 6.3 % -> 7.5 %";
+
 // ?engage=timeout: the deck's screen is off. It shows the last Engage's failure, and
 // Engage waits 8 s and fails again. ?status=N: the deck sent an unknown status byte N.
 const engageTimeout = params.get("engage") === "timeout";
@@ -672,7 +678,9 @@ if (trafficFlag === "saved") {
 
 // The guided calibration (Labs). ?calwizard: the switch is on, with two saved
 // points. ?calwizard=counting: a count 23 s in (the clock ticks).
-// ?calwizard=counted: a timed count waiting for the loops. The math is a rough
+// ?calwizard=counted: a timed count waiting for the loops.
+// ?calwizard=sweep: RUN ALL with two speeds done and 4.0 km/h up next;
+// ?calwizard=sweeprun: the same sweep counting at 4.0. The math is a rough
 // stand-in for Rust's (calibration.rs, unit-tested there).
 const calFlag = params.get("calwizard");
 let calTimer: ReturnType<typeof setInterval> | null = null;
@@ -695,12 +703,24 @@ function closeCal() {
   calTimer = null;
   snapshot.calibration.run = null;
 }
+function sweepCurrent() {
+  const s = snapshot.calibration.sweep;
+  if (!s) return null;
+  const i = s.marks.indexOf("pending");
+  s.current = i < 0 ? null : i;
+  return s.current === null ? null : s.targets_kmh[s.current];
+}
+function runBelt(kmh: number) {
+  Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: kmh, speed_kmh: kmh });
+  calRun(kmh, "settling");
+}
 /** ?calwizard: two saved points and a 3 m belt loop. */
+// ?calwizard=oldpoint adds a point stored at 0.15, below the limit.
 const CAL_CONFIG = {
   belt_length: 300,
   calibration_points: [
     { speed: 3, stride_length_cm: 68.4, distance_scale: 0.912 },
-    { speed: 4.5, stride_length_cm: 74.1, distance_scale: 0.887 },
+    { speed: 4.5, stride_length_cm: 74.1, distance_scale: calFlag === "oldpoint" ? 0.15 : 0.887 },
   ],
 };
 /** The preview runs no settings sync: the store settings ?calwizard starts with. */
@@ -708,21 +728,63 @@ export function previewSettings() {
   return calFlag === null ? null : { beltLength: CAL_CONFIG.belt_length, calibrationPoints: CAL_CONFIG.calibration_points };
 }
 if (calFlag !== null) {
-  snapshot.calibration.wizard_enabled = true;
+  snapshot.calibration.wizard_enabled = calFlag !== "oldpoint";
   if (calFlag === "counting" || calFlag === "counted") Object.assign(snapshot.deck, { raw_speed_kmh: 3, speed_kmh: 3.3 });
   if (calFlag === "counting") calRun(3, "counting", 23);
   if (calFlag === "counted") calRun(3, "counted", 62.4);
+  if (calFlag === "sweep" || calFlag === "sweeprun") {
+    Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: 3, speed_kmh: 3.3 });
+    snapshot.calibration.sweep = {
+      targets_kmh: [2, 3, 4, 4.5, 5, 6],
+      marks: ["skipped", "saved", "pending", "pending", "pending", "pending"],
+      current: 2,
+    };
+    if (calFlag === "sweeprun") {
+      Object.assign(snapshot.deck, { raw_speed_kmh: 4, speed_kmh: 4.4 });
+      calRun(4, "counting", 31);
+    }
+  }
 }
 const CAL_COMMANDS: Partial<Record<Command["type"], (c: Command) => void>> = {
   calibration_set_wizard: (c) => {
     if (c.type !== "calibration_set_wizard") return;
     snapshot.calibration.wizard_enabled = c.on;
-    if (!c.on) closeCal();
+    if (!c.on) {
+      snapshot.calibration.sweep = null;
+      closeCal();
+    }
   },
   calibration_run_start: (c) => {
     if (c.type !== "calibration_run_start") return;
-    Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: c.target_kmh, speed_kmh: c.target_kmh });
-    calRun(c.target_kmh, "settling");
+    snapshot.calibration.sweep = null;
+    runBelt(c.target_kmh);
+  },
+  calibration_sweep_start: (c) => {
+    if (c.type !== "calibration_sweep_start") return;
+    const targets_kmh = [...new Set(c.targets_kmh)].sort((a, b) => a - b);
+    snapshot.calibration.sweep = { targets_kmh, marks: targets_kmh.map(() => "pending"), current: 0 };
+    runBelt(targets_kmh[0]);
+  },
+  calibration_sweep_run: () => {
+    const kmh = sweepCurrent();
+    if (kmh === null) throw "Every speed is done.";
+    runBelt(kmh);
+  },
+  calibration_sweep_next: (c) => {
+    const s = snapshot.calibration.sweep;
+    if (c.type !== "calibration_sweep_next" || !s || s.current === null) return;
+    s.marks[s.current] = c.saved ? "saved" : "skipped";
+    sweepCurrent();
+    closeCal();
+  },
+  calibration_sweep_end: () => {
+    snapshot.calibration.sweep = null;
+    closeCal();
+  },
+  // STOP: the belt stops; a run not yet timed closes.
+  stop: () => {
+    Object.assign(snapshot.deck, { status: "Stopped", raw_speed_kmh: 0, speed_kmh: 0 });
+    if (snapshot.calibration.run?.phase !== "counted") closeCal();
   },
   calibration_count_start: () => {
     const r = snapshot.calibration.run;
