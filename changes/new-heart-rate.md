@@ -1,1 +1,0 @@
-- Heart rate (HEART_LINK): pick a Bluetooth heart rate sensor, such as a Garmin watch with Broadcast Heart Rate on, in System -> Heart rate. It is off until you pick one and runs apart from the treadmill link. Heart rate shows as a new stat, PULSE_RATE, on the HUD and dashboard. It is not saved with sessions or sent to Strava yet, and it never moves the belt.
