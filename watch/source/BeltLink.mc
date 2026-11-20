@@ -18,6 +18,10 @@ const RSC_UUID = BluetoothLowEnergy.stringToUuid("00001814-0000-1000-8000-00805f
 // pairDevice that never answered stuck.
 const LINK_TIMEOUT_MS = 20000;
 
+// Scan results written to the watch's log: enough to cover a room's devices
+// a few times over, small enough that the log file stays short.
+const LOG_LIMIT = 150;
+
 // The link to the PC. The pairing does not survive the field restarting, so
 // it scans again each time. Nothing here writes to the PC except the
 // notification switch on State.
@@ -95,6 +99,7 @@ class BeltLink extends BluetoothLowEnergy.BleDelegate {
             if (_linkSince == null && self.status.find("SCAN") == 0) {
                 self.status = "SCAN " + _seen;
             }
+            logResult(result);
             var match = matchOf(result);
             if (match == 'W') {
                 link(result, "LINK W");
@@ -123,6 +128,25 @@ class BeltLink extends BluetoothLowEnergy.BleDelegate {
             _linkSince = null;
             self.status = "PAIRERR";
         }
+    }
+
+    // Diagnostics: one line per scan result, up to LOG_LIMIT, written to
+    // GARMIN\Apps\LOGS\NeonStriderBelt.TXT on the watch when that file exists.
+    // It shows what the watch hears: each device's name, signal and advertised
+    // service UUIDs, so a test can tell why the PC isn't matched.
+    private var _logged as Number = 0;
+    private function logResult(result as BluetoothLowEnergy.ScanResult) as Void {
+        if (_logged >= LOG_LIMIT) {
+            return;
+        }
+        _logged += 1;
+        var line = "scan " + _logged + " name=" + result.getDeviceName() + " rssi=" + result.getRssi() + " uuids=";
+        for (var uuids = result.getServiceUuids(), u = uuids.next(); u != null; u = uuids.next()) {
+            line += u.toString() + " ";
+        }
+        var raw = result.getRawData();
+        line += "raw=" + (raw != null ? raw.size() : 0) + "B";
+        System.println(line);
     }
 
     // 'W' for the WRIST_LINK service, 'R' for the foot pod, null for neither.
