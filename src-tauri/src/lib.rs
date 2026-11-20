@@ -236,7 +236,7 @@ async fn start_backend(app: tauri::AppHandle) {
 }
 
 /// Reconnect to the saved treadmill whenever the link is down, backing off
-/// while it stays away (`link::retry_delay`), or at once on "Retry now".
+/// while the PC is idle and the treadmill stays away (`link::retry_delay`), or at once on "Retry now".
 async fn run_link_watchdog(app: &tauri::AppHandle) -> ! {
     loop {
         let mut delay = link::RETRY_EVERY;
@@ -251,8 +251,8 @@ async fn run_link_watchdog(app: &tauri::AppHandle) -> ! {
                 delay = link::retry_finished(linked);
             }
         }
-        // The windows count down to this.
         link::set_wake(delay);
+        // Re-checks the PC in slices and keeps the windows' countdown right.
         link::wait_for_retry(delay).await;
     }
 }
