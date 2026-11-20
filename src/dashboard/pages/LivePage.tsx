@@ -1,7 +1,7 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { AppSnapshot, DeckSnapshot } from "../../ipc";
 import { linkView } from "../../state/linkStatus";
-import { snapToDeck } from "../../state/deckSpeeds";
+import { snapToDeck, snapToLevel } from "../../state/deckSpeeds";
 import { useAppSnapshot } from "../../state/useAppState";
 import { STAT_WIDGETS } from "../../widgets/registry";
 import { Axis } from "../live/Axis";
@@ -23,7 +23,10 @@ const LIVE_STATS = STAT_WIDGETS.filter((w) => w.id !== "VELOCITY" && w.id !== "I
  */
 function tiltPresets(deck: DeckSnapshot): number[] {
   const top = deck.max_incline_level;
-  const levels = [...new Set([0, Math.round(top / 3), Math.round((2 * top) / 3), top])];
+  // A level the deck skips is left out of the presets.
+  const levels = [
+    ...new Set([0, Math.round(top / 3), Math.round((2 * top) / 3), top].map((l) => snapToLevel(l, deck))),
+  ];
   return levels.map((l) => deck.incline_offset_pct + l * deck.incline_pct_per_level);
 }
 
@@ -31,7 +34,7 @@ function tiltPresets(deck: DeckSnapshot): number[] {
 function levelForPct(deck: DeckSnapshot, pct: number): number {
   const per = deck.incline_pct_per_level;
   const raw = Math.abs(per) < 1e-6 ? 0 : Math.round((pct - deck.incline_offset_pct) / per);
-  return Math.max(0, Math.min(deck.max_incline_level, raw));
+  return snapToLevel(Math.max(0, Math.min(deck.max_incline_level, raw)), deck);
 }
 
 /** A warning in the page header, where it costs no height: this page is sized to fit 760x600. */
@@ -59,8 +62,21 @@ function headerNotice(s: AppSnapshot): ReactNode {
   );
 }
 
+/** The Live page control a target came from. */
+type NoteFrom = "speed" | "tilt";
+
 export function LivePage() {
   const s = useAppSnapshot();
+  // Which control sent last, and the deck's note showing at that press: that
+  // note is about an older target (a program step, the HUD), so it stays off
+  // the control. A press on the control that already shows a note keeps it.
+  const [sent, setSent] = useState<{ from: NoteFrom; before: string | null } | null>(null);
+  if (s && !s.deck.target_note && sent) setSent(null);
+  const sentFrom = (from: NoteFrom) => {
+    if (sent?.from !== from) setSent({ from, before: s?.deck.target_note ?? null });
+  };
+  const noteFor = (from: NoteFrom) =>
+    sent?.from === from && s?.deck.target_note !== sent.before ? (s?.deck.target_note ?? null) : null;
   if (!s) return <Waiting />;
   const { deck } = s;
   const offline = !s.connection.connected;
@@ -86,8 +102,15 @@ export function LivePage() {
             presets={SPEED_PRESETS}
             formatPreset={(v) => v.toFixed(1)}
             disabled={offline}
-            onSet={(kmh) => send({ type: "set_speed", kmh })}
-            onNudge={(up) => send({ type: "nudge_speed", up })}
+            onSet={(kmh) => {
+              sentFrom("speed");
+              send({ type: "set_speed", kmh });
+            }}
+            onNudge={(up) => {
+              sentFrom("speed");
+              send({ type: "nudge_speed", up });
+            }}
+            note={noteFor("speed")}
             snap={(kmh) => snapToDeck(kmh, deck)}
             pin={{ widget: "VELOCITY", pinned: pinned.has("VELOCITY") }}
           />
@@ -103,8 +126,15 @@ export function LivePage() {
             presets={tiltPresets(deck)}
             formatPreset={(v) => `${Math.round(v * 10) / 10}%`}
             disabled={offline}
-            onSet={(pct) => send({ type: "set_incline_level", level: levelForPct(deck, pct) })}
-            onNudge={(up) => send({ type: "nudge_incline", up })}
+            onSet={(pct) => {
+              sentFrom("tilt");
+              send({ type: "set_incline_level", level: levelForPct(deck, pct) });
+            }}
+            onNudge={(up) => {
+              sentFrom("tilt");
+              send({ type: "nudge_incline", up });
+            }}
+            note={noteFor("tilt")}
             pin={{ widget: "INCLINE", pinned: pinned.has("INCLINE") }}
           />
         </div>

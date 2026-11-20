@@ -129,7 +129,7 @@ function EyeBreakSettings() {
             tone="cyan"
             checked={e.sound}
             onChange={(sound) => save({ sound })}
-            description="A soft beep to blink, two rising beeps when the break is over. Played by the HUD."
+            description="Beeps guide each full blink: falling to close, low to squeeze, high to open, rising at the end."
           />
           <div>
             <Toggle

@@ -11,8 +11,8 @@
 //! - Pointer: the cursor position and primary button, for dragging the HUD.
 //! - Idle time: how long since the last keyboard or mouse input anywhere in
 //!   the session (auto-install of updates).
-//! - Bluetooth peripheral: the GATT services the app serves to other devices,
-//!   such as a watch (GHOST_POD, `crate::ghost_pod`). The treadmill link is a
+//! - Bluetooth peripheral: GATT services the app serves to other devices,
+//!   such as a watch (GHOST_POD, `crate::ghost_pod`), one provider each. The treadmill link is a
 //!   central and goes through btleplug instead.
 //!
 //! `windows.rs` implements it. `other.rs` is the stand-in for every other OS:
@@ -79,12 +79,35 @@ pub fn input_idle_for() -> Option<std::time::Duration> {
     imp::input_idle_for()
 }
 
-/// One characteristic of a peripheral service. UUIDs are 16-bit Bluetooth SIG
-/// numbers.
+/// A 16-bit Bluetooth SIG number as a full UUID (on the Bluetooth base UUID).
+pub const fn sig_uuid(short: u16) -> u128 {
+    0x0000_0000_0000_1000_8000_0080_5f9b_34fb | ((short as u128) << 96)
+}
+
+/// A UUID as the log writes it: the four hex digits of a SIG number
+/// (`1814`), or the full 8-4-4-4-12 form for a custom one.
+pub fn uuid_text(u: u128) -> String {
+    let base = sig_uuid(0);
+    if u & !(0xffffu128 << 96) == base {
+        return format!("{:04x}", (u >> 96) as u16);
+    }
+    let h = format!("{u:032x}");
+    format!(
+        "{}-{}-{}-{}-{}",
+        &h[0..8],
+        &h[8..12],
+        &h[12..16],
+        &h[16..20],
+        &h[20..32]
+    )
+}
+
+/// One characteristic of a peripheral service.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PeripheralCharacteristic {
-    pub uuid: u16,
-    /// A fixed value to answer reads with; `None` when it can't be read.
+    pub uuid: u128,
+    /// The value to answer reads with at first (`peripheral_notify` keeps it
+    /// current); `None` when it can't be read.
     pub read: Option<Vec<u8>>,
     pub notify: bool,
     pub indicate: bool,
@@ -92,47 +115,73 @@ pub struct PeripheralCharacteristic {
     pub write: bool,
 }
 
-/// What the peripheral reports, from a Bluetooth thread.
+/// A service the app serves, with its characteristics. Each one is its own
+/// provider: adding or removing one leaves the others (and the devices
+/// connected to them) alone.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PeripheralService {
+    /// The name the log uses (`RSC`, `POWER`, `WRIST_LINK`).
+    pub name: &'static str,
+    pub uuid: u128,
+    /// Put the service's UUID in the advertisement. Off, the service is still
+    /// served and connectable, and a device finds it after connecting to the
+    /// PC through another service's advertisement.
+    pub advertise: bool,
+    pub characteristics: Vec<PeripheralCharacteristic>,
+}
+
+/// What the peripheral reports, from a Bluetooth thread. `service` is the
+/// service UUID the event belongs to.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PeripheralEvent {
-    /// Advertising: devices can find it and connect.
-    Advertising,
-    /// Advertising stopped by itself; the reason in plain English.
-    Failed(String),
+    /// The service's advertisement started: devices can find it and connect.
+    Advertising { service: u128 },
+    /// The service's advertisement stopped by itself; the reason in plain
+    /// English. Windows can report this and then start it again a moment later.
+    Failed { service: u128, why: String },
     /// How many devices are subscribed to this characteristic now.
-    Subscribers { uuid: u16, count: u32 },
+    Subscribers { uuid: u128, count: u32 },
     /// A device wrote this value (already acknowledged).
-    Write { uuid: u16, value: Vec<u8> },
+    Write { uuid: u128, value: Vec<u8> },
 }
 
 pub type PeripheralEvents = std::sync::Arc<dyn Fn(PeripheralEvent) + Send + Sync>;
 
-/// One GATT service of the peripheral. A 16-bit Bluetooth SIG number.
-#[derive(Debug, Clone, PartialEq)]
-pub struct PeripheralService {
-    pub uuid: u16,
-    pub characteristics: Vec<PeripheralCharacteristic>,
+/// Serve `service` and start advertising it. Blocking (a second or so).
+/// Adding a service that is already served replaces only that one. The error
+/// is one plain sentence (no adapter, no peripheral role, Bluetooth off).
+pub fn peripheral_add(service: &PeripheralService, events: PeripheralEvents) -> Result<(), String> {
+    imp::peripheral_add(service, events)
 }
 
-/// Serve `services` and start advertising them, together. Blocking (a second
-/// or so). Starting again replaces every service. Characteristic UUIDs must
-/// differ across the services. The error is one plain sentence (no adapter,
-/// no peripheral role, Bluetooth off).
-pub fn peripheral_start(
-    services: &[PeripheralService],
-    events: PeripheralEvents,
-) -> Result<(), String> {
-    imp::peripheral_start(services, events)
+/// Stop advertising one service and drop it; the others keep running. Fine
+/// to call when it isn't served.
+pub fn peripheral_remove(service: u128) {
+    imp::peripheral_remove(service)
 }
 
-/// Send `value` to every device subscribed to `uuid`, in whichever service
-/// has it (a notification or an indication, as the characteristic was
-/// declared). Does not wait.
-pub fn peripheral_notify(uuid: u16, value: &[u8]) -> Result<(), String> {
+/// Send `value` to every device subscribed to `uuid` (a notification or an
+/// indication, as the characteristic was declared). Does not wait.
+pub fn peripheral_notify(uuid: u128, value: &[u8]) -> Result<(), String> {
     imp::peripheral_notify(uuid, value)
 }
 
 /// Stop advertising and drop every service. Fine to call when not started.
 pub fn peripheral_stop() {
     imp::peripheral_stop()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sig_uuids_log_short_and_custom_ones_in_full() {
+        assert_eq!(uuid_text(sig_uuid(0x1814)), "1814");
+        assert_eq!(uuid_text(sig_uuid(0x2a53)), "2a53");
+        assert_eq!(
+            uuid_text(0x00b165d6_40c2_4f94_8df9_0f69431f21af),
+            "00b165d6-40c2-4f94-8df9-0f69431f21af"
+        );
+    }
 }

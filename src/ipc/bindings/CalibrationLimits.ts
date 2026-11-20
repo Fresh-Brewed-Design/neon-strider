@@ -3,4 +3,4 @@
 /**
  * The limits as the UI sees them, so both sides use one set of numbers.
  */
-export type CalibrationLimits = { min_stride_cm: number, max_stride_cm: number, min_scale: number, max_scale: number, min_belt_cm: number, max_belt_cm: number, min_run_s: number, min_steps: number, default_targets_kmh: Array<number>, };
+export type CalibrationLimits = { min_stride_cm: number, max_stride_cm: number, min_scale: number, max_scale: number, min_belt_cm: number, max_belt_cm: number, min_run_s: number, min_steps: number, };

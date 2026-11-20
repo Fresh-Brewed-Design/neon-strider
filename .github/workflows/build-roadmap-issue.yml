@@ -129,8 +129,20 @@ jobs:
 
             Before writing code, read CLAUDE.md: architecture, conventions (the belt never
             starts without a user action), voice, and the Releases section. Then:
-            - Build the issue. If it is too big for one reviewable PR, build its first useful
-              step and say what is left in the PR body.
+            - One issue, one PR. Build the issue. If the whole issue doesn't fit in one
+              reviewable PR, build the most useful complete slice anyway and close the issue
+              with it. List what is left under a "Left for later steps" heading in the PR
+              body, one line per item, so the owner can open an issue for each. Don't open
+              issues yourself.
+            - Behaviour that changes what the app does is a Rust-owned setting, never
+              localStorage. `localPrefs.ts` is only for which page, tab or section is open.
+              Every limit or constant gets a one-line comment beside it saying why that value.
+            - UI text is one short sentence that names the thing: no "this", "it", "here" or
+              "below", and no em or en dashes. Keep the existing cyberpunk voice (CLAUDE.md,
+              Voice).
+            - Public text (PR title and body, commits, comments, code, release notes) never
+              names the owner by first name and never contains a file path from any machine.
+              Use repo-relative paths only.
             - Add the release note file `changes/<new|changed|fixed>-<slug>.md`.
             - Run every check CLAUDE.md lists (`npx tsc --noEmit`, `npx eslint .`,
               `npx vitest run`, `npx vite build`, and in src-tauri `cargo fmt --check`,
@@ -140,9 +152,9 @@ jobs:
               `release:minor`, `release:patch` or `release:none` per CLAUDE.md. Its body
               says what changed and why, lists the checks with their results, and says
               how you can test it on the treadmill if it changes how the app drives the
-              belt. End the body with `Closes #${{ github.event.issue.number }}` if the PR
-              builds the whole issue, or `Part of #${{ github.event.issue.number }}` if only
-              a step.
+              belt. End the body with `Closes #${{ github.event.issue.number }}`, never
+              "Part of".
+            - After the PR is open, don't merge main into the branch.
             - Never push to main, merge, tag, edit workflows, or change release automation.
               Don't edit ROADMAP.md, CHANGELOG.md or version numbers. Don't comment on,
               close or relabel issues.

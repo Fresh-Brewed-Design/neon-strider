@@ -1,0 +1,2 @@
+- GHOST_POD keeps the watch's foot pod link when WRIST_LINK or the power switch is turned on or off. Before, either switch restarted the pod, and the watch lost the foot pod until it was reconnected by hand.
+- The log names each GHOST_POD service with its UUID and says in words what Windows did with its advertisement. It also records every watch or phone that connects, subscribes or disconnects.

@@ -28,6 +28,10 @@ use tokio::sync::Mutex;
 
 /// The Bluetooth adapter, once found.
 static ADAPTER: Mutex<Option<Adapter>> = Mutex::const_new(None);
+/// One scan at a time on the shared adapter: a second `start_scan` replaces
+/// the first one's filter and its `stop_scan` ends both, so the treadmill
+/// link and HEART_LINK take this around every scan.
+pub(crate) static SCAN_LOCK: Mutex<()> = Mutex::const_new(());
 /// The treadmill of the current (or last) connection. Lock order: this before
 /// `ORCHESTRATOR`.
 pub(crate) static CONNECTED_DECK: Mutex<Option<DeckLink>> = Mutex::const_new(None);
@@ -199,6 +203,8 @@ fn tick_each_second(
     let quiet = crate::snapshot::calls::quiet_active();
     state.update_neural_flow(keys, quiet, now, now_ms);
     crate::link::log_frame_flow();
+    state.heart_bpm = crate::heart_rate::snapshot().bpm;
+    state.max_heart_rate = u32::from(crate::heart_rate::max_heart_rate());
     state.tick_profile_sweep(now);
     state.tick_program(now)
 }
@@ -520,6 +526,7 @@ fn listed_name(
 
 async fn scan_inner() -> Result<Vec<BleDevice>, String> {
     let central = find_central().await.map_err(|e| e.to_string())?;
+    let _scan = SCAN_LOCK.lock().await;
     let filter = ScanFilter {
         services: vec![FITSHOW_SERVICE],
     };
@@ -605,13 +612,26 @@ pub async fn is_bluetooth_connected() -> bool {
 }
 
 /// A device id without separators, upper case, for matching.
-fn normalize_id(id: &str) -> String {
+pub(crate) fn normalize_id(id: &str) -> String {
     id.replace([':', '-'], "").to_uppercase()
+}
+
+/// How many hex digits a Bluetooth address has (6 bytes).
+const ADDRESS_DIGITS: usize = 12;
+
+/// The part of a device id that names the treadmill itself, for its
+/// DECK_PROFILE key: the last `ADDRESS_DIGITS` of the normalized id, its
+/// Bluetooth address. The saved id and the one a scan reports may differ by a
+/// prefix (`ids_match`), and both forms must find the same profile.
+fn profile_device_id(raw_id: &str) -> String {
+    let id = normalize_id(raw_id);
+    let skip = id.chars().count().saturating_sub(ADDRESS_DIGITS);
+    id.chars().skip(skip).collect()
 }
 
 /// Two normalized ids name the same device. Either may be the shorter form
 /// (Windows ids carry a prefix the saved id may lack, or the other way round).
-fn ids_match(a: &str, b: &str) -> bool {
+pub(crate) fn ids_match(a: &str, b: &str) -> bool {
     a.contains(b) || b.contains(a)
 }
 
@@ -650,9 +670,11 @@ async fn connect_to(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
         .any(|p| ids_match(&normalize_id(&p.id().to_string()), &target));
     if !known {
         log::debug!("Target {} not in cache. Starting 5s scan...", id);
+        let scan = SCAN_LOCK.lock().await;
         let _ = central.start_scan(ScanFilter::default()).await;
         tokio::time::sleep(SCAN_TIME).await;
         let _ = central.stop_scan().await;
+        drop(scan);
         peripherals = central.peripherals().await.map_err(|e| e.to_string())?;
         log::debug!("Post-scan peripheral count: {}", peripherals.len());
         // A working radio always hears something in five seconds.
@@ -764,6 +786,7 @@ async fn subscribe_and_start(
                 .notifications()
                 .await
                 .map_err(|e| e.to_string())?;
+            switch_deck_profile(app, raw_id).await;
             tokio::spawn(listen_for_status(app.clone(), stream, false));
             let deck = DeckLink::Ble(peripheral.clone());
             tokio::spawn(spawn_protocol_worker(app.clone(), deck.clone()));
@@ -802,20 +825,58 @@ pub async fn init_from_config(config: &crate::persistence::AppConfig) {
     ORCHESTRATOR.lock().await.sync_config(config);
 }
 
-/// Load DECK_PROFILE from the settings table. Once, after the DB is initialised.
-pub async fn load_deck_profile(app: &tauri::AppHandle) {
+/// The DECK_PROFILE saved for a treadmill. The first treadmill asked adopts
+/// the app-wide profile from before there was one per treadmill.
+fn load_profile_for(app: &tauri::AppHandle, key: &str) -> crate::deck_profile::DeckProfile {
+    use crate::deck_profile::{DeckProfile, LEGACY_KEY};
+    if let Some(raw) = crate::persistence::read_setting(app, key) {
+        return DeckProfile::from_stored(Some(&raw));
+    }
+    let Some(raw) = crate::persistence::read_setting(app, LEGACY_KEY) else {
+        return DeckProfile::default();
+    };
+    let profile = DeckProfile::from_stored(Some(&raw));
+    if let Err(e) = crate::persistence::write_setting(app, key, &raw)
+        .and_then(|_| crate::persistence::delete_setting(app, LEGACY_KEY))
+    {
+        log::warn!("could not move the deck profile to its treadmill: {}", e);
+    }
+    profile
+}
+
+/// Make DECK_PROFILE the one of the treadmill with this device id: what the
+/// previous treadmill taught it is saved first. Does nothing when it already
+/// is. Called at startup with the saved treadmill and on every connection.
+pub async fn switch_deck_profile(app: &tauri::AppHandle, raw_id: &str) {
+    let key = crate::deck_profile::key_for(&profile_device_id(raw_id));
+    let pending = {
+        let mut state = ORCHESTRATOR.lock().await;
+        if state.deck_profile_key.as_deref() == Some(&key) {
+            return;
+        }
+        let json = state.deck_profile.take_unsaved();
+        state.deck_profile_key.clone().zip(json)
+    };
     let app_c = app.clone();
-    let raw = crate::util::blocking(move || {
-        Ok::<_, String>(crate::persistence::read_setting(
-            &app_c,
-            crate::deck_profile::KEY,
-        ))
+    let key_c = key.clone();
+    let profile = crate::util::blocking(move || {
+        if let Some((old_key, json)) = pending {
+            let saved = match json {
+                Some(json) => crate::persistence::write_setting(&app_c, &old_key, &json),
+                None => crate::persistence::delete_setting(&app_c, &old_key),
+            };
+            if let Err(e) = saved {
+                log::warn!("could not save the deck profile: {}", e);
+            }
+        }
+        Ok::<_, String>(load_profile_for(&app_c, &key_c))
     })
     .await
-    .unwrap_or(None);
-    let profile = crate::deck_profile::DeckProfile::from_stored(raw.as_deref());
+    .unwrap_or_default();
     log::info!("Deck profile loaded: {} speeds learned", profile.len());
-    ORCHESTRATOR.lock().await.deck_profile = profile;
+    let mut state = ORCHESTRATOR.lock().await;
+    state.deck_profile = profile;
+    state.deck_profile_key = Some(key);
 }
 
 #[tauri::command]
@@ -1058,6 +1119,16 @@ mod tests {
             &normalize_id("BluetoothLE#aa:bb:cc:dd:ee:ff")
         ));
         assert!(!ids_match("AABBCC", "DDEEFF"));
+    }
+
+    #[test]
+    fn both_forms_of_an_id_share_one_deck_profile() {
+        assert_eq!(
+            profile_device_id("BluetoothLE#BluetoothLE11:22:33:44:55:66-aa:bb:cc:dd:ee:ff"),
+            "AABBCCDDEEFF"
+        );
+        assert_eq!(profile_device_id("aa:bb:cc:dd:ee:ff"), "AABBCCDDEEFF");
+        assert_eq!(profile_device_id("dev-1"), "DEV1");
     }
 
     #[test]

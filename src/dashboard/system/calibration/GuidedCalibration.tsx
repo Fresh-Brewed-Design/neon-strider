@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Trash2 } from "lucide-react";
+import { Check, Plus, Trash2, X } from "lucide-react";
 import {
   dispatch,
   type CalibrationLimits,
@@ -14,7 +14,7 @@ import { useTreadmillStore } from "../../../store/treadmillStore";
 import { GhostButton, Hint, Label, NeonButton } from "../../ui";
 import { cx } from "../../util";
 import { INPUT_CLASS, NumberField } from "../fields";
-import { calibrationRows, chrono, runRowFor, type CalibrationRow } from "./guided";
+import { calibrationRows, chrono, listedTarget, runRowFor, type CalibrationRow } from "./guided";
 
 /**
  * Labs: the guided calibration. One row per speed; RUN (his press) sets the
@@ -25,6 +25,8 @@ import { calibrationRows, chrono, runRowFor, type CalibrationRow } from "./guide
  * or skipping one speed leaves the belt alone, and the next waits for RUN.
  * The run panel follows `snapshot.calibration.run`, so it is back where it was
  * when the dashboard reopens mid-run. STOP is never disabled.
+ * The target list is a Rust setting (`snapshot.calibration.targets`): ADD_SPEED
+ * and remove go through Rust, which checks them, and RUN ALL reads it there.
  */
 export function GuidedCalibration() {
   const snap = useAppSnapshot();
@@ -35,12 +37,15 @@ export function GuidedCalibration() {
   // Which RUN was pressed, only for its status line; the open run itself is Rust's.
   const [pressed, setPressed] = useState<number | null>(null);
   const runAction = useAction();
+  // Which remove was pressed, for its status line under that row.
+  const [removing, setRemoving] = useState<number | null>(null);
+  const removeAction = useAction();
   const cal = snap?.calibration;
   if (!cal) return null;
 
   const run = cal.run;
   // The run's speed always has a row, even if its point was deleted mid-run.
-  const rows = calibrationRows(points, [...cal.limits.default_targets_kmh, ...(run ? [run.target_kmh] : [])]);
+  const rows = calibrationRows(points, [...cal.targets.map((t) => t.kmh), ...(run ? [run.target_kmh] : [])]);
   const runRow = run ? runRowFor(rows, run.target_kmh) : null;
   const sweep = cal.sweep;
 
@@ -79,7 +84,7 @@ export function GuidedCalibration() {
               onClick={() => {
                 setPressed(-1);
                 void runAction.run(() =>
-                  dispatch({ type: "calibration_sweep_start", targets_kmh: rows.map((r) => r.targetKmh) }),
+                  dispatch({ type: "calibration_sweep_start" }),
                 );
               }}
             >
@@ -97,7 +102,11 @@ export function GuidedCalibration() {
         )
       )}
       <div className="space-y-2">
-        {rows.map((row) => (
+        {rows.map((row) => {
+          const listed = listedTarget(cal.targets, row.targetKmh);
+          const outOfRange = listed !== null && !listed.runnable;
+          const removable = listed !== null && !row.point && !(run && row === runRow);
+          return (
           <div key={row.targetKmh} className="hacker-panel rounded-lg border-white/5 bg-white/[0.02] p-3">
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-4">
@@ -119,12 +128,27 @@ export function GuidedCalibration() {
               <div className="flex shrink-0 items-center gap-1">
                 <NeonButton
                   onClick={() => start(row)}
-                  disabled={runAction.pending || sweep !== null}
+                  disabled={runAction.pending || sweep !== null || outOfRange}
                   className="px-3 py-1.5"
                   tone={row.point ? "magenta" : "cyan"}
                 >
                   {row.point ? "ADD RUN" : "RUN"}
                 </NeonButton>
+                {removable && (
+                  <button
+                    type="button"
+                    disabled={removeAction.pending}
+                    onClick={() => {
+                      setRemoving(row.targetKmh);
+                      void removeAction.run(() => dispatch({ type: "calibration_target_remove", kmh: row.targetKmh }));
+                    }}
+                    aria-label={`Remove ${row.targetKmh.toFixed(1)} km/h from the target list`}
+                    title="Remove from the target list"
+                    className="p-2 text-white/50 transition-colors hover:text-neon-magenta"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
                 {row.point && row.index !== null && (
                   <button
                     type="button"
@@ -138,12 +162,20 @@ export function GuidedCalibration() {
                 )}
               </div>
             </div>
+            {outOfRange && (
+              <Hint className="mt-2">
+                {row.targetKmh.toFixed(1)} km/h is outside the treadmill's speed range, so RUN ALL skips it.
+              </Hint>
+            )}
             {pressed === row.targetKmh && (
               <ActionStatus
                 pending={runAction.pending && "Setting the belt speed…"}
                 error={runAction.error}
                 className="mt-2"
               />
+            )}
+            {removing === row.targetKmh && (
+              <ActionStatus pending={removeAction.pending} error={removeAction.error} className="mt-2" />
             )}
             {run && row === runRow && (
               <RunPanel
@@ -160,8 +192,48 @@ export function GuidedCalibration() {
               />
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
+      <AddSpeed />
+    </div>
+  );
+}
+
+/** ADD_SPEED: Rust checks the speed and keeps the list. */
+function AddSpeed() {
+  const add = useAction();
+  const [value, setValue] = useState("");
+  const submit = () => {
+    if (value.trim() === "" || add.pending) return;
+    void add
+      .run(() => dispatch({ type: "calibration_target_add", kmh: Number(value) }), { done: "Added to the list." })
+      .then((r) => {
+        if (r !== undefined) setValue("");
+      });
+  };
+  return (
+    <div>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="block">
+          <Label>ADD_SPEED</Label>
+          <input
+            type="number"
+            min={0}
+            step={0.1}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submit()}
+            className={cx(INPUT_CLASS, "mt-1 block w-24")}
+          />
+        </label>
+        <GhostButton disabled={add.pending || value.trim() === ""} onClick={submit}>
+          <Plus size={14} className="mr-1 inline" />
+          ADD
+        </GhostButton>
+      </div>
+      <Hint className="mt-1">ADD_SPEED takes deck km/h in 0.1 steps.</Hint>
+      <ActionStatus pending={add.pending} error={add.error} done={add.done} className="mt-1" />
     </div>
   );
 }

@@ -24,6 +24,8 @@ function walk(id: number, daysAgo: number, hour: number, meters: number): Merged
     neural_heat: 0,
     neural_ticks: 0,
     last_hardware_time: 0,
+    avg_heart_rate: null,
+    max_heart_rate: null,
   };
 }
 

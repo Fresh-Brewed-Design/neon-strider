@@ -14,9 +14,25 @@ learned: number,
  */
 floor_kmh: number | null, ceiling_kmh: number | null, 
 /**
+ * The same limits in the deck's own km/h, the unit of the min and max speed settings.
+ */
+floor_hw_kmh: number | null, ceiling_hw_kmh: number | null, 
+/**
  * Speeds asked that the deck changed or refused, calibrated km/h.
  */
 skipped_kmh: Array<number>, 
+/**
+ * Incline levels the deck has answered a target at.
+ */
+learned_levels: number, 
+/**
+ * The deck's top incline level, once seen.
+ */
+ceiling_level: number | null, 
+/**
+ * Incline levels asked that the deck changed or refused.
+ */
+skipped_levels: Array<number>, 
 /**
  * DECK_SWEEP, while it runs.
  */

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Minus, Plus } from "lucide-react";
+import { ActionStatus } from "../../components/ActionStatus";
 import type { HudWidget } from "../../ipc";
 import { Label, Panel } from "../ui";
 import { cx, TONE_TEXT } from "../util";
@@ -53,6 +54,7 @@ export function Axis({
   onSet,
   onNudge,
   snap = (v) => v,
+  note,
   pin,
 }: {
   pin: { widget: HudWidget; pinned: boolean };
@@ -71,6 +73,8 @@ export function Axis({
   onNudge: (up: boolean) => void;
   /** Moves a chosen value to one the deck runs, so the slider lands where the belt will. */
   snap?: (v: number) => number;
+  /** What the deck said about the target this control sent (DECK_ADJUSTED / DECK_REFUSED). */
+  note?: string | null;
 }) {
   const [value, setDraft] = useDraft(target);
   const hex = tone === "cyan" ? "#00f3ff" : "#ff00ff";
@@ -131,6 +135,7 @@ export function Axis({
             </button>
           ))}
       </div>
+      <ActionStatus error={note} />
     </Panel>
   );
 }

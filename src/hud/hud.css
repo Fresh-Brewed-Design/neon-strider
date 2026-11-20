@@ -658,6 +658,16 @@ body,
   font-variant-numeric: tabular-nums;
 }
 
+/* The guided blink step, above the countdown. One line: the step names are short. */
+.hud-eyebreak-cue {
+  font-family: var(--hud-font-display);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--hud-magenta);
+  white-space: nowrap;
+}
+
 /* Buttons take the width of their name and wrap onto a new row when the row is
    full, so "WORKDAY" is never broken mid-word to keep three in a line. */
 .hud-seated-programs {

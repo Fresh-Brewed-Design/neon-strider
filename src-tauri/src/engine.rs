@@ -171,6 +171,11 @@ pub struct OrchestratorState {
     pub manual_intent: Option<ControlIntent>,
     pub last_manual_interaction: Instant,
     pub program_intent: Option<ControlIntent>,
+    /// Heart rate now (none without a fresh reading) and the maximum that
+    /// zones are a percentage of; set each second. Only programs read them,
+    /// and only to trim the speed of a belt already running.
+    pub heart_bpm: Option<u32>,
+    pub max_heart_rate: u32,
 
     // The deck's latest telemetry, raw.
     pub last_status: MachineStatus,
@@ -187,9 +192,15 @@ pub struct OrchestratorState {
     /// The last target packet changed the speed byte (not only the incline):
     /// a nack on it can be filed against that speed.
     pub(crate) target_speed_changed: bool,
+    /// The same for the incline level: a nack on a packet that changed only
+    /// the incline is filed against that level.
+    pub(crate) target_incline_changed: bool,
     /// DECK_PROFILE: what the deck did with each speed byte asked, learned
     /// from its echoes and nacks (`deck_profile.rs`). Loaded at startup.
     pub deck_profile: crate::deck_profile::DeckProfile,
+    /// The settings key `deck_profile` is saved under: that of the treadmill
+    /// it belongs to. None until one is known.
+    pub deck_profile_key: Option<String>,
     /// Replies are filed in `deck_profile`. Off on the simulated deck, whose
     /// limits are not the treadmill's.
     pub(crate) profile_learning: bool,
@@ -324,6 +335,8 @@ impl Default for OrchestratorState {
             manual_intent: None,
             last_manual_interaction: before(now, Duration::from_secs(3600)),
             program_intent: None,
+            heart_bpm: None,
+            max_heart_rate: u32::from(crate::heart_rate::DEFAULT_MAX_BPM),
             last_status: MachineStatus::Stopped,
             hardware_speed: 0.0,
             hardware_incline: 0,
@@ -362,7 +375,9 @@ impl Default for OrchestratorState {
             target_pending: None,
             target_note: None,
             target_speed_changed: false,
+            target_incline_changed: false,
             deck_profile: Default::default(),
+            deck_profile_key: None,
             profile_learning: true,
             profile_sweep: None,
             profile_sweep_enabled: false,
@@ -827,6 +842,9 @@ impl OrchestratorState {
             neural_ticks: 0,
             last_hardware_time: self.hardware_time as i64,
             hardware_time_offset: self.session.hardware_time_offset.unwrap_or(0) as i64,
+            // Worked out from the samples when the row is written.
+            avg_heart_rate: None,
+            max_heart_rate: None,
         }
     }
 
@@ -974,6 +992,8 @@ impl OrchestratorState {
             steps: self.session.steps as f32,
             raw_steps: self.session.steps as f32,
             raw_speed: self.hardware_speed,
+            // Read only: heart rate never feeds back into the belt.
+            heart_rate: crate::heart_rate::current_bpm(),
         };
         let flush = self
             .session
@@ -1157,11 +1177,24 @@ impl OrchestratorState {
 
     fn nudge_incline(&mut self, up: bool, now: Instant) {
         let (mut cur, _) = self.nudge_base();
-        cur.incline = if up {
-            (cur.incline + 1).min(self.max_incline)
-        } else {
-            cur.incline.saturating_sub(1)
-        };
+        let top = self.top_incline_level();
+        let mut level = cur.incline.min(top);
+        // Step past levels the deck is known to skip, so the press moves it.
+        loop {
+            let next = if up {
+                level.saturating_add(1).min(top)
+            } else {
+                level.saturating_sub(1)
+            };
+            if next == level {
+                break;
+            }
+            level = next;
+            if !self.deck_profile.skips_level(level) {
+                break;
+            }
+        }
+        cur.incline = level;
         self.store_editable_intent(cur);
         self.stamp_manual_interaction(now);
     }
@@ -1317,7 +1350,7 @@ impl OrchestratorState {
         let Some((asked_speed, asked_incline, _)) = pending else {
             return;
         };
-        self.learn_deck_reply(asked_speed, reply);
+        self.learn_deck_reply(asked_speed, asked_incline, reply);
         let kmh = |b: u8| self.to_physical_speed(b as f32 / 10.0);
         let tilt = |level: u8| self.incline_pct(level);
         let note = match reply {
@@ -1366,17 +1399,56 @@ impl OrchestratorState {
     /// File the deck's reply to a target at `asked` in DECK_PROFILE. A nack
     /// counts against the speed only when the packet changed the speed: one
     /// that changed only the incline says nothing about the speed.
-    fn learn_deck_reply(&mut self, asked: u8, reply: protocol::DeckReply) {
+    /// The incline level is filed the same way, a nack only when the packet
+    /// changed the incline and not the speed.
+    fn learn_deck_reply(&mut self, asked: u8, asked_incline: u8, reply: protocol::DeckReply) {
         use crate::deck_profile::Outcome;
         if !self.profile_learning {
             return;
         }
-        let outcome = match reply {
-            protocol::DeckReply::TargetEcho { speed, .. } => Outcome::Took(speed),
-            protocol::DeckReply::Nack if self.target_speed_changed => Outcome::Refused,
-            protocol::DeckReply::Nack => return,
-        };
-        self.deck_profile.learn(asked, outcome);
+        match reply {
+            protocol::DeckReply::TargetEcho { speed, incline } => {
+                self.deck_profile.learn(asked, Outcome::Took(speed));
+                self.deck_profile
+                    .learn_level(asked_incline, Outcome::Took(incline));
+            }
+            protocol::DeckReply::Nack => {
+                if self.target_speed_changed {
+                    self.deck_profile.learn(asked, Outcome::Refused);
+                } else if self.target_incline_changed {
+                    self.deck_profile
+                        .learn_level(asked_incline, Outcome::Refused);
+                }
+            }
+        }
+    }
+
+    /// The highest incline level to ask for: the max incline setting, or the
+    /// deck's ceiling once DECK_PROFILE has seen it, whichever is lower.
+    pub(crate) fn top_incline_level(&self) -> u8 {
+        match self.deck_profile.incline_ceiling() {
+            Some(c) => self.max_incline.min(c),
+            None => self.max_incline,
+        }
+    }
+
+    /// Incline `level` moved to a level the deck runs, by DECK_PROFILE, and
+    /// kept at or below the top level.
+    pub fn snap_incline_level(&self, level: u8) -> u8 {
+        self.deck_profile
+            .snap_level(level.min(self.top_incline_level()))
+    }
+
+    /// The incline levels the controls may offer, lowest first, from flat to
+    /// the top level, without those the deck is known to skip. Empty while no
+    /// incline level is learned, so the controls behave as before.
+    pub fn deck_incline_levels(&self) -> Vec<u8> {
+        if !self.deck_profile.has_levels() {
+            return vec![];
+        }
+        (0..=self.top_incline_level())
+            .filter(|l| !self.deck_profile.skips_level(*l))
+            .collect()
     }
 
     /// The fastest hardware speed to ask for: the top speed setting, or the
@@ -1425,7 +1497,7 @@ impl OrchestratorState {
     /// out, as the transmit path would send that one). Empty while DECK_PROFILE
     /// is empty, so the controls behave as before anything is learned.
     pub fn deck_speeds(&self) -> Vec<(f32, f32)> {
-        if self.deck_profile.is_empty() {
+        if !self.deck_profile.has_speeds() {
             return vec![];
         }
         let lo = ((self.floor_hw_speed() * 10.0).round() as u8).max(1);
@@ -2028,7 +2100,10 @@ impl ProtocolEngine {
         watch.check(
             &mut self.seen_incline,
             state.hardware_incline,
-            self.last_sent_incline,
+            match self.last_sent_incline {
+                255 => 255,
+                l => state.deck_profile.snap_level(l),
+            },
             &mut state.deck_set_incline,
         );
     }
@@ -2117,11 +2192,16 @@ impl ProtocolEngine {
                     None => state.handshake_step = HandshakeStep::Priming,
                 }
             }
-            // The same holds for an automatic resume: a sweep step that lands
-            // just after a pause at the treadmill never resumes the belt.
+            // Never for a program's own target: a program resumes a paused
+            // belt only through a press (GO, SKIP, Engage: `kick_resume`). A
+            // program raising its target (a heart rate zone trim, say) just as
+            // the deck is paused at the treadmill must not resume it.
+            // Nor while DECK_SWEEP runs: a sweep step that lands just after a
+            // pause at the treadmill never resumes the belt.
             MachineStatus::Paused
                 if target_speed > self.last_physical_speed + STILL_KMH
                     && has_target
+                    && source != TargetSource::Program
                     && !state.start_blocked
                     && !state.hold_auto_start
                     && state.profile_sweep.is_none() =>
@@ -2152,8 +2232,14 @@ impl ProtocolEngine {
                 // already running the snapped one.
                 let h_speed = state.deck_profile.snap(h_speed);
                 let sent_speed = state.deck_profile.snap(self.last_sent_speed);
+                // The same for the incline level.
+                let h_inc = state.snap_incline_level(h_inc);
+                let sent_incline = match self.last_sent_incline {
+                    255 => 255,
+                    l => state.deck_profile.snap_level(l),
+                };
                 self.last_physical_speed = target_speed;
-                if h_speed != sent_speed || h_inc != self.last_sent_incline || state.resend_target {
+                if h_speed != sent_speed || h_inc != sent_incline || state.resend_target {
                     log::debug!(
                         "SET -> Speed: {:.1}kmh (HW: {}), Incline: Level {} (HW: {}) [Source: {}]",
                         target_speed,
@@ -2163,6 +2249,7 @@ impl ProtocolEngine {
                         source
                     );
                     state.target_speed_changed = h_speed != self.last_sent_speed;
+                    state.target_incline_changed = h_inc != self.last_sent_incline;
                     self.last_sent_speed = h_speed;
                     self.last_sent_incline = h_inc;
                     state.target_pending = Some((h_speed, h_inc, now));
@@ -2848,6 +2935,8 @@ mod tests {
             neural_ticks: 0,
             last_hardware_time: 0,
             hardware_time_offset: 0,
+            avg_heart_rate: None,
+            max_heart_rate: None,
         }
     }
 
@@ -3687,6 +3776,7 @@ mod tests {
                         duration_minutes: Some(10.0),
                         speed_kmh: 3.0,
                         incline_pct: 0.0,
+                        zone: None,
                     }],
                     repeat_every_minutes: None,
                     note: None,
