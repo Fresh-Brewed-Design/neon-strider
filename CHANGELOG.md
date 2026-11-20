@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.15.1 (2026-11-20)
+
+### Fixed
+
+- The HUD note after the deck refuses or changes a target now shows tilt in percent, like the TILT stat, and writes KM/H in capitals both times.
+
 ## 1.15.0 (2026-11-20)
 
 ### New
