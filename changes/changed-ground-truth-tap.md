@@ -1,0 +1,2 @@
+- GROUND_TRUTH times the belt by tapping: tap TAP, Space, or Alt+Space from any window each time the mark on the belt passes, and the run ends by itself once the times agree. Missed or doubled taps are dropped, and the result says in plain words how far the deck's display is off.
+- GROUND_TRUTH asks the belt loop's length once for each treadmill, with a short guide to measuring it. The loops-and-steps form is gone.
