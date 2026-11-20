@@ -16,6 +16,9 @@
 //! RUN ALL walks the whole list as a sweep: Rust keeps which speeds are saved,
 //! skipped or still to do. Saving or skipping one never touches the belt; the
 //! next speed waits for his RUN.
+//!
+//! The list of target speeds is a setting he edits (ADD_SPEED and remove):
+//! kept in the settings table, checked here, and read by RUN ALL.
 
 use crate::engine::OrchestratorState;
 use crate::protocol::CalibrationPoint;
@@ -39,7 +42,7 @@ pub const MAX_BELT_CM: f32 = 1000.0;
 pub const MIN_RUN_S: f32 = 15.0;
 /// Fewest steps that give a stride.
 pub const MIN_STEPS: u32 = 10;
-/// The speeds the wizard offers, in deck km/h.
+/// The speeds the wizard offers until he edits the list, in deck km/h.
 pub const DEFAULT_TARGETS_KMH: [f32; 5] = [2.0, 3.0, 4.0, 5.0, 6.0];
 /// A reported speed below this is a still belt.
 const STOPPED_BELOW_KMH: f32 = 0.05;
@@ -47,11 +50,13 @@ const STOPPED_BELOW_KMH: f32 = 0.05;
 const MAX_SPREAD_KMH: f32 = 0.25;
 
 const KEY_WIZARD: &str = "labs_calibration_wizard";
+/// The edited list of target speeds, a JSON array of deck km/h.
+const KEY_TARGETS: &str = "labs_calibration_targets";
 static WIZARD_ON: AtomicBool = AtomicBool::new(false);
 static RUN: Mutex<Option<Run>> = Mutex::new(None);
 static SWEEP: Mutex<Option<Sweep>> = Mutex::new(None);
-/// Most speeds one sweep takes.
-const MAX_SWEEP_TARGETS: usize = 12;
+/// The stored target list; None until he edits it (the defaults apply).
+static TARGETS: Mutex<Option<Vec<f32>>> = Mutex::new(None);
 /// Targets this close together are one speed.
 const SAME_TARGET_KMH: f32 = 0.05;
 
@@ -67,7 +72,6 @@ pub struct CalibrationLimits {
     pub max_belt_cm: f32,
     pub min_run_s: f32,
     pub min_steps: u32,
-    pub default_targets_kmh: Vec<f32>,
 }
 
 impl Default for CalibrationLimits {
@@ -81,7 +85,6 @@ impl Default for CalibrationLimits {
             max_belt_cm: MAX_BELT_CM,
             min_run_s: MIN_RUN_S,
             min_steps: MIN_STEPS,
-            default_targets_kmh: DEFAULT_TARGETS_KMH.to_vec(),
         }
     }
 }
@@ -398,9 +401,22 @@ pub struct CalibrationSnapshot {
     /// Labs switch: the guided wizard replaces the old calibration panel.
     pub wizard_enabled: bool,
     pub limits: CalibrationLimits,
+    /// The target speeds he keeps, slowest first.
+    pub targets: Vec<CalibrationTarget>,
     pub run: Option<CalibrationRunView>,
     /// RUN ALL: the list being walked, if any.
     pub sweep: Option<CalibrationSweepView>,
+}
+
+/// One speed in the target list.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
+pub struct CalibrationTarget {
+    /// Deck km/h, in 0.1 steps.
+    pub kmh: f32,
+    /// Inside the treadmill's min/max now. A stored speed outside it stays
+    /// listed, but RUN and RUN ALL leave it out.
+    pub runnable: bool,
 }
 
 /// What became of one speed in a sweep.
@@ -433,7 +449,8 @@ pub struct Sweep {
 }
 
 impl Sweep {
-    /// The speeds, sorted and without repeats. Refused when empty or too long.
+    /// The speeds, sorted and without repeats. Refused when empty. No cap:
+    /// the speed range and 0.1 km/h steps already bound the length.
     pub fn new(targets_kmh: &[f32]) -> Result<Self, String> {
         let mut targets: Vec<f32> = targets_kmh
             .iter()
@@ -444,9 +461,6 @@ impl Sweep {
         targets.dedup_by(|a, b| (*a - *b).abs() <= SAME_TARGET_KMH);
         if targets.is_empty() {
             return Err("Add a speed to run first.".into());
-        }
-        if targets.len() > MAX_SWEEP_TARGETS {
-            return Err(format!("RUN ALL takes up to {MAX_SWEEP_TARGETS} speeds."));
         }
         Ok(Self {
             marks: vec![SweepMark::Pending; targets.len()],
@@ -506,18 +520,149 @@ pub(crate) fn begin_run(state: &mut OrchestratorState, target_hw_kmh: f32) -> Re
 
 /// A target the deck can run.
 fn check_target(state: &OrchestratorState, target_hw_kmh: f32) -> Result<(), String> {
-    if !target_hw_kmh.is_finite() || target_hw_kmh < state.min_speed.max(0.1) {
-        return Err(format!(
-            "Pick a speed of at least {:.1} km/h.",
-            state.min_speed
-        ));
+    check_range(target_hw_kmh, state.min_speed, state.max_speed)
+}
+
+/// `kmh` lies inside the treadmill's `min_kmh..=max_kmh`.
+fn check_range(kmh: f32, min_kmh: f32, max_kmh: f32) -> Result<(), String> {
+    if !kmh.is_finite() || kmh < min_kmh.max(0.1) {
+        return Err(format!("Pick a speed of at least {min_kmh:.1} km/h."));
     }
-    if target_hw_kmh > state.max_speed {
-        return Err(format!(
-            "The treadmill tops out at {:.1} km/h.",
-            state.max_speed
-        ));
+    if kmh > max_kmh {
+        return Err(format!("The treadmill tops out at {max_kmh:.1} km/h."));
     }
+    Ok(())
+}
+
+/// `kmh` rounded to 0.1 km/h.
+fn tenths(kmh: f32) -> f32 {
+    (kmh * 10.0).round() / 10.0
+}
+
+/// A list made tidy: finite speeds above 0, in 0.1 steps, sorted, one per
+/// speed. Speeds outside the range stay (shown, not run).
+fn tidy_targets(speeds: &[f32]) -> Vec<f32> {
+    let mut out: Vec<f32> = speeds
+        .iter()
+        .copied()
+        .filter(|s| s.is_finite() && *s > 0.0)
+        .map(tenths)
+        .collect();
+    out.sort_by(f32::total_cmp);
+    out.dedup_by(|a, b| (*a - *b).abs() <= SAME_TARGET_KMH);
+    out
+}
+
+/// The stored setting as a list; missing or damaged gives the defaults.
+pub(crate) fn decode_targets(raw: Option<&str>) -> Vec<f32> {
+    raw.and_then(|r| serde_json::from_str::<Vec<f32>>(r).ok())
+        .map(|v| tidy_targets(&v))
+        .unwrap_or_else(|| DEFAULT_TARGETS_KMH.to_vec())
+}
+
+pub(crate) fn encode_targets(targets: &[f32]) -> String {
+    serde_json::to_string(targets).unwrap_or_else(|_| "[]".into())
+}
+
+/// ADD_SPEED: the list with `kmh` in it, or why it can't join.
+pub(crate) fn with_target_added(
+    targets: &[f32],
+    kmh: f32,
+    min_kmh: f32,
+    max_kmh: f32,
+) -> Result<Vec<f32>, String> {
+    if !kmh.is_finite() {
+        return Err("Enter a speed in km/h.".into());
+    }
+    if (kmh * 10.0 - (kmh * 10.0).round()).abs() > 1e-3 {
+        return Err("Pick a speed in 0.1 km/h steps.".into());
+    }
+    check_range(kmh, min_kmh, max_kmh)?;
+    let kmh = tenths(kmh);
+    if targets.iter().any(|t| (t - kmh).abs() <= SAME_TARGET_KMH) {
+        return Err(format!("{kmh:.1} km/h is already in the list."));
+    }
+    let mut next = targets.to_vec();
+    next.push(kmh);
+    Ok(tidy_targets(&next))
+}
+
+/// Remove: the list without `kmh`. A speed with a saved point, or the open
+/// run's speed, keeps its row.
+pub(crate) fn with_target_removed(
+    targets: &[f32],
+    kmh: f32,
+    point_speeds: &[f32],
+    run_kmh: Option<f32>,
+) -> Result<Vec<f32>, String> {
+    let same = |t: f32| (t - kmh).abs() <= SAME_TARGET_KMH;
+    if !targets.iter().any(|t| same(*t)) {
+        return Err(format!("{kmh:.1} km/h is not in the list."));
+    }
+    if point_speeds.iter().any(|p| same(*p)) {
+        return Err(format!("Delete the saved point at {kmh:.1} km/h first."));
+    }
+    if run_kmh.is_some_and(same) {
+        return Err(format!("Close the run at {kmh:.1} km/h first."));
+    }
+    Ok(targets.iter().copied().filter(|t| !same(*t)).collect())
+}
+
+/// RUN ALL's speeds: the list and every saved point's speed, the ones the
+/// treadmill can run now.
+pub(crate) fn sweep_targets(
+    targets: &[f32],
+    point_speeds: &[f32],
+    min_kmh: f32,
+    max_kmh: f32,
+) -> Vec<f32> {
+    let all: Vec<f32> = targets.iter().chain(point_speeds).copied().collect();
+    tidy_targets(&all)
+        .into_iter()
+        .filter(|t| check_range(*t, min_kmh, max_kmh).is_ok())
+        .collect()
+}
+
+fn with_targets<T>(f: impl FnOnce(&mut Option<Vec<f32>>) -> T) -> T {
+    f(&mut TARGETS.lock().unwrap_or_else(|e| e.into_inner()))
+}
+
+/// The target list in use: the stored one, or the defaults.
+pub fn targets() -> Vec<f32> {
+    with_targets(|t| t.clone().unwrap_or_else(|| DEFAULT_TARGETS_KMH.to_vec()))
+}
+
+/// Change the list and store it. The lock is held through the write so two
+/// edits can't lose one another.
+fn edit_targets(
+    app: &AppHandle,
+    edit: impl FnOnce(&[f32]) -> Result<Vec<f32>, String>,
+) -> Result<(), String> {
+    with_targets(|stored| {
+        let current = stored
+            .clone()
+            .unwrap_or_else(|| DEFAULT_TARGETS_KMH.to_vec());
+        let next = edit(&current)?;
+        crate::persistence::write_setting(app, KEY_TARGETS, &encode_targets(&next))?;
+        *stored = Some(next);
+        Ok(())
+    })
+}
+
+/// ADD_SPEED, checked against the treadmill's `min_kmh..=max_kmh`.
+pub fn add_target(app: &AppHandle, kmh: f32, min_kmh: f32, max_kmh: f32) -> Result<(), String> {
+    require_wizard()?;
+    edit_targets(app, |t| with_target_added(t, kmh, min_kmh, max_kmh))?;
+    log::info!("Calibration target {kmh:.1} km/h added");
+    Ok(())
+}
+
+/// Remove one speed; `point_speeds` are the saved points' speeds.
+pub fn remove_target(app: &AppHandle, kmh: f32, point_speeds: &[f32]) -> Result<(), String> {
+    require_wizard()?;
+    let run_kmh = with_run(|r| r.as_ref().map(|run| run.target_kmh));
+    edit_targets(app, |t| with_target_removed(t, kmh, point_speeds, run_kmh))?;
+    log::info!("Calibration target {kmh:.1} km/h removed");
     Ok(())
 }
 
@@ -532,6 +677,8 @@ pub fn init(app: &AppHandle) {
     )
     .unwrap_or(false);
     WIZARD_ON.store(on, Ordering::Relaxed);
+    let raw = crate::persistence::read_setting(app, KEY_TARGETS);
+    with_targets(|t| *t = raw.map(|r| decode_targets(Some(&r))));
 }
 
 /// Tests: the Labs switch without a database.
@@ -583,8 +730,16 @@ pub(crate) fn run_start(state: &mut OrchestratorState, target_hw_kmh: f32) -> Re
     Ok(())
 }
 
-/// RUN ALL, his press: a sweep over `targets_kmh` that runs the slowest now.
-pub(crate) fn sweep_start(
+/// RUN ALL, his press: a sweep over the stored list and the saved points'
+/// speeds, running the slowest now.
+pub(crate) fn sweep_start(state: &mut OrchestratorState) -> Result<(), String> {
+    let points: Vec<f32> = state.calibration_points.iter().map(|p| p.speed).collect();
+    let speeds = sweep_targets(&targets(), &points, state.min_speed, state.max_speed);
+    sweep_start_over(state, &speeds)
+}
+
+/// RUN ALL over `targets_kmh`, slowest first.
+pub(crate) fn sweep_start_over(
     state: &mut OrchestratorState,
     targets_kmh: &[f32],
 ) -> Result<(), String> {
@@ -662,7 +817,15 @@ pub(crate) fn close() {
 }
 
 /// Each snapshot tick: sample the deck's speed into a count and build the view.
-pub fn snapshot(raw_kmh: f32) -> CalibrationSnapshot {
+pub fn snapshot(state: &OrchestratorState) -> CalibrationSnapshot {
+    let raw_kmh = state.hardware_speed;
+    let targets = targets()
+        .into_iter()
+        .map(|kmh| CalibrationTarget {
+            kmh,
+            runnable: check_range(kmh, state.min_speed, state.max_speed).is_ok(),
+        })
+        .collect();
     let run = with_run(|r| {
         r.as_mut().map(|run| {
             run.sample(raw_kmh);
@@ -672,6 +835,7 @@ pub fn snapshot(raw_kmh: f32) -> CalibrationSnapshot {
     CalibrationSnapshot {
         wizard_enabled: wizard_enabled(),
         limits: CalibrationLimits::default(),
+        targets,
         run,
         sweep: with_sweep(|s| s.as_ref().map(Sweep::view)),
     }
@@ -920,8 +1084,86 @@ mod tests {
         assert_eq!(s.view().current, None, "every speed done");
         assert!(s.advance(true).is_err());
         assert!(Sweep::new(&[]).is_err());
-        let many: Vec<f32> = (0..13).map(|i| 1.0 + i as f32 * 0.5).collect();
-        assert!(Sweep::new(&many).is_err());
+        // No cap: every 0.1 step from 0.6 to 12.0 km/h is one sweep.
+        let every: Vec<f32> = (6..=120).map(|i| i as f32 / 10.0).collect();
+        assert_eq!(Sweep::new(&every).unwrap().targets.len(), 115);
+    }
+
+    #[test]
+    fn a_target_joins_in_tenths_inside_the_range_and_only_once() {
+        let list = [2.0, 4.0];
+        assert_eq!(
+            with_target_added(&list, 3.5, 0.6, 12.0).unwrap(),
+            vec![2.0, 3.5, 4.0]
+        );
+        assert_eq!(
+            with_target_added(&list, 0.6, 0.6, 12.0).unwrap(),
+            vec![0.6, 2.0, 4.0],
+            "the floor itself is fine"
+        );
+        let err = |kmh| with_target_added(&list, kmh, 0.6, 12.0).unwrap_err();
+        assert!(err(f32::NAN).contains("Enter"));
+        assert!(err(3.55).contains("0.1 km/h steps"));
+        assert!(err(0.5).contains("at least 0.6"));
+        assert!(err(12.1).contains("tops out at 12.0"));
+        assert!(err(4.0).contains("already"));
+        assert!(err(4.04).contains("0.1 km/h steps"));
+        // The treadmill's own limits, not fixed ones.
+        assert!(with_target_added(&list, 14.0, 1.0, 16.0).is_ok());
+        assert!(with_target_added(&list, 0.8, 1.0, 16.0).is_err());
+    }
+
+    #[test]
+    fn a_target_with_a_point_or_the_open_run_keeps_its_row() {
+        let list = [2.0, 3.0, 4.0];
+        assert_eq!(
+            with_target_removed(&list, 3.0, &[], None).unwrap(),
+            vec![2.0, 4.0]
+        );
+        assert!(with_target_removed(&list, 3.0, &[3.0], None)
+            .unwrap_err()
+            .contains("saved point"));
+        assert!(with_target_removed(&list, 3.0, &[], Some(3.0))
+            .unwrap_err()
+            .contains("Close the run"));
+        assert!(with_target_removed(&list, 5.0, &[], None)
+            .unwrap_err()
+            .contains("not in the list"));
+        assert_eq!(
+            with_target_removed(&[3.0], 3.0, &[], Some(4.0)).unwrap(),
+            Vec::<f32>::new(),
+            "the list may be empty"
+        );
+    }
+
+    #[test]
+    fn the_stored_list_round_trips_and_a_damaged_one_gives_the_defaults() {
+        let list = vec![0.6, 2.5, 14.0];
+        assert_eq!(decode_targets(Some(&encode_targets(&list))), list);
+        assert_eq!(decode_targets(Some("[]")), Vec::<f32>::new());
+        assert_eq!(
+            decode_targets(Some("[5.04, 2, 2.0, -1, 3]")),
+            vec![2.0, 3.0, 5.0]
+        );
+        assert_eq!(decode_targets(None), DEFAULT_TARGETS_KMH.to_vec());
+        assert_eq!(
+            decode_targets(Some("not json")),
+            DEFAULT_TARGETS_KMH.to_vec()
+        );
+        assert_eq!(
+            decode_targets(Some(r#"{"a":1}"#)),
+            DEFAULT_TARGETS_KMH.to_vec()
+        );
+    }
+
+    #[test]
+    fn run_all_walks_the_list_and_the_points_the_treadmill_can_run() {
+        assert_eq!(
+            sweep_targets(&[2.0, 14.0, 3.0], &[2.5, 3.0], 0.6, 12.0),
+            vec![2.0, 2.5, 3.0],
+            "14.0 is listed but out of range"
+        );
+        assert_eq!(sweep_targets(&[14.0], &[], 0.6, 12.0), Vec::<f32>::new());
     }
 
     #[test]

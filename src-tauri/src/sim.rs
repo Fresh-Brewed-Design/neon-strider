@@ -1277,7 +1277,7 @@ mod tests {
         let mut r = Rig::new();
         r.run(5.0);
         r.state.set_test_now(r.t);
-        crate::calibration::sweep_start(&mut r.state, &[4.0, 3.0]).unwrap();
+        crate::calibration::sweep_start_over(&mut r.state, &[4.0, 3.0]).unwrap();
         r.run(20.0);
         assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
 
@@ -1295,7 +1295,7 @@ mod tests {
         r.press(crate::engine::DeckAction::Stop);
         r.run(10.0);
         assert!(r.deck.belt_still());
-        let snap = crate::calibration::snapshot(r.state.hardware_speed);
+        let snap = crate::calibration::snapshot(&r.state);
         assert_eq!(snap.run, None);
         assert_eq!(snap.sweep.as_ref().and_then(|s| s.current), Some(1));
 
@@ -1313,8 +1313,21 @@ mod tests {
         r.run(20.0);
         assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
         crate::calibration::sweep_next(false).unwrap();
-        let snap = crate::calibration::snapshot(r.state.hardware_speed);
+        let snap = crate::calibration::snapshot(&r.state);
         assert_eq!(snap.sweep.unwrap().current, None, "both speeds done");
+        crate::calibration::close_all();
+
+        // RUN ALL from the dashboard walks the stored list (the defaults
+        // here), and its press runs the slowest.
+        r.state.set_test_now(r.t);
+        crate::calibration::sweep_start(&mut r.state).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(2.0), "{} km/h", r.deck.speed_kmh());
+        let snap = crate::calibration::snapshot(&r.state);
+        assert_eq!(
+            snap.sweep.unwrap().targets_kmh,
+            crate::calibration::targets()
+        );
         crate::calibration::close_all();
     }
 

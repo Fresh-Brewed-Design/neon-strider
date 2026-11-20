@@ -22,7 +22,6 @@ const dispatched = () =>
 const saved = { speed: 3, stride_length_cm: 68, distance_scale: 0.9 };
 
 beforeEach(() => {
-  localStorage.clear();
   vi.mocked(invoke).mockClear();
   current = structuredClone(mock);
   current.calibration.wizard_enabled = true;
@@ -69,10 +68,10 @@ describe("GuidedCalibration", () => {
     expect(screen.getByText("DONE")).toBeTruthy();
   });
 
-  it("RUN ALL sends every row's speed, slowest first", async () => {
+  it("RUN ALL leaves the speeds to Rust's stored list", async () => {
     render(<GuidedCalibration />);
     await act(async () => fireEvent.click(screen.getByText("RUN ALL")));
-    expect(dispatched()).toContainEqual({ type: "calibration_sweep_start", targets_kmh: [2, 3, 4, 5, 6] });
+    expect(dispatched()).toContainEqual({ type: "calibration_sweep_start" });
   });
 
   it("a sweep between speeds offers RUN on the next one and locks the row buttons", async () => {
@@ -127,29 +126,43 @@ describe("GuidedCalibration", () => {
     expect(screen.getByText("REPLACE POINT")).toBeTruthy();
   });
 
-  it("adds a target speed and keeps it between runs", () => {
-    const { unmount } = render(<GuidedCalibration />);
+  it("ADD sends the speed to Rust and shows the list Rust keeps", async () => {
+    const { rerender } = render(<GuidedCalibration />);
     fireEvent.change(screen.getByLabelText("ADD_SPEED"), { target: { value: "3.5" } });
-    fireEvent.click(screen.getByText("ADD"));
-    expect(screen.getByText("3.5 km/h")).toBeTruthy();
-    unmount();
-    render(<GuidedCalibration />);
+    await act(async () => fireEvent.click(screen.getByText("ADD")));
+    expect(dispatched()).toContainEqual({ type: "calibration_target_add", kmh: 3.5 });
+    expect(screen.queryByText("3.5 km/h")).toBeNull();
+    current = structuredClone(current!);
+    current.calibration.targets.push({ kmh: 3.5, runnable: true });
+    rerender(<GuidedCalibration />);
     expect(screen.getByText("3.5 km/h")).toBeTruthy();
   });
 
-  it("refuses a speed already listed", () => {
+  it("shows Rust's refusal under ADD_SPEED", async () => {
+    vi.mocked(invoke).mockRejectedValueOnce("4.0 km/h is already in the list.");
     render(<GuidedCalibration />);
     fireEvent.change(screen.getByLabelText("ADD_SPEED"), { target: { value: "4" } });
-    fireEvent.click(screen.getByText("ADD"));
-    expect(screen.getByRole("alert").textContent).toMatch(/already/);
+    await act(async () => fireEvent.click(screen.getByText("ADD")));
+    expect(screen.getByText("4.0 km/h is already in the list.")).toBeTruthy();
+    expect((screen.getByLabelText("ADD_SPEED") as HTMLInputElement).value).toBe("4");
   });
 
-  it("removes a target speed, and the removal is kept", () => {
-    const { unmount } = render(<GuidedCalibration />);
-    fireEvent.click(screen.getByLabelText("Remove 4.0 km/h from the list"));
-    expect(screen.queryByText("4.0 km/h")).toBeNull();
-    unmount();
+  it("removes an uncalibrated speed through Rust, never a saved point's or the open run's", async () => {
+    current!.calibration.run = { target_kmh: 5, phase: "settling", elapsed_s: 2, reported_kmh: null, result: null };
     render(<GuidedCalibration />);
-    expect(screen.queryByText("4.0 km/h")).toBeNull();
+    expect(screen.queryByLabelText("Remove 3.0 km/h from the target list")).toBeNull();
+    expect(screen.queryByLabelText("Remove 5.0 km/h from the target list")).toBeNull();
+    await act(async () => fireEvent.click(screen.getByLabelText("Remove 4.0 km/h from the target list")));
+    expect(dispatched()).toContainEqual({ type: "calibration_target_remove", kmh: 4 });
+  });
+
+  it("a stored speed outside the treadmill's range is listed but can't be run", () => {
+    current!.calibration.targets.push({ kmh: 14, runnable: false });
+    render(<GuidedCalibration />);
+    expect(screen.getByText("14.0 km/h")).toBeTruthy();
+    expect(screen.getByText(/14.0 km\/h is outside the treadmill's speed range/)).toBeTruthy();
+    const runs = screen.getAllByText("RUN") as HTMLButtonElement[];
+    expect(runs[runs.length - 1].disabled).toBe(true);
+    expect(screen.getByLabelText("Remove 14.0 km/h from the target list")).toBeTruthy();
   });
 });

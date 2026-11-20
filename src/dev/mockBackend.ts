@@ -211,8 +211,9 @@ export const snapshot: AppSnapshot = {
     wizard_enabled: false,
     limits: {
       min_stride_cm: 20, max_stride_cm: 200, min_scale: 0.2, max_scale: 3, min_belt_cm: 50, max_belt_cm: 1000,
-      min_run_s: 15, min_steps: 10, default_targets_kmh: [2, 3, 4, 5, 6],
+      min_run_s: 15, min_steps: 10,
     },
+    targets: [2, 3, 4, 5, 6].map((kmh) => ({ kmh, runnable: true })),
     run: null,
     sweep: null,
   },
@@ -723,6 +724,10 @@ if (calFlag !== null) {
   if (calFlag === "counting" || calFlag === "counted") Object.assign(snapshot.deck, { raw_speed_kmh: 3, speed_kmh: 3.3 });
   if (calFlag === "counting") calRun(3, "counting", 23);
   if (calFlag === "counted") calRun(3, "counted", 62.4);
+  // A stored 14.0 km/h the treadmill (12.0 max) can't run any more, and a 3.5 he added.
+  if (calFlag === "targets") {
+    snapshot.calibration.targets = [2, 3, 3.5, 4, 5, 6, 14].map((kmh) => ({ kmh, runnable: kmh <= 12 }));
+  }
   if (calFlag === "sweep" || calFlag === "sweeprun") {
     Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: 3, speed_kmh: 3.3 });
     snapshot.calibration.sweep = {
@@ -750,9 +755,27 @@ const CAL_COMMANDS: Partial<Record<Command["type"], (c: Command) => void>> = {
     snapshot.calibration.sweep = null;
     runBelt(c.target_kmh);
   },
-  calibration_sweep_start: (c) => {
-    if (c.type !== "calibration_sweep_start") return;
-    const targets_kmh = [...new Set(c.targets_kmh)].sort((a, b) => a - b);
+  calibration_target_add: (c) => {
+    if (c.type !== "calibration_target_add") return;
+    const t = snapshot.calibration.targets;
+    if (Math.abs(c.kmh * 10 - Math.round(c.kmh * 10)) > 1e-3) throw "Pick a speed in 0.1 km/h steps.";
+    if (c.kmh < 0.6) throw "Pick a speed of at least 0.6 km/h.";
+    if (c.kmh > 12) throw "The treadmill tops out at 12.0 km/h.";
+    if (t.some((x) => Math.abs(x.kmh - c.kmh) <= 0.05)) throw `${c.kmh.toFixed(1)} km/h is already in the list.`;
+    snapshot.calibration.targets = [...t, { kmh: Math.round(c.kmh * 10) / 10, runnable: true }].sort((a, b) => a.kmh - b.kmh);
+  },
+  calibration_target_remove: (c) => {
+    if (c.type !== "calibration_target_remove") return;
+    if (snapshot.calibration.run && Math.abs(snapshot.calibration.run.target_kmh - c.kmh) <= 0.05) {
+      throw `Close the run at ${c.kmh.toFixed(1)} km/h first.`;
+    }
+    snapshot.calibration.targets = snapshot.calibration.targets.filter((x) => Math.abs(x.kmh - c.kmh) > 0.05);
+  },
+  calibration_sweep_start: () => {
+    const listed = snapshot.calibration.targets.filter((t) => t.runnable).map((t) => t.kmh);
+    const targets_kmh = [...new Set([...listed, ...CAL_CONFIG.calibration_points.map((p) => p.speed)])].sort(
+      (a, b) => a - b,
+    );
     snapshot.calibration.sweep = { targets_kmh, marks: targets_kmh.map(() => "pending"), current: 0 };
     runBelt(targets_kmh[0]);
   },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_TARGETS, addTarget, calibrationRows, chrono, parseTargets, removeTarget, runRowFor, targetProblem } from "./guided";
+import { calibrationRows, chrono, listedTarget, runRowFor } from "./guided";
 
 const point = (speed: number) => ({ speed, stride_length_cm: 70, distance_scale: 0.9 });
 
@@ -39,30 +39,10 @@ describe("runRowFor", () => {
   });
 });
 
-describe("target speed list", () => {
-  const defaults = [2, 3, 4];
-
-  it("falls back to the defaults when nothing usable is saved", () => {
-    expect(parseTargets(null, defaults, 0.6, 12)).toEqual([2, 3, 4]);
-    expect(parseTargets("not json", defaults, 0.6, 12)).toEqual([2, 3, 4]);
-    expect(parseTargets('{"a":1}', defaults, 0.6, 12)).toEqual([2, 3, 4]);
-  });
-
-  it("keeps a saved list sorted, in range and without repeats, even an empty one", () => {
-    expect(parseTargets("[5.04,2,99,2.0,\"x\"]", defaults, 0.6, 12)).toEqual([2, 5]);
-    expect(parseTargets("[]", defaults, 0.6, 12)).toEqual([]);
-  });
-
-  it("adds in order and removes by speed", () => {
-    expect(addTarget([2, 4], 3.5)).toEqual([2, 3.5, 4]);
-    expect(removeTarget([2, 3.5, 4], 3.5)).toEqual([2, 4]);
-  });
-
-  it("says why a speed can't be added", () => {
-    expect(targetProblem([2], NaN, 0.6, 12)).toMatch(/Enter/);
-    expect(targetProblem([2], 20, 0.6, 12)).toMatch(/from 0.6 to 12.0/);
-    expect(targetProblem([2], 2.02, 0.6, 12)).toMatch(/already/);
-    expect(targetProblem(Array.from({ length: MAX_TARGETS }, (_, i) => 1 + i * 0.5), 11, 0.6, 12)).toMatch(/at most/);
-    expect(targetProblem([2], 3, 0.6, 12)).toBeNull();
+describe("listedTarget", () => {
+  it("finds the list entry for a row's speed", () => {
+    const targets = [{ kmh: 2, runnable: true }, { kmh: 14, runnable: false }];
+    expect(listedTarget(targets, 14.02)).toEqual({ kmh: 14, runnable: false });
+    expect(listedTarget(targets, 3)).toBeNull();
   });
 });

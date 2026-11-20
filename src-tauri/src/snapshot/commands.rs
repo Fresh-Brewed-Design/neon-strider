@@ -291,11 +291,28 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             calibration::close();
             Ok(())
         }
-        Command::CalibrationSweepStart { targets_kmh } => {
+        Command::CalibrationTargetAdd { kmh } => {
+            let (min, max) = {
+                let state = ORCHESTRATOR.lock().await;
+                (state.min_speed, state.max_speed)
+            };
+            blocking(move || calibration::add_target(&app, kmh, min, max)).await
+        }
+        Command::CalibrationTargetRemove { kmh } => {
+            let points: Vec<f32> = ORCHESTRATOR
+                .lock()
+                .await
+                .calibration_points
+                .iter()
+                .map(|p| p.speed)
+                .collect();
+            blocking(move || calibration::remove_target(&app, kmh, &points)).await
+        }
+        Command::CalibrationSweepStart => {
             if !super::emitter::read_connection().await.0 {
                 return Err("Connect the treadmill first.".to_string());
             }
-            calibration::sweep_start(&mut *ORCHESTRATOR.lock().await, &targets_kmh)
+            calibration::sweep_start(&mut *ORCHESTRATOR.lock().await)
         }
         Command::CalibrationSweepRun => {
             if !super::emitter::read_connection().await.0 {

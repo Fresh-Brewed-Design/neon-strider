@@ -1,1 +1,1 @@
-- GROUND_TRUTH (Labs guided calibration): add a target speed to the list or remove one, so the list matches the speeds you actually walk at. The list is kept between runs.
+- Labs, GROUND_TRUTH: add a target speed with ADD_SPEED or remove one, so the list matches the speeds you walk at. The list is saved with your settings, and RUN ALL walks it. A saved speed outside the treadmill's range stays listed but is skipped.
