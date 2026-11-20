@@ -83,7 +83,7 @@ export function GuidedCalibration() {
             >
               RUN ALL
             </NeonButton>
-            <Hint className="mt-1">RUN ALL runs every speed below in turn, slowest first.</Hint>
+            <Hint className="mt-1">RUN ALL runs each target speed in turn, slowest first.</Hint>
             {pressed === -1 && (
               <ActionStatus
                 pending={runAction.pending && "Setting the belt speed…"}
