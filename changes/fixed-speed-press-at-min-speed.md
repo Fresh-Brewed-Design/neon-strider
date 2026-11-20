@@ -1,0 +1,2 @@
+- A speed down press at the slowest speed no longer leaves the next speed up press doing nothing.
+- The log now says why a speed press did not reach the treadmill.
