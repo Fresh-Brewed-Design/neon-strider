@@ -229,7 +229,9 @@ pub fn set_mute(app: &AppHandle, mode: MuteMode, under_minutes: u32) -> Result<(
     write(
         app,
         KEY_MUTE_MINUTES,
-        &under_minutes.clamp(1, 240).to_string(),
+        &under_minutes
+            .clamp(plan::MIN_MUTE_MINUTES, plan::MAX_MUTE_MINUTES)
+            .to_string(),
     )?;
     live::reload(app);
     Ok(())

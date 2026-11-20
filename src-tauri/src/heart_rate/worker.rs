@@ -115,9 +115,12 @@ pub fn init(app: &AppHandle) {
 
 /// A maximum heart rate outside 120 to 230 bpm is a typing slip: 220 minus
 /// age gives about 120 at 100 years old, and measured maxima above 230 are
-/// almost unheard of.
+/// almost unheard of. HeartRateSection reads the range from `SettingLimits`.
+pub const MIN_MAX_BPM: u16 = 120;
+pub const MAX_MAX_BPM: u16 = 230;
+
 fn valid_max(bpm: u16) -> bool {
-    (120..=230).contains(&bpm)
+    (MIN_MAX_BPM..=MAX_MAX_BPM).contains(&bpm)
 }
 
 /// The maximum heart rate that zones are a percentage of.

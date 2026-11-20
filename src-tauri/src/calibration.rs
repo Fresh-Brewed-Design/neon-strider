@@ -67,7 +67,7 @@ pub const MAX_BELT_CM: f32 = 1000.0;
 /// docs/research.md; 1 km/h apart keeps the list to five runs.
 pub const DEFAULT_TARGETS_KMH: [f32; 5] = [2.0, 3.0, 4.0, 5.0, 6.0];
 /// A reported speed below this is a still belt.
-const STOPPED_BELOW_KMH: f32 = 0.05;
+const STOPPED_BELOW_KMH: f32 = crate::engine::STILL_KMH;
 /// Reported speeds during one run may differ by at most this much: the deck
 /// reports tenths and wobbles by one, while a real change is a step of 0.5 or
 /// more from a press or a program.

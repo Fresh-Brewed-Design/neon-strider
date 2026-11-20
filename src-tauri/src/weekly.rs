@@ -25,7 +25,7 @@ use tauri::AppHandle;
 const KEY_ACK: &str = "weekly_summary_ack";
 
 /// A day counts as active when one of its sessions went further than this.
-const ACTIVE_SESSION_MIN_M: f64 = 50.0;
+const ACTIVE_SESSION_MIN_M: f64 = crate::strava_plan::MIN_WALK_DISTANCE_M;
 
 /// One saved session, as far as the summary cares.
 #[derive(Debug, Clone, Copy, PartialEq)]

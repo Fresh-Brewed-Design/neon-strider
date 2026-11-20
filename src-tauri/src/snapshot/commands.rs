@@ -14,8 +14,7 @@ use std::time::Instant;
 use tauri::AppHandle;
 
 /// Below this the engine treats a speed as "pause".
-/// The engine's still threshold (`engine::STILL_KMH`).
-const PAUSE_BELOW_KMH: f32 = 0.05;
+const PAUSE_BELOW_KMH: f32 = crate::engine::STILL_KMH;
 
 /// Manual speed: below the engine's pause threshold means "pause" (0),
 /// anything else is held inside [calibrated min, calibrated max]. The engine

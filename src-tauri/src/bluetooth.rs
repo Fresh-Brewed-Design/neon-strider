@@ -78,9 +78,11 @@ const SECOND_TICK: Duration = Duration::from_secs(1);
 /// treated as its own (the deck ramps in steps over a few seconds).
 const NEURAL_RAMP_QUIET: Duration = Duration::from_secs(10);
 /// A speed change smaller than this (km/h, raw) gets no toast.
-/// One tenth is the deck's step, and a steady deck wobbles by one tenth
-/// (`calibration::MAX_SPREAD_KMH`).
-const SPEED_TOAST_MIN_KMH: f32 = 0.1;
+/// One and a half tenths: a steady deck wobbles by its 0.1 km/h step
+/// (`calibration::MAX_SPREAD_KMH`), so one step is never a change worth a toast
+/// and two always are. At exactly 0.1, float rounding decided it: 3.0 to 3.1
+/// stayed quiet while 3.1 to 3.2 toasted.
+const SPEED_TOAST_MIN_KMH: f32 = 0.15;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BleDevice {
@@ -1102,6 +1104,22 @@ mod tests {
         );
         let paused = t.on_frame(&frame(MachineStatus::Paused, 3.5, 6), false);
         assert_eq!(paused.status, Some(MachineStatus::Paused));
+    }
+
+    #[test]
+    fn a_one_step_wobble_never_toasts_at_any_speed() {
+        // Speeds arrive as tenths (byte / 10), so test them the same way.
+        for byte in 1u8..=120 {
+            let kmh = |b: u8| f32::from(b) / 10.0;
+            let mut t = ToastTracker::default();
+            t.on_frame(&frame(MachineStatus::Running, kmh(byte), 0), false);
+            for wobble in [byte + 1, byte, byte - 1, byte] {
+                let out = t.on_frame(&frame(MachineStatus::Running, kmh(wobble), 0), false);
+                assert!(!out.speed, "{} to {} km/h toasted", kmh(byte), kmh(wobble));
+            }
+            let out = t.on_frame(&frame(MachineStatus::Running, kmh(byte + 2), 0), false);
+            assert!(out.speed, "two steps up from {} km/h did not toast", kmh(byte));
+        }
     }
 
     #[test]

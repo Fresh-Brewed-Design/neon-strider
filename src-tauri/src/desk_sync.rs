@@ -34,7 +34,7 @@ use tauri::AppHandle;
 /// Two working weeks: enough days for a pattern to show.
 pub const WINDOW: usize = 14;
 /// A day counts as walked when its sessions went further than this in total.
-const WALKED_MIN_M: f64 = 50.0;
+const WALKED_MIN_M: f64 = crate::strava_plan::MIN_WALK_DISTANCE_M;
 /// Saved data older than this is not read; 14 desk days fit easily.
 /// Even with weeks of holiday, 14 desk days are inside four months.
 const LOOKBACK_DAYS: u64 = 120;
