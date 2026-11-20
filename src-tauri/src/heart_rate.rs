@@ -40,6 +40,7 @@ const CONTACT_MASK: u8 = 0x06;
 const CONTACT_LOST: u8 = 0x04;
 
 /// Readings outside this are noise (a u8 can say 255).
+/// Above any measured human maximum; 251 to 255 is a sensor glitch.
 const MAX_BPM: u16 = 250;
 
 /// The beats per minute in one Heart Rate Measurement, or `None` when the

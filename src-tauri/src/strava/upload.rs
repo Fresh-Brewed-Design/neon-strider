@@ -13,6 +13,8 @@ use crate::strava_status::StravaStep;
 use std::time::Duration;
 use tauri::AppHandle;
 
+/// Strava processes a TCX in a few seconds; 30 polls 2 s apart wait a minute,
+/// longer than its processing normally takes, and well under its rate limits.
 const POLL_EVERY: Duration = Duration::from_secs(2);
 const POLL_TRIES: u32 = 30;
 

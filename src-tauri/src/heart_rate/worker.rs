@@ -51,6 +51,7 @@ const SCAN_BUSY: &str = "Another Bluetooth scan is running.";
 
 /// The wait before the next attempt after `failures` failures in a row.
 fn retry_after(failures: u32) -> Duration {
+    // Six doublings of 10 s pass `RETRY_MAX`; the cap only stops the overflow.
     let doublings = failures.saturating_sub(1).min(6);
     (RETRY_FIRST * 2u32.pow(doublings)).min(RETRY_MAX)
 }
@@ -280,6 +281,7 @@ async fn scan_inner() -> Result<Vec<HeartRateSensor>, String> {
 /// The tick, for the life of the app.
 pub fn spawn(_app: AppHandle) {
     tauri::async_runtime::spawn(async {
+        // Sensors send about one reading a second (`STALE_AFTER`).
         let mut every = tokio::time::interval(Duration::from_secs(1));
         every.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
@@ -380,6 +382,7 @@ async fn find(sensor: &HeartRateSensor) -> Result<Peripheral, StepError> {
         if started.elapsed() >= FIND_TIME {
             break None;
         }
+        // Half the sensor's one-second advertising, so it is seen on its first advert.
         tokio::time::sleep(Duration::from_millis(500)).await;
     };
     let _ = central.stop_scan().await;

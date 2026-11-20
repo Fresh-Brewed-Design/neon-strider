@@ -83,6 +83,8 @@ impl NeuralSensitivity {
 }
 
 /// "Slowest speed", in % of the base speed.
+/// A tenth off the base speed is felt but doesn't break the walk. The range: at
+/// half speed a walk is barely moving, and under 5 % off is one deck step.
 pub const DEFAULT_FLOOR_PCT: f32 = 90.0;
 pub const MIN_FLOOR_PCT: f32 = 50.0;
 pub const MAX_FLOOR_PCT: f32 = 95.0;
@@ -204,6 +206,7 @@ const HAND_HOLD_MS: u64 = 30_000;
 const MAX_KEYS_PER_TICK: u32 = 12;
 /// Speed steps per change: down, and back up (at least).
 const SLOW_STEPS_PER_CHANGE: u32 = 2;
+/// Two deck steps (0.2 km/h) per change is felt without being a jolt; the same both ways.
 const RECOVER_STEPS_PER_CHANGE: u32 = 2;
 
 /// Why the target last changed (for the log).

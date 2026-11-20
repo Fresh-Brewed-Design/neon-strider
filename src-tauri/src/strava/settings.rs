@@ -169,6 +169,7 @@ pub fn set_credentials(
     if id.is_empty() || secret.is_empty() {
         return Err("Enter both the client ID and the client secret".to_string());
     }
+    // Strava client ids are a few digits and secrets 40 hex characters.
     if id.len() > 100 || secret.len() > 200 {
         return Err("Those credentials look too long".to_string());
     }

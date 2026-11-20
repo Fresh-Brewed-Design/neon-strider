@@ -19,6 +19,7 @@ use tauri::{AppHandle, Manager};
 static DB: Mutex<Option<Connection>> = Mutex::new(None);
 
 /// How long SQLite waits on a locked database before giving up.
+/// Every write is milliseconds long, so 5 s only runs out on a stuck connection.
 const BUSY_TIMEOUT: Duration = Duration::from_millis(5000);
 
 /// Explicit column list, so row mapping never depends on physical column order.
@@ -534,6 +535,7 @@ fn get_setting_str(conn: &Connection, key: &str) -> Option<String> {
     .ok()
 }
 
+/// About the average adult weight; the range covers adults and catches typos.
 pub const DEFAULT_BODY_MASS_KG: f32 = 75.0;
 pub const MIN_BODY_MASS_KG: f32 = 30.0;
 pub const MAX_BODY_MASS_KG: f32 = 250.0;

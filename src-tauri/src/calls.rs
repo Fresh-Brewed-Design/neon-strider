@@ -23,16 +23,23 @@ use tauri::AppHandle;
 pub const KEY_ENABLED: &str = "calls_enabled";
 const KEY_QUIET_KMH: &str = "calls_quiet_kmh";
 
+/// About the 1.8 km/h office workers chose while working (Levine and Miller 2007,
+/// docs/research.md, Focus): slow enough to talk without sounding out of breath.
 const DEFAULT_QUIET_KMH: f32 = 2.0;
+/// Below a typical deck's slowest speed (0.5 to 1 km/h) the speed would only be
+/// raised to the floor. Above 6 km/h is a brisk walk, not quiet.
 const MIN_QUIET_KMH: f32 = 0.5;
 const MAX_QUIET_KMH: f32 = 6.0;
 
 /// The microphone must be free this long before a call counts as over.
+/// Call apps release the mic for a moment when muting, switching devices or
+/// between calls; 10 s rides that out. DeskSection's text quotes it.
 const CALL_END_HOLD_MS: u64 = 10_000;
 /// ...and in use this long before it counts as a call, so an app that opens
 /// the mic for a moment doesn't slow the belt.
 const CALL_START_HOLD_MS: u64 = 4_000;
 /// Two speeds this close are the same one.
+/// Half the deck's 0.1 km/h step.
 const SAME_KMH: f32 = 0.05;
 
 // ---------------------------------------------------------------------------
@@ -215,6 +222,8 @@ pub mod mic {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
 
+    /// Half of `CALL_START_HOLD_MS`, so a call is seen 4 to 6 s after it starts;
+    /// each poll walks the consent store in the registry, so not much more often.
     const POLL_EVERY: Duration = Duration::from_secs(2);
 
     /// Latest answer from the poller.

@@ -131,6 +131,7 @@ fn current_week_id<Tz: TimeZone>(now_ms: i64, tz: &Tz) -> String {
 /// First instant of a local date as epoch ms. A DST gap at midnight starts the
 /// day later, so try the next few hours.
 fn day_start_ms<Tz: TimeZone>(tz: &Tz, date: NaiveDate) -> Option<i64> {
+    // DST gaps are one hour (two at most in a few zones); four hours clears any.
     (0..=3).find_map(|hour| {
         let naive = date.and_hms_opt(hour, 0, 0)?;
         tz.from_local_datetime(&naive)

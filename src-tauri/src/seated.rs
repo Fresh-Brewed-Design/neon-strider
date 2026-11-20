@@ -33,27 +33,39 @@ pub const KEY_PROGRAMS: &str = "seated_program_ids";
 
 /// Every 30 minutes: see docs/research.md (was 60 before migration 3).
 const DEFAULT_MINUTES: u32 = 30;
+/// Range 15 to 240: docs/research.md, Idle nudge. DeskSection reads it from `SettingLimits`.
 const MIN_MINUTES: u32 = 15;
 const MAX_MINUTES: u32 = 240;
 /// Program buttons on the card.
+/// Three buttons fit the HUD card's width (`HUD_STRIP_WIDTH`).
 const MAX_PROGRAM_BUTTONS: usize = 3;
 
 const SECOND: u64 = 1000;
 const MINUTE: u64 = 60 * SECOND;
 /// Input within this long counts as using the PC.
+/// Reading or a call can go minutes without input and is still time at the PC.
 const ACTIVE_WINDOW_MS: u64 = 5 * MINUTE;
 /// No input for longer than this means the user left.
+/// A quarter of an hour away is a break from sitting too (a walk to the kitchen
+/// or a meeting). DeskSection's text quotes it.
 const AWAY_MS: u64 = 15 * MINUTE;
 /// The belt must run this long to count as a walk.
+/// Two minutes of light walking is the shortest break that helped (Dunstan et al.
+/// 2012, docs/research.md). DeskSection's text quotes it.
 const WALK_MS: u64 = 2 * MINUTE;
 /// What SNOOZE 15 MIN snoozes for.
+/// docs/research.md, Snooze.
 const SNOOZE_MS: u64 = 15 * MINUTE;
 /// Quiet time after starting a program, so the card does not flash back if the
 /// belt takes a moment to spin up.
+/// Covers a program's countdown and a slow connect; as long as a walk that counts.
 const START_GRACE_MS: u64 = 2 * MINUTE;
 /// A remembered program is dropped after this long.
+/// A program queued from the card waits as long as a snooze; after that it no
+/// longer answers the card.
 const PENDING_TTL_MS: u64 = 15 * MINUTE;
 /// A longer gap between two ticks is a stall or sleep, not time passing seated.
+/// Ten 1 s ticks, as for eye breaks.
 const MAX_STEP_MS: u64 = 10 * SECOND;
 
 // ---------------------------------------------------------------------------

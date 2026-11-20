@@ -31,14 +31,19 @@ use std::time::{Duration, Instant};
 use tauri::AppHandle;
 
 /// How many desk days the card looks back over.
+/// Two working weeks: enough days for a pattern to show.
 pub const WINDOW: usize = 14;
 /// A day counts as walked when its sessions went further than this in total.
 const WALKED_MIN_M: f64 = 50.0;
 /// Saved data older than this is not read; 14 desk days fit easily.
+/// Even with weeks of holiday, 14 desk days are inside four months.
 const LOOKBACK_DAYS: u64 = 120;
 /// Input within this long counts as the PC being used now.
+/// A minute covers reading or thinking between key presses.
 const ACTIVE_INPUT: Duration = Duration::from_secs(60);
 /// After a failed write, wait this long before trying again.
+/// A failed write is a locked or full disk; five minutes keeps the log quiet and
+/// the day is still recorded long before it ends.
 const RETRY_AFTER: Duration = Duration::from_secs(5 * 60);
 
 /// One day in the window.

@@ -58,6 +58,8 @@ const KEY_SOUND: &str = "eye_break_sound";
 const KEY_PAUSE_BELT: &str = "eye_break_pause_belt";
 const KEY_FIT_RESTS: &str = "eye_break_fit_rests";
 
+/// Defaults and ranges: docs/research.md, Eye breaks (20 min, 90 s; breaks up to
+/// 300 s for the myopia data). DeskSection reads the ranges from `SettingLimits`.
 const DEFAULT_MINUTES: u32 = 20;
 const MIN_MINUTES: u32 = 10;
 const MAX_MINUTES: u32 = 120;
@@ -68,10 +70,14 @@ const MAX_SECONDS: u32 = 300;
 const SECOND: u64 = 1000;
 const MINUTE: u64 = 60 * SECOND;
 /// Input within this long counts as using the screen.
+/// Same as the idle nudge (`seated::ACTIVE_WINDOW_MS`): reading a page can go
+/// minutes without a key press and is still screen use.
 const ACTIVE_WINDOW_MS: u64 = 5 * MINUTE;
 /// No input for longer than this means the user left.
+/// Same as the idle nudge: a quarter of an hour away rests the eyes as well as a break.
 const AWAY_MS: u64 = 15 * MINUTE;
 /// The heads-up comes this long before the break.
+/// A minute finishes a sentence or a call reply before the break starts.
 const WARN_MS: u64 = MINUTE;
 /// Each step of a guided blink (close and hold, squeeze, open) lasts this
 /// long: the 2 s per step of the blinking-exercise trial (Wolffsohn et al. 2025).
@@ -82,11 +88,14 @@ const BLINK_STEPS: u64 = 3;
 /// and not a whole tick late when a tick runs a few milliseconds early.
 const BLINK_SLACK_MS: u64 = SECOND / 2;
 /// A longer gap between two ticks is a stall or sleep, not time passing.
+/// Ten 1 s ticks: longer is a sleeping PC or a stalled runtime.
 const MAX_STEP_MS: u64 = 10 * SECOND;
 /// The deck takes a moment to report a pause. If the belt still walks this long
 /// after the pause was sent, it is sent again.
+/// About eight polls: the deck reports a pause within a frame or two.
 const REISSUE_MS: u64 = 5 * SECOND;
 /// A break never waits longer than this for a program's rest.
+/// Half the default 20 minute interval: a break moved further than that is a skipped break.
 const MAX_WAIT_FOR_REST_MS: u64 = 10 * MINUTE;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -288,6 +297,8 @@ impl EyeBreak {
             (Belt::Walking(Hold::Program(_)), Some(r)) => r,
             _ => return (due_in, false),
         };
+        // Moving a break by up to half an interval keeps the gaps between breaks within
+        // 0.5 to 1.5 intervals.
         let half = interval / 2;
         let fits = if rest_in >= due_in {
             rest_in - due_in <= half.min(MAX_WAIT_FOR_REST_MS)
