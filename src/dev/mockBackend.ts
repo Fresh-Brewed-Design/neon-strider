@@ -696,7 +696,7 @@ function closeCal() {
 const CAL_CONFIG = {
   belt_length: 300,
   calibration_points: [
-    { speed: 3, stride_length_cm: 68.4, distance_scale: 0.912 },
+    { speed: 3, stride_length_cm: 68.4, distance_scale: 0.912, runs: 2 },
     { speed: 4.5, stride_length_cm: 74.1, distance_scale: calFlag === "oldpoint" ? 0.15 : 0.887 },
   ],
 };
@@ -747,7 +747,7 @@ const CAL_COMMANDS: Partial<Record<Command["type"], (c: Command) => void>> = {
     const scale = reported_m / real_m;
     if (scale < 0.2 || scale > 3) throw `That gives a factor of ${scale.toFixed(2)}, outside 0.2 to 3. Check the count and run it again.`;
     r.result = {
-      point: { speed: Math.round(r.reported_kmh * 10) / 10, stride_length_cm: steps ? (real_m / steps) * 100 : 74, distance_scale: scale },
+      point: { speed: Math.round(r.reported_kmh * 10) / 10, stride_length_cm: steps ? (real_m / steps) * 100 : 74, distance_scale: scale, runs: 1 },
       real_kmh: (real_m / r.elapsed_s) * 3.6,
       real_m,
       reported_m,

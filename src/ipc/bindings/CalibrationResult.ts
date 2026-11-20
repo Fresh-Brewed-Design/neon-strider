@@ -3,7 +3,7 @@
 /**
  * The point one run gives, with the numbers behind it.
  */
-export type CalibrationResult = { point: { speed: number, stride_length_cm: number, distance_scale: number }, 
+export type CalibrationResult = { point: { speed: number, stride_length_cm: number, distance_scale: number, runs: number }, 
 /**
  * The speed he really walked, km/h.
  */

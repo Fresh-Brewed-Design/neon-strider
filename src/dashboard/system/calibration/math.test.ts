@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { retimedPoint, wizardResult, type WizardInput } from "./math";
+import { averagedPoint, retimedPoint, wizardResult, type WizardInput } from "./math";
 
 describe("retimedPoint", () => {
   it("compares the reported speed with the walked one", () => {
@@ -38,5 +38,26 @@ describe("wizardResult", () => {
     const r = wizardResult({ ...base, mode: "LOGO" });
     expect(r.distanceM).toBeCloseTo(30, 6);
     expect(r.strideCm).toBeCloseTo(60, 6);
+  });
+});
+
+describe("averagedPoint", () => {
+  const saved = { speed: 3, stride_length_cm: 70, distance_scale: 0.9, runs: 2 };
+
+  it("weighs every run equally", () => {
+    const p = averagedPoint(saved, { stride_length_cm: 76, distance_scale: 1.2 }, true);
+    expect(p.runs).toBe(3);
+    expect(p.stride_length_cm).toBeCloseTo(72, 5);
+    expect(p.distance_scale).toBeCloseTo(1.0, 5);
+  });
+
+  it("counts a point from before runs were tracked as one run", () => {
+    const p = averagedPoint({ speed: 3, stride_length_cm: 70, distance_scale: 1 }, { stride_length_cm: 70, distance_scale: 1.2 }, true);
+    expect(p.runs).toBe(2);
+    expect(p.distance_scale).toBeCloseTo(1.1, 5);
+  });
+
+  it("keeps the saved stride when the run counted no steps", () => {
+    expect(averagedPoint(saved, { stride_length_cm: 90, distance_scale: 0.9 }, false).stride_length_cm).toBe(70);
   });
 });

@@ -1166,16 +1166,19 @@ mod tests {
                     speed: 0.6,
                     stride_length_cm: 50.0,
                     distance_scale: 0.6 / 1.46,
+                    runs: 1,
                 },
                 protocol::CalibrationPoint {
                     speed: 1.5,
                     stride_length_cm: 60.0,
                     distance_scale: 1.5 / 4.84,
+                    runs: 1,
                 },
                 protocol::CalibrationPoint {
                     speed: 2.0,
                     stride_length_cm: 65.0,
                     distance_scale: 2.0 / 2.97,
+                    runs: 1,
                 },
             ],
             max_speed: 5.0,
@@ -1248,6 +1251,7 @@ mod tests {
                 speed: 4.0,
                 stride_length_cm: 70.0,
                 distance_scale: 0.8,
+                runs: 1,
             }],
             ..Default::default()
         });

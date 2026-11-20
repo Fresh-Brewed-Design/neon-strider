@@ -105,7 +105,9 @@ pub struct Measurement {
 #[ts(export, export_to = "../../src/ipc/bindings/")]
 pub struct CalibrationResult {
     // `CalibrationPoint` has serde aliases, which ts-rs can't parse.
-    #[ts(type = "{ speed: number, stride_length_cm: number, distance_scale: number }")]
+    #[ts(
+        type = "{ speed: number, stride_length_cm: number, distance_scale: number, runs: number }"
+    )]
     pub point: CalibrationPoint,
     /// The speed he really walked, km/h.
     pub real_kmh: f32,
@@ -235,6 +237,7 @@ pub fn point_from_count(
             speed: (m.reported_kmh * 10.0).round() / 10.0,
             stride_length_cm: stride_cm,
             distance_scale: scale,
+            runs: 1,
         },
         real_kmh,
         real_m,
@@ -519,6 +522,7 @@ mod tests {
             speed,
             stride_length_cm: 70.0,
             distance_scale: scale,
+            runs: 1,
         }
     }
 
@@ -743,6 +747,7 @@ mod tests {
                 speed: 3.0,
                 stride_length_cm: 70.0,
                 distance_scale: 0.8,
+                runs: 1,
             }],
             ..Default::default()
         });

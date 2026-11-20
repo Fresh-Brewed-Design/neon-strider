@@ -7,13 +7,14 @@ import { useAppSnapshot } from "../../../state/useAppState";
 import { useTreadmillStore } from "../../../store/treadmillStore";
 import { GhostButton, Hint, Label, NeonButton } from "../../ui";
 import { cx } from "../../util";
+import { averagedPoint } from "./math";
 import { INPUT_CLASS, NumberField } from "../fields";
 import { calibrationRows, chrono, runRowFor, type CalibrationRow } from "./guided";
 
 /**
  * Labs: the guided calibration. One row per speed; RUN (his press) sets the
  * belt to it, COUNT and DONE time a count of belt loops in Rust, and Rust
- * works out the point from what he counted. REPEAT re-runs one saved point.
+ * works out the point from what he counted. ADD RUN times one saved point again and averages it in with the earlier runs.
  * The run panel follows `snapshot.calibration.run`, so it is back where it was
  * when the dashboard reopens mid-run.
  */
@@ -71,6 +72,7 @@ export function GuidedCalibration() {
                       value={`${row.point.distance_scale.toFixed(3)}x`}
                       className="text-neon-magenta"
                     />
+                    <Readout label="RUNS" value={String(row.point.runs ?? 1)} className="text-white" />
                   </>
                 ) : (
                   <span className="font-mono text-[11px] uppercase tracking-[0.15em] text-white/40">Uncalibrated</span>
@@ -83,7 +85,7 @@ export function GuidedCalibration() {
                   className="px-3 py-1.5"
                   tone={row.point ? "magenta" : "cyan"}
                 >
-                  {row.point ? "REPEAT" : "RUN"}
+                  {row.point ? "ADD RUN" : "RUN"}
                 </NeonButton>
                 {row.point && row.index !== null && (
                   <button
@@ -161,10 +163,11 @@ function RunPanel({
     void dispatch({ type: "calibration_run_close" }).finally(onClosed);
   };
   const save = () => {
-    const point = run.result?.point;
-    if (!point) return;
-    if (row.index !== null) updatePoint(row.index, point);
-    else addPoint(point);
+    const result = run.result;
+    if (!result) return;
+    if (row.point && row.index !== null) {
+      updatePoint(row.index, averagedPoint(row.point, result.point, result.stride_measured));
+    } else addPoint({ ...result.point, runs: 1 });
     close();
   };
   const compute = () => {
@@ -279,7 +282,7 @@ function RunPanel({
           )}
           <div className="flex gap-2">
             <NeonButton tone="green" className="flex-1 py-2" disabled={!r} onClick={save}>
-              {row.index !== null ? "REPLACE POINT" : "SAVE POINT"}
+              {row.index !== null ? "AVERAGE IN" : "SAVE POINT"}
             </NeonButton>
             <GhostButton onClick={close}>Discard</GhostButton>
           </div>
