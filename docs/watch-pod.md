@@ -67,7 +67,7 @@ Power (0x1818), the profile a Stryd pod also serves. Windows advertises both ser
 
 ### Will a Garmin take running power from a sensor that is not a Stryd?
 
-Probably not natively (checked November 2026; not yet tried on Jeremy's watch):
+Probably not natively (checked November 2026; not yet tried on your watch):
 
 - Garmin's native running power comes from the wrist or a Garmin running dynamics accessory.
   Forum threads on the Forerunner 955 and in the Connect IQ developer forum say third-party
