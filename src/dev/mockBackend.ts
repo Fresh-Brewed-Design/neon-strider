@@ -807,7 +807,28 @@ const CAL_COMMANDS: Partial<Record<Command["type"], (c: Command) => void>> = {
   },
   calibration_run_count: (c) => {
     const r = snapshot.calibration.run;
-    if (c.type !== "calibration_run_count" || !r?.reported_kmh || c.count.method !== "loops") return;
+    if (c.type !== "calibration_run_count" || !r?.reported_kmh) return;
+    if (c.count.method === "steps_only") {
+      // The factor stays the nearest saved point's; the stride is the distance it gives over the steps.
+      const near = CAL_CONFIG.calibration_points.reduce((a, b) =>
+        Math.abs(b.speed - r.reported_kmh!) < Math.abs(a.speed - r.reported_kmh!) ? b : a,
+      );
+      const reported_m = (r.reported_kmh / 3.6) * r.elapsed_s;
+      const real_m = reported_m / near.distance_scale;
+      const stride = (real_m / c.count.steps) * 100;
+      if (c.count.steps < 10) throw "Count at least 10 steps.";
+      if (stride < 20 || stride > 200) throw `The step count gives a ${stride.toFixed(0)} cm stride, outside 20 to 200 cm. Check the step count.`;
+      r.result = {
+        point: { speed: Math.round(r.reported_kmh * 10) / 10, stride_length_cm: stride, distance_scale: near.distance_scale },
+        real_kmh: (real_m / r.elapsed_s) * 3.6,
+        real_m,
+        reported_m,
+        cadence_spm: (c.count.steps / r.elapsed_s) * 60,
+        stride_measured: true,
+      };
+      return;
+    }
+    if (c.count.method !== "loops") return;
     const { loops, belt_length_cm, steps } = c.count;
     if (!(loops > 0)) throw "Enter how many loops you counted.";
     const real_m = (loops * belt_length_cm) / 100;
