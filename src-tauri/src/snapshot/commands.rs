@@ -362,6 +362,10 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             calibration::close_all();
             Ok(())
         }
+        Command::CalibrationStepsStart => calibration::steps_start(),
+        Command::CalibrationStepsSkip => calibration::steps_skip(),
+        Command::CalibrationStepsSaved => calibration::steps_saved(),
+        Command::CalibrationStepsUndo => calibration::steps_undo(),
 
         // ---- GHOST_POD and WRIST_LINK (Labs) ----
         Command::GhostPodSet { on } => {

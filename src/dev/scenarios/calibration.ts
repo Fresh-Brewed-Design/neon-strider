@@ -4,9 +4,11 @@
 // in (the clock ticks); =dropped the same with one tap dropped and a restart
 // note; =measured: the taps agreed and the result waits for SAVE POINT.
 // ?calwizard=sweep: RUN ALL with two speeds done and 4.0 km/h up next;
-// ?calwizard=sweeprun: the same sweep tapping at 4.0. The math is a rough
+// ?calwizard=sweeprun: the same sweep tapping at 4.0. ?calwizard=steps: the
+// measured run tapping footsteps (GAIT_SYNC) twelve steps in; =stepsaved the
+// stride measured and saved, with UNDO. The math is a rough
 // stand-in for Rust's (calibration.rs and calibration/tap.rs, unit-tested there).
-import type { CalibrationRunView, Command } from "../../ipc";
+import type { CalibrationRunView, Command, StepRunView } from "../../ipc";
 import { PREVIEW_CONFIG, params, publish, snapshot } from "../mockState";
 import type { Scenario } from "./types";
 
@@ -15,6 +17,8 @@ const BELT_CM = 280;
 let calTimer: ReturnType<typeof setInterval> | null = null;
 /** The mock's tap times, ms, since the tapping last started. */
 let taps: number[] = [];
+/** The mock's footstep times, ms. */
+let stepTaps: number[] = [];
 
 function median(v: number[]): number | null {
   if (v.length === 0) return null;
@@ -45,6 +49,7 @@ function calRun(target_kmh: number, view: Partial<CalibrationRunView> = {}) {
     reported_kmh: null,
     note: null,
     result: null,
+    steps: null,
     ...view,
   };
   if (snapshot.calibration.run.phase === "tapping") {
@@ -91,6 +96,46 @@ function measured(target_kmh: number, real: number, reported: number, passes: nu
           }
         : null,
     },
+  });
+}
+function stepView(view: Partial<StepRunView> = {}): StepRunView {
+  return {
+    phase: "settling",
+    steps: 0,
+    kept: 0,
+    dropped: 0,
+    elapsed_s: 0,
+    cadence_spm: null,
+    stride_cm: null,
+    note: null,
+    result: null,
+    to_save: null,
+    before: null,
+    saved: false,
+    undone: false,
+    ...view,
+  };
+}
+/** Steps measured on the open run: `gap` s apart, the stride joining any saved point, its factor kept. */
+function stepsMeasured(gap: number, count: number, extra: Partial<StepRunView> = {}) {
+  const r = snapshot.calibration.run;
+  if (!r?.result) return;
+  const stride = (r.result.real_kmh / 3.6) * gap * 100;
+  const saved = CAL_CONFIG.calibration_points.find((p) => Math.abs(p.speed - r.target_kmh) <= 0.05);
+  const n = Math.max(1, saved?.runs ?? 1);
+  const point = { ...r.result.point, stride_length_cm: stride, runs: 1 };
+  const averaged = saved ? { ...saved, stride_length_cm: (saved.stride_length_cm * n + stride) / (n + 1), runs: n + 1 } : null;
+  r.steps = stepView({
+    phase: "measured",
+    steps: count,
+    kept: count - 1,
+    elapsed_s: (count - 1) * gap,
+    cadence_spm: 60 / gap,
+    stride_cm: stride,
+    result: { ...r.result, point, cadence_spm: 60 / gap, stride_measured: true, averaged },
+    to_save: averaged ?? point,
+    before: saved ? { runs: 1, ...saved } : null,
+    ...extra,
   });
 }
 function sweepCurrent() {
@@ -185,6 +230,30 @@ const CAL_COMMANDS: Partial<Record<Command["type"], (c: Command) => void>> = {
   calibration_tap: () => {
     const r = snapshot.calibration.run;
     if (!r) throw "Press RUN on a speed first.";
+    if (r.steps) {
+      if (r.steps.result) {
+        r.steps.note = "The stride is measured. TAP AGAIN starts the steps over.";
+        return;
+      }
+      const now = Date.now();
+      if (stepTaps.length && now - stepTaps[stepTaps.length - 1] < 250) return;
+      stepTaps.push(now);
+      const s = tapStats(stepTaps);
+      if (s.kept.length >= 20 && s.median !== null) {
+        stepsMeasured(s.median, stepTaps.length);
+        return;
+      }
+      r.steps = stepView({
+        phase: "tapping",
+        steps: stepTaps.length,
+        kept: s.kept.length,
+        dropped: s.dropped,
+        elapsed_s: (now - stepTaps[0]) / 1000,
+        cadence_spm: s.median === null ? null : 60 / s.median,
+        stride_cm: s.median === null || !r.result ? null : (r.result.real_kmh / 3.6) * s.median * 100,
+      });
+      return;
+    }
     if (r.phase === "measured") {
       r.note = "The run is measured. TAP AGAIN starts it over.";
       return;
@@ -221,6 +290,25 @@ const CAL_COMMANDS: Partial<Record<Command["type"], (c: Command) => void>> = {
     calRun(r.target_kmh);
   },
   calibration_run_close: () => closeCal(),
+  calibration_steps_start: () => {
+    const r = snapshot.calibration.run;
+    if (!r?.result) throw "Time the belt first, then tap each footstep.";
+    stepTaps = [];
+    r.steps = stepView();
+  },
+  calibration_steps_skip: () => {
+    const r = snapshot.calibration.run;
+    if (r) r.steps = null;
+  },
+  calibration_steps_saved: () => {
+    const s = snapshot.calibration.run?.steps;
+    if (s) s.saved = true;
+  },
+  calibration_steps_undo: () => {
+    const s = snapshot.calibration.run?.steps;
+    if (!s?.saved || s.undone) throw "No saved stride to undo.";
+    s.undone = true;
+  },
 };
 
 /** A run `passes` taps in, as if tapped live, with the deck at `reported`. */
@@ -242,13 +330,22 @@ export const calibration: Scenario = {
     snapshot.calibration.wizard_enabled = calFlag !== "oldpoint";
     snapshot.calibration.belt_treadmill = true;
     snapshot.calibration.belt_cm = calFlag === "belt" ? null : BELT_CM;
-    const live = ["tapping", "dropped", "measured"].includes(calFlag);
+    const live = ["tapping", "dropped", "measured", "steps", "stepsaved"].includes(calFlag);
     if (live) Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: 3, speed_kmh: 3.3 });
     if (calFlag === "tapping") tappingRun(3, 5, 3);
     if (calFlag === "dropped") {
       tappingRun(3, 7, 3, { kept: 5, dropped: 1, note: "The speed changed (3.0 to 3.5 km/h), so tapping starts again." });
     }
     if (calFlag === "measured") measured(3, 2.82, 3, 9);
+    if (calFlag === "steps" || calFlag === "stepsaved") {
+      Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: 3, speed_kmh: 3.3 });
+      measured(3, 2.82, 3, 9);
+      const run = snapshot.calibration.run;
+      if (run && calFlag === "steps") {
+        run.steps = stepView({ phase: "tapping", steps: 12, kept: 10, dropped: 1, elapsed_s: 6.9, cadence_spm: 104, stride_cm: 45.2 });
+      }
+      if (calFlag === "stepsaved") stepsMeasured(0.58, 22, { saved: true });
+    }
     // A stored 14.0 km/h the treadmill (12.0 max) can't run any more, and a 3.5 the user added.
     if (calFlag === "targets") {
       snapshot.calibration.targets = [2, 3, 3.5, 4, 5, 6, 14].map((kmh) => ({ kmh, runnable: kmh <= 12 }));

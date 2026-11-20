@@ -1726,6 +1726,76 @@ mod tests {
         assert!(r.deck.belt_still(), "a tap never starts the belt");
     }
 
+    /// GROUND_TRUTH's footstep phase: on a measured belt, TAP STEPS and 21
+    /// footsteps only read the deck. Not one packet that could move the belt;
+    /// the belt keeps the timed speed; the stride is the belt over the
+    /// cadence. STOP mid-steps ends the steps, keeps the belt result, and a
+    /// footstep on the still belt never starts it again.
+    #[test]
+    fn tapping_footsteps_never_moves_the_belt() {
+        let mut r = Rig::new();
+        r.run(5.0);
+        r.state.set_test_now(r.t);
+        crate::calibration::begin_run(&mut r.state, 3.0).unwrap();
+        r.run(20.0);
+        let mut run = crate::calibration::Run::new(3.0, 300.0);
+        for _ in 0..9 {
+            run.tap(r.t, r.state.hardware_speed, |_| 70.0);
+            r.run(3.6);
+            run.sample(r.state.hardware_speed);
+        }
+        assert_eq!(
+            run.view(r.t).phase,
+            crate::calibration::CalibrationPhase::Measured
+        );
+
+        // A step every 0.6 s at 3.0 km/h: 100 a minute, 50 cm.
+        let mark = r.mark();
+        run.start_steps().unwrap();
+        assert!(run.listening(), "footsteps are taps too");
+        for _ in 0..21 {
+            run.step_tap(r.t, r.state.hardware_speed, &r.state.calibration_points);
+            r.run(0.6);
+            run.sample(r.state.hardware_speed);
+        }
+        assert!(
+            !moves_belt(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+        let v = run.view(r.t);
+        let steps = v.steps.unwrap();
+        assert_eq!(steps.phase, crate::calibration::CalibrationPhase::Measured);
+        let res = steps.result.unwrap();
+        assert!((res.cadence_spm.unwrap() - 100.0).abs() < 1.0);
+        assert!((res.point.stride_length_cm - 50.0).abs() < 1.0);
+        assert!(!run.listening());
+
+        // TAP AGAIN on the steps, a few footsteps, then STOP.
+        run.start_steps().unwrap();
+        for _ in 0..5 {
+            run.step_tap(r.t, r.state.hardware_speed, &r.state.calibration_points);
+            r.run(0.6);
+        }
+        r.press(crate::engine::DeckAction::Stop);
+        r.run(10.0);
+        assert!(r.deck.belt_still());
+        let mark = r.mark();
+        for _ in 0..5 {
+            run.step_tap(r.t, r.state.hardware_speed, &r.state.calibration_points);
+            r.run(0.6);
+            run.sample(r.state.hardware_speed);
+        }
+        assert_eq!(
+            run.view(r.t).steps.unwrap().steps,
+            0,
+            "no step on a still belt"
+        );
+        assert!(!moves_belt(&r.commands_since(mark)));
+        assert!(r.deck.belt_still(), "a footstep never starts the belt");
+    }
+
     /// RUN ALL: the press runs the slowest speed. Taps and saving never move
     /// the belt; STOP stops it, closes the open run, and nothing starts the
     /// belt again until his RUN on the next speed.

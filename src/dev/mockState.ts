@@ -218,6 +218,7 @@ export const snapshot: AppSnapshot = {
     limits: {
       min_stride_cm: 20, max_stride_cm: 200, min_scale: 0.2, max_scale: 3, min_belt_cm: 50, max_belt_cm: 1000,
       min_agreeing: 8,
+      min_steps: 20,
     },
     belt_cm: null,
     belt_treadmill: false,

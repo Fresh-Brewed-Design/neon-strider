@@ -44,6 +44,7 @@ function runView(view: Partial<CalibrationRunView>): CalibrationRunView {
     reported_kmh: null,
     note: null,
     result: null,
+    steps: null,
     ...view,
   };
 }
