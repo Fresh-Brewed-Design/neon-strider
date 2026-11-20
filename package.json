@@ -3,7 +3,7 @@
   "author": "Fresh Brewed Design",
   "private": true,
   "license": "MIT",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

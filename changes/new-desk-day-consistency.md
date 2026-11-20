@@ -1,1 +1,0 @@
-- New DESK_SYNC card on the History page: "Walked on 9 of your last 10 desk days." A desk day is a day you used the PC, so days away from it never count against you. Days you walked before this update count as desk days.
