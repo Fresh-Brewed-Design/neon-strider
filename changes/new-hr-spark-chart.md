@@ -1,1 +1,0 @@
-- PULSE_RATE draws a spark chart of the last 10 minutes of heart rate under the bpm, on the HUD and the Live page. A heart rate zone step shows its range as a faint band behind the line.

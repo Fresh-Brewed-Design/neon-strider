@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.38.0 (2026-11-20)
+
+### New
+
+- LABS // DECK_SWEEP can sweep incline levels too: Sweep incline levels steps a walking belt through every incline level DECK_PROFILE has not learned yet, up to your Highest incline level (or the treadmill's own top level once learned), then puts the incline back. It never starts or resumes the belt, and stopping the belt, changing the speed or incline, a press on the treadmill's remote or starting a program ends it.
+- Stop sweep now puts the belt back where it was before the sweep: at the speed it started at after a speed sweep, at the incline it started at after an incline sweep.
+- PULSE_RATE draws a spark chart of the last 10 minutes of heart rate under the bpm, on the HUD and the Live page. A heart rate zone step shows its range as a faint band behind the line.
+
 ## 1.37.0 (2026-11-20)
 
 ### Changed
