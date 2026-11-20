@@ -28,10 +28,14 @@ function mockSessions() {
 }
 
 function mockSamples(sessionId: number) {
+  // Walks saved with heart rate (?heart=on) get a pulse that follows the speed,
+  // with the watch dropping out for a stretch in the middle.
+  const avgHeart = sessions.find((s) => s.id === sessionId)?.avg_heart_rate ?? null;
   return Array.from({ length: 120 }, (_, i) => ({
     id: i, session_id: sessionId, timestamp: Date.now() - (120 - i) * 10000,
     speed: 3 + Math.sin(i / 10), raw_speed: 3.3, incline: 4 + (i > 60 ? 2 : 0),
     distance: i * 9, raw_distance: i * 9, steps: i * 13, raw_steps: i * 13,
+    heart_rate: avgHeart !== null && (i < 70 || i > 80) ? Math.round(avgHeart + 9 * Math.sin(i / 10)) : null,
   }));
 }
 

@@ -1,27 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { SessionRepository } from "../../services/db/repositories/sessionRepository";
 import type { Sample } from "../../services/db/schema";
 import type { MergedSession } from "../../services/sessionMerge";
 import { formatDuration } from "../../format";
+import { heartAxis, heartRuns, scopePoints, type HeartPoint, type ScopePoint } from "./scope";
 
 const HEIGHT = 150;
+const SPEED = "#00f3ff";
+const INCLINE = "#ff00ff";
+const HEART = "#fff300";
 
-interface ScopePoint {
-  timestamp: number;
-  speedKmh: number;
-  inclinePercent: number;
-}
-
-/** Samples of a (possibly merged) session, one per timestamp, oldest first. */
-function scopePoints(samples: Sample[]): ScopePoint[] {
-  const byTime = new Map<number, Sample>();
-  for (const s of samples) byTime.set(s.timestamp, s);
-  return [...byTime.values()]
-    .sort((a, b) => a.timestamp - b.timestamp)
-    .map((s) => ({ timestamp: s.timestamp, speedKmh: s.speed || 0, inclinePercent: s.incline || 0 }));
-}
-
-function draw(canvas: HTMLCanvasElement, width: number, points: ScopePoint[]) {
+function draw(canvas: HTMLCanvasElement, width: number, points: ScopePoint[], runs: HeartPoint[][]) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   const dpr = window.devicePixelRatio || 1;
@@ -73,8 +62,34 @@ function draw(canvas: HTMLCanvasElement, width: number, points: ScopePoint[]) {
       ctx.fill();
     }
   };
-  trace((p) => p.speedKmh, maxSpeed, "#00f3ff", true);
-  trace((p) => p.inclinePercent, maxIncline, "#ff00ff", false);
+  trace((p) => p.speedKmh, maxSpeed, SPEED, true);
+  trace((p) => p.inclinePercent, maxIncline, INCLINE, false);
+
+  // Heart rate on its own axis; each run of readings is drawn apart, so a gap stays a gap.
+  const axis = heartAxis(runs);
+  if (axis) {
+    const yHeart = (bpm: number) => padTop + plotH - ((bpm - axis.min) / (axis.max - axis.min)) * plotH;
+    ctx.strokeStyle = HEART;
+    ctx.fillStyle = HEART;
+    ctx.lineWidth = 2;
+    ctx.shadowColor = HEART;
+    ctx.shadowBlur = 6;
+    for (const run of runs) {
+      if (run.length === 1) {
+        ctx.beginPath();
+        ctx.arc(x(run[0].timestamp), yHeart(run[0].bpm), 1.5, 0, Math.PI * 2);
+        ctx.fill();
+        continue;
+      }
+      ctx.beginPath();
+      run.forEach((p, i) => {
+        if (i === 0) ctx.moveTo(x(p.timestamp), yHeart(p.bpm));
+        else ctx.lineTo(x(p.timestamp), yHeart(p.bpm));
+      });
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+  }
 
   ctx.font = "11px 'Courier New', monospace";
   ctx.textBaseline = "alphabetic";
@@ -89,13 +104,20 @@ function draw(canvas: HTMLCanvasElement, width: number, points: ScopePoint[]) {
   ctx.fillText("0:00", 2, HEIGHT - 4);
   ctx.textAlign = "right";
   ctx.fillText(formatDuration(span / 1000), width - 2, HEIGHT - 4);
+  if (axis) {
+    ctx.fillStyle = "rgba(255,243,0,0.8)";
+    ctx.textAlign = "center";
+    ctx.fillText(`${axis.max} BPM`, width / 2, 12);
+    ctx.fillText(`${axis.min} BPM`, width / 2, HEIGHT - 4);
+  }
 }
 
-/** Speed and incline of one (possibly merged) session, drawn from its stored samples. */
+/** Speed, incline and (when saved) heart rate of one (possibly merged) session, drawn from its stored samples. */
 export function SessionScope({ session }: { session: MergedSession }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [points, setPoints] = useState<ScopePoint[] | null>(null);
+  const runs = useMemo(() => (points ? heartRuns(points) : []), [points]);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -121,13 +143,13 @@ export function SessionScope({ session }: { session: MergedSession }) {
     if (!box || !canvas || !points || points.length < 2) return;
     const paint = () => {
       const w = box.getBoundingClientRect().width;
-      if (w > 0) draw(canvas, w, points);
+      if (w > 0) draw(canvas, w, points, runs);
     };
     paint();
     const observer = new ResizeObserver(paint);
     observer.observe(box);
     return () => observer.disconnect();
-  }, [points]);
+  }, [points, runs]);
 
   if (failed) return <p className="py-4 text-center font-mono text-xs text-red-400">Could not load this session's samples.</p>;
   if (!points) return <p className="py-4 text-center font-mono text-xs text-white/40">Loading samples…</p>;
@@ -138,11 +160,16 @@ export function SessionScope({ session }: { session: MergedSession }) {
   return (
     <div>
       <div ref={boxRef} className="w-full" style={{ height: HEIGHT }}>
-        <canvas ref={canvasRef} role="img" aria-label="Speed and incline over the session" />
+        <canvas
+          ref={canvasRef}
+          role="img"
+          aria-label={runs.length > 0 ? "Speed, incline and heart rate over the session" : "Speed and incline over the session"}
+        />
       </div>
       <div className="mt-1 flex gap-4 font-mono text-[11px] text-white/50">
         <span><span className="text-neon-cyan">Cyan</span> speed</span>
         <span><span className="text-neon-magenta">Magenta</span> incline</span>
+        {runs.length > 0 && <span><span className="text-neon-yellow">Yellow</span> heart rate</span>}
       </div>
     </div>
   );
