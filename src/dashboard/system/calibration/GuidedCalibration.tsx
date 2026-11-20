@@ -471,7 +471,7 @@ function RunPanel({
           {dropped && <Hint>{dropped}</Hint>}
           <Hint>
             {row.index !== null
-              ? `AVERAGE IN folds the run into the saved ${row.targetKmh.toFixed(1)} km/h point and corrects distances there.`
+              ? `AVERAGE IN folds the run into the saved ${row.targetKmh.toFixed(1)} km/h point.`
               : `SAVE POINT corrects distances at ${r.point.speed.toFixed(1)} km/h.`}
           </Hint>
           <div className="flex gap-2">
