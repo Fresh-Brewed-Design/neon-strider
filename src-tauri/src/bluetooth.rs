@@ -608,6 +608,19 @@ fn normalize_id(id: &str) -> String {
     id.replace([':', '-'], "").to_uppercase()
 }
 
+/// How many hex digits a Bluetooth address has (6 bytes).
+const ADDRESS_DIGITS: usize = 12;
+
+/// The part of a device id that names the treadmill itself, for its
+/// DECK_PROFILE key: the last `ADDRESS_DIGITS` of the normalized id, its
+/// Bluetooth address. The saved id and the one a scan reports may differ by a
+/// prefix (`ids_match`), and both forms must find the same profile.
+fn profile_device_id(raw_id: &str) -> String {
+    let id = normalize_id(raw_id);
+    let skip = id.chars().count().saturating_sub(ADDRESS_DIGITS);
+    id.chars().skip(skip).collect()
+}
+
 /// Two normalized ids name the same device. Either may be the shorter form
 /// (Windows ids carry a prefix the saved id may lack, or the other way round).
 fn ids_match(a: &str, b: &str) -> bool {
@@ -825,7 +838,7 @@ fn load_profile_for(app: &tauri::AppHandle, key: &str) -> crate::deck_profile::D
 /// previous treadmill taught it is saved first. Does nothing when it already
 /// is. Called at startup with the saved treadmill and on every connection.
 pub async fn switch_deck_profile(app: &tauri::AppHandle, raw_id: &str) {
-    let key = crate::deck_profile::key_for(&normalize_id(raw_id));
+    let key = crate::deck_profile::key_for(&profile_device_id(raw_id));
     let pending = {
         let mut state = ORCHESTRATOR.lock().await;
         if state.deck_profile_key.as_deref() == Some(&key) {
@@ -1096,6 +1109,16 @@ mod tests {
             &normalize_id("BluetoothLE#aa:bb:cc:dd:ee:ff")
         ));
         assert!(!ids_match("AABBCC", "DDEEFF"));
+    }
+
+    #[test]
+    fn both_forms_of_an_id_share_one_deck_profile() {
+        assert_eq!(
+            profile_device_id("BluetoothLE#BluetoothLE11:22:33:44:55:66-aa:bb:cc:dd:ee:ff"),
+            "AABBCCDDEEFF"
+        );
+        assert_eq!(profile_device_id("aa:bb:cc:dd:ee:ff"), "AABBCCDDEEFF");
+        assert_eq!(profile_device_id("dev-1"), "DEV1");
     }
 
     #[test]
