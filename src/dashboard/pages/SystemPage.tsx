@@ -1,6 +1,7 @@
 import { CalibrationPanel } from "../system/calibration/CalibrationPanel";
 import { DeskSection } from "../system/DeskSection";
 import { DiagnosticsSection } from "../system/DiagnosticsSection";
+import { LabsSection } from "../system/LabsSection";
 import { Section } from "../system/fields";
 import { MaintenanceSection } from "../system/MaintenanceSection";
 import { NeuralSection } from "../system/NeuralSection";
@@ -21,6 +22,7 @@ const SECTIONS = [
   { id: "sys-maintenance", label: "Maintenance" },
   { id: "sys-startup", label: "Startup" },
   { id: "sys-updates", label: "Updates" },
+  { id: "sys-labs", label: "Labs" },
   { id: "sys-diagnostics", label: "Diagnostics" },
 ];
 
@@ -65,6 +67,7 @@ export function SystemPage() {
         <MaintenanceSection />
         <StartupSection />
         <UpdatesSection />
+        <LabsSection />
         <DiagnosticsSection />
       </div>
     </Page>

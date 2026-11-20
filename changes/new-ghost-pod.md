@@ -1,0 +1,1 @@
+- Labs: GHOST_POD, a switch (off by default) in System -> Labs that makes the PC a Bluetooth foot pod for your watch. It sends the belt speed, cadence and distance once a second, and 0 km/h while the belt is paused so the watch's Auto Pause can stop its timer. Pausing on the watch doesn't pause the belt yet.
