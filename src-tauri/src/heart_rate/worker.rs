@@ -12,7 +12,7 @@ use crate::persistence;
 use btleplug::api::{Central, Peripheral as _, ScanFilter};
 use btleplug::platform::Peripheral;
 use futures::StreamExt;
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::sync::{LazyLock, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 use tauri::AppHandle;
@@ -24,6 +24,8 @@ const KEY_MAX: &str = "max_heart_rate";
 /// 30-year-old, the common estimate, so zones are near right before it is set.
 pub const DEFAULT_MAX_BPM: u16 = 190;
 static MAX_BPM: AtomicU16 = AtomicU16::new(DEFAULT_MAX_BPM);
+/// The user saved a maximum heart rate (else `MAX_BPM` is the default).
+static MAX_SET: AtomicBool = AtomicBool::new(false);
 /// How long the picker's scan listens: a sensor advertises about once a
 /// second, and the treadmill scan uses the same 5 s.
 const SCAN_TIME: Duration = Duration::from_secs(5);
@@ -91,6 +93,7 @@ pub fn init(app: &AppHandle) {
             .filter(|b| valid_max(*b))
     {
         MAX_BPM.store(bpm, Ordering::Relaxed);
+        MAX_SET.store(true, Ordering::Relaxed);
     }
     let id = persistence::read_setting(app, KEY_ID).filter(|s| !s.is_empty());
     let name = persistence::read_setting(app, KEY_NAME).unwrap_or_default();
@@ -122,6 +125,7 @@ pub fn set_max_heart_rate(app: &AppHandle, bpm: u16) -> Result<(), String> {
     }
     persistence::write_setting(app, KEY_MAX, &bpm.to_string())?;
     MAX_BPM.store(bpm, Ordering::Relaxed);
+    MAX_SET.store(true, Ordering::Relaxed);
     Ok(())
 }
 
@@ -200,6 +204,8 @@ pub fn snapshot() -> HeartRateSnapshot {
             bpm,
             scanning: rt.scanning,
             found: rt.found.clone(),
+            max_bpm: u32::from(max_heart_rate()),
+            max_bpm_set: MAX_SET.load(Ordering::Relaxed),
         }
     })
 }
@@ -433,6 +439,17 @@ async fn connect(sensor: &HeartRateSensor, generation: u64) -> Result<(), StepEr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_maximum_heart_rate_is_120_to_230_bpm() {
+        assert!(valid_max(DEFAULT_MAX_BPM));
+        for bpm in [120, 185, 230] {
+            assert!(valid_max(bpm), "{}", bpm);
+        }
+        for bpm in [0, 119, 231, 300] {
+            assert!(!valid_max(bpm), "{}", bpm);
+        }
+    }
 
     #[test]
     fn retries_back_off_to_a_minute() {

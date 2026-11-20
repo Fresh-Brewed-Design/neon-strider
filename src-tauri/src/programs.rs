@@ -362,7 +362,7 @@ fn level_to_incline_pct(level: u8, tilt_multiplier: f32, incline_offset: f32) ->
 
 /// Validate a program for saving. `min_speed` / `max_speed` are the calibrated
 /// belt limits. The error is a short message fit to show the user.
-fn validate_program(p: &Program, min_speed: f32, max_speed: f32) -> Result<(), String> {
+pub(crate) fn validate_program(p: &Program, min_speed: f32, max_speed: f32) -> Result<(), String> {
     let name_len = p.name.trim().chars().count();
     if name_len == 0 {
         return Err("Name is required".to_string());
@@ -480,6 +480,7 @@ pub fn seed_programs() -> Vec<Program> {
         ),
         program(5, "Brisk", step(Some(30.0), 5.0, 0.0), None, NOTE_BRISK),
         vo2_max_program(6),
+        vo2_zone_program(7),
     ]
 }
 
@@ -508,6 +509,26 @@ fn vo2_max_program(id: u32) -> Program {
         note: Some(NOTE_VO2_MAX.to_string()),
     }
 }
+
+/// The 4x4 with each climb held at 85 to 95 % of maximum heart rate, the
+/// intensity the Norwegian 4x4 is prescribed at (docs/research.md): the zone
+/// trims the climb's speed within 1 km/h instead of the user guessing it.
+/// Existing installs get it from `persistence::migration_7_vo2_zone_program`,
+/// which keeps its own copy.
+fn vo2_zone_program(id: u32) -> Program {
+    let mut p = vo2_max_program(id);
+    p.name = "VO2 zone".to_string();
+    p.note = Some(NOTE_VO2_ZONE.to_string());
+    for s in p.steps.iter_mut().filter(|s| s.incline_pct > 0.0) {
+        s.zone = Some(HeartZone {
+            low_pct: 85.0,
+            high_pct: 95.0,
+        });
+    }
+    p
+}
+
+pub const NOTE_VO2_ZONE: &str = "Four 4-minute climbs held at 85 to 95 % of max heart rate.";
 
 pub const NOTE_VO2_MAX: &str = "Four hard 4-minute climbs with easy walks between train VO2 max.";
 
@@ -2259,7 +2280,7 @@ mod tests {
         let l = initial_programs(None, None);
         assert!(l.seeded);
         assert_eq!(l.programs, seed_programs());
-        assert_eq!(l.next_id, 7);
+        assert_eq!(l.next_id, 8);
 
         // Present (even empty) is never reseeded.
         let l = initial_programs(Some("[]"), None);
@@ -3502,5 +3523,72 @@ mod tests {
         assert!(validate_program(&program(step(4.0, 95.0, 85.0)), 0.6, 12.0).is_err());
         assert!(validate_program(&program(step(4.0, 85.0, 120.0)), 0.6, 12.0).is_err());
         assert!(validate_program(&program(step(0.0, 85.0, 95.0)), 0.6, 12.0).is_err());
+        // The bounds themselves are allowed; below 30 %, equal or not a number is not.
+        assert!(validate_program(&program(step(4.0, 30.0, 100.0)), 0.6, 12.0).is_ok());
+        for (low, high) in [
+            (29.9, 60.0),
+            (80.0, 80.0),
+            (f32::NAN, 90.0),
+            (60.0, f32::INFINITY),
+        ] {
+            let e = validate_program(&program(step(4.0, low, high)), 0.6, 12.0).unwrap_err();
+            assert!(e.starts_with("Step 1: zone must be"), "{low} {high}: {e}");
+        }
+    }
+
+    /// VO2 zone is the VO2 max program with 85 to 95 % on each climb.
+    #[test]
+    fn the_seeded_vo2_zone_program_holds_its_climbs_in_the_zone() {
+        let seeds = seed_programs();
+        let max = seeds.iter().find(|p| p.name == "VO2 max").unwrap();
+        let zone = seeds.iter().find(|p| p.name == "VO2 zone").unwrap();
+        assert_eq!(zone.id, 7);
+        assert_eq!(zone.steps.len(), max.steps.len());
+        for (z, m) in zone.steps.iter().zip(&max.steps) {
+            assert_eq!(
+                (z.duration_minutes, z.speed_kmh, z.incline_pct),
+                (m.duration_minutes, m.speed_kmh, m.incline_pct)
+            );
+            let climb = m.incline_pct > 0.0;
+            assert_eq!(
+                z.zone,
+                climb.then_some(HeartZone {
+                    low_pct: 85.0,
+                    high_pct: 95.0
+                })
+            );
+        }
+        // At the default 190 bpm that is 161.5 to 180.5 bpm.
+        let (low, high) = zone.steps[1].zone.unwrap().bounds_bpm(190);
+        assert!((low - 161.5).abs() < 0.01 && (high - 180.5).abs() < 0.01);
+    }
+
+    /// A save keeps each step's zone, and a rename with the zones intact keeps
+    /// the seeded note (the editor used to drop the zone, which lost both).
+    #[test]
+    fn a_save_keeps_zones_and_a_rename_keeps_the_note() {
+        let mut s = state();
+        let seeded = seed_programs()
+            .into_iter()
+            .find(|p| p.name == "VO2 zone")
+            .unwrap();
+        s.programs.push(seeded.clone());
+        let mut edit = seeded.clone();
+        edit.name = "My zone".to_string();
+        edit.note = None;
+        s.save_program(edit).unwrap();
+        let saved = s.programs.iter().find(|p| p.id == seeded.id).unwrap();
+        assert_eq!(saved.steps, seeded.steps);
+        assert_eq!(saved.note.as_deref(), Some(NOTE_VO2_ZONE));
+
+        let mut edit = saved.clone();
+        edit.steps[1].zone = Some(HeartZone {
+            low_pct: 70.0,
+            high_pct: 80.0,
+        });
+        s.save_program(edit).unwrap();
+        let saved = s.programs.iter().find(|p| p.id == seeded.id).unwrap();
+        assert_eq!(saved.steps[1].zone.unwrap().low_pct, 70.0);
+        assert_eq!(saved.note, None, "a new zone changes what the program does");
     }
 }

@@ -1,0 +1,3 @@
+- Set your max heart rate in System, Heart rate; program heart zones are a percentage of it (190 bpm until you set one).
+- The program editor can give any walking step a heart zone, typed as % of max or in bpm. The zone trims the step's speed by up to 1 km/h to hold your pulse and never starts the belt.
+- New program, VO2 zone: the VO2 max 4x4 with each climb held at 85 to 95 % of your max heart rate.

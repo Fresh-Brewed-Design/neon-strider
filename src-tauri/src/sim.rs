@@ -1123,6 +1123,62 @@ mod tests {
         );
     }
 
+    /// The seeded VO2 zone program against the deck: a high pulse leaves the
+    /// warm-up (no zone) alone and trims the first climb down by targets
+    /// alone; paused at the treadmill mid-climb with a low pulse, the belt
+    /// stays still until GO.
+    #[test]
+    fn the_seeded_vo2_zone_program_trims_its_climbs_and_never_starts_a_still_belt() {
+        let mut r = Rig::new();
+        let p = crate::programs::seed_programs()
+            .into_iter()
+            .find(|p| p.name == "VO2 zone")
+            .expect("seeded");
+        let id = p.id;
+        r.state.programs.push(p);
+        r.state.max_heart_rate = 190; // The zone is 161.5 to 180.5 bpm.
+        r.run(1.0);
+        r.run_program(id);
+        r.run(20.0);
+        assert!(r.deck.running_at(4.5), "{} km/h", r.deck.speed_kmh());
+        r.state.heart_bpm = Some(185);
+        r.run(60.0);
+        assert!(
+            r.deck.running_at(4.5),
+            "warm-up: {} km/h",
+            r.deck.speed_kmh()
+        );
+
+        // Into the first climb (6.0 km/h at 10 %), still above the zone.
+        r.run(230.0);
+        assert_eq!(r.program().step_index, 1);
+        let mark = r.mark();
+        r.run(70.0);
+        let speed = r.deck.speed_kmh();
+        assert!((5.0..5.95).contains(&speed), "trimmed down: {} km/h", speed);
+        assert_eq!(controls(&r.commands_since(mark)), vec![]);
+
+        // Paused at the treadmill, a pulse below the zone never resumes it.
+        let t = r.t;
+        r.deck.press_pause(t);
+        r.run(10.0);
+        assert!(r.deck.belt_still());
+        let mark = r.mark();
+        r.state.heart_bpm = Some(120);
+        r.run(120.0);
+        assert!(r.deck.belt_still(), "{} km/h", r.deck.speed_kmh());
+        assert!(
+            !moves_belt(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+
+        // GO is the press that moves it again.
+        r.go();
+        r.run(15.0);
+        assert!(r.deck.speed_kmh() > 4.0, "{} km/h", r.deck.speed_kmh());
+    }
+
     #[test]
     fn a_start_at_the_treadmill_on_a_waiting_program_is_its_go() {
         let mut r = Rig::new();

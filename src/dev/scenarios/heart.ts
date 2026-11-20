@@ -1,6 +1,6 @@
 // HEART_LINK. ?heart=on picks a watch that reads about 112 bpm; scanning in
 // the preview finds one after a moment. ?heart=waiting picks one that is not
-// broadcasting yet.
+// broadcasting yet. ?maxhr=178: a max heart rate of 178 bpm set by the user.
 import { params, publish, snapshot } from "../mockState";
 import type { Scenario } from "./types";
 
@@ -45,6 +45,8 @@ function pickHeartSensor(sensor: { id: string; name: string } | null) {
 
 export const heartRate: Scenario = {
   apply() {
+    const max = Number(params.get("maxhr"));
+    if (params.has("maxhr") && Number.isFinite(max)) Object.assign(snapshot.heart_rate, { max_bpm: max, max_bpm_set: true });
     if (params.get("heart") === "on" || params.get("heart") === "waiting") pickHeartSensor(PREVIEW_WATCH);
   },
   commands: {
@@ -57,5 +59,9 @@ export const heartRate: Scenario = {
     },
     heart_rate_pick: (c) => pickHeartSensor({ id: c.id, name: c.name }),
     heart_rate_forget: () => pickHeartSensor(null),
+    heart_rate_max_set: (c) => {
+      if (c.bpm < 120 || c.bpm > 230) throw new Error("Maximum heart rate must be between 120 and 230 bpm.");
+      Object.assign(snapshot.heart_rate, { max_bpm: c.bpm, max_bpm_set: true });
+    },
   },
 };

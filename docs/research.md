@@ -128,6 +128,22 @@ steady."
 
 **In the app:** "Four hard 4-minute climbs with easy walks between train VO2 max."
 
+## VO2 zone (new)
+
+**New:** the VO2 max program with each 4-minute climb holding a heart rate zone of 85 to 95 % of
+your maximum heart rate, the intensity the 4x4 studies prescribe (see VO2 max above).
+
+- With HEART_LINK reading a sensor, each climb trims its speed by 0.1 km/h at most every 20 s,
+  within 1 km/h of 6.0 km/h, to keep the pulse in the zone. Without a reading it runs exactly
+  like VO2 max.
+- The zone is a percentage of the maximum heart rate set in System, Heart rate; until one is
+  set it uses 190 bpm (220 minus age at 30). A measured or age-based maximum of your own makes
+  the zone right for you.
+- A pulse takes a minute or two to climb at the start of each effort, so expect the speed to
+  rise early in each climb and settle back once the pulse catches up.
+
+**In the app:** "Four 4-minute climbs held at 85 to 95 % of max heart rate."
+
 ## Idle nudge
 
 **Was:** after 60 minutes of PC use without walking. **Now:** 30 minutes.

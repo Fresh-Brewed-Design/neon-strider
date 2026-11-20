@@ -95,6 +95,10 @@ pub struct HeartRateSnapshot {
     pub scanning: bool,
     /// What the last scan found.
     pub found: Vec<HeartRateSensor>,
+    /// The maximum heart rate (bpm) that program zones are a percentage of.
+    pub max_bpm: u32,
+    /// False while `max_bpm` is still the default estimate.
+    pub max_bpm_set: bool,
 }
 
 /// Shown while a picked sensor does not answer. A Garmin watch only

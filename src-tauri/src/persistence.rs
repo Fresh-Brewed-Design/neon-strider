@@ -347,6 +347,67 @@ fn vo2_max_program_v4(raw: &str, next_id: Option<&str>) -> Option<(String, u32)>
     Some((serde_json::to_string(&list).ok()?, id + 1))
 }
 
+/// Migration 7: the VO2 zone program (roadmap #124), the 4x4 with each climb
+/// holding 85 to 95 % of maximum heart rate. Added after the user's programs
+/// on the same terms as migration 4: not to an empty or unreadable list, nor
+/// when one has that name already.
+///
+/// Frozen: the program is written out here, not read from `seed_programs`.
+fn migration_7_vo2_zone_program(tx: &Transaction) -> rusqlite::Result<()> {
+    let Some(raw) = get_setting_str(tx, "programs") else {
+        return Ok(()); // Never seeded: the first start seeds it.
+    };
+    let next_id = get_setting_str(tx, "program_next_id");
+    if let Some((programs, next_id)) = vo2_zone_program_v7(&raw, next_id.as_deref()) {
+        for (key, value) in [
+            ("programs", programs),
+            ("program_next_id", next_id.to_string()),
+        ] {
+            tx.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+                params![key, value],
+            )?;
+        }
+    }
+    Ok(())
+}
+
+/// Migration 7's change to the stored programs JSON; `None` when there is
+/// nothing to add or the value can't be read.
+fn vo2_zone_program_v7(raw: &str, next_id: Option<&str>) -> Option<(String, u32)> {
+    use serde_json::{json, Value};
+    let mut list: Vec<Value> = serde_json::from_str(raw).ok()?;
+    if list.is_empty() || list.iter().any(|p| p["name"] == "VO2 zone") {
+        return None;
+    }
+    let max_id = list
+        .iter()
+        .filter_map(|p| p["id"].as_u64())
+        .max()
+        .unwrap_or(0) as u32;
+    let id = next_id
+        .and_then(|s| s.trim().trim_matches('"').parse::<u32>().ok())
+        .unwrap_or(0)
+        .max(max_id + 1);
+    let step = |minutes: f64, speed: f64, incline: f64| json!({ "duration_minutes": minutes, "speed_kmh": speed, "incline_pct": incline });
+    let mut steps = vec![step(5.0, 4.5, 0.0)];
+    for _ in 0..4 {
+        let mut climb = step(4.0, 6.0, 10.0);
+        climb["zone"] = json!({ "low_pct": 85.0, "high_pct": 95.0 });
+        steps.push(climb);
+        steps.push(step(3.0, 4.0, 0.0));
+    }
+    steps.push(step(3.0, 3.0, 0.0));
+    list.push(json!({
+        "id": id,
+        "name": "VO2 zone",
+        "steps": steps,
+        "repeat_every_minutes": null,
+        "note": "Four 4-minute climbs held at 85 to 95 % of max heart rate.",
+    }));
+    Some((serde_json::to_string(&list).ok()?, id + 1))
+}
+
 type Migration = fn(&Transaction) -> rusqlite::Result<()>;
 
 /// Append new migrations at the end; never reorder or edit a shipped one.
@@ -358,6 +419,7 @@ const MIGRATIONS: &[Migration] = &[
     migration_4_vo2_max_program,
     migration_5_desk_days,
     migration_6_heart_rate,
+    migration_7_vo2_zone_program,
 ];
 
 fn schema_version(conn: &Connection) -> rusqlite::Result<u32> {
@@ -1805,7 +1867,7 @@ mod db_tests {
         assert_eq!(stored_programs(&conn), crate::programs::seed_programs());
         assert_eq!(
             get_setting_str(&conn, "program_next_id").as_deref(),
-            Some("7")
+            Some("8")
         );
         assert_eq!(
             get_setting_str(&conn, "seated_minutes").as_deref(),
@@ -1832,7 +1894,14 @@ mod db_tests {
         let names: Vec<&str> = list.iter().map(|p| p.name.as_str()).collect();
         assert_eq!(
             names,
-            ["Post-meal", "Workday", "Brisk", "Micro-break", "VO2 max"]
+            [
+                "Post-meal",
+                "Workday",
+                "Brisk",
+                "Micro-break",
+                "VO2 max",
+                "VO2 zone"
+            ]
         );
         // The edited Post-meal is untouched; the unedited Workday gains its note.
         assert_eq!(list[0].steps[0].duration_minutes, Some(15.0));
@@ -1880,9 +1949,46 @@ mod db_tests {
         set(&conn, "programs", own);
         migrate(&mut conn).unwrap();
         let l = list(&conn);
-        assert_eq!(l.len(), 3, "Micro-break and Brisk come from migration 3");
+        assert_eq!(
+            l.len(),
+            4,
+            "Micro-break and Brisk come from migration 3, VO2 zone from 7"
+        );
         assert_eq!(l.iter().filter(|p| p.name == "VO2 max").count(), 1);
         assert_eq!(l[0].steps.len(), 1);
+    }
+
+    #[test]
+    fn migration_7_adds_vo2_zone_once_with_zones_on_the_climbs() {
+        let mut conn = migrated_to_v2();
+        set(&conn, "programs", V1_SEEDS);
+        migrate(&mut conn).unwrap();
+        let l = stored_programs(&conn);
+        let zone: Vec<_> = l.iter().filter(|p| p.name == "VO2 zone").collect();
+        assert_eq!(zone.len(), 1);
+        let p = zone[0];
+        assert_eq!(p.id, l.iter().map(|p| p.id).max().unwrap());
+        crate::programs::validate_program(p, 1.0, 8.0).unwrap();
+        for s in &p.steps {
+            let want = (s.incline_pct > 0.0).then_some(crate::programs::HeartZone {
+                low_pct: 85.0,
+                high_pct: 95.0,
+            });
+            assert_eq!(s.zone, want, "{:?}", s);
+        }
+        assert_eq!(p.steps.iter().filter(|s| s.zone.is_some()).count(), 4);
+        // Forced to run again, nothing changes.
+        let before = get_setting_str(&conn, "programs");
+        conn.execute_batch("PRAGMA user_version = 6").unwrap();
+        migrate(&mut conn).unwrap();
+        assert_eq!(get_setting_str(&conn, "programs"), before);
+
+        // An empty list (every program deleted) stays empty.
+        let mut conn = migrated_to_v2();
+        conn.execute_batch("PRAGMA user_version = 6").unwrap();
+        set(&conn, "programs", "[]");
+        migrate(&mut conn).unwrap();
+        assert_eq!(get_setting_str(&conn, "programs").as_deref(), Some("[]"));
     }
 
     #[test]

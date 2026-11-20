@@ -83,6 +83,7 @@ export const snapshot: AppSnapshot = {
     { id: 4, name: "Micro-break", steps: [{ duration_minutes: 2, speed_kmh: 3.2, incline_pct: 0 }], repeat_every_minutes: 20, note: "Two easy minutes every 20 lower blood sugar after meals." },
     { id: 5, name: "Brisk", steps: [{ duration_minutes: 30, speed_kmh: 5, incline_pct: 0 }], repeat_every_minutes: null, note: "Moderate walking toward the weekly 150 minutes." },
     { id: 6, name: "VO2 max", steps: [{ duration_minutes: 5, speed_kmh: 4.5, incline_pct: 0 }, { duration_minutes: 4, speed_kmh: 6, incline_pct: 10 }, { duration_minutes: 3, speed_kmh: 4, incline_pct: 0 }, { duration_minutes: 4, speed_kmh: 6, incline_pct: 10 }, { duration_minutes: 3, speed_kmh: 4, incline_pct: 0 }, { duration_minutes: 4, speed_kmh: 6, incline_pct: 10 }, { duration_minutes: 3, speed_kmh: 4, incline_pct: 0 }, { duration_minutes: 4, speed_kmh: 6, incline_pct: 10 }, { duration_minutes: 3, speed_kmh: 4, incline_pct: 0 }, { duration_minutes: 3, speed_kmh: 3, incline_pct: 0 }], repeat_every_minutes: null, note: "Four hard 4-minute climbs with easy walks between train VO2 max." },
+    { id: 7, name: "VO2 zone", steps: [{ duration_minutes: 5, speed_kmh: 4.5, incline_pct: 0 }, { duration_minutes: 4, speed_kmh: 6, incline_pct: 10, zone: { low_pct: 85, high_pct: 95 } }, { duration_minutes: 3, speed_kmh: 4, incline_pct: 0 }, { duration_minutes: 4, speed_kmh: 6, incline_pct: 10, zone: { low_pct: 85, high_pct: 95 } }, { duration_minutes: 3, speed_kmh: 4, incline_pct: 0 }, { duration_minutes: 4, speed_kmh: 6, incline_pct: 10, zone: { low_pct: 85, high_pct: 95 } }, { duration_minutes: 3, speed_kmh: 4, incline_pct: 0 }, { duration_minutes: 4, speed_kmh: 6, incline_pct: 10, zone: { low_pct: 85, high_pct: 95 } }, { duration_minutes: 3, speed_kmh: 4, incline_pct: 0 }, { duration_minutes: 3, speed_kmh: 3, incline_pct: 0 }], repeat_every_minutes: null, note: "Four 4-minute climbs held at 85 to 95 % of max heart rate." },
   ],
   active_program: {
     program_id: 2,
@@ -251,6 +252,8 @@ export const snapshot: AppSnapshot = {
     bpm: null,
     scanning: false,
     found: [],
+    max_bpm: 190,
+    max_bpm_set: false,
   },
 };
 

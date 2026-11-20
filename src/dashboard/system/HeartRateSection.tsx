@@ -4,8 +4,12 @@ import { dispatch } from "../../ipc";
 import { useAppSnapshot } from "../../state/useAppState";
 import { StatusPill } from "../StatusPill";
 import { GhostButton, Hint, NeonButton } from "../ui";
-import { Section } from "./fields";
+import { NumberField, Section } from "./fields";
 import { heartRatePill, heartRateTone } from "./heartRate";
+
+/** Rust accepts 120 to 230 bpm (`heart_rate/worker.rs` `valid_max`): outside that is a typing slip. */
+const MAX_BPM_MIN = 120;
+const MAX_BPM_MAX = 230;
 
 /**
  * System -> Heart rate: pick a Bluetooth heart rate sensor, such as a watch
@@ -83,6 +87,19 @@ export function HeartRateSection() {
         {!heart.sensor && heart.found.length === 0 && !scanning && (
           <Hint>Heart rate stays off until you pick a sensor; on a Garmin watch, switch on Broadcast Heart Rate first.</Hint>
         )}
+        <NumberField
+          label="Max heart rate"
+          unit="bpm"
+          value={heart.max_bpm}
+          min={MAX_BPM_MIN}
+          max={MAX_BPM_MAX}
+          hint={
+            heart.max_bpm_set
+              ? "Program heart zones are a percentage of the max heart rate."
+              : `Program heart zones use ${heart.max_bpm} bpm, the estimate for age 30, until you set your own max.`
+          }
+          onCommit={(bpm) => dispatch({ type: "heart_rate_max_set", bpm })}
+        />
       </div>
     </Section>
   );
