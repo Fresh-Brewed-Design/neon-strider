@@ -1,0 +1,1 @@
+- GROUND_TRUTH saves a measured point by itself, averaging it into the point at that speed. The result says so in one sentence and offers UNDO, which puts the point back as it was before the run, and TAP AGAIN. SAVE POINT, AVERAGE IN and Discard are gone.

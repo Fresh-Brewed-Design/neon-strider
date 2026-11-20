@@ -148,7 +148,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?autoinstall=off`: "Install automatically" switched off (with `?update=...`)
 - `?blink=squeeze|open`: the guided blink step during an eye-break cooldown (CLOSE by default)
 - `?call`: on a call, the belt held at the quiet speed (the HUD preview also shows the toast)
-- `?calwizard`: the Labs guided calibration (GROUND_TRUTH) with a 280 cm belt loop; `=belt` the BELT_LOOP step, `=tapping|dropped` a tap run five passes in or with a dropped tap and a restart note, `=measured` the plain-words result, `=sweep|sweeprun` RUN ALL between speeds or tapping, `=oldpoint` a point stored below the factor limit, `=targets` an added 3.5 km/h and a stored 14.0 km/h outside the range
+- `?calwizard`: the Labs guided calibration (GROUND_TRUTH) with a 280 cm belt loop; `=belt` the BELT_LOOP step, `=tapping|dropped` a tap run five passes in or with a dropped tap and a restart note, `=measured` the plain-words result with the point already saved (UNDO, TAP AGAIN), `=sweep|sweeprun` RUN ALL between speeds or tapping, `=oldpoint` a point stored below the factor limit, `=targets` an added 3.5 km/h and a stored 14.0 km/h outside the range
 - `?connect=fail`: connecting from the connect dialog fails
 - `?custom`: the HUD sits where it was dragged
 - `?daily=12.34`: today's km (DAILY_TOTAL)
