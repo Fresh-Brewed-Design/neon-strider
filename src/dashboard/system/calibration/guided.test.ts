@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calibrationRows, chrono } from "./guided";
+import { calibrationRows, chrono, runRowFor } from "./guided";
 
 const point = (speed: number) => ({ speed, stride_length_cm: 70, distance_scale: 0.9 });
 
@@ -27,5 +27,14 @@ describe("chrono", () => {
     expect(chrono(7.25)).toBe("0:07.3");
     expect(chrono(83.4)).toBe("1:23.4");
     expect(chrono(59.96)).toBe("1:00.0");
+  });
+});
+
+describe("runRowFor", () => {
+  it("finds the row of a run's target, saved point or not", () => {
+    const rows = calibrationRows([point(2.96)], [3, 4]);
+    expect(runRowFor(rows, 2.96)?.index).toBe(0);
+    expect(runRowFor(rows, 4)?.targetKmh).toBe(4);
+    expect(runRowFor(rows, 5)).toBeNull();
   });
 });

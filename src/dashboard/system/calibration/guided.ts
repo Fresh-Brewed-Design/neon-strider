@@ -26,6 +26,16 @@ export function calibrationRows(points: CalibrationPoint[], targets: number[]): 
   return rows.sort((a, b) => a.targetKmh - b.targetKmh);
 }
 
+/** The row an open run belongs to: the one nearest its target speed. */
+export function runRowFor(rows: CalibrationRow[], targetKmh: number): CalibrationRow | null {
+  let best: CalibrationRow | null = null;
+  for (const r of rows) {
+    const d = Math.abs(r.targetKmh - targetKmh);
+    if (d <= SAME_SPEED_KMH && (!best || d < Math.abs(best.targetKmh - targetKmh))) best = r;
+  }
+  return best;
+}
+
 /** Seconds as m:ss.t for the run's clock. */
 export function chrono(seconds: number): string {
   const tenths = Math.round(Math.max(0, seconds) * 10);

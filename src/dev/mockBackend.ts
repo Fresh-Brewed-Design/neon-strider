@@ -621,6 +621,7 @@ export function previewSettings() {
 }
 if (calFlag !== null) {
   snapshot.calibration.wizard_enabled = true;
+  if (calFlag === "counting" || calFlag === "counted") Object.assign(snapshot.deck, { raw_speed_kmh: 3, speed_kmh: 3.3 });
   if (calFlag === "counting") calRun(3, "counting", 23);
   if (calFlag === "counted") calRun(3, "counted", 62.4);
 }

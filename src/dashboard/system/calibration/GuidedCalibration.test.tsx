@@ -57,4 +57,24 @@ describe("GuidedCalibration", () => {
     expect(useTreadmillStore.getState().calibrationPoints).toEqual([point]);
     expect(dispatched()).toContainEqual({ type: "calibration_run_close" });
   });
+
+  it("shows a counting run from the snapshot without pressing RUN (dashboard reopened)", () => {
+    current = structuredClone(mock);
+    current.calibration.wizard_enabled = true;
+    current.calibration.run = { target_kmh: 4, phase: "counting", elapsed_s: 23, reported_kmh: null, result: null };
+    render(<GuidedCalibration />);
+    expect(screen.getByText("COUNT_WINDOW")).toBeTruthy();
+    expect(screen.getByText("0:23.0")).toBeTruthy();
+    expect(screen.getByText("DONE")).toBeTruthy();
+  });
+
+  it("shows a timed run waiting for its tally under the repeated point's row", () => {
+    current = structuredClone(mock);
+    current.calibration.wizard_enabled = true;
+    current.calibration.run = { target_kmh: 3, phase: "counted", elapsed_s: 62.4, reported_kmh: 3, result: null };
+    render(<GuidedCalibration />);
+    expect(screen.getByText("TALLY")).toBeTruthy();
+    expect(screen.getByText("BELT_LOOPS")).toBeTruthy();
+    expect(screen.getByText("REPLACE POINT")).toBeTruthy();
+  });
 });

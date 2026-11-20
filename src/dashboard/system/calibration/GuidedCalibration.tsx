@@ -8,12 +8,14 @@ import { useTreadmillStore } from "../../../store/treadmillStore";
 import { GhostButton, Hint, Label, NeonButton } from "../../ui";
 import { cx } from "../../util";
 import { INPUT_CLASS, NumberField } from "../fields";
-import { calibrationRows, chrono, type CalibrationRow } from "./guided";
+import { calibrationRows, chrono, runRowFor, type CalibrationRow } from "./guided";
 
 /**
  * Labs: the guided calibration. One row per speed; RUN (his press) sets the
  * belt to it, COUNT and DONE time a count of belt loops in Rust, and Rust
  * works out the point from what he counted. REPEAT re-runs one saved point.
+ * The run panel follows `snapshot.calibration.run`, so it is back where it was
+ * when the dashboard reopens mid-run.
  */
 export function GuidedCalibration() {
   const snap = useAppSnapshot();
@@ -21,17 +23,19 @@ export function GuidedCalibration() {
   const beltLength = useTreadmillStore((s) => s.beltLength);
   const updateSettings = useTreadmillStore((s) => s.updateSettings);
   const removePoint = useTreadmillStore((s) => s.removeCalibrationPoint);
-  const [active, setActive] = useState<CalibrationRow | null>(null);
+  // Which RUN was pressed, only for its status line; the open run itself is Rust's.
+  const [pressed, setPressed] = useState<number | null>(null);
   const runAction = useAction();
   const cal = snap?.calibration;
   if (!cal) return null;
 
-  const rows = calibrationRows(points, cal.limits.default_targets_kmh);
   const run = cal.run;
-  const isActive = (r: CalibrationRow) => run !== null && active !== null && Math.abs(active.targetKmh - r.targetKmh) < 0.01;
+  // The run's speed always has a row, even if its point was deleted mid-run.
+  const rows = calibrationRows(points, [...cal.limits.default_targets_kmh, ...(run ? [run.target_kmh] : [])]);
+  const runRow = run ? runRowFor(rows, run.target_kmh) : null;
 
   const start = (row: CalibrationRow) => {
-    setActive(row);
+    setPressed(row.targetKmh);
     void runAction.run(() => dispatch({ type: "calibration_run_start", target_kmh: row.targetKmh }));
   };
 
@@ -94,14 +98,14 @@ export function GuidedCalibration() {
                 )}
               </div>
             </div>
-            {active && Math.abs(active.targetKmh - row.targetKmh) < 0.01 && (
+            {pressed === row.targetKmh && (
               <ActionStatus
                 pending={runAction.pending && "Setting the belt speed…"}
                 error={runAction.error}
                 className="mt-2"
               />
             )}
-            {isActive(row) && run && (
+            {run && row === runRow && (
               <RunPanel
                 run={run}
                 row={row}
@@ -109,7 +113,7 @@ export function GuidedCalibration() {
                 rawKmh={snap.deck.raw_speed_kmh}
                 beltLength={beltLength}
                 onClosed={() => {
-                  setActive(null);
+                  setPressed(null);
                   runAction.reset();
                 }}
               />
