@@ -171,6 +171,7 @@ pub struct DeckSnapshot {
     pub incline_pct: f32,
     pub target_incline_level: u8,
     pub target_incline_pct: f32,
+    /// Calibrated, like `max_speed_kmh`: the belt's floor in km/h.
     pub min_speed_kmh: f32,
     /// Calibrated.
     pub max_speed_kmh: f32,

@@ -107,7 +107,7 @@ fn deck_snapshot(state: &OrchestratorState, max_incline_level: u8) -> DeckSnapsh
         incline_pct: incline_pct(state.hardware_incline, state),
         target_incline_level: target_incline,
         target_incline_pct: incline_pct(target_incline, state),
-        min_speed_kmh: state.min_speed,
+        min_speed_kmh: state.min_physical_speed(),
         max_speed_kmh: state.to_physical_speed(state.max_speed),
         max_incline_level,
         max_incline_pct: incline_pct(max_incline_level, state),
@@ -382,6 +382,8 @@ mod tests {
         assert_eq!(s.deck.raw_speed_kmh, 6.0);
         assert_eq!(s.deck.speed_kmh, 3.0);
         assert_eq!(s.deck.max_speed_kmh, 6.0);
+        // Both limits are calibrated: min_speed 0.6 (hardware) is 0.3 km/h.
+        assert!((s.deck.min_speed_kmh - 0.3).abs() < 1e-5);
     }
 
     #[test]

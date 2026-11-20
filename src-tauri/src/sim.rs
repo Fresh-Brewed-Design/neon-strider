@@ -1051,4 +1051,32 @@ mod tests {
         assert!(r.deck.belt_still() && r.deck.status_code() == 0);
         assert_eq!(r.finalised.len(), 1, "the walk was saved once");
     }
+
+    /// Issue #61: `min_speed` is the deck's floor in hardware units. With a
+    /// calibration at scale 0.5 there, 0.6 hardware km/h is 1.2 km/h on the
+    /// belt; a speed set under that ends at the floor byte (0.6 on the deck),
+    /// never below it.
+    #[test]
+    fn a_speed_set_under_the_calibrated_floor_runs_at_the_floor_byte() {
+        let mut r = Rig::new();
+        r.state.sync_config(&crate::engine::slow_floor_config());
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(6.0);
+        assert!(r.deck.running_at(START_KMH), "{} km/h", r.deck.speed_kmh());
+        r.set_speed(3.0);
+        r.run(15.0);
+        // 3.0 km/h at the interpolated scale (about 0.59) is 1.8 on the deck.
+        assert!(r.deck.running_at(1.8), "{} km/h", r.deck.speed_kmh());
+        // 0.8 km/h is above the raw 0.6 but under the belt's 1.2 km/h floor.
+        r.set_speed(0.8);
+        let mut lowest = f32::MAX;
+        for _ in 0..20 {
+            r.run(1.0);
+            lowest = lowest.min(r.deck.speed_kmh());
+        }
+        assert!(r.deck.running_at(0.6), "{} km/h", r.deck.speed_kmh());
+        assert!(lowest >= 0.6 - 0.05, "dipped to {lowest} km/h");
+        assert_eq!(r.controls_since(0, Control::Pause), 0);
+    }
 }

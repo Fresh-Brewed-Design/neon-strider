@@ -401,6 +401,22 @@ fn physical_axis_velocity(p: &CalibrationPoint) -> f32 {
     p.speed / scale
 }
 
+/// Tests: a calibration whose scale isn't 1 at the deck's floor. The default
+/// `min_speed` of 0.6 (hardware) runs the belt at 1.2 km/h (scale 0.5 there,
+/// 0.8 at hw 6.0 = 7.5 km/h).
+#[cfg(test)]
+pub(crate) fn slow_floor_config() -> persistence::AppConfig {
+    let point = |speed: f32, distance_scale: f32| CalibrationPoint {
+        speed,
+        stride_length_cm: 60.0,
+        distance_scale,
+    };
+    persistence::AppConfig {
+        calibration_points: vec![point(0.6, 0.5), point(6.0, 0.8)],
+        ..Default::default()
+    }
+}
+
 /// Hardware speed and incline bytes for a physical target, clamped to the
 /// deck's `max_hw_speed`. Standalone, so the transmit path, the manual nudges
 /// and the tests share it.
@@ -535,6 +551,12 @@ impl OrchestratorState {
         )
         .unwrap_or(1.0)
         .clamp(0.5, 2.5)
+    }
+
+    /// The slowest calibrated km/h the belt runs at: `min_speed` is the deck's
+    /// own floor in hardware units, so every physical speed is bounded by this.
+    pub fn min_physical_speed(&self) -> f32 {
+        self.to_physical_speed(self.min_speed)
     }
 
     /// Calibrated km/h for a hardware speed.
@@ -1126,8 +1148,8 @@ impl OrchestratorState {
         self.do_start(now);
     }
 
-    /// Start or resume: prime the handshake, at no less than `min_speed` so the
-    /// belt actually moves.
+    /// Start or resume: prime the handshake, at no less than the belt's floor
+    /// (`min_physical_speed`) so the belt actually moves.
     /// After a program ended on a still belt, it starts at the speed from
     /// before the program (`engage_speed`), at the incline shown.
     fn do_start(&mut self, now: Instant) {
@@ -1139,9 +1161,10 @@ impl OrchestratorState {
             incline: 0,
         });
         let engage = self.engage_speed.take();
-        if current.speed < self.min_speed {
+        let floor = self.min_physical_speed();
+        if current.speed < floor {
             self.manual_intent = Some(ControlIntent {
-                speed: engage.unwrap_or(self.min_speed).max(self.min_speed),
+                speed: engage.unwrap_or(floor).max(floor),
                 incline: current.incline,
             });
         }
@@ -1162,11 +1185,12 @@ impl OrchestratorState {
             speed: 0.0,
             incline: 0,
         });
-        if current.speed >= self.min_speed {
+        let floor = self.min_physical_speed();
+        if current.speed >= floor {
             return None;
         }
         self.engage_speed.map(|speed| ControlIntent {
-            speed: speed.max(self.min_speed),
+            speed: speed.max(floor),
             incline: current.incline,
         })
     }
@@ -1345,7 +1369,7 @@ impl OrchestratorState {
             now_ms,
             keys,
             base_kmh: base,
-            min_kmh: self.min_speed,
+            min_kmh: self.min_physical_speed(),
             step_kmh: self.hw_step_kmh(base),
             running: self.last_status == MachineStatus::Running && !self.stop_requested,
             quiet,
@@ -1391,7 +1415,7 @@ impl OrchestratorState {
     }
 
     /// The speed and incline to send now: the base eased by Neural flow, held
-    /// to at least `min_speed` while moving.
+    /// to at least the belt's floor (`min_physical_speed`) while moving.
     pub fn resolve_target(&self) -> (f32, u8, TargetSource) {
         let (speed, incline, source) = self.resolve_base(self.now());
         // A speed set by hand since Neural flow's last tick wins at once; quiet
@@ -1402,8 +1426,9 @@ impl OrchestratorState {
             crate::snapshot::calls::quiet_active(),
         );
         // The top speed is enforced in `calculate_hardware_bytes`.
-        let speed = if speed > 0.0 && speed < self.min_speed {
-            self.min_speed
+        let floor = self.min_physical_speed();
+        let speed = if speed > 0.0 && speed < floor {
+            floor
         } else {
             speed
         };
@@ -2303,7 +2328,49 @@ mod tests {
         assert_eq!(state.pending_control, None);
         assert_eq!(state.handshake_step, HandshakeStep::Priming);
         // A start is never below the slowest speed.
-        assert_eq!(state.manual_intent.map(|i| i.speed), Some(state.min_speed));
+        assert_eq!(
+            state.manual_intent.map(|i| i.speed),
+            Some(state.min_physical_speed())
+        );
+    }
+
+    /// The belt's floor is `min_speed` in hardware units; with a calibration
+    /// whose scale isn't 1 the physical floor differs, and every clamp must
+    /// land on the deck's own floor byte, not below it (issue #61).
+    #[test]
+    fn the_speed_floor_is_the_deck_floor_through_the_calibration() {
+        let mut state = reported();
+        state.sync_config(&slow_floor_config());
+        let floor = state.min_physical_speed();
+        assert!((floor - 1.2).abs() < 1e-4, "{floor}");
+        let floor_byte = (state.min_speed * 10.0).round() as u8;
+        assert_eq!(floor_byte, 6);
+        let byte = |s: &OrchestratorState, kmh: f32| {
+            calculate_hardware_bytes(kmh, 0, &s.calibration_points, s.max_speed).0
+        };
+        assert_eq!(byte(&state, floor), floor_byte);
+
+        // A positive speed under the floor is sent as the floor byte.
+        state.manual_intent = Some(ControlIntent {
+            speed: 0.8,
+            incline: 0,
+        });
+        let (target, _, _) = state.resolve_target();
+        assert_eq!(target, floor);
+        assert_eq!(byte(&state, target), floor_byte);
+
+        // Engage on a still belt starts at the floor, and the engage preview
+        // never shows less.
+        state.manual_intent = Some(ControlIntent {
+            speed: 1.0,
+            incline: 0,
+        });
+        state.last_status = MachineStatus::Paused;
+        state.trigger_action(DeckAction::ToggleStart);
+        assert_eq!(state.manual_intent.map(|i| i.speed), Some(floor));
+        state.manual_intent = None;
+        state.engage_speed = Some(0.9);
+        assert_eq!(state.engage_preview().map(|i| i.speed), Some(floor));
     }
 
     #[test]
@@ -2795,7 +2862,11 @@ mod tests {
             assert!(!state.hold_auto_start, "{status:?}");
             let m = state.manual_intent.unwrap();
             assert!((m.speed - 0.1).abs() < 0.01, "{status:?}: {m:?}");
-            assert_eq!(state.resolve_target().0, state.min_speed, "{status:?}");
+            assert_eq!(
+                state.resolve_target().0,
+                state.min_physical_speed(),
+                "{status:?}"
+            );
             let sent = kinds(&mut engine, &mut state, t0 + Duration::from_secs(3), 40);
             assert!(
                 sent.contains(&PacketKind::HandshakeStart),
