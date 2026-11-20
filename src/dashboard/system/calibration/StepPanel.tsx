@@ -1,34 +1,8 @@
-import { useEffect, useRef } from "react";
 import { dispatch, type CalibrationLimits, type CalibrationRunView, type StepRunView } from "../../../ipc";
 import { ActionStatus } from "../../../components/ActionStatus";
 import { useAction } from "../../../components/useAction";
-import { useTreadmillStore } from "../../../store/treadmillStore";
-import type { CalibrationPoint } from "../../../store/types";
 import { GhostButton, Hint, Label, NeonButton } from "../../ui";
 import { chrono } from "./guided";
-
-/** A saved point this close to a speed is that speed's point (as in `guided.ts`). */
-const SAME_SPEED_KMH = 0.05;
-
-/** Store `point` at its speed: replace the point there, or add one. */
-function usePutPoint() {
-  const points = useTreadmillStore((s) => s.calibrationPoints);
-  const add = useTreadmillStore((s) => s.addCalibrationPoint);
-  const update = useTreadmillStore((s) => s.updateCalibrationPoint);
-  const remove = useTreadmillStore((s) => s.removeCalibrationPoint);
-  const indexAt = (kmh: number) => points.findIndex((p) => Math.abs(p.speed - kmh) <= SAME_SPEED_KMH);
-  return {
-    put: (point: CalibrationPoint) => {
-      const i = indexAt(point.speed);
-      if (i >= 0) update(i, point);
-      else add(point);
-    },
-    removeAt: (kmh: number) => {
-      const i = indexAt(kmh);
-      if (i >= 0) remove(i);
-    },
-  };
-}
 
 /** The line under the step counter about taps dropped against the median, if any. */
 function droppedSteps(dropped: number): string | null {
@@ -40,13 +14,15 @@ function droppedSteps(dropped: number): string | null {
  * GAIT_SYNC, the footstep phase after a belt run is measured (Rust:
  * `calibration/steps.rs`). TAP STEPS starts it; TAP, Space and Alt+Space then
  * time footsteps instead of the belt mark, and Rust ends it by itself once the
- * steps agree. The stride is stored by itself, with UNDO; SKIP leaves the
- * stride as it was. Nothing here moves the belt.
+ * steps agree. Rust saves the stride by itself, the same way as the belt's
+ * point, with UNDO; SKIP leaves the stride as it was. Nothing here moves the belt.
  */
 export function StepPanel({ run, limits }: { run: CalibrationRunView; limits: CalibrationLimits }) {
   const steps = run.steps;
   const start = useAction();
   const kmh = run.target_kmh.toFixed(1);
+  // The stride joins the point the belt run saved; once UNDO took that back, TAP AGAIN on the belt comes first.
+  if (steps === null && !run.saved) return null;
   return (
     <div className="space-y-2 rounded border border-neon-cyan/20 bg-white/[0.02] p-2">
       <Label className="text-neon-yellow">GAIT_SYNC</Label>
@@ -135,45 +111,30 @@ function StepTapping({ steps, limits }: { steps: StepRunView; limits: Calibratio
   );
 }
 
-/** The measured stride: stored by itself once, then UNDO puts the point back. */
+/** The measured stride, saved by Rust, with UNDO and TAP AGAIN. */
 function StepResult({ steps, kmh }: { steps: StepRunView; kmh: number }) {
-  const { put, removeAt } = usePutPoint();
   const undo = useAction();
   const again = useAction();
   const r = steps.result;
-  const toSave = steps.to_save;
-  // Rust says whether the stride is stored yet, so a reopened dashboard
-  // never stores it twice; `sent` covers the moment before Rust hears back.
-  const sent = useRef(false);
-  useEffect(() => {
-    if (!toSave || steps.saved || steps.undone || sent.current) return;
-    sent.current = true;
-    put(toSave);
-    void dispatch({ type: "calibration_steps_saved" });
-  }, [toSave, steps.saved, steps.undone, put]);
-
   if (!r) return null;
   const speed = kmh.toFixed(1);
-  const doUndo = () =>
-    void undo.run(async () => {
-      if (steps.before) put(steps.before);
-      else removeAt(kmh);
-      return dispatch({ type: "calibration_steps_undo" });
-    });
   return (
     <div className="space-y-2">
       <div className="font-digital text-sm text-white">
         {steps.undone
-          ? steps.before
-            ? `UNDO put back the stride at ${speed} km/h as it was.`
-            : `UNDO removed the point at ${speed} km/h.`
-          : `Stride ${r.point.stride_length_cm.toFixed(1)} cm at ${(r.cadence_spm ?? 0).toFixed(0)} steps a minute, saved for ${speed} km/h.`}
+          ? `UNDO put back the point at ${speed} km/h as the belt run left it.`
+          : `Stride ${r.point.stride_length_cm.toFixed(1)} cm at ${(r.cadence_spm ?? 0).toFixed(0)} steps a minute for ${speed} km/h; saved.`}
       </div>
       <div className="flex gap-2">
-        {!steps.undone && (
-          <GhostButton disabled={undo.pending || !steps.saved} onClick={doUndo}>
+        {steps.saved && (
+          <NeonButton
+            tone="magenta"
+            className="flex-1 py-2"
+            disabled={undo.pending}
+            onClick={() => void undo.run(() => dispatch({ type: "calibration_steps_undo" }))}
+          >
             UNDO
-          </GhostButton>
+          </NeonButton>
         )}
         <GhostButton
           disabled={again.pending}
@@ -182,7 +143,8 @@ function StepResult({ steps, kmh }: { steps: StepRunView; kmh: number }) {
           TAP AGAIN
         </GhostButton>
       </div>
-      <ActionStatus pending={undo.pending || again.pending} error={undo.error ?? again.error} />
+      <ActionStatus pending={undo.pending} error={undo.error} />
+      <ActionStatus pending={again.pending} error={again.error} />
     </div>
   );
 }

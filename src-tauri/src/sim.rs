@@ -1749,15 +1749,19 @@ mod tests {
             crate::calibration::CalibrationPhase::Measured
         );
 
-        // A step every 0.6 s at 3.0 km/h: 100 a minute, 50 cm.
+        // A step every 0.6 s at 3.0 km/h: 100 a minute, 50 cm. The footstep
+        // that settles it saves the stride by itself, in the points alone.
+        run.autosave(&mut r.state).unwrap();
         let mark = r.mark();
-        run.start_steps().unwrap();
+        run.start_steps(&mut r.state).unwrap();
         assert!(run.listening(), "footsteps are taps too");
+        let mut saved = None;
         for _ in 0..21 {
-            run.step_tap(r.t, r.state.hardware_speed, &r.state.calibration_points);
+            saved = saved.or(run.step_tap(r.t, &mut r.state));
             r.run(0.6);
             run.sample(r.state.hardware_speed);
         }
+        assert!(saved.is_some(), "saved by itself");
         assert!(
             !moves_belt(&r.commands_since(mark)),
             "{:?}",
@@ -1772,18 +1776,24 @@ mod tests {
         assert!((res.point.stride_length_cm - 50.0).abs() < 1.0);
         assert!(!run.listening());
 
-        // TAP AGAIN on the steps, a few footsteps, then STOP.
-        run.start_steps().unwrap();
+        // UNDO and TAP AGAIN on the steps change only the points.
+        let mark = r.mark();
+        run.steps_undo(&mut r.state).unwrap();
+        run.start_steps(&mut r.state).unwrap();
         for _ in 0..5 {
-            run.step_tap(r.t, r.state.hardware_speed, &r.state.calibration_points);
+            run.step_tap(r.t, &mut r.state);
             r.run(0.6);
         }
+        assert!(!moves_belt(&r.commands_since(mark)));
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+
+        // STOP mid-steps, then footsteps on the still belt.
         r.press(crate::engine::DeckAction::Stop);
         r.run(10.0);
         assert!(r.deck.belt_still());
         let mark = r.mark();
         for _ in 0..5 {
-            run.step_tap(r.t, r.state.hardware_speed, &r.state.calibration_points);
+            run.step_tap(r.t, &mut r.state);
             r.run(0.6);
             run.sample(r.state.hardware_speed);
         }
@@ -1821,7 +1831,7 @@ mod tests {
         assert!(crate::calibration::tap_listening());
         let mark = r.mark();
         for _ in 0..4 {
-            crate::calibration::tap(&r.state, r.t).unwrap();
+            crate::calibration::tap(&mut r.state, r.t).unwrap();
             r.run(3.6);
         }
         assert!(!moves_belt(&r.commands_since(mark)));

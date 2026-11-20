@@ -754,8 +754,12 @@ pub enum Command {
     /// the point appears in `calibration.run.result` once the taps agree.
     /// Never moves the belt.
     CalibrationTap,
-    /// TAP AGAIN: clear the run's taps and result. The belt keeps going.
+    /// The point a finished run measures is saved by itself. TAP AGAIN: take
+    /// that point back, clear the run's taps and result. The belt keeps going.
     CalibrationTapReset,
+    /// UNDO: put the saved points back as they were before this run. Stays
+    /// available until the next run starts or the run closes.
+    CalibrationUndo,
     /// BELT_LOOP: the belt loop's length in cm, kept for this treadmill.
     CalibrationBeltSet {
         cm: f32,
@@ -785,13 +789,13 @@ pub enum Command {
     /// End the sweep and any run. The belt keeps going.
     CalibrationSweepEnd,
     /// TAP STEPS (or TAP AGAIN on the steps): start the footstep phase on
-    /// the measured run; TAP then times footsteps. Never moves the belt.
+    /// the measured run; TAP then times footsteps. TAP AGAIN takes back a
+    /// stride the last one saved. Never moves the belt.
     CalibrationStepsStart,
     /// SKIP on the footsteps: the stride stays as it was.
     CalibrationStepsSkip,
-    /// The window stored the footstep result's point (`run.steps.to_save`).
-    CalibrationStepsSaved,
-    /// UNDO on the stride: the window put back `run.steps.before`.
+    /// The stride a settled footstep phase measures is saved by itself.
+    /// UNDO: put the point back as the belt run left it.
     CalibrationStepsUndo,
 
     // ---- GHOST_POD and WRIST_LINK (Labs) ----

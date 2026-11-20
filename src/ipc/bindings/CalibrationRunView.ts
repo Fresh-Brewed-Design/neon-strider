@@ -47,4 +47,12 @@ result: CalibrationResult | null,
 /**
  * The footstep phase, once started on the measured run.
  */
-steps: StepRunView | null, };
+steps: StepRunView | null, 
+/**
+ * The result is saved, and UNDO can put the points back.
+ */
+saved: boolean, 
+/**
+ * UNDO was pressed: the result is not saved.
+ */
+undone: boolean, };

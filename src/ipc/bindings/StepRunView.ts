@@ -39,20 +39,10 @@ stride_cm: number | null, note: string | null,
  */
 result: CalibrationResult | null, 
 /**
- * The point to store: the saved point at the speed with the stride
- * averaged in and its factor kept, or a new point.
- */
-to_save: { speed: number, stride_length_cm: number, distance_scale: number, runs: number } | null, 
-/**
- * The point at the speed before the stride was saved, for UNDO; none
- * when there was no point.
- */
-before: { speed: number, stride_length_cm: number, distance_scale: number, runs: number } | null, 
-/**
- * The stride is stored.
+ * The stride is saved, and UNDO can put the point back.
  */
 saved: boolean, 
 /**
- * UNDO put the point back.
+ * UNDO put the point back: the stride is not saved.
  */
 undone: boolean, };

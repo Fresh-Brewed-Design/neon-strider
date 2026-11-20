@@ -52,6 +52,8 @@ describe("deckVerdict", () => {
     expect(deckVerdict(3, 2.82, 3)).toBe("At 3.0 km/h the deck runs 6.0 % slow.");
     expect(deckVerdict(4, 4.6, 4)).toBe("At 4.0 km/h the deck runs 15 % fast.");
     expect(deckVerdict(3, 3.01, 3)).toBe("At 3.0 km/h the deck matches the belt.");
+    expect(deckVerdict(3, 2.82, 3, "saved")).toBe("At 3.0 km/h the deck runs 6.0 % slow; saved.");
+    expect(deckVerdict(3, 3.01, 3, "undone")).toBe("At 3.0 km/h the deck matches the belt; undone.");
   });
 });
 

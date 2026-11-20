@@ -6,13 +6,14 @@
 //! and right steps alternate two slightly different times, and a median
 //! picks one foot's time whenever the count is uneven, while the mean sits
 //! between the two. The stride is the belt's measured speed over that cadence,
-//! saved for the run's speed with the belt's factor left as it is
-//! (`averaged_point(.., factor_counted = false)`). Tapping only reads the
-//! deck's speed; nothing here ever sends anything to the treadmill.
+//! saved by itself for the run's speed with the belt's factor left as it is
+//! (`averaged_point(.., factor_counted = false)`), through the same save and
+//! UNDO as a belt run (`with_result_saved`, `with_save_undone`). Tapping only
+//! reads the deck's speed; nothing here ever sends anything to the treadmill.
 
 use super::tap::{self, Rules};
 use super::{
-    averaged_point, in_range, summarize_samples, CalibrationPhase, CalibrationResult,
+    averaged_point, in_range, summarize_samples, CalibrationPhase, CalibrationResult, SavedPoint,
     MAX_STRIDE_CM, MIN_STRIDE_CM, SAME_SPEED_KMH, STOPPED_BELOW_KMH,
 };
 use crate::protocol::CalibrationPoint;
@@ -59,18 +60,16 @@ pub fn stride_from(real_kmh: f32, step_s: f64) -> Result<(f32, f32), String> {
 /// One step run, kept inside the belt run it follows.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StepRun {
-    /// The belt run's result as it was before any step changed it: the real
-    /// speed the stride comes from, and what UNDO puts back.
-    pub(super) belt: CalibrationResult,
+    /// The belt run's result: the real speed the stride comes from.
+    belt: CalibrationResult,
     taps: Vec<Instant>,
     /// The deck's reported speed while the user taps.
     samples: Vec<f32>,
     note: Option<String>,
     result: Option<CalibrationResult>,
-    /// The saved point at the run's speed before this stride was saved; none
-    /// when the speed had no point.
-    before: Option<CalibrationPoint>,
-    saved: bool,
+    /// What the stride's save wrote, until UNDO puts it back.
+    saved: Option<SavedPoint>,
+    /// UNDO was pressed on this stride.
     undone: bool,
 }
 
@@ -82,8 +81,7 @@ impl StepRun {
             samples: vec![],
             note: None,
             result: None,
-            before: None,
-            saved: false,
+            saved: None,
             undone: false,
         }
     }
@@ -94,10 +92,6 @@ impl StepRun {
 
     pub fn result(&self) -> Option<&CalibrationResult> {
         self.result.as_ref()
-    }
-
-    pub fn undone(&self) -> bool {
-        self.undone
     }
 
     fn tap_seconds(&self) -> Vec<f64> {
@@ -203,41 +197,33 @@ impl StepRun {
         let saved = points
             .iter()
             .find(|p| (p.speed - target_kmh).abs() <= SAME_SPEED_KMH);
-        // The stride joins the saved point; its factor stays as it is.
-        r.averaged = saved.map(|s| averaged_point(s, &r, false));
+        // The stride joins the saved point; its factor stays as it is. The
+        // belt run already counted this run when it saved, so the count of
+        // runs stays too.
+        r.averaged = saved.map(|s| CalibrationPoint {
+            runs: s.runs,
+            ..averaged_point(s, &r, false)
+        });
         log::info!(
             "Calibration steps at {target_kmh:.1} km/h measured: {cadence_spm:.0} steps a minute, stride {stride_cm:.1} cm over {} steps",
             self.taps.len()
         );
-        self.before = saved.cloned();
         self.result = Some(r);
         self.note = None;
     }
 
-    /// The point the step result stores: the saved point with the stride
-    /// averaged in, or a new point at the belt's factor.
-    pub fn to_save(&self) -> Option<CalibrationPoint> {
-        self.result
-            .as_ref()
-            .map(|r| r.averaged.clone().unwrap_or_else(|| r.point.clone()))
+    /// The stride's save wrote `saved`.
+    pub(super) fn set_saved(&mut self, saved: SavedPoint) {
+        self.saved = Some(saved);
     }
 
-    /// The stride was stored (the window wrote `to_save`).
-    pub fn mark_saved(&mut self) -> Result<(), String> {
-        if self.result.is_none() {
-            return Err("Tap each footstep first.".into());
-        }
-        self.saved = true;
-        Ok(())
+    /// What the stride's save wrote, taken for UNDO.
+    pub(super) fn take_saved(&mut self) -> Option<SavedPoint> {
+        self.saved.take()
     }
 
-    /// UNDO: the point goes back to `before`.
-    pub fn undo(&mut self) -> Result<(), String> {
-        if !self.saved || self.undone {
-            return Err("No saved stride to undo.".into());
-        }
+    pub(super) fn mark_undone(&mut self) {
         self.undone = true;
-        Ok(())
     }
 
     pub fn view(&self, now: Instant) -> StepRunView {
@@ -264,9 +250,7 @@ impl StepRun {
                 .map(|m| (self.belt.real_kmh as f64 / 3.6 * m * 100.0) as f32),
             note: self.note.clone(),
             result: self.result.clone(),
-            to_save: self.to_save(),
-            before: self.before.clone(),
-            saved: self.saved,
+            saved: self.saved.is_some(),
             undone: self.undone,
         }
     }
@@ -293,21 +277,9 @@ pub struct StepRunView {
     pub note: Option<String>,
     /// The measured stride, cadence and point, once the steps agree.
     pub result: Option<CalibrationResult>,
-    /// The point to store: the saved point at the speed with the stride
-    /// averaged in and its factor kept, or a new point.
-    #[ts(
-        type = "{ speed: number, stride_length_cm: number, distance_scale: number, runs: number } | null"
-    )]
-    pub to_save: Option<CalibrationPoint>,
-    /// The point at the speed before the stride was saved, for UNDO; none
-    /// when there was no point.
-    #[ts(
-        type = "{ speed: number, stride_length_cm: number, distance_scale: number, runs: number } | null"
-    )]
-    pub before: Option<CalibrationPoint>,
-    /// The stride is stored.
+    /// The stride is saved, and UNDO can put the point back.
     pub saved: bool,
-    /// UNDO put the point back.
+    /// UNDO put the point back: the stride is not saved.
     pub undone: bool,
 }
 
@@ -398,9 +370,7 @@ mod tests {
         assert_eq!(r.point.distance_scale, belt().point.distance_scale);
         assert_eq!(r.point.speed, 3.0);
         assert!(!s.listening());
-        // No saved point: a new one at the belt's factor is stored.
-        assert_eq!(v.to_save, Some(r.point));
-        assert_eq!(v.before, None);
+        assert_eq!(r.averaged, None, "no saved point at 3.0 km/h");
     }
 
     #[test]
@@ -417,11 +387,10 @@ mod tests {
             &[pt(4.0, 80.0, 1.1, 1), saved.clone()],
         );
         let v = s.view(t);
-        let p = v.to_save.unwrap();
+        let p = v.result.unwrap().averaged.unwrap();
         assert_eq!(p.distance_scale, 0.9, "the factor stays");
         assert!((p.stride_length_cm - (70.0 + 45.0) / 2.0).abs() < 1e-3);
-        assert_eq!(p.runs, 2);
-        assert_eq!(v.before, Some(saved));
+        assert_eq!(p.runs, saved.runs, "the belt save counted the run");
     }
 
     #[test]
@@ -491,19 +460,5 @@ mod tests {
         s.tap(t, 0.0, 3.0, &[]);
         assert!(s.view(t).note.unwrap().contains("not moving"));
         assert_eq!(s.view(t).steps, 0);
-    }
-
-    #[test]
-    fn undo_needs_a_saved_stride_and_happens_once() {
-        let t = Instant::now();
-        let mut s = StepRun::new(belt());
-        assert!(s.mark_saved().is_err(), "nothing measured yet");
-        steps(&mut s, t, 0.6, 21, 3.0, &[]);
-        assert!(s.undo().is_err(), "not saved yet");
-        s.mark_saved().unwrap();
-        s.undo().unwrap();
-        assert!(s.undo().is_err());
-        let v = s.view(t);
-        assert!(v.saved && v.undone);
     }
 }

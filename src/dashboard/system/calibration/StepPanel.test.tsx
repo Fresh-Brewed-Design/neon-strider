@@ -43,8 +43,6 @@ function steps(view: Partial<StepRunView> = {}): StepRunView {
     stride_cm: null,
     note: null,
     result: null,
-    to_save: null,
-    before: null,
     saved: false,
     undone: false,
     ...view,
@@ -64,11 +62,13 @@ function measuredRun(s: StepRunView | null): CalibrationRunView {
     reported_kmh: 3,
     note: null,
     result: belt,
+    saved: true,
+    undone: false,
     steps: s,
   };
 }
 
-const stepPoint = { speed: 3, stride_length_cm: 56.5, distance_scale: 0.9, runs: 2 };
+const stepPoint = { speed: 3, stride_length_cm: 56.5, distance_scale: 0.9, runs: 1 };
 const stepResult: CalibrationResult = {
   ...belt,
   point: { ...belt.point, stride_length_cm: 45 },
@@ -117,56 +117,37 @@ describe("GAIT_SYNC", () => {
     expect(useTreadmillStore.getState().calibrationPoints).toEqual([saved]);
   });
 
-  it("a measured stride is saved by itself, once, and says so in plain words", async () => {
-    current!.calibration.run = measuredRun(
-      steps({ phase: "measured", steps: 22, kept: 21, result: stepResult, to_save: stepPoint, before: saved }),
-    );
-    const { rerender } = render(<GuidedCalibration />);
-    expect(screen.getByText("Stride 45.0 cm at 104 steps a minute, saved for 3.0 km/h.")).toBeTruthy();
-    expect(useTreadmillStore.getState().calibrationPoints).toEqual([stepPoint]);
-    expect(types().filter((t) => t === "calibration_steps_saved")).toHaveLength(1);
-    rerender(<GuidedCalibration />);
-    expect(types().filter((t) => t === "calibration_steps_saved")).toHaveLength(1);
-  });
-
-  it("a stride Rust already saw saved is not stored again (dashboard reopened)", () => {
-    useTreadmillStore.setState({ calibrationPoints: [] });
-    current!.calibration.run = measuredRun(
-      steps({ phase: "measured", result: stepResult, to_save: stepPoint, before: saved, saved: true }),
-    );
+  it("a measured stride says it is saved, and UNDO asks Rust to put the point back", async () => {
+    current!.calibration.run = measuredRun(steps({ phase: "measured", steps: 22, kept: 21, result: stepResult, saved: true }));
     render(<GuidedCalibration />);
-    expect(useTreadmillStore.getState().calibrationPoints).toEqual([]);
-    expect(types()).not.toContain("calibration_steps_saved");
-  });
-
-  it("UNDO puts the point back as it was before the stride", async () => {
-    useTreadmillStore.setState({ calibrationPoints: [stepPoint] });
-    current!.calibration.run = measuredRun(
-      steps({ phase: "measured", result: stepResult, to_save: stepPoint, before: saved, saved: true }),
-    );
-    render(<GuidedCalibration />);
-    await act(async () => fireEvent.click(screen.getByText("UNDO")));
-    expect(useTreadmillStore.getState().calibrationPoints).toEqual([saved]);
+    expect(screen.getByText("Stride 45.0 cm at 104 steps a minute for 3.0 km/h; saved.")).toBeTruthy();
+    const undos = screen.getAllByText("UNDO");
+    expect(undos).toHaveLength(2);
+    await act(async () => fireEvent.click(undos[1]));
     expect(types()).toContain("calibration_steps_undo");
+    expect(types()).not.toContain("calibration_undo");
+    // Rust owns the save: the window never writes the points itself.
+    expect(useTreadmillStore.getState().calibrationPoints).toEqual([saved]);
   });
 
-  it("UNDO on a speed that had no point removes the new one", async () => {
-    const fresh = { ...belt.point, stride_length_cm: 45 };
-    useTreadmillStore.setState({ calibrationPoints: [fresh] });
-    current!.calibration.run = measuredRun(
-      steps({ phase: "measured", result: { ...stepResult, averaged: null }, to_save: fresh, saved: true }),
-    );
+  it("TAP AGAIN on the steps starts them over through Rust", async () => {
+    current!.calibration.run = measuredRun(steps({ phase: "measured", result: stepResult, saved: true }));
     render(<GuidedCalibration />);
-    await act(async () => fireEvent.click(screen.getByText("UNDO")));
-    expect(useTreadmillStore.getState().calibrationPoints).toEqual([]);
+    await act(async () => fireEvent.click(screen.getAllByText("TAP AGAIN")[1]));
+    expect(types()).toContain("calibration_steps_start");
+    expect(types()).not.toContain("calibration_tap_reset");
   });
 
   it("an undone stride says what UNDO did", () => {
-    current!.calibration.run = measuredRun(
-      steps({ phase: "measured", result: stepResult, to_save: stepPoint, before: saved, saved: true, undone: true }),
-    );
+    current!.calibration.run = measuredRun(steps({ phase: "measured", result: stepResult, undone: true }));
     render(<GuidedCalibration />);
-    expect(screen.getByText("UNDO put back the stride at 3.0 km/h as it was.")).toBeTruthy();
-    expect(screen.queryByText("UNDO")).toBeNull();
+    expect(screen.getByText("UNDO put back the point at 3.0 km/h as the belt run left it.")).toBeTruthy();
+    expect(screen.getAllByText("UNDO")).toHaveLength(1);
+  });
+
+  it("no footsteps are offered once UNDO took the belt's point back", () => {
+    current!.calibration.run = { ...measuredRun(null), saved: false, undone: true };
+    render(<GuidedCalibration />);
+    expect(screen.queryByText("TAP STEPS")).toBeNull();
   });
 });
