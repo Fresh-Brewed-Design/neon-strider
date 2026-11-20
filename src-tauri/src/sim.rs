@@ -1709,6 +1709,8 @@ mod tests {
     struct Eyes {
         rt: crate::snapshot::eyebreak::Runtime,
         t0: Instant,
+        /// The treadmill is linked (`desk.rs`'s `ready`).
+        linked: bool,
     }
 
     impl Eyes {
@@ -1725,7 +1727,11 @@ mod tests {
                 },
                 ..Default::default()
             };
-            Self { rt, t0: r.t }
+            Self {
+                rt,
+                t0: r.t,
+                linked: true,
+            }
         }
 
         /// Run the rig `secs` seconds with the user at the keyboard, ticking the
@@ -1737,7 +1743,7 @@ mod tests {
                 crate::snapshot::desk::eye_break_tick(
                     &mut r.state,
                     &mut self.rt,
-                    true,
+                    self.linked,
                     now,
                     Some(0),
                     false,
@@ -1927,6 +1933,55 @@ mod tests {
         assert_eq!(eyes.rt.machine.end_seq(), 1, "a break came and went");
         assert_eq!(r.commands_since(mark), vec![]);
         assert_eq!(eyes.shown(), EyeBreakPhase::Idle);
+    }
+
+    /// Fresh Brewed Design, 2026-11-19: eye breaks show even when nothing is running. With
+    /// no treadmill linked, the heads-up, the break with its blink tones and
+    /// the end tone come at the screen-time interval, and nothing is sent.
+    #[test]
+    fn an_eye_break_comes_with_no_treadmill_linked() {
+        use crate::snapshot::eyebreak::EyeBreakPhase;
+        let mut r = Rig::new();
+        let mut eyes = Eyes::new(&r);
+        eyes.linked = false;
+        let mark = r.mark();
+        eyes.run(&mut r, 560);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Upcoming);
+        eyes.run(&mut r, 45);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Break);
+        let blinks = eyes.rt.machine.blink_seq();
+        eyes.run(&mut r, 20);
+        assert!(eyes.rt.machine.blink_seq() > blinks, "blink tones");
+        assert_eq!(eyes.rt.machine.end_seq(), 1, "the end tone");
+        assert_eq!(eyes.shown(), EyeBreakPhase::Idle, "no resume card");
+        assert_eq!(r.commands_since(mark), vec![]);
+    }
+
+    /// The link drops mid-walk, so the last status still reads Running. A break
+    /// then still comes, and sends nothing: unlinked, the belt is not the
+    /// break's to pause.
+    #[test]
+    fn an_eye_break_after_the_link_drops_mid_walk_sends_nothing() {
+        use crate::snapshot::eyebreak::EyeBreakPhase;
+        let mut r = Rig::new();
+        let mut eyes = Eyes::new(&r);
+        eyes.run(&mut r, 5);
+        r.press(DeckAction::Start);
+        eyes.run(&mut r, 5);
+        r.set_speed(3.0);
+        eyes.run(&mut r, 20);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+        eyes.linked = false;
+        let mark = r.mark();
+        eyes.run(&mut r, 580);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Break);
+        assert!(!eyes.rt.machine.holds_belt());
+        assert_eq!(r.controls_since(mark, Control::Pause), 0);
+        assert!(
+            !moves_belt(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
     }
 
     /// A manual walk at 3.0 km/h, level, settled.
