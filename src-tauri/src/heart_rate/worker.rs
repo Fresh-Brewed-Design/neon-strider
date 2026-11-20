@@ -12,12 +12,18 @@ use crate::persistence;
 use btleplug::api::{Central, Peripheral as _, ScanFilter};
 use btleplug::platform::Peripheral;
 use futures::StreamExt;
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::{LazyLock, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 use tauri::AppHandle;
 
 const KEY_ID: &str = "heart_rate_sensor_id";
 const KEY_NAME: &str = "heart_rate_sensor_name";
+const KEY_MAX: &str = "max_heart_rate";
+/// Used for zones until the user sets their own: 220 minus age for a
+/// 30-year-old, the common estimate, so zones are near right before it is set.
+pub const DEFAULT_MAX_BPM: u16 = 190;
+static MAX_BPM: AtomicU16 = AtomicU16::new(DEFAULT_MAX_BPM);
 /// How long the picker's scan listens: a sensor advertises about once a
 /// second, and the treadmill scan uses the same 5 s.
 const SCAN_TIME: Duration = Duration::from_secs(5);
@@ -80,6 +86,12 @@ fn short_uuid(short: u16) -> uuid::Uuid {
 
 /// Read the picked sensor. Call once after the DB is initialised.
 pub fn init(app: &AppHandle) {
+    if let Some(bpm) =
+        persistence::parse_setting::<u16>(persistence::read_setting(app, KEY_MAX).as_deref())
+            .filter(|b| valid_max(*b))
+    {
+        MAX_BPM.store(bpm, Ordering::Relaxed);
+    }
     let id = persistence::read_setting(app, KEY_ID).filter(|s| !s.is_empty());
     let name = persistence::read_setting(app, KEY_NAME).unwrap_or_default();
     if let Some(id) = id {
@@ -89,6 +101,28 @@ pub fn init(app: &AppHandle) {
             rt.status = HeartStatus::Searching;
         });
     }
+}
+
+/// A maximum heart rate outside 120 to 230 bpm is a typing slip: 220 minus
+/// age gives about 120 at 100 years old, and measured maxima above 230 are
+/// almost unheard of.
+fn valid_max(bpm: u16) -> bool {
+    (120..=230).contains(&bpm)
+}
+
+/// The maximum heart rate that zones are a percentage of.
+pub fn max_heart_rate() -> u16 {
+    MAX_BPM.load(Ordering::Relaxed)
+}
+
+/// Save the maximum heart rate (120 to 230 bpm).
+pub fn set_max_heart_rate(app: &AppHandle, bpm: u16) -> Result<(), String> {
+    if !valid_max(bpm) {
+        return Err("Maximum heart rate must be between 120 and 230 bpm.".to_string());
+    }
+    persistence::write_setting(app, KEY_MAX, &bpm.to_string())?;
+    MAX_BPM.store(bpm, Ordering::Relaxed);
+    Ok(())
 }
 
 /// Pick a sensor (from the last scan). It links within a tick.

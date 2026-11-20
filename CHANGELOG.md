@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.31.0 (2026-11-20)
+
+### New
+
+- Programs can now hold a heart rate zone with a linked heart rate sensor: the belt speed is trimmed by 0.1 km/h at most every 20 s, up to 1 km/h either side of the step's speed, to keep your pulse in the zone. It only trims a belt that is already running and never starts it. Setting zones up comes in a later release.
+
+## 1.30.0 (2026-11-20)
+
+### New
+
+- DECK_PROFILE learns incline levels too: it files the incline the deck echoes or refuses, keeps the incline stepper, program steps and settings to levels the deck takes, and shows what it learned in System -> Diagnostics.
+
+## 1.29.0 (2026-11-20)
+
+### New
+
+- System -> Treadmill offers DECK_PROFILE's floor and ceiling in place of looser min and max speed settings (USE DECK LIMITS), and has a new Slowest speed field. A limit you tightened yourself stays as you set it.
+
+## 1.28.0 (2026-11-20)
+
+### New
+
+- When the deck changes or refuses a speed or tilt you set on the Live page, the DECK_ADJUSTED or DECK_REFUSED note now shows under that control, as it does on the HUD.
+
+### Changed
+
+- DECK_PROFILE is now kept per treadmill: each deck's learned speeds are saved under its Bluetooth identity and switch with the connection, so a second treadmill no longer starts from the first one's speeds. The profile learned so far goes to the treadmill you connect first.
+
 ## 1.27.0 (2026-11-20)
 
 ### New

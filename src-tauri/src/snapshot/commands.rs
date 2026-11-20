@@ -35,7 +35,8 @@ pub(super) fn clamp_manual_speed(state: &OrchestratorState, kmh: f32) -> Result<
 }
 
 pub(super) fn clamp_incline_level(state: &OrchestratorState, level: u8) -> u8 {
-    level.min(state.max_incline)
+    // Snapped to a level the deck runs (DECK_PROFILE), then kept in bounds.
+    state.snap_incline_level(level.min(state.max_incline))
 }
 
 /// A button press, handled by the same code as the hotkeys.
@@ -342,6 +343,9 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             blocking(move || crate::heart_rate::pick_sensor(&app, id, name)).await
         }
         Command::HeartRateForget => blocking(move || crate::heart_rate::forget_sensor(&app)).await,
+        Command::HeartRateMaxSet { bpm } => {
+            blocking(move || crate::heart_rate::set_max_heart_rate(&app, bpm)).await
+        }
         Command::GhostPodPowerSet { on } => {
             blocking(move || crate::ghost_pod::set_power(&app, on)).await
         }

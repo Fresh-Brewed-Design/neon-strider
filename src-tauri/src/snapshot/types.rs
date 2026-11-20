@@ -187,6 +187,8 @@ pub struct DeckSnapshot {
     pub min_speed_kmh: f32,
     /// Calibrated.
     pub max_speed_kmh: f32,
+    /// The highest incline level setting, or the deck's own top level once
+    /// DECK_PROFILE has seen it, whichever is lower.
     pub max_incline_level: u8,
     pub max_incline_pct: f32,
     /// incline_pct = level * incline_pct_per_level + incline_offset_pct.
@@ -200,6 +202,10 @@ pub struct DeckSnapshot {
     /// Empty until the deck has answered a target, and the controls then
     /// behave as before.
     pub speed_steps: Vec<DeckSpeedStep>,
+    /// The incline levels the controls may offer, lowest first: flat up to
+    /// the top level, without those DECK_PROFILE knows the deck skips. Empty
+    /// until the deck has answered an incline.
+    pub incline_steps: Vec<u8>,
     pub profile: DeckProfileSnapshot,
 }
 
@@ -223,8 +229,17 @@ pub struct DeckProfileSnapshot {
     /// The deck's floor and ceiling, calibrated km/h, once seen.
     pub floor_kmh: Option<f32>,
     pub ceiling_kmh: Option<f32>,
+    /// The same limits in the deck's own km/h, the unit of the min and max speed settings.
+    pub floor_hw_kmh: Option<f32>,
+    pub ceiling_hw_kmh: Option<f32>,
     /// Speeds asked that the deck changed or refused, calibrated km/h.
     pub skipped_kmh: Vec<f32>,
+    /// Incline levels the deck has answered a target at.
+    pub learned_levels: u32,
+    /// The deck's top incline level, once seen.
+    pub ceiling_level: Option<u8>,
+    /// Incline levels asked that the deck changed or refused.
+    pub skipped_levels: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS)]
@@ -706,6 +721,11 @@ pub enum Command {
     },
     /// HEART_LINK: stop reading and forget the sensor (the default).
     HeartRateForget,
+    /// The maximum heart rate (bpm) that program heart rate zones are a
+    /// percentage of.
+    HeartRateMaxSet {
+        bpm: u16,
+    },
     /// Labs: GHOST_POD's power switch. On, the pod also serves running power
     /// (the Cycling Power service) while GHOST_POD is on.
     GhostPodPowerSet {
@@ -795,7 +815,8 @@ mod tests {
                     steps: vec![programs::ProgramStep {
                         duration_minutes: None,
                         speed_kmh: 2.5,
-                        incline_pct: 5.0
+                        incline_pct: 5.0,
+                        zone: None,
                     }],
                     repeat_every_minutes: None,
                     note: None
