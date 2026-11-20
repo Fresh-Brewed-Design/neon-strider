@@ -44,7 +44,7 @@ the first slice builds.
   the run profile, Auto Pause, When stopped or Custom). On an indoor run the speed comes from
   the foot pod when its speed source is set to Indoor or Always, so a 0 from the pod should
   pause the watch, and the watch resumes by itself when the speed comes back. This needs
-  checking on Jeremy's watch: not every Garmin offers Auto Pause on indoor run profiles.
+  checking on your watch: not every Garmin offers Auto Pause on indoor run profiles.
 
 ## Windows
 
