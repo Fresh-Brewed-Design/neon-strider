@@ -1,5 +1,6 @@
 import Toybox.Activity;
 import Toybox.Lang;
+import Toybox.Time;
 import Toybox.WatchUi;
 
 // Shows the belt speed the PC reports over WRIST_LINK, or why there is none.
@@ -12,7 +13,7 @@ class BeltField extends WatchUi.SimpleDataField {
         _link = new BeltLink();
     }
 
-    function compute(info as Activity.Info) as Numeric or Duration or String or Null {
+    function compute(info as Activity.Info) as Numeric or Time.Duration or String or Null {
         if (_link.speedKmh == null) {
             return _link.status;
         }

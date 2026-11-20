@@ -5,6 +5,8 @@ import Toybox.Lang;
 // Keep these in step with src-tauri/src/wrist_link.rs.
 const SERVICE_UUID = BluetoothLowEnergy.stringToUuid("00b165d6-40c2-4f94-8df9-0f69431f21af");
 const STATE_UUID = BluetoothLowEnergy.stringToUuid("00b165d6-40c2-4f94-8df9-0f69431f21b0");
+// The standard Running Speed and Cadence service GHOST_POD always advertises.
+const RSC_UUID = BluetoothLowEnergy.stringToUuid("00001814-0000-1000-8000-00805f9b34fb");
 
 // The link to the PC. The pairing does not survive the field restarting, so
 // it scans again each time. Nothing here writes to the PC.
@@ -54,10 +56,11 @@ class BeltLink extends BluetoothLowEnergy.BleDelegate {
     }
 
     // The PC may not fit the 128-bit UUID in its advertisement next to the foot
-    // pod (an open question in #82); the log of a test shows if it is missing.
+    // pod (an open question in #82), so a device advertising the foot pod's RSC
+    // service is tried too; after connecting, NOSVC means it had no WRIST_LINK.
     private function advertisesService(result as BluetoothLowEnergy.ScanResult) as Boolean {
         for (var uuids = result.getServiceUuids(), u = uuids.next(); u != null; u = uuids.next()) {
-            if (u.equals(SERVICE_UUID)) {
+            if (u.equals(SERVICE_UUID) || u.equals(RSC_UUID)) {
                 return true;
             }
         }
