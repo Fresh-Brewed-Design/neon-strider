@@ -1,5 +1,5 @@
 // History: a few weeks of fake walks and their samples. With ?heart=on, every
-// other walk was saved with a watch linked.
+// other walk was saved with a watch linked; ?nohistory saves none.
 import { params } from "../mockState";
 import type { Scenario } from "./types";
 
@@ -39,8 +39,8 @@ function mockSamples(sessionId: number) {
   }));
 }
 
-export const sessions = mockSessions();
-export const lastId = sessions[sessions.length - 1].id;
+export const sessions = params.has("nohistory") ? [] : mockSessions();
+export const lastId = sessions[sessions.length - 1]?.id ?? 0;
 
 export const history: Scenario = {
   queries: {
