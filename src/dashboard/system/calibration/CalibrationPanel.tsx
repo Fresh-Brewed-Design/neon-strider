@@ -1,16 +1,29 @@
 import { useState } from "react";
 import { Edit, Plus, Trash2 } from "lucide-react";
+import { useAppState } from "../../../state/useAppState";
 import { useTreadmillStore } from "../../../store/treadmillStore";
 import type { CalibrationPoint } from "../../../store/types";
 import { CalibrationWizard } from "./CalibrationWizard";
 import { EditPointModal } from "./EditPointModal";
+import { GuidedCalibration } from "./GuidedCalibration";
+import { appliedScale } from "./math";
+
+/**
+ * The calibration points. With the Labs switch on (System -> Diagnostics) the
+ * guided wizard replaces this panel; off, it is the panel as it always was.
+ */
+export function CalibrationPanel() {
+  const guided = useAppState((s) => s.calibration.wizard_enabled) ?? false;
+  return guided ? <GuidedCalibration /> : <ClassicCalibrationPanel />;
+}
 
 /** The saved calibration points, with the wizard that measures a new one. */
-export function CalibrationPanel() {
+function ClassicCalibrationPanel() {
   const calibrationPoints = useTreadmillStore((s) => s.calibrationPoints);
   const addCalibrationPoint = useTreadmillStore((s) => s.addCalibrationPoint);
   const removeCalibrationPoint = useTreadmillStore((s) => s.removeCalibrationPoint);
   const updateCalibrationPoint = useTreadmillStore((s) => s.updateCalibrationPoint);
+  const limits = useAppState((s) => s.calibration.limits);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [editing, setEditing] = useState<{ index: number; point: CalibrationPoint } | null>(null);
 
@@ -48,7 +61,16 @@ export function CalibrationPanel() {
                 <div className="w-[1px] h-6 bg-white/10" />
                 <PointValue label="STRIDE" className="text-white" value={`${p.stride_length_cm.toFixed(1)}cm`} />
                 <div className="w-[1px] h-6 bg-white/10" />
-                <PointValue label="FACTOR" className="text-neon-magenta" value={`${p.distance_scale.toFixed(3)}x`} />
+                <PointValue
+                  label="FACTOR"
+                  className="text-neon-magenta"
+                  value={`${p.distance_scale.toFixed(3)}x`}
+                  hint={
+                    limits && appliedScale(p.distance_scale, limits) !== p.distance_scale
+                      ? `Applied as ${appliedScale(p.distance_scale, limits).toFixed(2)}.`
+                      : undefined
+                  }
+                />
               </div>
               <div className="flex gap-1 relative z-10">
                 <button
@@ -95,11 +117,12 @@ export function CalibrationPanel() {
   );
 }
 
-function PointValue({ label, value, className }: { label: string; value: string; className: string }) {
+function PointValue({ label, value, className, hint }: { label: string; value: string; className: string; hint?: string }) {
   return (
     <div className="space-y-1">
       <div className="text-[11px] text-white/50 uppercase font-mono">{label}</div>
       <div className={`text-sm font-digital ${className}`}>{value}</div>
+      {hint && <div className="text-[11px] font-mono text-neon-yellow">{hint}</div>}
     </div>
   );
 }

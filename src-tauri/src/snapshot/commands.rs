@@ -5,6 +5,7 @@ use super::{
     weekly, Command, HudConfig, HudWidget,
 };
 use crate::bluetooth::{self, ORCHESTRATOR};
+use crate::calibration;
 use crate::engine::OrchestratorState;
 use crate::programs;
 use crate::strava;
@@ -70,7 +71,10 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
     match command {
         Command::Start => press("start").await,
         Command::Pause => press("pause").await,
-        Command::Stop => press("stop").await,
+        Command::Stop => {
+            calibration::on_stop();
+            press("stop").await
+        }
         Command::ToggleStart => press("toggle-start").await,
         Command::NudgeSpeed { up } => press(if up { "speed-up" } else { "speed-down" }).await,
         Command::NudgeIncline { up } => press(if up { "incline-up" } else { "incline-down" }).await,
@@ -202,9 +206,26 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             minutes,
             seconds,
             sound,
-        } => blocking(move || eyebreak::set_config(&app, enabled, minutes, seconds, sound)).await,
+            pause_belt,
+            fit_rests,
+        } => {
+            let cfg = eyebreak::Config {
+                enabled,
+                minutes,
+                seconds,
+                sound,
+                pause_belt,
+                fit_rests,
+            };
+            blocking(move || eyebreak::set_config(&app, cfg)).await
+        }
         Command::EyeBreakSkip => {
             eyebreak::with(|rt| rt.machine.skip());
+            Ok(())
+        }
+        Command::EyeBreakResume => desk::eye_break_resume().await,
+        Command::EyeBreakStayStill => {
+            desk::eye_break_stay_still();
             Ok(())
         }
         Command::CallsSetConfig { enabled, quiet_kmh } => {
@@ -248,6 +269,47 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         }
         Command::TrafficOpenFolder => crate::traffic::open_folder(&app),
 
+        Command::CalibrationSetWizard { on } => {
+            blocking(move || calibration::set_wizard(&app, on)).await
+        }
+        Command::CalibrationRunStart { target_kmh } => {
+            if !super::emitter::read_connection().await.0 {
+                return Err("Connect the treadmill first.".to_string());
+            }
+            calibration::run_start(&mut *ORCHESTRATOR.lock().await, target_kmh)
+        }
+        Command::CalibrationCountStart => {
+            let raw = ORCHESTRATOR.lock().await.hardware_speed;
+            calibration::count_start(raw)
+        }
+        Command::CalibrationCountStop => {
+            let raw = ORCHESTRATOR.lock().await.hardware_speed;
+            calibration::count_stop(raw)
+        }
+        Command::CalibrationRunCount { count } => {
+            calibration::count(&*ORCHESTRATOR.lock().await, &count)
+        }
+        Command::CalibrationRunClose => {
+            calibration::close();
+            Ok(())
+        }
+        Command::CalibrationSweepStart { targets_kmh } => {
+            if !super::emitter::read_connection().await.0 {
+                return Err("Connect the treadmill first.".to_string());
+            }
+            calibration::sweep_start(&mut *ORCHESTRATOR.lock().await, &targets_kmh)
+        }
+        Command::CalibrationSweepRun => {
+            if !super::emitter::read_connection().await.0 {
+                return Err("Connect the treadmill first.".to_string());
+            }
+            calibration::sweep_run(&mut *ORCHESTRATOR.lock().await)
+        }
+        Command::CalibrationSweepNext { saved } => calibration::sweep_next(saved),
+        Command::CalibrationSweepEnd => {
+            calibration::close_all();
+            Ok(())
+        }
         Command::GhostPodSet { on } => {
             blocking(move || crate::ghost_pod::set_enabled(&app, on)).await
         }

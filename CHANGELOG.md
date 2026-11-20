@@ -1,5 +1,55 @@
 # Changelog
 
+## 1.17.0 (2026-11-20)
+
+### New
+
+- OCULAR_IMPLANT eye breaks fit into a running program's rests (the rest between cycles, a 0 km/h step, or a wait for GO). A break due while a program walks waits for its next rest when that rest is near, and a short rest takes a break that is nearly due, so a walk is paused less often. Switch it under System -> Desk with "Take breaks at program rests" (on by default).
+- Eye breaks also stop counting while the PC's display is off.
+
+## 1.16.0 (2026-11-20)
+
+### New
+
+- Labs, GROUND_TRUTH: RUN ALL walks every calibration speed in turn with a progress strip, and each speed waits for your RUN. The run panel has its own STOP.
+
+## 1.15.3 (2026-11-20)
+
+### Fixed
+
+- After a speed or incline change on the treadmill's remote or its own buttons, the HUD, shortcut and dashboard + and - now step from what the deck is running, and a press of one no longer puts the other back to the value from before the remote.
+
+## 1.15.2 (2026-11-20)
+
+### Fixed
+
+- Calibration points outside the factor limits (0.2 to 3.0) are refused in the old wizard, the point editor and when saving, with the reason shown. A point stored outside the limits shows the value that is applied.
+
+## 1.15.1 (2026-11-20)
+
+### Fixed
+
+- The HUD note after the deck refuses or changes a target now shows tilt in percent, like the TILT stat, and writes KM/H in capitals both times.
+
+## 1.15.0 (2026-11-20)
+
+### New
+
+- The HUD now reads the treadmill's echo of each speed or incline you set. When the deck took something other than what was asked (it lifts speeds under its floor, say) or refused it, a short `DECK_ADJUSTED` or `DECK_REFUSED` note shows under the VEL and TILT controls for a few seconds, and the asked-versus-got values go to the log.
+
+## 1.14.0 (2026-11-20)
+
+### New
+
+- OCULAR_IMPLANT breaks now pause the belt if you are walking (a running program pauses at its step). When the break is over the HUD shows OCULAR_IMPLANT // RECALIBRATED: RESUME starts you walking again, STAY STILL keeps the belt paused. It never restarts by itself. Turn off "Pause the belt for breaks" in System -> Desk to keep walking through them.
+
+## 1.13.0 (2026-11-20)
+
+### New
+
+- Labs: a guided calibration wizard, GROUND_TRUTH, off until you switch it on in System, Diagnostics. It lists several speeds; RUN sets the belt to one, you count belt loops (and steps, for your stride) between COUNT and DONE, and the app works out that point. REPEAT re-times just one saved point, and stride (20 to 200 cm) and factor (0.2 to 3.0) ranges are wider.
+- Labs: GHOST_POD, a switch (off by default) in System -> Labs that makes the PC a Bluetooth foot pod for your watch. It sends the belt speed, cadence and distance once a second, and 0 km/h while the belt is paused so the watch's Auto Pause can stop its timer. Pausing on the watch doesn't pause the belt yet.
+
 ## 1.12.0 (2026-11-20)
 
 ### New

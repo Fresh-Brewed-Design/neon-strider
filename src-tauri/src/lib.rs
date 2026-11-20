@@ -16,6 +16,7 @@ use tauri::{
 
 pub mod backup;
 pub mod bluetooth;
+pub mod calibration;
 mod dashboard;
 mod display;
 pub mod engine;

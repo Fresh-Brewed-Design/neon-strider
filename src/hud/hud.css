@@ -649,6 +649,15 @@ body,
   background: color-mix(in srgb, var(--hud-cyan) 7%, var(--hud-bg));
 }
 
+.hud-eyebreak-count {
+  font-family: var(--hud-font-display);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--hud-cyan);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Buttons take the width of their name and wrap onto a new row when the row is
    full, so "WORKDAY" is never broken mid-word to keep three in a line. */
 .hud-seated-programs {

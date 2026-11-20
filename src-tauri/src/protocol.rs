@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 /// One point of the user's calibration. Near hardware `speed`, the real belt
 /// speed is the deck's speed divided by `distance_scale`, and one step is
 /// `stride_length_cm` long.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct CalibrationPoint {
     pub speed: f32,
     #[serde(alias = "strideLengthCm")]
@@ -162,6 +162,33 @@ pub fn raw_packet(body: &[u8]) -> Result<Vec<u8>, String> {
     Ok(serialize_command(&framed))
 }
 
+/// What a non-status notification from the deck says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeckReply {
+    /// `02 53 53 03`: the deck refused the packet.
+    Nack,
+    /// The deck took a target and echoes the speed and incline byte it took,
+    /// which may differ from what was asked (it clamps to its floor).
+    TargetEcho { speed: u8, incline: u8 },
+}
+
+/// Decode a nack or a target echo; anything else (a status frame, another
+/// control's echo) is None.
+pub fn parse_reply(bytes: &[u8]) -> Option<DeckReply> {
+    if bytes == [HEADER, CMD_CONTROL, CMD_CONTROL, TAIL] {
+        return Some(DeckReply::Nack);
+    }
+    if bytes.len() != CONTROL_BODY_LEN + 2 || bytes[0] != HEADER || bytes[1] != CMD_CONTROL {
+        return None;
+    }
+    if bytes[2] != Control::Target as u8 {
+        return None;
+    }
+    let (speed, incline) = (bytes[3], bytes[4]);
+    (control_packet(Control::Target, speed, incline) == bytes)
+        .then_some(DeckReply::TargetEcho { speed, incline })
+}
+
 /// The framed status request.
 pub fn status_request() -> Vec<u8> {
     serialize_command(&[HEADER, CMD_STATUS])
@@ -232,6 +259,27 @@ pub fn parse_status(bytes: &[u8]) -> Option<Telemetry> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn replies_decode_a_nack_and_a_target_echo_only() {
+        assert_eq!(
+            parse_reply(&[0x02, 0x53, 0x53, 0x03]),
+            Some(DeckReply::Nack)
+        );
+        let echo = control_packet(Control::Target, 6, 2);
+        assert_eq!(
+            parse_reply(&echo),
+            Some(DeckReply::TargetEcho {
+                speed: 6,
+                incline: 2
+            })
+        );
+        let mut bad = echo.clone();
+        bad[13] ^= 1;
+        assert_eq!(parse_reply(&bad), None, "checksum");
+        assert_eq!(parse_reply(&control_packet(Control::Stop, 0, 0)), None);
+        assert_eq!(parse_reply(&[0x02, 0x51, 0x03, 0x03]), None);
+    }
 
     #[test]
     fn test_telemetry_parsing_le() {

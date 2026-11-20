@@ -18,16 +18,33 @@ use tauri::AppHandle;
 
 const KEY_ID: &str = "heart_rate_sensor_id";
 const KEY_NAME: &str = "heart_rate_sensor_name";
-/// How long the picker's scan listens.
+/// How long the picker's scan listens: a sensor advertises about once a
+/// second, and the treadmill scan uses the same 5 s.
 const SCAN_TIME: Duration = Duration::from_secs(5);
-/// How long a connect attempt looks for the picked sensor.
-const FIND_TIME: Duration = Duration::from_secs(10);
-/// After a failure, try again this long later.
-const RETRY_AFTER: Duration = Duration::from_secs(10);
-/// A reading older than this no longer shows.
+/// How long a connect attempt looks for the picked sensor. Short, since it
+/// holds the shared scan and a treadmill reconnect waits behind it.
+const FIND_TIME: Duration = Duration::from_secs(5);
+/// The first retry after a failure, doubling on each failure after that.
+const RETRY_FIRST: Duration = Duration::from_secs(10);
+/// The longest wait between attempts: a watch that is not broadcasting
+/// (most of the day) costs one 5 s scan a minute, and one switched on
+/// mid-walk links within about a minute.
+const RETRY_MAX: Duration = Duration::from_secs(60);
+/// A reading older than this no longer shows: sensors send about once a
+/// second, so six missed readings mean the watch stopped broadcasting.
 const STALE_AFTER: Duration = Duration::from_secs(6);
-/// A sensor name is cut to this long.
+/// A sensor name is cut to this long, so a device can't put a huge string
+/// in the settings store; real names are under 30 characters.
 const NAME_MAX: usize = 100;
+/// `find` hands this back when another scan holds the radio; the tick tries
+/// again without counting a failure.
+const SCAN_BUSY: &str = "Another Bluetooth scan is running.";
+
+/// The wait before the next attempt after `failures` failures in a row.
+fn retry_after(failures: u32) -> Duration {
+    let doublings = failures.saturating_sub(1).min(6);
+    (RETRY_FIRST * 2u32.pow(doublings)).min(RETRY_MAX)
+}
 
 #[derive(Default)]
 struct Runtime {
@@ -42,6 +59,8 @@ struct Runtime {
     bpm: Option<u16>,
     bpm_at: Option<Instant>,
     failed_at: Option<Instant>,
+    /// Failed attempts in a row, for the backoff; reset by a link or a pick.
+    failures: u32,
     scanning: bool,
     found: Vec<HeartRateSensor>,
 }
@@ -107,6 +126,7 @@ fn drop_link(sensor: Option<HeartRateSensor>) {
         rt.bpm = None;
         rt.bpm_at = None;
         rt.failed_at = None;
+        rt.failures = 0;
         rt.connecting = false;
         rt.link.take()
     });
@@ -156,6 +176,8 @@ pub async fn scan() -> Result<(), String> {
 
 async fn scan_inner() -> Result<Vec<HeartRateSensor>, String> {
     let service = short_uuid(HR_SERVICE);
+    // The radio's scan is shared with the treadmill link: one at a time.
+    let _scan = crate::bluetooth::SCAN_LOCK.lock().await;
     let central = find_central().await.map_err(|e| e.to_string())?;
     central
         .start_scan(ScanFilter {
@@ -205,7 +227,9 @@ async fn tick() {
         let go = rt.sensor.is_some()
             && rt.link.is_none()
             && !rt.connecting
-            && rt.failed_at.is_none_or(|t| t.elapsed() >= RETRY_AFTER);
+            && rt
+                .failed_at
+                .is_none_or(|t| t.elapsed() >= retry_after(rt.failures));
         if go {
             rt.connecting = true;
             rt.status = HeartStatus::Searching;
@@ -216,21 +240,33 @@ async fn tick() {
         return;
     };
     if let Err(why) = connect(&sensor, generation).await {
-        log::warn!("HEART_LINK: {}", why);
         with(|rt| {
             if rt.generation != generation {
                 return;
             }
             rt.connecting = false;
             rt.link = None;
+            if why == SCAN_BUSY {
+                return;
+            }
+            // Logged once per new reason, so an absent watch doesn't fill the log.
+            if rt.error.as_deref() != Some(why.as_str()) {
+                log::warn!("HEART_LINK: {}", why);
+            }
             rt.status = HeartStatus::Error;
             rt.error = Some(why);
             rt.failed_at = Some(Instant::now());
+            rt.failures = rt.failures.saturating_add(1);
         });
     }
 }
 
 async fn find(sensor: &HeartRateSensor) -> Result<Peripheral, String> {
+    // The scan is shared with the treadmill link, which goes first: skip
+    // this tick rather than wait, or stop its scan halfway.
+    let Ok(_scan) = crate::bluetooth::SCAN_LOCK.try_lock() else {
+        return Err(SCAN_BUSY.to_string());
+    };
     let central = find_central().await.map_err(|e| e.to_string())?;
     central
         .start_scan(ScanFilter {
@@ -254,7 +290,9 @@ async fn find(sensor: &HeartRateSensor) -> Result<Peripheral, String> {
         tokio::time::sleep(Duration::from_millis(500)).await;
     };
     let _ = central.stop_scan().await;
-    found.ok_or_else(|| "The sensor was not found. Is Broadcast Heart Rate on?".to_string())
+    found.ok_or_else(|| {
+        "The heart rate sensor was not found; check Broadcast Heart Rate is on.".to_string()
+    })
 }
 
 async fn connect(sensor: &HeartRateSensor, generation: u64) -> Result<(), String> {
@@ -279,6 +317,7 @@ async fn connect(sensor: &HeartRateSensor, generation: u64) -> Result<(), String
             rt.link = Some(p.clone());
             rt.status = HeartStatus::Connected;
             rt.error = None;
+            rt.failures = 0;
         }
         current
     });
@@ -316,6 +355,7 @@ async fn connect(sensor: &HeartRateSensor, generation: u64) -> Result<(), String
             rt.bpm = None;
             rt.status = HeartStatus::Searching;
             rt.failed_at = Some(Instant::now());
+            rt.failures = 1;
         });
     });
     Ok(())
@@ -324,6 +364,16 @@ async fn connect(sensor: &HeartRateSensor, generation: u64) -> Result<(), String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retries_back_off_to_a_minute() {
+        assert_eq!(retry_after(0), Duration::from_secs(10));
+        assert_eq!(retry_after(1), Duration::from_secs(10));
+        assert_eq!(retry_after(2), Duration::from_secs(20));
+        assert_eq!(retry_after(3), Duration::from_secs(40));
+        assert_eq!(retry_after(4), RETRY_MAX);
+        assert_eq!(retry_after(u32::MAX), RETRY_MAX);
+    }
 
     #[test]
     fn the_uuids_are_the_standard_ones() {

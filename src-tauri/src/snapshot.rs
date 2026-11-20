@@ -124,6 +124,7 @@ fn deck_snapshot(state: &OrchestratorState, max_incline_level: u8) -> DeckSnapsh
         max_incline_pct: incline_pct(max_incline_level, state),
         incline_offset_pct: state.incline_offset,
         incline_pct_per_level: state.tilt_multiplier,
+        target_note: state.current_target_note(),
     }
 }
 
@@ -175,9 +176,9 @@ fn neural_snapshot(state: &OrchestratorState) -> NeuralSnapshot {
 }
 
 /// Build a snapshot from state. Pure (no Tauri, no locks, no I/O) so it can be
-/// unit-tested. `desk_sync`, `walkaway`, `update`, `traffic`, `lights_out`, `ghost_pod` and
-/// `hud_view` are left
-/// at their defaults: they depend on the clock or shared state, so the emitter fills them in.
+/// unit-tested. `desk_sync`, `walkaway`, `update`, `traffic`, `lights_out`, `ghost_pod`,
+/// `calibration` and `hud_view` are left at their defaults: they depend on the clock or shared
+/// state, so the emitter fills them in.
 pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSnapshot {
     AppSnapshot {
         connection: parts.connection,
@@ -201,6 +202,7 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         update: crate::update::UpdateSnapshot::default(),
         traffic: crate::traffic::TrafficSnapshot::default(),
         lights_out: LightsOutSnapshot::default(),
+        calibration: crate::calibration::CalibrationSnapshot::default(),
         ghost_pod: crate::ghost_pod::GhostPodSnapshot::default(),
         heart_rate: crate::heart_rate::HeartRateSnapshot::default(),
     }
@@ -240,6 +242,7 @@ pub fn init(app: &AppHandle) {
     desk_sync::init(app);
     odometer::init(app);
     desk::init(app);
+    crate::calibration::init(app);
 }
 
 #[tauri::command]

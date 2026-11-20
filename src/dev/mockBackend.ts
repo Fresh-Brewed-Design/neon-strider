@@ -64,6 +64,7 @@ export const snapshot: AppSnapshot = {
     incline_pct: 5.0,
     incline_offset_pct: 0,
     incline_pct_per_level: 1.25,
+    target_note: null,
     target_incline_level: 4,
     target_incline_pct: 5.0,
     min_speed_kmh: 0.6,
@@ -179,6 +180,10 @@ export const snapshot: AppSnapshot = {
     minutes: 20,
     seconds: 90,
     sound: true,
+    pause_belt: true,
+    fit_rests: true,
+    holds_belt: false,
+    at_rest: false,
     phase: "idle",
     remaining_s: 0,
     blink_seq: 0,
@@ -203,6 +208,16 @@ export const snapshot: AppSnapshot = {
     auto_install: true,
   },
   traffic: { recording: false, file_path: null, file_name: null, packets: 0, bytes: 0, elapsed_s: 0, stop_reason: null },
+  // Same limits as src-tauri/src/calibration.rs.
+  calibration: {
+    wizard_enabled: false,
+    limits: {
+      min_stride_cm: 20, max_stride_cm: 200, min_scale: 0.2, max_scale: 3, min_belt_cm: 50, max_belt_cm: 1000,
+      min_run_s: 15, min_steps: 10, default_targets_kmh: [2, 3, 4, 5, 6],
+    },
+    run: null,
+    sweep: null,
+  },
   ghost_pod: {
     enabled: false,
     status: "off",
@@ -417,10 +432,26 @@ const WEEKLY_SCENARIOS: Record<string, Partial<WeeklySummary>> = {
 };
 if (weeklyFlag !== null) Object.assign(snapshot.weekly, { show_card: true }, WEEKLY_SCENARIOS[weeklyFlag]);
 
-// ?eyebreak=upcoming|break shows the eye-break HUD card.
+// ?eyebreak=upcoming|break|resume shows the eye-break (OCULAR_IMPLANT) HUD card: the
+// heads-up, the cooldown with the belt it paused, or the resume card after it
+// (RESUME / STAY STILL). ?eyebreak=still is the cooldown with the belt left alone,
+// ?eyebreak=rest the heads-up for a break set for the program's rest.
 const eyeBreakFlag = params.get("eyebreak");
-if (eyeBreakFlag === "upcoming") Object.assign(snapshot.eye_break, { enabled: true, phase: "upcoming", remaining_s: 48 });
-if (eyeBreakFlag === "break") Object.assign(snapshot.eye_break, { enabled: true, phase: "break", remaining_s: 72 });
+if (eyeBreakFlag === "upcoming" || eyeBreakFlag === "rest")
+  Object.assign(snapshot.eye_break, {
+    enabled: true,
+    phase: "upcoming",
+    remaining_s: 48,
+    at_rest: eyeBreakFlag === "rest",
+  });
+if (eyeBreakFlag === "break" || eyeBreakFlag === "still")
+  Object.assign(snapshot.eye_break, { enabled: true, phase: "break", remaining_s: 72, holds_belt: eyeBreakFlag === "break" });
+if (eyeBreakFlag === "resume") Object.assign(snapshot.eye_break, { enabled: true, phase: "complete", holds_belt: true });
+if (eyeBreakFlag === "break" || eyeBreakFlag === "resume") {
+  // The break paused the walk: the program at its step, or the treadmill's pause.
+  if (snapshot.active_program) Object.assign(snapshot.active_program, { paused: true, wait: null });
+  Object.assign(snapshot.deck, { status: "Paused", speed_kmh: 0 });
+}
 
 // ?seated shows the idle-nudge HUD card (STASIS_ALERT). Variants, comma-separated: off (treadmill off,
 // nothing picked yet), queued (treadmill off, second program remembered), long (long
@@ -455,6 +486,11 @@ if (params.get("neural") === "active") {
   Object.assign(snapshot.neural, { active: true, factor: 0.94, base_kmh: 3.5, target_kmh: 3.3, keys_per_min: 118 });
   Object.assign(snapshot.deck, { speed_kmh: 3.3, target_speed_kmh: 3.3 });
 }
+
+// ?decknote=refused|adjusted: the HUD note after the deck refuses or changes a target.
+const deckNoteFlag = params.get("decknote");
+if (deckNoteFlag === "refused") snapshot.deck.target_note = "DECK_REFUSED // 3.5 KM/H, TILT 6.3 %";
+if (deckNoteFlag === "adjusted") snapshot.deck.target_note = "DECK_ADJUSTED // 0.6 KM/H -> 0.8 KM/H, TILT 6.3 % -> 7.5 %";
 
 // ?engage=timeout: the deck's screen is off. It shows the last Engage's failure, and
 // Engage waits 8 s and fails again. ?status=N: the deck sent an unknown status byte N.
@@ -648,6 +684,153 @@ if (trafficFlag === "saved") {
   startTraffic(4 * 3600);
   stopTraffic("Stopped by itself at the 4-hour limit.");
 }
+
+// The guided calibration (Labs). ?calwizard: the switch is on, with two saved
+// points. ?calwizard=counting: a count 23 s in (the clock ticks).
+// ?calwizard=counted: a timed count waiting for the loops.
+// ?calwizard=sweep: RUN ALL with two speeds done and 4.0 km/h up next;
+// ?calwizard=sweeprun: the same sweep counting at 4.0. The math is a rough
+// stand-in for Rust's (calibration.rs, unit-tested there).
+const calFlag = params.get("calwizard");
+let calTimer: ReturnType<typeof setInterval> | null = null;
+function calRun(target_kmh: number, phase: "settling" | "counting" | "counted", elapsed_s = 0) {
+  if (calTimer) clearInterval(calTimer);
+  calTimer = null;
+  snapshot.calibration.run = {
+    target_kmh, phase, elapsed_s, reported_kmh: phase === "counted" ? target_kmh : null, result: null,
+  };
+  if (phase === "counting") {
+    calTimer = setInterval(() => {
+      const r = snapshot.calibration.run;
+      if (r?.phase === "counting") r.elapsed_s += 0.25;
+      publish();
+    }, 250);
+  }
+}
+function closeCal() {
+  if (calTimer) clearInterval(calTimer);
+  calTimer = null;
+  snapshot.calibration.run = null;
+}
+function sweepCurrent() {
+  const s = snapshot.calibration.sweep;
+  if (!s) return null;
+  const i = s.marks.indexOf("pending");
+  s.current = i < 0 ? null : i;
+  return s.current === null ? null : s.targets_kmh[s.current];
+}
+function runBelt(kmh: number) {
+  Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: kmh, speed_kmh: kmh });
+  calRun(kmh, "settling");
+}
+/** ?calwizard: two saved points and a 3 m belt loop. */
+// ?calwizard=oldpoint adds a point stored at 0.15, below the limit.
+const CAL_CONFIG = {
+  belt_length: 300,
+  calibration_points: [
+    { speed: 3, stride_length_cm: 68.4, distance_scale: 0.912 },
+    { speed: 4.5, stride_length_cm: 74.1, distance_scale: calFlag === "oldpoint" ? 0.15 : 0.887 },
+  ],
+};
+/** The preview runs no settings sync: the store settings ?calwizard starts with. */
+export function previewSettings() {
+  return calFlag === null ? null : { beltLength: CAL_CONFIG.belt_length, calibrationPoints: CAL_CONFIG.calibration_points };
+}
+if (calFlag !== null) {
+  snapshot.calibration.wizard_enabled = calFlag !== "oldpoint";
+  if (calFlag === "counting" || calFlag === "counted") Object.assign(snapshot.deck, { raw_speed_kmh: 3, speed_kmh: 3.3 });
+  if (calFlag === "counting") calRun(3, "counting", 23);
+  if (calFlag === "counted") calRun(3, "counted", 62.4);
+  if (calFlag === "sweep" || calFlag === "sweeprun") {
+    Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: 3, speed_kmh: 3.3 });
+    snapshot.calibration.sweep = {
+      targets_kmh: [2, 3, 4, 4.5, 5, 6],
+      marks: ["skipped", "saved", "pending", "pending", "pending", "pending"],
+      current: 2,
+    };
+    if (calFlag === "sweeprun") {
+      Object.assign(snapshot.deck, { raw_speed_kmh: 4, speed_kmh: 4.4 });
+      calRun(4, "counting", 31);
+    }
+  }
+}
+const CAL_COMMANDS: Partial<Record<Command["type"], (c: Command) => void>> = {
+  calibration_set_wizard: (c) => {
+    if (c.type !== "calibration_set_wizard") return;
+    snapshot.calibration.wizard_enabled = c.on;
+    if (!c.on) {
+      snapshot.calibration.sweep = null;
+      closeCal();
+    }
+  },
+  calibration_run_start: (c) => {
+    if (c.type !== "calibration_run_start") return;
+    snapshot.calibration.sweep = null;
+    runBelt(c.target_kmh);
+  },
+  calibration_sweep_start: (c) => {
+    if (c.type !== "calibration_sweep_start") return;
+    const targets_kmh = [...new Set(c.targets_kmh)].sort((a, b) => a - b);
+    snapshot.calibration.sweep = { targets_kmh, marks: targets_kmh.map(() => "pending"), current: 0 };
+    runBelt(targets_kmh[0]);
+  },
+  calibration_sweep_run: () => {
+    const kmh = sweepCurrent();
+    if (kmh === null) throw "Every speed is done.";
+    runBelt(kmh);
+  },
+  calibration_sweep_next: (c) => {
+    const s = snapshot.calibration.sweep;
+    if (c.type !== "calibration_sweep_next" || !s || s.current === null) return;
+    s.marks[s.current] = c.saved ? "saved" : "skipped";
+    sweepCurrent();
+    closeCal();
+  },
+  calibration_sweep_end: () => {
+    snapshot.calibration.sweep = null;
+    closeCal();
+  },
+  // STOP: the belt stops; a run not yet timed closes.
+  stop: () => {
+    Object.assign(snapshot.deck, { status: "Stopped", raw_speed_kmh: 0, speed_kmh: 0 });
+    if (snapshot.calibration.run?.phase !== "counted") closeCal();
+  },
+  calibration_count_start: () => {
+    const r = snapshot.calibration.run;
+    if (!r) throw "Press RUN on a speed first.";
+    if (snapshot.deck.raw_speed_kmh < 0.05) throw "The belt is not moving. Press RUN, then COUNT once it is up to speed.";
+    calRun(r.target_kmh, "counting");
+  },
+  calibration_count_stop: () => {
+    const r = snapshot.calibration.run;
+    if (!r || r.phase !== "counting") throw "Press COUNT first.";
+    if (r.elapsed_s < 15) throw `Keep counting: at least 15 s, so far ${r.elapsed_s.toFixed(0)} s.`;
+    if (snapshot.deck.raw_speed_kmh < 0.05) {
+      calRun(r.target_kmh, "settling");
+      throw "The belt stopped during the count. Run it again.";
+    }
+    calRun(r.target_kmh, "counted", r.elapsed_s);
+  },
+  calibration_run_count: (c) => {
+    const r = snapshot.calibration.run;
+    if (c.type !== "calibration_run_count" || !r?.reported_kmh || c.count.method !== "loops") return;
+    const { loops, belt_length_cm, steps } = c.count;
+    if (!(loops > 0)) throw "Enter how many loops you counted.";
+    const real_m = (loops * belt_length_cm) / 100;
+    const reported_m = (r.reported_kmh / 3.6) * r.elapsed_s;
+    const scale = reported_m / real_m;
+    if (scale < 0.2 || scale > 3) throw `That gives a factor of ${scale.toFixed(2)}, outside 0.2 to 3. Check the count and run it again.`;
+    r.result = {
+      point: { speed: Math.round(r.reported_kmh * 10) / 10, stride_length_cm: steps ? (real_m / steps) * 100 : 74, distance_scale: scale },
+      real_kmh: (real_m / r.elapsed_s) * 3.6,
+      real_m,
+      reported_m,
+      cadence_spm: steps ? (steps / r.elapsed_s) * 60 : null,
+      stride_measured: steps !== null,
+    };
+  },
+  calibration_run_close: () => closeCal(),
+};
 
 // Labs: GHOST_POD. ?ghostpod=advertising|connected|error picks its status;
 // switching it on in the preview advertises, then a watch connects 3 s later.
@@ -956,10 +1139,22 @@ const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) =>
   },
   seated_snooze: () => Object.assign(snapshot.seated, { show_card: false, pending_program_id: null }),
   eye_break_set_config: (c) => {
-    Object.assign(snapshot.eye_break, { enabled: c.enabled, minutes: c.minutes, seconds: c.seconds, sound: c.sound });
-    if (!c.enabled) Object.assign(snapshot.eye_break, { phase: "idle", remaining_s: 0 });
+    const { enabled, minutes, seconds, sound, pause_belt, fit_rests } = c;
+    Object.assign(snapshot.eye_break, { enabled, minutes, seconds, sound, pause_belt, fit_rests });
+    if (!c.enabled) Object.assign(snapshot.eye_break, { phase: "idle", remaining_s: 0, holds_belt: false });
   },
-  eye_break_skip: () => Object.assign(snapshot.eye_break, { phase: "idle", remaining_s: 0 }),
+  eye_break_skip: () =>
+    Object.assign(snapshot.eye_break, {
+      phase: snapshot.eye_break.holds_belt ? "complete" : "idle",
+      remaining_s: 0,
+    }),
+  eye_break_resume: () => {
+    if (!snapshot.connection.connected) throw "The treadmill is offline";
+    Object.assign(snapshot.eye_break, { phase: "idle", holds_belt: false });
+    if (snapshot.active_program) setProgramPaused(false);
+    else snapshot.deck.status = "Running";
+  },
+  eye_break_stay_still: () => Object.assign(snapshot.eye_break, { phase: "idle", holds_belt: false }),
   calls_set_config: (c) => Object.assign(snapshot.calls, { enabled: c.enabled, quiet_kmh: c.quiet_kmh }),
   walkaway_set_config: (c) => {
     if (c.idle_minutes < 2 || c.idle_minutes > 30) throw "Idle time must be between 2 and 30 minutes";
@@ -1009,6 +1204,7 @@ const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) =>
   update_auto_install: (c) => (snapshot.update.auto_install = c.on),
   traffic_record: (c) => (c.on ? startTraffic(0) : stopTraffic()),
   traffic_open_folder: () => {},
+  ...CAL_COMMANDS,
   ghost_pod_set: (c) => switchGhostPod(c.on),
   heart_rate_scan: async () => {
     snapshot.heart_rate.scanning = true;
@@ -1087,7 +1283,7 @@ const QUERIES: Record<string, (args: Record<string, unknown>) => unknown> = {
     };
   },
   strava_tcx_preview: () => "<TrainingCenterDatabase><!-- preview --></TrainingCenterDatabase>",
-  get_rust_config: () => PREVIEW_CONFIG,
+  get_rust_config: () => (calFlag !== null ? { ...PREVIEW_CONFIG, ...CAL_CONFIG } : PREVIEW_CONFIG),
   dispatch: (args) => {
     if (rejecting) throw "Treadmill not connected";
     const command = args.command as Command;

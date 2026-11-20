@@ -51,6 +51,8 @@ pub struct AppSnapshot {
     pub traffic: crate::traffic::TrafficSnapshot,
     /// Lights out: stop the belt when the PC's display turns off.
     pub lights_out: LightsOutSnapshot,
+    /// The guided calibration (Labs): its switch, limits and any run.
+    pub calibration: crate::calibration::CalibrationSnapshot,
     /// Labs: GHOST_POD, the PC as a foot pod for a watch (off by default).
     pub ghost_pod: crate::ghost_pod::GhostPodSnapshot,
     pub heart_rate: crate::heart_rate::HeartRateSnapshot,
@@ -190,6 +192,9 @@ pub struct DeckSnapshot {
     /// incline_pct = level * incline_pct_per_level + incline_offset_pct.
     pub incline_offset_pct: f32,
     pub incline_pct_per_level: f32,
+    /// The deck changed or refused the last target ("asked X, got Y"), for a
+    /// few seconds; the HUD shows it under the speed controls.
+    pub target_note: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS)]
@@ -543,15 +548,26 @@ pub enum Command {
     /// SNOOZE 15 MIN on the card: hide it for 15 minutes; the idle time is kept.
     SeatedSnooze,
     /// Eye-break settings: on or off, minutes of screen use between breaks (10 to
-    /// 120), seconds a break lasts (20 to 300) and whether the HUD plays tones.
+    /// 120), seconds a break lasts (20 to 300), whether the HUD plays tones,
+    /// whether a break pauses a walking belt and whether breaks fit into a
+    /// running program's rests.
     EyeBreakSetConfig {
         enabled: bool,
         minutes: u32,
         seconds: u32,
         sound: bool,
+        pause_belt: bool,
+        fit_rests: bool,
     },
-    /// SKIP on an eye-break card: no break now, and the count starts again.
+    /// SKIP on an eye-break card: no break now, and the count starts again. A
+    /// belt the break paused stays paused, and the resume card shows.
     EyeBreakSkip,
+    /// RESUME on the eye-break resume card: GO on the paused program, or the
+    /// treadmill's resume on a manual walk. A press.
+    EyeBreakResume,
+    /// STAY STILL on the eye-break resume card: the card goes, the belt stays
+    /// paused.
+    EyeBreakStayStill,
     /// Slow-down-on-calls settings: on or off, and the quiet speed 0.5 to 6 km/h.
     CallsSetConfig {
         enabled: bool,
@@ -601,6 +617,39 @@ pub enum Command {
     LightsOutSetConfig {
         enabled: bool,
     },
+    /// Labs: the guided calibration wizard on or off (persisted, off by default).
+    CalibrationSetWizard {
+        on: bool,
+    },
+    /// RUN (or REPEAT) on a target speed: set the belt to `target_kmh` (deck
+    /// km/h) and start it if it is still. The press is his.
+    CalibrationRunStart {
+        target_kmh: f32,
+    },
+    /// COUNT: start the run's clock (refused while the belt is still).
+    CalibrationCountStart,
+    /// DONE: stop the clock (refused if the belt stopped or changed speed).
+    CalibrationCountStop,
+    /// What he counted; the point appears in `calibration.run.result`.
+    CalibrationRunCount {
+        count: crate::calibration::CalibrationCount,
+    },
+    /// Close the run (after saving its point, or to cancel). The belt keeps going.
+    CalibrationRunClose,
+    /// RUN ALL: walk `targets_kmh` (deck km/h) slowest first, running the
+    /// first now. The press is his.
+    CalibrationSweepStart {
+        targets_kmh: Vec<f32>,
+    },
+    /// RUN on the sweep's current speed. The press is his.
+    CalibrationSweepRun,
+    /// SAVE (`saved`) or SKIP the sweep's current speed and close its run.
+    /// The belt keeps its speed until the next RUN.
+    CalibrationSweepNext {
+        saved: bool,
+    },
+    /// End the sweep and any run. The belt keeps going.
+    CalibrationSweepEnd,
     /// Labs: GHOST_POD on (`on`) or off. On, the PC advertises as a Bluetooth
     /// foot pod and sends the belt speed to a paired watch once a second.
     GhostPodSet {

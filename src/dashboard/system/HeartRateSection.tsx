@@ -27,7 +27,7 @@ export function HeartRateSection() {
     <Section
       id="sys-heart"
       title="Heart rate"
-      description="Read your heart rate from a Bluetooth sensor. On a Garmin watch, switch on Broadcast Heart Rate first."
+      description="Read your heart rate from a Bluetooth sensor such as a watch."
       status={<StatusPill tone={tone} label={heartRatePill(heart)} title={heart.message} />}
     >
       <div className="flex flex-col gap-2">
@@ -81,7 +81,7 @@ export function HeartRateSection() {
         ))}
         {pick.error && <ActionStatus error={`Could not change the sensor: ${pick.error}`} />}
         {!heart.sensor && heart.found.length === 0 && !scanning && (
-          <Hint>No sensor picked, so heart rate stays off. Scan to find your watch.</Hint>
+          <Hint>Heart rate stays off until you pick a sensor; on a Garmin watch, switch on Broadcast Heart Rate first.</Hint>
         )}
       </div>
     </Section>

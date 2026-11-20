@@ -2,19 +2,20 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let rawSpeed: number | null = 0;
+const LIMITS = { min_scale: 0.2, max_scale: 3 };
 const listeners = new Set<() => void>();
 vi.mock("../../../state/useAppState", async () => {
   const { useSyncExternalStore } = await import("react");
   return {
     useAppState: (
-      sel: (s: { deck: { raw_speed_kmh: number | null } }) => unknown,
+      sel: (s: { deck: { raw_speed_kmh: number | null }; calibration: { limits: { min_scale: number; max_scale: number } } }) => unknown,
     ) =>
       useSyncExternalStore(
         (l) => {
           listeners.add(l);
           return () => listeners.delete(l);
         },
-        () => sel({ deck: { raw_speed_kmh: rawSpeed } }),
+        () => sel({ deck: { raw_speed_kmh: rawSpeed }, calibration: { limits: LIMITS } }),
       ),
   };
 });
@@ -80,6 +81,22 @@ describe("CalibrationWizard target speed", () => {
     expect(screen.getByRole("alert").textContent).toBe(
       "No belt speed was seen. Run the calibration again.",
     );
+    const save = screen.getByText("SAVE MULTI-AXIS DATA") as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.click(save);
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("refuses a factor outside the limits and says why", () => {
+    const onSave = vi.fn();
+    setSpeed(5);
+    startWalking(onSave);
+    act(() => {
+      vi.advanceTimersByTime(1000); // 37 m in 1 s is far too fast: factor 0.04
+    });
+    fireEvent.click(screen.getByText("STOP (DONE)"));
+
+    expect(screen.getByRole("alert").textContent).toBe("Factor 0.04 is outside 0.2 to 3.0. Run the calibration again.");
     const save = screen.getByText("SAVE MULTI-AXIS DATA") as HTMLButtonElement;
     expect(save.disabled).toBe(true);
     fireEvent.click(save);

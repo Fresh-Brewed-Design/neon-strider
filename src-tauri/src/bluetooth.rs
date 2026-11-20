@@ -28,6 +28,10 @@ use tokio::sync::Mutex;
 
 /// The Bluetooth adapter, once found.
 static ADAPTER: Mutex<Option<Adapter>> = Mutex::const_new(None);
+/// One scan at a time on the shared adapter: a second `start_scan` replaces
+/// the first one's filter and its `stop_scan` ends both, so the treadmill
+/// link and HEART_LINK take this around every scan.
+pub(crate) static SCAN_LOCK: Mutex<()> = Mutex::const_new(());
 /// The treadmill of the current (or last) connection. Lock order: this before
 /// `ORCHESTRATOR`.
 pub(crate) static CONNECTED_DECK: Mutex<Option<DeckLink>> = Mutex::const_new(None);
@@ -402,6 +406,9 @@ async fn listen_for_status(
             continue;
         }
         let Some(t) = protocol::parse_status(&data.value) else {
+            if let Some(reply) = protocol::parse_reply(&data.value) {
+                ORCHESTRATOR.lock().await.on_deck_reply(reply);
+            }
             continue;
         };
         crate::link::mark_frame();
@@ -513,6 +520,7 @@ fn listed_name(
 
 async fn scan_inner() -> Result<Vec<BleDevice>, String> {
     let central = find_central().await.map_err(|e| e.to_string())?;
+    let _scan = SCAN_LOCK.lock().await;
     let filter = ScanFilter {
         services: vec![FITSHOW_SERVICE],
     };
@@ -643,9 +651,11 @@ async fn connect_to(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
         .any(|p| ids_match(&normalize_id(&p.id().to_string()), &target));
     if !known {
         log::debug!("Target {} not in cache. Starting 5s scan...", id);
+        let scan = SCAN_LOCK.lock().await;
         let _ = central.start_scan(ScanFilter::default()).await;
         tokio::time::sleep(SCAN_TIME).await;
         let _ = central.stop_scan().await;
+        drop(scan);
         peripherals = central.peripherals().await.map_err(|e| e.to_string())?;
         log::debug!("Post-scan peripheral count: {}", peripherals.len());
         // A working radio always hears something in five seconds.
@@ -801,6 +811,8 @@ pub async fn sync_orchestrator_config(
     config: crate::persistence::AppConfig,
 ) -> Result<(), String> {
     let saved_id = config.last_device_id.clone();
+    let stored = crate::persistence::load_config(&app).calibration_points;
+    crate::calibration::check_point_scales(&config.calibration_points, &stored)?;
     {
         let mut state = ORCHESTRATOR.lock().await;
         state.sync_config(&config);

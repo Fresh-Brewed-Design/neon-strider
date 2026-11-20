@@ -153,6 +153,10 @@ pub(crate) struct SimDeck {
     pub(crate) history: Vec<u8>,
     /// Control packets refused.
     pub(crate) nacks: u32,
+    /// The slowest and fastest speed byte a target is taken at: outside, the
+    /// deck clamps and echoes the byte it took.
+    floor: u8,
+    ceiling: u8,
 }
 
 impl SimDeck {
@@ -173,7 +177,16 @@ impl SimDeck {
             outbox: vec![],
             history: vec![0],
             nacks: 0,
+            floor: 0,
+            ceiling: u8::MAX,
         }
+    }
+
+    /// A deck that runs only `floor`..=`ceiling` (speed bytes, 0.1 km/h).
+    #[cfg(test)]
+    pub(crate) fn set_limits(&mut self, floor: u8, ceiling: u8) {
+        self.floor = floor;
+        self.ceiling = ceiling;
     }
 
     #[cfg(test)]
@@ -319,6 +332,7 @@ impl SimDeck {
             self.nacks += 1;
             return NACK.to_vec();
         };
+        let mut echo_speed = None;
         let accepted = match (self.phase, control) {
             // Standby refuses every start; the countdown and the stop's
             // wind-down refuse everything but polls (docs/protocol.md).
@@ -328,8 +342,12 @@ impl SimDeck {
                 true
             }
             (Running, Control::Target) => {
-                self.target = speed as f32 / 10.0;
+                // A speed outside the deck's range is clamped, and the echo
+                // below says which byte it took.
+                let taken = speed.clamp(self.floor, self.ceiling);
+                self.target = taken as f32 / 10.0;
                 self.incline = incline;
+                echo_speed = Some(taken);
                 true
             }
             (Running, Control::Pause) => {
@@ -359,7 +377,9 @@ impl SimDeck {
         }
         match control {
             Control::Ready => READY_ACK.to_vec(),
-            Control::Target => bytes.to_vec(),
+            Control::Target => {
+                protocol::control_packet(Control::Target, echo_speed.unwrap_or(speed), incline)
+            }
             // `02 53 03 50 03` for a Stop (docs); the same shape assumed for the rest.
             other => protocol::raw_packet(&[0x53, other as u8]).expect("echo"),
         }
@@ -390,6 +410,31 @@ impl SimDeck {
         self.advance(now);
         if self.phase == Phase::Running {
             self.set(Phase::Paused, now);
+        }
+    }
+
+    /// One speed press on the deck's own buttons or remote (`up` or down),
+    /// 0.1 km/h, while running: the deck takes it as its own target and ramps
+    /// to it, as it does for a target the app sends.
+    #[cfg(test)]
+    pub(crate) fn press_speed(&mut self, up: bool, now: Instant) {
+        self.advance(now);
+        if self.phase == Phase::Running {
+            let byte = (self.target * 10.0).round() as i32 + if up { 1 } else { -1 };
+            self.target = byte.clamp(0, u8::MAX as i32) as f32 / 10.0;
+        }
+    }
+
+    /// One incline press on the deck's own buttons or remote, while running.
+    #[cfg(test)]
+    pub(crate) fn press_incline(&mut self, up: bool, now: Instant) {
+        self.advance(now);
+        if self.phase == Phase::Running {
+            self.incline = if up {
+                self.incline.saturating_add(1)
+            } else {
+                self.incline.saturating_sub(1)
+            };
         }
     }
 
@@ -519,7 +564,11 @@ impl Rig {
     /// Take one notification, as `bluetooth::listen_for_status` does.
     fn rx(&mut self, bytes: &[u8]) {
         let Some(t) = protocol::parse_status(bytes) else {
-            return; // an echo or nack: the app ignores these
+            if let Some(reply) = protocol::parse_reply(bytes) {
+                self.state.set_test_now(self.t);
+                self.state.on_deck_reply(reply);
+            }
+            return;
         };
         apply_telemetry(&mut self.state, &t);
         self.state.update_physics();
@@ -580,6 +629,22 @@ impl Rig {
     pub(crate) fn set_speed(&mut self, kmh: f32) {
         self.state.set_test_now(self.t);
         crate::bluetooth::apply_manual_intent(&mut self.state, Some(kmh), None);
+    }
+
+    /// `n` speed presses on the deck's remote, `up` or down, 0.3 s apart.
+    pub(crate) fn remote_speed(&mut self, up: bool, n: u32) {
+        for _ in 0..n {
+            self.deck.press_speed(up, self.t);
+            self.run(0.3);
+        }
+    }
+
+    /// `n` incline presses on the deck's remote, `up` or down, 0.3 s apart.
+    pub(crate) fn remote_incline(&mut self, up: bool, n: u32) {
+        for _ in 0..n {
+            self.deck.press_incline(up, self.t);
+            self.run(0.3);
+        }
     }
 
     pub(crate) fn run_program(&mut self, id: u32) {
@@ -961,6 +1026,69 @@ mod tests {
         assert_eq!(r.deck.status_code(), 0);
     }
 
+    /// The deck clamps a target to its floor and says so in the echo; the app
+    /// shows "asked X, got Y" and keeps the note only for a while.
+    #[test]
+    fn a_target_below_the_decks_floor_is_noted_from_the_echo() {
+        let mut r = Rig::new();
+        r.deck.set_limits(8, 40);
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(5.0);
+        r.set_speed(2.0);
+        r.run(5.0);
+        assert!(r.deck.running_at(2.0));
+        assert_eq!(r.state.current_target_note(), None, "taken as asked");
+        r.set_speed(0.6);
+        r.run(3.0);
+        assert!(r.deck.running_at(0.8), "{} km/h", r.deck.speed_kmh());
+        let note = r.state.current_target_note().expect("a note");
+        assert!(note.contains("0.6") && note.contains("0.8"), "{note}");
+        r.set_speed(5.0);
+        r.run(2.0);
+        let note = r.state.current_target_note().expect("a note");
+        assert!(note.contains("5.0") && note.contains("4.0"), "{note}");
+        r.run(20.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        r.run(10.0);
+        assert_eq!(r.state.current_target_note(), None, "the note fades");
+        r.set_speed(2.0);
+        r.run(3.0);
+        assert_eq!(r.state.current_target_note(), None);
+    }
+
+    #[test]
+    fn a_nack_just_after_a_target_is_that_target_refused() {
+        let mut r = Rig::new();
+        r.state.set_test_now(r.t);
+        r.state.target_pending = Some((30, 0, r.t));
+        r.state.on_deck_reply(protocol::DeckReply::Nack);
+        let note = r.state.current_target_note().expect("a note");
+        assert!(note.starts_with("DECK_REFUSED"), "{note}");
+        assert!(
+            note.contains("KM/H, TILT") && note.ends_with(" %"),
+            "{note}"
+        );
+        // A nack with no target in flight says nothing.
+        r.state.target_note = None;
+        r.state.on_deck_reply(protocol::DeckReply::Nack);
+        assert_eq!(r.state.current_target_note(), None);
+    }
+
+    #[test]
+    fn an_incline_the_deck_changed_is_noted_in_percent() {
+        let mut r = Rig::new();
+        r.state.set_test_now(r.t);
+        r.state.target_pending = Some((30, 3, r.t));
+        r.state.on_deck_reply(protocol::DeckReply::TargetEcho {
+            speed: 30,
+            incline: 4,
+        });
+        let note = r.state.current_target_note().expect("a note");
+        let (a, b) = (r.state.incline_pct(3), r.state.incline_pct(4));
+        assert_eq!(note, format!("DECK_ADJUSTED // TILT {a:.1} % -> {b:.1} %"));
+    }
+
     #[test]
     fn a_stop_spins_down_to_stopped_and_sends_nothing_after() {
         let mut r = Rig::new();
@@ -1107,6 +1235,96 @@ mod tests {
         );
         assert!(r.deck.belt_still() && r.deck.status_code() == 0);
         assert_eq!(r.finalised.len(), 1, "the walk was saved once");
+    }
+
+    /// Guided calibration: RUN on a still belt is his press. It starts the
+    /// belt and brings the deck to the target's hardware speed through the
+    /// current calibration; the reconnect hold never lets it start by itself.
+    #[test]
+    fn a_calibration_run_starts_the_belt_at_the_target_deck_speed() {
+        let mut r = Rig::new();
+        r.state.sync_config(&crate::persistence::AppConfig {
+            calibration_points: vec![protocol::CalibrationPoint {
+                speed: 4.0,
+                stride_length_cm: 70.0,
+                distance_scale: 0.8,
+            }],
+            ..Default::default()
+        });
+        r.run(5.0);
+        assert!(r.deck.belt_still(), "nothing starts before RUN");
+        r.state.set_test_now(r.t);
+        crate::calibration::begin_run(&mut r.state, 4.0).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(r.state.hardware_speed, 4.0);
+        // A repeat at another speed changes the belt without stopping it.
+        let mark = r.mark();
+        r.state.set_test_now(r.t);
+        crate::calibration::begin_run(&mut r.state, 2.5).unwrap();
+        r.run(10.0);
+        assert!(r.deck.running_at(2.5), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(r.controls_since(mark, Control::Stop), 0);
+        assert_eq!(r.controls_since(mark, Control::Pause), 0);
+    }
+
+    /// RUN ALL: the press runs the slowest speed. Saving it never moves the
+    /// belt; STOP stops it, closes the open run, and nothing starts the belt
+    /// again until his RUN on the next speed.
+    #[test]
+    fn a_calibration_sweep_only_moves_the_belt_on_his_run() {
+        crate::calibration::set_wizard_for_test(true);
+        let mut r = Rig::new();
+        r.run(5.0);
+        r.state.set_test_now(r.t);
+        crate::calibration::sweep_start(&mut r.state, &[4.0, 3.0]).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+
+        // SAVE: the belt keeps 3.0 until RUN.
+        crate::calibration::sweep_next(true).unwrap();
+        r.run(10.0);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+
+        // RUN on 4.0, then STOP mid-settle: the run closes, the sweep waits.
+        r.state.set_test_now(r.t);
+        crate::calibration::sweep_run(&mut r.state).unwrap();
+        r.run(10.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        crate::calibration::on_stop();
+        r.press(crate::engine::DeckAction::Stop);
+        r.run(10.0);
+        assert!(r.deck.belt_still());
+        let snap = crate::calibration::snapshot(r.state.hardware_speed);
+        assert_eq!(snap.run, None);
+        assert_eq!(snap.sweep.as_ref().and_then(|s| s.current), Some(1));
+
+        let mark = r.mark();
+        r.run(20.0);
+        assert!(
+            !moves_belt(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+        assert!(r.deck.belt_still(), "nothing restarts the belt after STOP");
+
+        r.state.set_test_now(r.t);
+        crate::calibration::sweep_run(&mut r.state).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        crate::calibration::sweep_next(false).unwrap();
+        let snap = crate::calibration::snapshot(r.state.hardware_speed);
+        assert_eq!(snap.sweep.unwrap().current, None, "both speeds done");
+        crate::calibration::close_all();
+    }
+
+    #[test]
+    fn a_calibration_run_is_refused_while_a_program_runs() {
+        let mut r = post_meal_walking();
+        r.state.set_test_now(r.t);
+        assert!(crate::calibration::begin_run(&mut r.state, 3.0).is_err());
+        r.run(5.0);
+        assert!(r.deck.running_at(4.0), "the program keeps its speed");
     }
 
     /// Issue #61: `min_speed` is the deck's floor in hardware units. With a
@@ -1256,5 +1474,400 @@ mod tests {
             vec![Effect::Back]
         );
         assert_eq!(r.commands_since(mark), vec![]);
+    }
+
+    // -- Eye breaks ----------------------------------------------------------
+
+    /// The eye-break machine on a fake epoch clock that follows the rig's
+    /// time, ticked once a second as `desk.rs` does.
+    struct Eyes {
+        rt: crate::snapshot::eyebreak::Runtime,
+        t0: Instant,
+    }
+
+    impl Eyes {
+        /// Breaks every 10 minutes of screen use, 20 seconds long, pausing the belt.
+        fn new(r: &Rig) -> Self {
+            let rt = crate::snapshot::eyebreak::Runtime {
+                cfg: crate::snapshot::eyebreak::Config {
+                    enabled: true,
+                    minutes: 10,
+                    seconds: 20,
+                    sound: true,
+                    pause_belt: true,
+                    fit_rests: true,
+                },
+                ..Default::default()
+            };
+            Self { rt, t0: r.t }
+        }
+
+        /// Run the rig `secs` seconds with the user at the keyboard, ticking the
+        /// machine each second.
+        fn run(&mut self, r: &mut Rig, secs: u32) {
+            for _ in 0..secs {
+                r.run(1.0);
+                let now = 1_800_000_000_000 + r.t.duration_since(self.t0).as_millis() as u64;
+                crate::snapshot::desk::eye_break_tick(
+                    &mut r.state,
+                    &mut self.rt,
+                    true,
+                    now,
+                    Some(0),
+                    false,
+                    false,
+                );
+            }
+        }
+
+        fn shown(&self) -> crate::snapshot::eyebreak::EyeBreakPhase {
+            self.rt.machine.shown_phase()
+        }
+
+        /// RESUME on the card.
+        fn resume(&mut self, r: &mut Rig) {
+            r.state.set_test_now(r.t);
+            crate::snapshot::desk::eye_break_resume_on(&mut r.state, true, &mut self.rt.machine)
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn an_eye_break_pauses_a_walk_and_only_resume_starts_it_again() {
+        use crate::snapshot::eyebreak::EyeBreakPhase;
+        let mut r = Rig::new();
+        let mut eyes = Eyes::new(&r);
+        // Nine and a half minutes at the screen, then a walk at 3 km/h.
+        eyes.run(&mut r, 570);
+        r.press(DeckAction::Start);
+        eyes.run(&mut r, 5);
+        r.set_speed(3.0);
+        eyes.run(&mut r, 20);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(eyes.shown(), EyeBreakPhase::Upcoming);
+        let mark = r.mark();
+        // The break starts at ten minutes and pauses the belt.
+        eyes.run(&mut r, 15);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Break);
+        assert!(r.deck.belt_still() && r.deck.status_code() == 10);
+        assert_eq!(r.controls_since(mark, Control::Pause), 1);
+        assert_eq!(r.controls_since(mark, Control::Stop), 0);
+        // It ends: the resume card, and the belt stays still for minutes.
+        eyes.run(&mut r, 20);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Complete);
+        eyes.run(&mut r, 180);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Complete);
+        assert!(r.deck.belt_still() && r.deck.status_code() == 10);
+        assert!(
+            !moves_belt(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+        // RESUME is the press: the countdown, back at 3 km/h, same session.
+        eyes.resume(&mut r);
+        eyes.run(&mut r, 10);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(eyes.shown(), EyeBreakPhase::Idle);
+        assert_eq!(r.sessions_started, 1);
+        assert!(r.finalised.is_empty());
+    }
+
+    #[test]
+    fn an_eye_break_pauses_a_program_at_its_step_and_resume_is_its_go() {
+        use crate::snapshot::eyebreak::EyeBreakPhase;
+        let mut r = Rig::new();
+        let mut eyes = Eyes::new(&r);
+        eyes.run(&mut r, 570);
+        r.run_program(POST_MEAL);
+        eyes.run(&mut r, 25);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        let mark = r.mark();
+        eyes.run(&mut r, 15);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Break);
+        let a = r.program();
+        assert_eq!(
+            (a.phase, a.paused, a.wait, a.step_index),
+            (ProgramPhase::Walking, true, None, 0)
+        );
+        assert!(r.deck.belt_still());
+        // The break ends and nobody presses anything for three minutes.
+        eyes.run(&mut r, 200);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Complete);
+        assert!(r.program().paused, "the program is still paused");
+        assert!(r.deck.belt_still());
+        assert!(
+            !app_starts(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+        assert_eq!(r.controls_since(mark, Control::Stop), 0);
+        eyes.resume(&mut r);
+        eyes.run(&mut r, 15);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        let a = r.program();
+        assert_eq!((a.paused, a.step_index), (false, 0));
+        assert_eq!(eyes.shown(), EyeBreakPhase::Idle);
+        assert_eq!(r.sessions_started, 1);
+    }
+
+    #[test]
+    fn go_during_an_eye_break_takes_the_belt_back_and_no_card_follows() {
+        use crate::snapshot::eyebreak::EyeBreakPhase;
+        let mut r = Rig::new();
+        let mut eyes = Eyes::new(&r);
+        eyes.run(&mut r, 570);
+        r.run_program(POST_MEAL);
+        eyes.run(&mut r, 40);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Break);
+        assert!(r.program().paused);
+        // GO on the HUD in the middle of the break.
+        r.go();
+        eyes.run(&mut r, 15);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        assert!(!eyes.rt.machine.holds_belt());
+        let mark = r.mark();
+        eyes.run(&mut r, 30);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Idle, "no resume card");
+        assert_eq!(
+            r.controls_since(mark, Control::Pause),
+            0,
+            "nothing pauses it again"
+        );
+        assert!(r.deck.running_at(4.0));
+    }
+
+    #[test]
+    fn an_eye_break_due_mid_walk_waits_for_the_program_rest_and_never_pauses_the_walk() {
+        use crate::snapshot::eyebreak::EyeBreakPhase;
+        let mut r = Rig::new();
+        let mut eyes = Eyes::new(&r);
+        // Seven minutes at the screen, then Workday: 5 min at 3 km/h, rest 25.
+        eyes.run(&mut r, 420);
+        r.run_program(WORKDAY);
+        // Past the break's time (10 min of screen use), still walking.
+        eyes.run(&mut r, 200);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+        assert!(!r.program().paused);
+        assert_ne!(eyes.shown(), EyeBreakPhase::Break);
+        assert!(eyes.rt.machine.phase() == EyeBreakPhase::Idle);
+        let mark = r.mark();
+        // The heads-up, then the rest: the break starts there.
+        eyes.run(&mut r, 50);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Upcoming);
+        assert!(crate::snapshot::eyebreak::snapshot_of(&eyes.rt).at_rest);
+        assert!(r.deck.running_at(3.0));
+        eyes.run(&mut r, 70);
+        assert_eq!(r.program().phase, ProgramPhase::Resting);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Break);
+        assert!(!eyes.rt.machine.holds_belt());
+        assert!(r.deck.belt_still());
+        // Only the rest's own pauses: the same as Workday with no eye breaks.
+        let mut plain = Rig::new();
+        let mut off = Eyes::new(&plain);
+        off.rt.cfg.enabled = false;
+        off.run(&mut plain, 420);
+        plain.run_program(WORKDAY);
+        off.run(&mut plain, 200);
+        let plain_mark = plain.mark();
+        off.run(&mut plain, 120);
+        assert_eq!(
+            r.controls_since(mark, Control::Pause),
+            plain.controls_since(plain_mark, Control::Pause)
+        );
+        // No resume card after the break.
+        eyes.run(&mut r, 30);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Idle);
+        // The rest runs out and the next cycle waits for GO; nothing starts it.
+        eyes.run(&mut r, 26 * 60);
+        let a = r.program();
+        assert_eq!((a.paused, a.wait), (true, Some(ProgramWait::RestComplete)));
+        assert!(r.deck.belt_still());
+        assert!(
+            !app_starts(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+        assert!(!eyes.rt.machine.holds_belt());
+    }
+
+    #[test]
+    fn an_eye_break_leaves_a_still_belt_alone() {
+        use crate::snapshot::eyebreak::EyeBreakPhase;
+        let mut r = Rig::new();
+        let mut eyes = Eyes::new(&r);
+        eyes.run(&mut r, 5);
+        let mark = r.mark();
+        eyes.run(&mut r, 635);
+        assert_eq!(eyes.rt.machine.end_seq(), 1, "a break came and went");
+        assert_eq!(r.commands_since(mark), vec![]);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Idle);
+    }
+
+    /// A manual walk at 3.0 km/h, level, settled.
+    fn manual_walk_at_3() -> Rig {
+        let mut r = Rig::new();
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(5.0);
+        r.set_speed(3.0);
+        r.run(10.0);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+        r
+    }
+
+    fn deck_byte(r: &Rig) -> i32 {
+        (r.deck.target * 10.0).round() as i32
+    }
+
+    #[test]
+    fn a_speed_nudge_after_the_remote_steps_from_the_remote_speed() {
+        let mut r = manual_walk_at_3();
+        let mark = r.mark();
+        r.remote_speed(true, 10);
+        r.run(5.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(
+            r.commands_since(mark),
+            vec![],
+            "the app leaves the remote alone"
+        );
+        r.press(DeckAction::SpeedUp);
+        r.run(2.0);
+        assert_eq!(deck_byte(&r), 41, "up from the remote's 4.0");
+        assert!(r.deck.running_at(4.1), "{} km/h", r.deck.speed_kmh());
+        r.press(DeckAction::SpeedDown);
+        r.run(1.0);
+        r.press(DeckAction::SpeedDown);
+        r.run(2.0);
+        assert_eq!(deck_byte(&r), 39, "down from 4.1, twice");
+
+        // Down on the remote, then down on the HUD.
+        r.remote_speed(false, 5);
+        r.run(3.0);
+        assert!(r.deck.running_at(3.4), "{} km/h", r.deck.speed_kmh());
+        r.press(DeckAction::SpeedDown);
+        r.run(2.0);
+        assert_eq!(deck_byte(&r), 33, "down from the remote's 3.4");
+
+        // One up on the remote, one down on the HUD: back to the speed the
+        // app last sent, which still goes out.
+        r.remote_speed(true, 1);
+        r.run(3.0);
+        assert!(r.deck.running_at(3.4), "{} km/h", r.deck.speed_kmh());
+        r.press(DeckAction::SpeedDown);
+        r.run(2.0);
+        assert!(r.deck.running_at(3.3), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(r.controls_since(0, Control::Pause), 0);
+    }
+
+    #[test]
+    fn an_incline_nudge_after_the_remote_steps_from_the_remote_incline() {
+        let mut r = manual_walk_at_3();
+        let mark = r.mark();
+        r.remote_incline(true, 5);
+        r.run(3.0);
+        assert_eq!(r.deck.incline, 5);
+        assert_eq!(
+            r.commands_since(mark),
+            vec![],
+            "the app leaves the remote alone"
+        );
+        r.press(DeckAction::InclineUp);
+        r.run(2.0);
+        assert_eq!(r.deck.incline, 6, "up from the remote's 5");
+        r.press(DeckAction::InclineDown);
+        r.run(1.0);
+        r.press(DeckAction::InclineDown);
+        r.run(2.0);
+        assert_eq!(r.deck.incline, 4, "down from 6, twice");
+        assert!(r.deck.running_at(3.0), "the speed stays put");
+
+        r.remote_incline(false, 3);
+        r.run(2.0);
+        assert_eq!(r.deck.incline, 1);
+        r.press(DeckAction::InclineUp);
+        r.run(2.0);
+        assert_eq!(r.deck.incline, 2, "up from the remote's 1");
+    }
+
+    #[test]
+    fn a_nudge_of_one_keeps_what_the_remote_set_on_the_other() {
+        let mut r = manual_walk_at_3();
+        r.remote_speed(true, 5);
+        r.remote_incline(true, 4);
+        r.run(3.0);
+        assert!(r.deck.running_at(3.5), "{} km/h", r.deck.speed_kmh());
+        r.press(DeckAction::InclineUp);
+        r.run(2.0);
+        assert_eq!(r.deck.incline, 5);
+        assert!(
+            r.deck.running_at(3.5),
+            "an incline press keeps the remote's speed"
+        );
+        r.remote_incline(false, 2);
+        r.run(2.0);
+        r.press(DeckAction::SpeedUp);
+        r.run(2.0);
+        assert!(r.deck.running_at(3.6), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(
+            r.deck.incline, 3,
+            "a speed press keeps the remote's incline"
+        );
+    }
+
+    #[test]
+    fn a_nudge_during_a_program_steps_from_the_remote_speed() {
+        let mut r = post_meal_walking();
+        r.remote_speed(true, 5);
+        r.run(3.0);
+        assert!(r.deck.running_at(4.5), "{} km/h", r.deck.speed_kmh());
+        r.press(DeckAction::SpeedUp);
+        r.run(2.0);
+        assert!(r.deck.running_at(4.6), "{} km/h", r.deck.speed_kmh());
+        let a = r.program();
+        assert_eq!(
+            (a.phase, a.paused, a.step_index),
+            (ProgramPhase::Walking, false, 0)
+        );
+    }
+
+    #[test]
+    fn app_presses_mid_ramp_still_step_from_the_app_target() {
+        let mut r = manual_walk_at_3();
+        // A slider to 5.0, and + while the belt is still ramping up to it.
+        r.set_speed(5.0);
+        r.run(1.0);
+        assert!(r.deck.speed_kmh() < 4.5, "{} km/h", r.deck.speed_kmh());
+        r.press(DeckAction::SpeedUp);
+        r.run(8.0);
+        assert!(r.deck.running_at(5.1), "{} km/h", r.deck.speed_kmh());
+        // Quick presses before the deck reports any of them all count.
+        r.press(DeckAction::SpeedUp);
+        r.run(0.05);
+        r.press(DeckAction::SpeedUp);
+        r.run(0.05);
+        r.press(DeckAction::SpeedUp);
+        r.run(3.0);
+        assert!(r.deck.running_at(5.4), "{} km/h", r.deck.speed_kmh());
+        r.press(DeckAction::InclineUp);
+        r.run(0.05);
+        r.press(DeckAction::InclineUp);
+        r.run(3.0);
+        assert_eq!(r.deck.incline, 2);
+    }
+
+    #[test]
+    fn a_remote_press_against_an_app_ramp_is_the_base_once_the_deck_settles() {
+        let mut r = manual_walk_at_3();
+        r.set_speed(5.0);
+        r.run(1.0);
+        // Down on the remote while the belt ramps up to the app's 5.0: the
+        // deck still climbs, but stops at its own 4.9.
+        r.remote_speed(false, 1);
+        r.run(10.0);
+        assert!(r.deck.running_at(4.9), "{} km/h", r.deck.speed_kmh());
+        r.press(DeckAction::SpeedUp);
+        r.run(2.0);
+        assert_eq!(deck_byte(&r), 50, "up from the deck's 4.9");
     }
 }

@@ -34,4 +34,9 @@ max_speed_kmh: number, max_incline_level: number, max_incline_pct: number,
 /**
  * incline_pct = level * incline_pct_per_level + incline_offset_pct.
  */
-incline_offset_pct: number, incline_pct_per_level: number, };
+incline_offset_pct: number, incline_pct_per_level: number, 
+/**
+ * The deck changed or refused the last target ("asked X, got Y"), for a
+ * few seconds; the HUD shows it under the speed controls.
+ */
+target_note: string | null, };
