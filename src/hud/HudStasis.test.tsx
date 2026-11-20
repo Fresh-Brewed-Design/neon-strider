@@ -214,3 +214,59 @@ describe("HUD minified", () => {
     expect(screen.queryByRole("button", { name: "Minify the HUD" })).not.toBeInTheDocument();
   });
 });
+
+/** Oscillators the HUD's tones started, by pitch (Hz). jsdom has no AudioContext. */
+const tones: number[] = [];
+class FakeAudioContext {
+  currentTime = 0;
+  destination = {};
+  resume() {
+    return Promise.resolve();
+  }
+  createOscillator() {
+    const osc = { frequency: { value: 0 }, connect: (n: unknown) => n, start: () => tones.push(osc.frequency.value), stop() {} };
+    return osc;
+  }
+  createGain() {
+    return { gain: { setValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect: (n: unknown) => n };
+  }
+}
+
+/** Nothing running: no treadmill linked, the belt still, no program, the HUD hidden while still. */
+function nothingRunning(eye: Partial<AppSnapshot["eye_break"]>): AppSnapshot {
+  return still("hidden", (s) => {
+    Object.assign(s.connection, { connected: false, has_saved_device: true, link: { state: "idle" } });
+    s.eye_break = { ...s.eye_break, enabled: true, ...eye };
+  });
+}
+
+// Fresh Brewed Design, 2026-11-19: eye breaks show even when nothing is running.
+describe("HUD eye breaks with nothing running", () => {
+  beforeAll(() => vi.stubGlobal("AudioContext", FakeAudioContext));
+
+  it("shows the heads-up, the cooldown card and the resume card without the panel", () => {
+    const { container, rerender } = show(nothingRunning({ phase: "upcoming", remaining_s: 48 }));
+    expect(container.querySelector(".hud-panel")).toBeNull();
+    expect(screen.getByText("IMPLANT COOLDOWN IN 48 S")).toBeInTheDocument();
+    current = nothingRunning({ phase: "break", remaining_s: 72 });
+    rerender(<HudApp />);
+    expect(screen.getByText("OCULAR_IMPLANT // COOLDOWN")).toBeInTheDocument();
+    expect(screen.getByText("Look away from the screen.")).toBeInTheDocument();
+    expect(container.querySelector(".hud-panel")).toBeNull();
+  });
+
+  it("plays the blink and end tones", () => {
+    tones.length = 0;
+    const { rerender } = show(nothingRunning({ phase: "upcoming", remaining_s: 5, blink_seq: 0 }));
+    expect(tones).toEqual([]);
+    current = nothingRunning({ phase: "break", remaining_s: 90, blink_seq: 1 });
+    rerender(<HudApp />);
+    expect(tones).toEqual([660]);
+    current = nothingRunning({ phase: "break", remaining_s: 80, blink_seq: 2 });
+    rerender(<HudApp />);
+    expect(tones).toEqual([660, 660]);
+    current = nothingRunning({ phase: "idle", remaining_s: 0, blink_seq: 2, end_seq: 1 });
+    rerender(<HudApp />);
+    expect(tones).toEqual([660, 660, 660, 880]);
+  });
+});

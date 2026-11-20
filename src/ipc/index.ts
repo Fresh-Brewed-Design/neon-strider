@@ -21,6 +21,8 @@ export type { SweepMark } from "./bindings/SweepMark";
 export type { Change } from "./bindings/Change";
 export type { ConnectionSnapshot } from "./bindings/ConnectionSnapshot";
 export type { DeckSnapshot } from "./bindings/DeckSnapshot";
+export type { DeckProfileSnapshot } from "./bindings/DeckProfileSnapshot";
+export type { DeckSpeedStep } from "./bindings/DeckSpeedStep";
 export type { HudAnchor } from "./bindings/HudAnchor";
 export type { HudConfig } from "./bindings/HudConfig";
 export type { HudCustom } from "./bindings/HudCustom";
