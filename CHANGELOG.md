@@ -1,5 +1,49 @@
 # Changelog
 
+## 1.11.0 (2026-11-20)
+
+### New
+
+- Eye breaks (off by default, under System -> Desk): after 20 minutes of screen use the HUD warns a minute ahead, then asks you to look into the distance for 90 seconds, with a blink tone every 10 seconds and a tone at the end. The belt is never touched. Both times and the tones can be changed.
+
+### Fixed
+
+- Calibration no longer saves a 0 km/h point when the belt has already stopped; it tells you to run it again.
+
+## 1.10.0 (2026-11-20)
+
+### New
+
+- New *VO2 max* example program: a Norwegian 4x4 for the deck (warm-up, four 4-minute climbs at 6.0 km/h and 10 % with 3 easy minutes between, cool-down). It is added to your programs, and docs/research.md has the sources.
+
+## 1.9.1 (2026-11-20)
+
+### Fixed
+
+- The slowest speed now follows your calibration: a speed set under the belt's real floor (e.g. 1.2 km/h when the deck's 0.6 runs that fast) runs at the floor instead of below it, and programs, the slider and the engage speed all use the same calibrated minimum.
+
+## 1.9.0 (2026-11-20)
+
+### New
+
+- LIGHTS_OUT (System, Desk, off by default): when the PC's display turns off, the treadmill stops and any program ends, so the deck can go to sleep and its lights go out. Nothing starts again when the display comes back on.
+- When an update is waiting, the pink dot now shows on the tray icon and on System's Updates tab as well as on the System page, and the tray tooltip ends in `UPDATE READY`. All three clear together when you install it or choose "Not now".
+
+### Fixed
+
+- While the treadmill is off, the app keeps retrying quickly (every 15 seconds) as long as you are using the PC, and slows down to every 2 minutes only once the PC has been idle for 5 minutes, so it no longer fills its log. Using the PC again, Connect, Retry now or scanning brings fast retries back.
+- The HUD speed buttons no longer get stuck partway (around 3.8 km/h with some calibrations): every press now moves the belt one step, all the way up to your max speed and back down.
+
+## 1.8.1 (2026-11-20)
+
+### Changed
+
+- The HUD nudge now says how long the belt has been idle (for example 32 MIN IDLE) instead of assuming you are seated, and its setting is called Idle nudge.
+
+### Fixed
+
+- INSTALL on the HUD's update card now reliably opens the dashboard on System -> Updates, instead of the window sometimes vanishing again before you could see it.
+
 ## 1.8.0 (2026-11-17)
 
 ### New

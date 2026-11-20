@@ -82,7 +82,7 @@ impl Default for Config {
 #[ts(export, export_to = "../../src/ipc/bindings/")]
 pub struct SeatedSnapshot {
     pub enabled: bool,
-    /// Minutes of sitting before the card appears.
+    /// Minutes of PC use with the belt still before the card appears.
     pub minutes: u32,
     /// Programs the card offers (existing ones, at most three).
     pub program_ids: Vec<u32>,
@@ -90,7 +90,7 @@ pub struct SeatedSnapshot {
     pub custom_programs: bool,
     /// The HUD should show the card.
     pub show_card: bool,
-    /// Whole minutes seated; what the card says.
+    /// Whole minutes idle (belt still); what the card says.
     pub seated_minutes: u32,
     /// A program that starts as soon as the treadmill connects.
     pub pending_program_id: Option<u32>,

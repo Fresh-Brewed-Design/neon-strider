@@ -401,9 +401,54 @@ fn physical_axis_velocity(p: &CalibrationPoint) -> f32 {
     p.speed / scale
 }
 
+/// Tests: a calibration whose scale isn't 1 at the deck's floor. The default
+/// `min_speed` of 0.6 (hardware) runs the belt at 1.2 km/h (scale 0.5 there,
+/// 0.8 at hw 6.0 = 7.5 km/h).
+#[cfg(test)]
+pub(crate) fn slow_floor_config() -> persistence::AppConfig {
+    let point = |speed: f32, distance_scale: f32| CalibrationPoint {
+        speed,
+        stride_length_cm: 60.0,
+        distance_scale,
+    };
+    persistence::AppConfig {
+        calibration_points: vec![point(0.6, 0.5), point(6.0, 0.8)],
+        ..Default::default()
+    }
+}
+
+/// Calibration points in hardware-speed order, the order both speed lookups
+/// walk the curve in.
+fn sorted_by_hw_speed(points: &[CalibrationPoint]) -> Vec<CalibrationPoint> {
+    let mut sorted = points.to_vec();
+    sorted.sort_by(|a, b| {
+        a.speed
+            .partial_cmp(&b.speed)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    sorted
+}
+
+/// Calibrated km/h for a hardware speed, over points sorted by hardware speed
+/// (`sorted_by_hw_speed`): the hardware speed over the scale interpolated at it.
+fn hw_to_physical(sorted: &[CalibrationPoint], hw_speed: f32) -> f32 {
+    if sorted.is_empty() {
+        return hw_speed;
+    }
+    let scale = interpolate(sorted, |p| p.speed, |p| p.distance_scale, hw_speed)
+        .unwrap_or(1.0)
+        .clamp(0.5, 2.5);
+    hw_speed / scale.max(0.1)
+}
+
 /// Hardware speed and incline bytes for a physical target, clamped to the
 /// deck's `max_hw_speed`. Standalone, so the transmit path, the manual nudges
 /// and the tests share it.
+///
+/// The exact inverse of `to_physical_speed`: the byte whose calibrated km/h is
+/// nearest the target (the lowest such byte on a tie). A calibration whose km/h
+/// doesn't rise with every byte has no formula inverse, and one worked out on
+/// a different curve would send a byte's own km/h as some other byte.
 pub(crate) fn calculate_hardware_bytes(
     physical_speed: f32,
     incline: u8,
@@ -416,22 +461,17 @@ pub(crate) fn calculate_hardware_bytes(
         return (hw_speed, incline);
     }
 
-    let mut sorted = points.to_vec();
-    sorted.sort_by(|a, b| {
-        physical_axis_velocity(a)
-            .partial_cmp(&physical_axis_velocity(b))
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    let scale = interpolate(
-        &sorted,
-        physical_axis_velocity,
-        |p| p.distance_scale,
-        physical_speed,
-    )
-    .unwrap_or(1.0)
-    .clamp(0.5, 2.5);
-    let hw_speed = (physical_speed * scale * 10.0).round().clamp(0.0, max_byte);
-    (hw_speed as u8, incline)
+    let sorted = sorted_by_hw_speed(points);
+    let top = max_byte.round().clamp(0.0, u8::MAX as f32) as u8;
+    let gap = |b: u8| (hw_to_physical(&sorted, b as f32 / 10.0) - physical_speed).abs();
+    let hw_speed = (0..=top)
+        .min_by(|a, b| {
+            gap(*a)
+                .partial_cmp(&gap(*b))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .unwrap_or(0);
+    (hw_speed, incline)
 }
 
 impl OrchestratorState {
@@ -473,13 +513,7 @@ impl OrchestratorState {
         self.neural_floor_pct = crate::neural::clamp_floor_pct(config.neural_floor_pct);
         self.neural_sensitivity = config.neural_sensitivity;
 
-        let mut sorted = self.calibration_points.clone();
-        sorted.sort_by(|a, b| {
-            a.speed
-                .partial_cmp(&b.speed)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-        self.sorted_points = sorted;
+        self.sorted_points = sorted_by_hw_speed(&self.calibration_points);
         self.rebuild_lookup_table();
     }
 
@@ -516,25 +550,13 @@ impl OrchestratorState {
     }
 
     fn calculate_physical_speed_uncached(&self, hw_speed: f32) -> f32 {
-        if self.sorted_points.is_empty() {
-            return hw_speed;
-        }
-        hw_speed / self.scale_for_hw_speed(hw_speed).max(0.1)
+        hw_to_physical(&self.sorted_points, hw_speed)
     }
 
-    /// The calibration scale at a hardware speed.
-    fn scale_for_hw_speed(&self, hw_speed: f32) -> f32 {
-        if self.sorted_points.is_empty() {
-            return 1.0;
-        }
-        interpolate(
-            &self.sorted_points,
-            |p| p.speed,
-            |p| p.distance_scale,
-            hw_speed,
-        )
-        .unwrap_or(1.0)
-        .clamp(0.5, 2.5)
+    /// The slowest calibrated km/h the belt runs at: `min_speed` is the deck's
+    /// own floor in hardware units, so every physical speed is bounded by this.
+    pub fn min_physical_speed(&self) -> f32 {
+        self.to_physical_speed(self.min_speed)
     }
 
     /// Calibrated km/h for a hardware speed.
@@ -1007,13 +1029,15 @@ impl OrchestratorState {
         }
     }
 
-    /// Nudge the manual speed by exactly one hardware unit in `dir` (+1 or -1).
+    /// Nudge the manual speed by one hardware unit in `dir` (+1 or -1).
     ///
     /// The intent is physical km/h, but the deck only acts on the hardware
-    /// byte, round(physical * scale * 10), and the engine only sends when that
-    /// byte changes. With a calibration scale below 1, a 0.1 km/h step can
-    /// round to the same byte and do nothing; stepping the byte itself
-    /// guarantees every press reaches the deck.
+    /// byte, and the engine only sends when that byte changes. With a
+    /// calibration scale below 1, a 0.1 km/h step can round to the same byte
+    /// and do nothing; stepping the byte itself guarantees every press reaches
+    /// the deck. The byte's km/h comes from the curve the transmit path
+    /// inverts exactly, so the stored intent is sent as that byte and the next
+    /// press steps on from it.
     fn nudge_manual_speed(&mut self, dir: i32) {
         // After a program ended on a still belt the target shown is the speed
         // Engage will use: a nudge steps from that, as a speed set by hand.
@@ -1025,7 +1049,16 @@ impl OrchestratorState {
         };
         let cur_byte = hw_byte(cur.speed) as i32;
         let max_byte = (self.max_speed * 10.0).round() as i32;
-        let target_byte = (cur_byte + dir).clamp(0, max_byte);
+        let mut target_byte = (cur_byte + dir).clamp(0, max_byte);
+        // Two bytes with exactly the same km/h both send as the lower one:
+        // step past it so the press still moves the deck.
+        while target_byte > 0
+            && target_byte < max_byte
+            && target_byte != cur_byte
+            && hw_byte(self.physical_for_byte(target_byte as u8, cur.incline)) as i32 != target_byte
+        {
+            target_byte += dir;
+        }
 
         if target_byte != cur_byte {
             let phys = self.physical_for_byte(target_byte as u8, cur.incline);
@@ -1045,29 +1078,11 @@ impl OrchestratorState {
         self.stamp_manual_interaction(self.now());
     }
 
-    /// A physical speed that the transmit path turns back into exactly
-    /// `byte`: seeded from the inverse lookup, then walked off any rounding gap
-    /// (the two directions of the calibration curve don't always agree to the
-    /// byte).
-    fn physical_for_byte(&self, byte: u8, incline: u8) -> f32 {
-        let target = byte as i32;
-        let hw_byte = |phys: f32| {
-            calculate_hardware_bytes(phys, incline, &self.calibration_points, self.max_speed).0
-                as i32
-        };
-        let mut phys = self.to_physical_speed(byte as f32 / 10.0).max(0.0);
-        for _ in 0..64 {
-            let b = hw_byte(phys);
-            if b == target {
-                break;
-            }
-            phys += 0.01 * (target - b).signum() as f32;
-            if phys <= 0.0 {
-                phys = 0.0;
-                break;
-            }
-        }
-        phys
+    /// The physical speed of a hardware `byte`, which the transmit path
+    /// (`calculate_hardware_bytes`, its exact inverse) turns back into that
+    /// byte. The incline doesn't change the speed curve.
+    fn physical_for_byte(&self, byte: u8, _incline: u8) -> f32 {
+        self.to_physical_speed(byte as f32 / 10.0).max(0.0)
     }
 
     fn nudge_incline(&mut self, up: bool, now: Instant) {
@@ -1126,8 +1141,8 @@ impl OrchestratorState {
         self.do_start(now);
     }
 
-    /// Start or resume: prime the handshake, at no less than `min_speed` so the
-    /// belt actually moves.
+    /// Start or resume: prime the handshake, at no less than the belt's floor
+    /// (`min_physical_speed`) so the belt actually moves.
     /// After a program ended on a still belt, it starts at the speed from
     /// before the program (`engage_speed`), at the incline shown.
     fn do_start(&mut self, now: Instant) {
@@ -1139,9 +1154,10 @@ impl OrchestratorState {
             incline: 0,
         });
         let engage = self.engage_speed.take();
-        if current.speed < self.min_speed {
+        let floor = self.min_physical_speed();
+        if current.speed < floor {
             self.manual_intent = Some(ControlIntent {
-                speed: engage.unwrap_or(self.min_speed).max(self.min_speed),
+                speed: engage.unwrap_or(floor).max(floor),
                 incline: current.incline,
             });
         }
@@ -1162,11 +1178,12 @@ impl OrchestratorState {
             speed: 0.0,
             incline: 0,
         });
-        if current.speed >= self.min_speed {
+        let floor = self.min_physical_speed();
+        if current.speed >= floor {
             return None;
         }
         self.engage_speed.map(|speed| ControlIntent {
-            speed: speed.max(self.min_speed),
+            speed: speed.max(floor),
             incline: current.incline,
         })
     }
@@ -1345,7 +1362,7 @@ impl OrchestratorState {
             now_ms,
             keys,
             base_kmh: base,
-            min_kmh: self.min_speed,
+            min_kmh: self.min_physical_speed(),
             step_kmh: self.hw_step_kmh(base),
             running: self.last_status == MachineStatus::Running && !self.stop_requested,
             quiet,
@@ -1391,7 +1408,7 @@ impl OrchestratorState {
     }
 
     /// The speed and incline to send now: the base eased by Neural flow, held
-    /// to at least `min_speed` while moving.
+    /// to at least the belt's floor (`min_physical_speed`) while moving.
     pub fn resolve_target(&self) -> (f32, u8, TargetSource) {
         let (speed, incline, source) = self.resolve_base(self.now());
         // A speed set by hand since Neural flow's last tick wins at once; quiet
@@ -1402,8 +1419,9 @@ impl OrchestratorState {
             crate::snapshot::calls::quiet_active(),
         );
         // The top speed is enforced in `calculate_hardware_bytes`.
-        let speed = if speed > 0.0 && speed < self.min_speed {
-            self.min_speed
+        let floor = self.min_physical_speed();
+        let speed = if speed > 0.0 && speed < floor {
+            floor
         } else {
             speed
         };
@@ -1448,9 +1466,15 @@ impl OrchestratorState {
 
     /// The deck has reported the belt moving on this connection: from here on
     /// the automatic start and resume work as usual (a pause later in this walk
-    /// can be resumed by a program step, say).
+    /// can be resumed by a program step, say). Not while a stop is in flight:
+    /// that belt is on its way to still, and a hold set with the stop (lights
+    /// out) stays until a press.
     fn release_hold_if_moving(&mut self) {
-        if self.hold_auto_start && !self.awaiting_first_packet && self.last_status.is_moving() {
+        if self.hold_auto_start
+            && !self.awaiting_first_packet
+            && self.last_status.is_moving()
+            && !self.stop_requested
+        {
             self.hold_auto_start = false;
             log::info!("Belt seen moving on this connection: automatic start allowed");
         }
@@ -2303,7 +2327,49 @@ mod tests {
         assert_eq!(state.pending_control, None);
         assert_eq!(state.handshake_step, HandshakeStep::Priming);
         // A start is never below the slowest speed.
-        assert_eq!(state.manual_intent.map(|i| i.speed), Some(state.min_speed));
+        assert_eq!(
+            state.manual_intent.map(|i| i.speed),
+            Some(state.min_physical_speed())
+        );
+    }
+
+    /// The belt's floor is `min_speed` in hardware units; with a calibration
+    /// whose scale isn't 1 the physical floor differs, and every clamp must
+    /// land on the deck's own floor byte, not below it (issue #61).
+    #[test]
+    fn the_speed_floor_is_the_deck_floor_through_the_calibration() {
+        let mut state = reported();
+        state.sync_config(&slow_floor_config());
+        let floor = state.min_physical_speed();
+        assert!((floor - 1.2).abs() < 1e-4, "{floor}");
+        let floor_byte = (state.min_speed * 10.0).round() as u8;
+        assert_eq!(floor_byte, 6);
+        let byte = |s: &OrchestratorState, kmh: f32| {
+            calculate_hardware_bytes(kmh, 0, &s.calibration_points, s.max_speed).0
+        };
+        assert_eq!(byte(&state, floor), floor_byte);
+
+        // A positive speed under the floor is sent as the floor byte.
+        state.manual_intent = Some(ControlIntent {
+            speed: 0.8,
+            incline: 0,
+        });
+        let (target, _, _) = state.resolve_target();
+        assert_eq!(target, floor);
+        assert_eq!(byte(&state, target), floor_byte);
+
+        // Engage on a still belt starts at the floor, and the engage preview
+        // never shows less.
+        state.manual_intent = Some(ControlIntent {
+            speed: 1.0,
+            incline: 0,
+        });
+        state.last_status = MachineStatus::Paused;
+        state.trigger_action(DeckAction::ToggleStart);
+        assert_eq!(state.manual_intent.map(|i| i.speed), Some(floor));
+        state.manual_intent = None;
+        state.engage_speed = Some(0.9);
+        assert_eq!(state.engage_preview().map(|i| i.speed), Some(floor));
     }
 
     #[test]
@@ -2484,12 +2550,13 @@ mod tests {
 
     #[test]
     fn hardware_bytes_interpolate_the_scale() {
-        // Physical axis: 2.0 at scale 1.0, 4.0 at scale 1.25 (5.0 / 1.25).
+        // Hardware 2.0 is 2.0 km/h (scale 1.0), hardware 5.0 is 4.0 (5.0 / 1.25).
         let points = vec![point(5.0, 70.0, 1.25), point(2.0, 60.0, 1.0)];
         assert_eq!(calculate_hardware_bytes(2.0, 3, &points, 12.0), (20, 3));
         assert_eq!(calculate_hardware_bytes(4.0, 3, &points, 12.0), (50, 3));
-        // Halfway: scale 1.125, 3.0 * 1.125 = 3.375 -> 34.
-        assert_eq!(calculate_hardware_bytes(3.0, 3, &points, 12.0).0, 34);
+        // Between them the scale runs along the hardware axis, as in
+        // `to_physical_speed`: hardware 3.3 has scale 1.1, so 3.0 km/h.
+        assert_eq!(calculate_hardware_bytes(3.0, 3, &points, 12.0).0, 33);
         // Below the first point the first scale holds.
         assert_eq!(calculate_hardware_bytes(1.0, 0, &points, 12.0).0, 10);
         // No calibration: tenths of km/h, clamped.
@@ -2554,6 +2621,92 @@ mod tests {
         state.trigger_action(DeckAction::InclineDown);
         state.trigger_action(DeckAction::InclineDown);
         assert_eq!(state.manual_intent.unwrap().incline, 0);
+    }
+
+    /// The curve from issue #60: its physical speeds go up, then down, then
+    /// up again (hardware 1.5 reads faster than hardware 2.0).
+    fn non_monotonic_calibration(max_speed: f32) -> persistence::AppConfig {
+        persistence::AppConfig {
+            calibration_points: vec![
+                point(0.6, 50.0, 0.6 / 1.46),
+                point(1.5, 60.0, 1.5 / 4.84),
+                point(2.0, 65.0, 2.0 / 2.97),
+            ],
+            max_speed,
+            ..Default::default()
+        }
+    }
+
+    fn monotonic_calibration(max_speed: f32) -> persistence::AppConfig {
+        persistence::AppConfig {
+            calibration_points: vec![point(1.0, 50.0, 0.8), point(4.0, 70.0, 0.95)],
+            max_speed,
+            ..Default::default()
+        }
+    }
+
+    /// The byte the transmit path sends for the current manual intent.
+    fn manual_byte(s: &OrchestratorState) -> u8 {
+        calculate_hardware_bytes(
+            s.manual_intent.map_or(0.0, |i| i.speed),
+            0,
+            &s.calibration_points,
+            s.max_speed,
+        )
+        .0
+    }
+
+    /// Every speed-up press moves the deck up a byte until the top speed, and
+    /// every speed-down press down a byte until zero, whatever the curve.
+    #[test]
+    fn speed_nudges_step_every_byte_from_zero_to_max_and_back() {
+        for config in [
+            non_monotonic_calibration(5.0),
+            monotonic_calibration(5.0),
+            persistence::AppConfig {
+                max_speed: 5.0,
+                ..Default::default()
+            },
+        ] {
+            let mut state = OrchestratorState::default();
+            state.sync_config(&config);
+            let max_byte = (state.max_speed * 10.0).round() as u8;
+            let mut byte = manual_byte(&state);
+            assert_eq!(byte, 0);
+            for _ in 0..max_byte {
+                state.trigger_action(DeckAction::SpeedUp);
+                let next = manual_byte(&state);
+                assert_eq!(next, byte + 1, "up from byte {byte}: {config:?}");
+                byte = next;
+            }
+            state.trigger_action(DeckAction::SpeedUp);
+            assert_eq!(manual_byte(&state), max_byte, "held at the top");
+            for _ in 0..max_byte {
+                state.trigger_action(DeckAction::SpeedDown);
+                let next = manual_byte(&state);
+                assert_eq!(next + 1, byte, "down from byte {byte}: {config:?}");
+                byte = next;
+            }
+            state.trigger_action(DeckAction::SpeedDown);
+            assert_eq!(manual_byte(&state), 0, "held at zero");
+        }
+    }
+
+    /// Forward (hardware to km/h) and inverse (km/h to hardware) lookups
+    /// agree: a byte's km/h is sent as that byte.
+    #[test]
+    fn the_inverse_speed_lookup_undoes_the_forward_one() {
+        for config in [non_monotonic_calibration(5.0), monotonic_calibration(12.0)] {
+            let mut state = OrchestratorState::default();
+            state.sync_config(&config);
+            let max_byte = (state.max_speed * 10.0).round() as u8;
+            for byte in 0..=max_byte {
+                let phys = state.to_physical_speed(byte as f32 / 10.0);
+                let back =
+                    calculate_hardware_bytes(phys, 0, &state.calibration_points, state.max_speed).0;
+                assert_eq!(back, byte, "byte {byte} -> {phys} km/h -> {back}");
+            }
+        }
     }
 
     #[test]
@@ -2795,7 +2948,11 @@ mod tests {
             assert!(!state.hold_auto_start, "{status:?}");
             let m = state.manual_intent.unwrap();
             assert!((m.speed - 0.1).abs() < 0.01, "{status:?}: {m:?}");
-            assert_eq!(state.resolve_target().0, state.min_speed, "{status:?}");
+            assert_eq!(
+                state.resolve_target().0,
+                state.min_physical_speed(),
+                "{status:?}"
+            );
             let sent = kinds(&mut engine, &mut state, t0 + Duration::from_secs(3), 40);
             assert!(
                 sent.contains(&PacketKind::HandshakeStart),

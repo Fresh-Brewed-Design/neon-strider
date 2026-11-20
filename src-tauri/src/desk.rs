@@ -1,11 +1,12 @@
 //! Desk features at runtime: the sit-too-long nudge, eye breaks,
-//! slow-down-on-calls and walk-away safety.
+//! slow-down-on-calls, walk-away safety and lights out.
 //!
 //! One loop, once a second. It reads the belt and the treadmill link under one
 //! short lock of the orchestrator, runs the pure state machines (`seated.rs`,
-//! `eyebreak.rs`, `calls.rs`, `walkaway.rs`) and applies what they decide: start
-//! a remembered program, pause the belt for an eye break, ease the belt to the
-//! quiet speed and back, or pause it when the user walks away. The microphone is polled on its own thread (`calls::mic`), the
+//! `eyebreak.rs`, `calls.rs`, `walkaway.rs`, `lights_out.rs`) and applies what
+//! they decide: start a remembered program, pause the belt for an eye break,
+//! ease the belt to the quiet speed and back, or pause it when the user walks
+//! away. The microphone is polled on its own thread (`calls::mic`), the
 //! session lock is watched on another (`platform::spawn_session_lock_watcher`).
 //!
 //! This file is declared from `snapshot.rs` (`#[path]`), not `lib.rs`.
@@ -14,7 +15,7 @@ use crate::bluetooth::{self, ORCHESTRATOR};
 use crate::engine::{DeckAction, OrchestratorState};
 use crate::programs::{self, ProgramPhase};
 use crate::protocol::MachineStatus;
-use crate::snapshot::{calls, eyebreak, seated, walkaway};
+use crate::snapshot::{calls, eyebreak, lights_out, seated, walkaway};
 use crate::util::{blocking, now_ms_u64 as now_ms};
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
@@ -172,7 +173,7 @@ fn belt_view(state: &OrchestratorState) -> calls::Belt {
         running: belt_running(state),
         program,
         target_kmh,
-        min_kmh: state.min_speed,
+        min_kmh: state.min_physical_speed(),
     }
 }
 
@@ -192,7 +193,8 @@ fn apply_speed(state: &mut OrchestratorState, kmh: f32) {
 #[derive(Default)]
 struct Outcome {
     started_program: Option<u32>,
-    toast: Option<&'static str>,
+    /// The toast's type and message.
+    toast: Option<(&'static str, &'static str)>,
 }
 
 async fn step(
@@ -236,12 +238,12 @@ async fn step(
                 to_kmh
             );
             apply_speed(state, to_kmh);
-            out.toast = Some(TOAST_QUIET);
+            out.toast = Some(("CALL", TOAST_QUIET));
         }
         Some(calls::Action::Restore { to_kmh }) => {
             log::info!("Call ended: restoring {:.1} km/h", to_kmh);
             apply_speed(state, to_kmh);
-            out.toast = Some(TOAST_RESTORED);
+            out.toast = Some(("CALL", TOAST_RESTORED));
         }
         None => {}
     }
@@ -258,6 +260,21 @@ async fn step(
     let effect = walkaway::with(|rt| rt.machine.tick(&rt.cfg, now, &input));
     if let Some(walkaway::Effect::Pause(reason)) = effect {
         walkaway_pause(state, reason);
+    }
+
+    // Lights out. Last: it only ever stops.
+    let input = lights_out::Input {
+        connected: treadmill_ready(connected, state),
+        display_off: crate::platform::display_off(),
+        belt: lights_out::belt(state),
+    };
+    if let Some(effect) = lights_out::with(|rt| rt.machine.tick(rt.enabled, &input)) {
+        lights_out::apply(state, effect);
+        if effect == lights_out::Effect::Stop {
+            // A walk-away card on the stopped belt has nothing left to resume.
+            walkaway::with(|rt| rt.machine.acknowledge(now));
+        }
+        out.toast = Some((lights_out::TOAST_KIND, lights_out::toast(effect)));
     }
     out
 }
@@ -277,7 +294,7 @@ fn start_program(state: &mut OrchestratorState, id: u32) -> Option<u32> {
 }
 
 /// Send a toast to the HUD, creating the window first if there is none.
-fn announce(app: &AppHandle, message: &'static str) {
+fn announce(app: &AppHandle, kind: &'static str, message: &'static str) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         if app.get_webview_window(crate::hud::HUD_LABEL).is_none() {
@@ -287,7 +304,7 @@ fn announce(app: &AppHandle, message: &'static str) {
         }
         crate::hud::toast(
             &app,
-            serde_json::json!({ "type": "CALL", "message": message }),
+            serde_json::json!({ "type": kind, "message": message }),
         );
     });
 }
@@ -298,6 +315,7 @@ pub fn init(app: &AppHandle) {
     eyebreak::init(app);
     calls::init(app);
     walkaway::init(app);
+    lights_out::init(app);
 }
 
 /// Start the microphone poller and the one-second loop.
@@ -322,8 +340,8 @@ pub fn spawn(app: AppHandle) {
                     log::warn!("Could not remember the last program: {}", e);
                 }
             }
-            if let Some(message) = out.toast {
-                announce(&app, message);
+            if let Some((kind, message)) = out.toast {
+                announce(&app, kind, message);
             }
         }
     });

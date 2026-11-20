@@ -3,8 +3,8 @@
 //! included, so the `///` text here is part of the generated TypeScript.
 
 use super::{
-    CallsSnapshot, MaintenanceBasis, MaintenanceSnapshot, OdometerSnapshot, SeatedSnapshot,
-    WalkAwaySnapshot, WeeklySummary,
+    CallsSnapshot, LightsOutSnapshot, MaintenanceBasis, MaintenanceSnapshot, OdometerSnapshot,
+    SeatedSnapshot, WalkAwaySnapshot, WeeklySummary,
 };
 use crate::link::{LastError, LinkState};
 use crate::placement;
@@ -32,7 +32,7 @@ pub struct AppSnapshot {
     pub maintenance: MaintenanceSnapshot,
     /// Last week against the week before, and this week so far.
     pub weekly: WeeklySummary,
-    /// The sit-too-long nudge: its settings and whether the HUD card shows.
+    /// The idle nudge: its settings and whether the HUD card shows.
     pub seated: SeatedSnapshot,
     /// Eye breaks: their settings, the phase and the tone counters.
     pub eye_break: crate::snapshot::EyeBreakSnapshot,
@@ -46,6 +46,8 @@ pub struct AppSnapshot {
     pub update: crate::update::UpdateSnapshot,
     /// The Diagnostics traffic recorder (off at every start).
     pub traffic: crate::traffic::TrafficSnapshot,
+    /// Lights out: stop the belt when the PC's display turns off.
+    pub lights_out: LightsOutSnapshot,
 }
 
 /// Strava as the windows see it. Tokens and the client secret never appear here.
@@ -173,6 +175,7 @@ pub struct DeckSnapshot {
     pub incline_pct: f32,
     pub target_incline_level: u8,
     pub target_incline_pct: f32,
+    /// Calibrated, like `max_speed_kmh`: the belt's floor in km/h.
     pub min_speed_kmh: f32,
     /// Calibrated.
     pub max_speed_kmh: f32,
@@ -515,20 +518,20 @@ pub enum Command {
         basis: MaintenanceBasis,
         hours: f32,
     },
-    /// Sit-too-long nudge settings: on or off, minutes 15 to 240, and up to three
+    /// Idle nudge settings: on or off, minutes 15 to 240, and up to three
     /// programs for the card's buttons (`None` or empty = the first three saved).
     SeatedSetConfig {
         enabled: bool,
         minutes: u32,
         program_ids: Option<Vec<u32>>,
     },
-    /// ENGAGE on the sit-too-long card: what Engage does on a still belt.
+    /// ENGAGE on the idle-nudge card: what Engage does on a still belt.
     SeatedEngage,
-    /// A program button on the sit-too-long card.
+    /// A program button on the idle-nudge card.
     SeatedStart {
         id: u32,
     },
-    /// SNOOZE 15 MIN on the card: hide it for 15 minutes; the time seated is kept.
+    /// SNOOZE 15 MIN on the card: hide it for 15 minutes; the idle time is kept.
     SeatedSnooze,
     /// Eye-break settings: on or off, minutes of screen use between breaks (10 to
     /// 120), seconds a break lasts (20 to 300), whether the HUD plays tones and
@@ -593,6 +596,11 @@ pub enum Command {
     },
     /// Show the folder the traffic recordings are saved in.
     TrafficOpenFolder,
+    /// Lights out: stop the belt (or pause a program until GO) when the PC's
+    /// display turns off.
+    LightsOutSetConfig {
+        enabled: bool,
+    },
 }
 
 #[cfg(test)]

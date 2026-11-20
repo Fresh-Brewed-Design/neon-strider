@@ -1,1 +1,0 @@
-- OCULAR_IMPLANT eye breaks (off by default, under System -> Desk): after 20 minutes of screen use the HUD warns a minute ahead ("IMPLANT COOLDOWN IN 60 S"), then asks you to look into the distance for 90 seconds, with a blink tone every 10 seconds and a tone at the end. Both times and the tones can be changed.

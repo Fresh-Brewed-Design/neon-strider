@@ -108,8 +108,8 @@ itself; `send()` toasts rejections as a backstop, the HUD uses `useHudSend` + `<
 
 OS-specific code goes only in `src-tauri/src/platform/` (`mod.rs` is the interface, `windows.rs`
 the Windows implementation, `other.rs` the stand-in for every other OS). It covers the input
-hooks, session lock, which apps use the microphone, the cursor and mouse button, and the PC's
-idle time. The rest of
+hooks, session lock, display power (`display_off`, for `LIGHTS_OUT` in `snapshot/lights_out.rs`),
+which apps use the microphone, the cursor and mouse button, and the PC's idle time. The rest of
 the code calls `platform::...` and never the OS directly. macOS and Linux are on the roadmap, so
 new code must not import `windows::` (or other OS APIs) outside `platform/`.
 
@@ -129,7 +129,7 @@ cargo clippy --all-targets -- -D warnings   # in src-tauri/: lints, no warnings 
 
 Design without a treadmill: with a Vite server running, open `/hud-preview.html` or
 `/dashboard-preview.html`. Both run on a mocked backend (`src/dev/mockBackend.ts`); URL flags
-like `?idle`, `?offline`, `?daily=12.34` (today's km), `?noprogram`, `?toasts` (`?toasts=deck` for the deck-start GO toast), `?anchor=top_left`, `?neural=active`, `?engage=timeout`, `?status=9|countdown|stopping|standby`, `?walkaway=warning|paused|idle`, `?custom`, `?update=available|downloading|failed|whatsnew` (with `?autoinstall=off`), `?stasis=strip|hidden` (with `?deck=paused` for RE-JACK), `?minified` (the running strip; with `?program=resting|paused`, `?noprogram` or `?idle`), `?traffic=recording|saved`, `?sim` (the SIM tag), `?eyebreak=upcoming|break|still|resume` (the OCULAR_IMPLANT cards: heads-up, cooldown with the belt paused or left alone, resume card) pick scenarios.
+like `?idle`, `?offline`, `?daily=12.34` (today's km), `?noprogram`, `?toasts` (`?toasts=deck` for the deck-start GO toast), `?anchor=top_left`, `?neural=active`, `?engage=timeout`, `?status=9|countdown|stopping|standby`, `?walkaway=warning|paused|idle`, `?custom`, `?update=available|downloading|failed|whatsnew` (with `?autoinstall=off`), `?stasis=strip|hidden` (with `?deck=paused` for RE-JACK), `?minified` (the running strip; with `?program=resting|paused`, `?noprogram` or `?idle`), `?traffic=recording|saved`, `?sim` (the SIM tag), `?lightsout` (LIGHTS_OUT on; on the HUD preview its toast), `?eyebreak=upcoming|break|still|resume` (the OCULAR_IMPLANT cards: heads-up, cooldown with the belt paused or left alone, resume card) pick scenarios.
 `?program=ready|hold|still|resting|paused` shows a program waiting for GO after a rest, after a
 0 km/h step, or after a reconnect found the belt still; mid-rest; or paused by the user.
 
