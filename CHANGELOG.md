@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.16.0 (2026-11-20)
+
+### New
+
+- Labs, GROUND_TRUTH: RUN ALL walks every calibration speed in turn with a progress strip, and each speed waits for your RUN. The run panel has its own STOP.
+
 ## 1.15.3 (2026-11-20)
 
 ### Fixed
