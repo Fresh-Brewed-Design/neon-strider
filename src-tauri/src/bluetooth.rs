@@ -834,21 +834,41 @@ pub async fn init_from_config(config: &crate::persistence::AppConfig) {
 
 /// The DECK_PROFILE saved for a treadmill. The first treadmill asked adopts
 /// the app-wide profile from before there was one per treadmill.
-fn load_profile_for(app: &tauri::AppHandle, key: &str) -> crate::deck_profile::DeckProfile {
+fn load_profile_for(
+    store: &impl crate::persistence::SettingsStore,
+    key: &str,
+) -> crate::deck_profile::DeckProfile {
     use crate::deck_profile::{DeckProfile, LEGACY_KEY};
-    if let Some(raw) = crate::persistence::read_setting(app, key) {
+    if let Some(raw) = store.get(key) {
         return DeckProfile::from_stored(Some(&raw));
     }
-    let Some(raw) = crate::persistence::read_setting(app, LEGACY_KEY) else {
+    let Some(raw) = store.get(LEGACY_KEY) else {
         return DeckProfile::default();
     };
     let profile = DeckProfile::from_stored(Some(&raw));
-    if let Err(e) = crate::persistence::write_setting(app, key, &raw)
-        .and_then(|_| crate::persistence::delete_setting(app, LEGACY_KEY))
-    {
+    if let Err(e) = store.put(key, &raw).and_then(|_| store.remove(LEGACY_KEY)) {
         log::warn!("could not move the deck profile to its treadmill: {}", e);
     }
     profile
+}
+
+/// Save the profile the previous treadmill taught (`pending`: its key and the
+/// JSON, None to delete), then load the one stored under `key`.
+fn swap_profile(
+    store: &impl crate::persistence::SettingsStore,
+    pending: Option<(String, Option<String>)>,
+    key: &str,
+) -> crate::deck_profile::DeckProfile {
+    if let Some((old_key, json)) = pending {
+        let saved = match json {
+            Some(json) => store.put(&old_key, &json),
+            None => store.remove(&old_key),
+        };
+        if let Err(e) = saved {
+            log::warn!("could not save the deck profile: {}", e);
+        }
+    }
+    load_profile_for(store, key)
 }
 
 /// Make DECK_PROFILE the one of the treadmill with this device id: what the
@@ -874,20 +894,10 @@ pub async fn switch_deck_profile(app: &tauri::AppHandle, raw_id: &str) {
     };
     let app_c = app.clone();
     let key_c = key.clone();
-    let profile = crate::util::blocking(move || {
-        if let Some((old_key, json)) = pending {
-            let saved = match json {
-                Some(json) => crate::persistence::write_setting(&app_c, &old_key, &json),
-                None => crate::persistence::delete_setting(&app_c, &old_key),
-            };
-            if let Err(e) = saved {
-                log::warn!("could not save the deck profile: {}", e);
-            }
-        }
-        Ok::<_, String>(load_profile_for(&app_c, &key_c))
-    })
-    .await
-    .unwrap_or_default();
+    let profile =
+        crate::util::blocking(move || Ok::<_, String>(swap_profile(&app_c, pending, &key_c)))
+            .await
+            .unwrap_or_default();
     log::info!("Deck profile loaded: {} speeds learned", profile.len());
     let mut state = ORCHESTRATOR.lock().await;
     state.deck_profile = profile;
@@ -1155,5 +1165,66 @@ mod tests {
             "0000fff0-0000-1000-8000-00805f9b34fb"
         );
         assert!(has_tag(&FITSHOW_SERVICE, SERVICE_TAG));
+    }
+
+    /// Connect to the treadmill with `id`: what `switch_deck_profile` does to
+    /// the settings, without the orchestrator.
+    fn connect(
+        store: &rusqlite::Connection,
+        current: &mut (Option<String>, crate::deck_profile::DeckProfile),
+        id: &str,
+    ) {
+        let key = crate::deck_profile::key_for(id);
+        if current.0.as_deref() == Some(&key) {
+            return;
+        }
+        let json = current.1.take_unsaved();
+        let pending = current.0.clone().zip(json);
+        current.1 = swap_profile(store, pending, &key);
+        current.0 = Some(key);
+    }
+
+    #[test]
+    fn profile_follows_the_treadmill_that_connects() {
+        use crate::deck_profile::{DeckProfile, Outcome, LEGACY_KEY};
+        use crate::persistence::SettingsStore;
+        let store = crate::persistence::memory_db();
+        let mut old = DeckProfile::default();
+        old.learn(40, Outcome::Took(40));
+        store
+            .put(LEGACY_KEY, &serde_json::to_string(&old).unwrap())
+            .unwrap();
+
+        let mut current = (None, DeckProfile::default());
+        // The first treadmill adopts the old app-wide profile, which moves.
+        connect(&store, &mut current, "AAAA");
+        assert!(current.1.knows(40));
+        assert!(store.get(LEGACY_KEY).is_none());
+        assert!(store.get(&crate::deck_profile::key_for("AAAA")).is_some());
+
+        // It learns one more speed, then a second treadmill starts empty.
+        current.1.learn(50, Outcome::Took(50));
+        connect(&store, &mut current, "BBBB");
+        assert!(current.1.is_empty());
+
+        // Back to the first: what it learned is there, and the second's
+        // empty profile left nothing behind.
+        connect(&store, &mut current, "AAAA");
+        assert!(current.1.knows(40) && current.1.knows(50));
+        assert!(store.get(&crate::deck_profile::key_for("BBBB")).is_none());
+    }
+
+    #[test]
+    fn profile_learned_on_the_second_treadmill_stays_with_it() {
+        use crate::deck_profile::{DeckProfile, Outcome};
+        let store = crate::persistence::memory_db();
+        let mut current = (None, DeckProfile::default());
+        connect(&store, &mut current, "AAAA");
+        connect(&store, &mut current, "BBBB");
+        current.1.learn(60, Outcome::Took(60));
+        connect(&store, &mut current, "AAAA");
+        assert!(current.1.is_empty());
+        connect(&store, &mut current, "BBBB");
+        assert!(current.1.knows(60));
     }
 }

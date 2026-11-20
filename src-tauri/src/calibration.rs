@@ -1065,15 +1065,27 @@ fn decode_belt(raw: Option<&str>) -> Option<f32> {
         .filter(|cm| in_range(*cm, MIN_BELT_CM, MAX_BELT_CM))
 }
 
+/// The settings key and stored belt length of the treadmill with this id.
+fn belt_for(
+    store: &impl crate::persistence::SettingsStore,
+    device_id: &str,
+) -> (String, Option<f32>) {
+    let key = belt_key_for(device_id);
+    let cm = decode_belt(store.get(&key).as_deref());
+    (key, cm)
+}
+
+/// SKIP was pressed on the first-connect offer for the treadmill with this id.
+fn offer_skipped_for(store: &impl crate::persistence::SettingsStore, device_id: &str) -> bool {
+    crate::persistence::parse_setting(store.get(&offer_skip_key_for(device_id)).as_deref())
+        .unwrap_or(false)
+}
+
 /// Make the belt length the one stored for this treadmill. Called with
 /// DECK_PROFILE's switch (startup with the saved treadmill, each connection).
-pub fn switch_belt(app: &AppHandle, device_id: &str) {
-    let key = belt_key_for(device_id);
-    let cm = decode_belt(crate::persistence::read_setting(app, &key).as_deref());
-    let skipped = crate::persistence::parse_setting(
-        crate::persistence::read_setting(app, &offer_skip_key_for(device_id)).as_deref(),
-    )
-    .unwrap_or(false);
+pub fn switch_belt(store: &impl crate::persistence::SettingsStore, device_id: &str) {
+    let (key, cm) = belt_for(store, device_id);
+    let skipped = offer_skipped_for(store, device_id);
     with_belt(|b| {
         b.key = Some(key);
         b.cm = cm;
@@ -2214,5 +2226,30 @@ mod tests {
         assert_eq!(snapshot(&state).guide.unwrap().next_kmh, Some(5.0));
         close_all();
         assert_eq!(snapshot(&state).guide, None);
+    }
+
+    #[test]
+    fn belt_length_follows_the_treadmill() {
+        use crate::persistence::SettingsStore;
+        let conn = crate::persistence::memory_db();
+        conn.put(&belt_key_for("AAAA"), "300").unwrap();
+        conn.put(&belt_key_for("BBBB"), "320").unwrap();
+        assert_eq!(belt_for(&conn, "AAAA"), (belt_key_for("AAAA"), Some(300.0)));
+        assert_eq!(belt_for(&conn, "BBBB"), (belt_key_for("BBBB"), Some(320.0)));
+        // A treadmill with none stored starts without one.
+        assert_eq!(belt_for(&conn, "CCCC"), (belt_key_for("CCCC"), None));
+        assert_eq!(belt_for(&conn, "AAAA").1, Some(300.0));
+    }
+
+    #[test]
+    fn skip_on_the_offer_is_stored_per_treadmill() {
+        use crate::persistence::SettingsStore;
+        let conn = crate::persistence::memory_db();
+        conn.put(&offer_skip_key_for("AAAA"), "true").unwrap();
+        assert!(offer_skipped_for(&conn, "AAAA"));
+        assert!(
+            !offer_skipped_for(&conn, "BBBB"),
+            "another treadmill still gets it"
+        );
     }
 }
