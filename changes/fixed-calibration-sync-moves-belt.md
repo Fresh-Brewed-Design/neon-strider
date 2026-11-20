@@ -1,0 +1,1 @@
+- Changing calibration points while the belt runs no longer changes its speed. The new calibration applies at your next speed change or program step.
