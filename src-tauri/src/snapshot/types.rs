@@ -577,7 +577,7 @@ pub enum Command {
     },
     /// Show the folder the traffic recordings are saved in.
     TrafficOpenFolder,
-    /// Lights out: stop the belt (or pause a program until GO) when the PC's
+    /// Lights out: a full Stop (any program ends) when the PC's
     /// display turns off.
     LightsOutSetConfig {
         enabled: bool,
