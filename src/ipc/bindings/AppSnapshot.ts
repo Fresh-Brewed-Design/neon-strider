@@ -44,6 +44,10 @@ weekly: WeeklySummary,
  */
 desk_sync: DeskSync, 
 /**
+ * Distance and belt hours over every saved session plus the live one.
+ */
+odometer: OdometerSnapshot, 
+/**
  * The idle nudge: its settings and whether the HUD card shows.
  */
 seated: SeatedSnapshot, 
@@ -56,13 +60,13 @@ eye_break: EyeBreakSnapshot,
  */
 calls: CallsSnapshot, 
 /**
- * Distance and belt hours over every saved session plus the live one.
- */
-odometer: OdometerSnapshot, 
-/**
  * Walk-away safety: its settings and which HUD card shows.
  */
 walkaway: WalkAwaySnapshot, 
+/**
+ * Lights out: stop the belt when the PC's display turns off.
+ */
+lights_out: LightsOutSnapshot, 
 /**
  * Auto-update: the running version, any update on offer and its notes.
  */
@@ -71,10 +75,6 @@ update: UpdateSnapshot,
  * The Diagnostics traffic recorder (off at every start).
  */
 traffic: TrafficSnapshot, 
-/**
- * Lights out: stop the belt when the PC's display turns off.
- */
-lights_out: LightsOutSnapshot, 
 /**
  * The guided calibration (Labs): its switch, limits and any run.
  */
