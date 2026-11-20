@@ -157,6 +157,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?decknote=refused|adjusted`: the HUD note after the deck refuses or changes a target
 - `?deckprofile`: DECK_PROFILE learned (floor 0.6, ceiling 4.0, 1.5 skipped, top incline level 12, level 7 skipped; Diagnostics shows FORGET); `=sweep` with the LABS // DECK_SWEEP switch on and a speed sweep running, `=inclinesweep` an incline sweep running, `=sweepon` the switch on with no sweep running
 - `?desksync=open|new|few`: History's DESK_SYNC card
+- `?distance=12.34`: this walk's km (DIST)
 - `?due`: the belt reminder well past its interval
 - `?engage=timeout`: the deck's screen is off, so Engage waits and fails
 - `?eyebreak=upcoming|rest|break|still|resume`: the OCULAR_IMPLANT cards: heads-up, heads-up set for a program rest, cooldown with the belt paused or left alone, resume card
@@ -187,6 +188,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?stasis=strip|hidden`: "When the belt is still" set to that, with the belt stopped
 - `?status=9|countdown|stopping|standby`: an unknown status byte, the 3-2-1, the belt winding down, or the deck asleep
 - `?strava=authorizing|uploading|processing|checking|backoff|error|paused`: each Strava state
+- `?textscale=110|125`: the page zoomed to approximate the Windows text size setting (dev previews only; size the HUD preview window to 340 px wide)
 - `?toasts`: the HUD toasts; `=deck` for the deck-start GO toast
 - `?traffic=recording|saved`: the Diagnostics traffic recorder
 - `?update=available|downloading|failed|whatsnew`: auto-update states
