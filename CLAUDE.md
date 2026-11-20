@@ -86,7 +86,7 @@ HEART_LINK (`heart_rate.rs`: pure Heart Rate Measurement decoding and snapshot t
     status text in `status.ts`. While the belt is still, Rust may collapse the panel to a strip
     (`HudStrip.tsx`) or hide it (`hud.idle_mode`); minified by the user (`hud.minified`, the
     header's minify button or Alt+Insert) it shows the running strip instead of the whole panel
-    until expanded. Both are decided in `snapshot/stasis.rs` as `snapshot.hud_view`; cards and
+    until expanded (PULSE_RATE and its chart join the strip while a heart rate sensor is picked). Both are decided in `snapshot/stasis.rs` as `snapshot.hud_view`; cards and
     toasts always show
 - **Shared**: `src/widgets/registry.ts` defines every stat once for the HUD and dashboard.
 - **Live state**: Rust owns it. Every window reads one `AppSnapshot` via `src/state/useAppState.ts`
@@ -171,7 +171,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?lightsout`: LIGHTS_OUT on; on the HUD preview its toast
 - `?link=scanning|connecting|reconnecting|nodata|bt-off|failed`: each treadmill link state
 - `?maxhr=178`: a max heart rate of 178 bpm set in System -> Heart rate (program heart zones use it)
-- `?minified`: the running strip; with `?program=resting|paused`, `?noprogram` or `?idle`
+- `?minified`: the running strip; with `?program=resting|paused`, `?noprogram` or `?idle`; with `?hrspark=...`, `?hrzone=...` or `?heart=on|waiting` it shows PULSE_RATE
 - `?neural=active`: Neural flow easing the belt off while typing
 - `?noprogram`: no program running
 - `?nostrava`: no Strava credentials or account

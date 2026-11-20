@@ -170,6 +170,39 @@ describe("HUD minified", () => {
     expect(screen.getByText("VEL")).toBeInTheDocument();
   });
 
+  it("leaves heart rate off the strip without a sensor", () => {
+    const { container } = show(minified());
+    expect(screen.queryByText("HR")).not.toBeInTheDocument();
+    expect(container.querySelector("[data-testid=hud-run-pulse]")).toBeNull();
+    expect(container.querySelector("[data-testid=sparkline]")).toBeNull();
+  });
+
+  it("adds PULSE_RATE with its spark chart once a sensor is picked", () => {
+    const { container } = show(
+      minified((s) =>
+        Object.assign(s.heart_rate, {
+          sensor: { id: "x", name: "Watch" },
+          status: "connected",
+          bpm: 128,
+          history: [120, null, 124, 128],
+        }),
+      ),
+    );
+    const row = container.querySelector("[data-testid=hud-run-pulse]");
+    expect(row).toHaveTextContent("HR128BPM");
+    expect(row?.querySelector("[data-testid=sparkline]")).not.toBeNull();
+    // Speed, time and distance stay on their own line.
+    expect(container.querySelectorAll(".hud-run-stats .hud-strip-total")).toHaveLength(3);
+  });
+
+  it("shows -- and no chart while a picked sensor is not sending yet", () => {
+    const { container } = show(
+      minified((s) => Object.assign(s.heart_rate, { sensor: { id: "x", name: "Watch" }, status: "waiting", bpm: null, history: [] })),
+    );
+    expect(container.querySelector("[data-testid=hud-run-pulse]")).toHaveTextContent("HR--BPM");
+    expect(container.querySelector("[data-testid=sparkline]")).toBeNull();
+  });
+
   it("expand, Stasis and Dump each send one command", async () => {
     vi.mocked(invoke).mockClear();
     show(minified());
