@@ -1,2 +1,0 @@
-- Shorter, clearer text across the dashboard: each setting has a one-line description, with the details in a second line under it.
-- Messages from Strava, GHOST_POD, WRIST_LINK, heart rate and calibration now name what they talk about.
