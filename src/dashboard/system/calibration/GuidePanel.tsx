@@ -5,46 +5,54 @@ import { ActionStatus } from "../../../components/ActionStatus";
 import { useAction } from "../../../components/useAction";
 import { GhostButton, Hint, Label, NeonButton } from "../../ui";
 import { cx } from "../../util";
-import { INPUT_CLASS } from "../fields";
 import { checkLine, guideSummary } from "./guided";
 
-/** The top speed the field starts with: a brisk desk walk, inside most decks' range. */
-const SUGGESTED_TOP_KMH = 5;
-
 /**
- * "What's the fastest you'll walk?": the one question the guided walk asks.
- * START only plans the speeds in Rust (`calibration_guide_start`); the belt
- * waits for RUN.
+ * The one question the guided walk asks: the fastest setting the user walks
+ * at, as the treadmill's display shows it (the deck's own number, no unit).
+ * `steps` are the settings the deck runs, slowest first; the first is the
+ * walk's slowest speed, so the top starts at the second. The stepper starts
+ * at the deck's top. START only plans the speeds in Rust
+ * (`calibration_guide_start`); the belt waits for RUN.
  */
-export function TopSpeedQuestion({ maxKmh }: { maxKmh: number }) {
-  const [value, setValue] = useState(String(Math.min(SUGGESTED_TOP_KMH, maxKmh)));
+export function TopSpeedQuestion({ steps }: { steps: number[] }) {
+  const choices = steps.slice(1);
+  const [index, setIndex] = useState(choices.length - 1);
+  const at = Math.min(Math.max(index, 0), choices.length - 1);
+  const value: number | undefined = choices[at];
   const start = useAction();
   const submit = () => {
-    if (value.trim() === "" || start.pending) return;
-    void start.run(() => dispatch({ type: "calibration_guide_start", top_kmh: Number(value) }));
+    if (value === undefined || start.pending) return;
+    void start.run(() => dispatch({ type: "calibration_guide_start", top_kmh: value }));
   };
   return (
     <div className="hacker-panel space-y-2 rounded-lg border-neon-cyan/20 bg-white/[0.02] p-3">
       <Label className="text-neon-yellow">TOP_SPEED</Label>
-      <div className="font-digital text-sm text-white">What's the fastest you'll walk?</div>
+      <div className="font-digital text-sm text-white">Fastest setting you'll walk at, as the treadmill shows it.</div>
       <Hint>GROUND_TRUTH times the slowest speed and your top speed, then checks the speed halfway between.</Hint>
-      <div className="flex flex-wrap items-end gap-2">
-        <label className="block">
-          <Label>DECK_VELOCITY</Label>
-          <input
-            type="number"
-            min={0}
-            max={maxKmh}
-            step={0.1}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && submit()}
-            className={cx(INPUT_CLASS, "mt-1 block w-24")}
-            aria-label="Top speed in deck km/h"
-          />
-        </label>
-        <span className="pb-2 font-mono text-[11px] text-white/50">km/h on the deck</span>
-        <NeonButton className="px-3 py-1.5" disabled={start.pending || value.trim() === ""} onClick={submit}>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          className={STEP_CLASS}
+          disabled={at <= 0}
+          onClick={() => setIndex(at - 1)}
+          aria-label="Lower top speed setting"
+        >
+          -
+        </button>
+        <output className="w-14 text-center font-digital text-lg text-neon-cyan" aria-label="Top speed setting">
+          {value === undefined ? "--" : value.toFixed(1)}
+        </output>
+        <button
+          type="button"
+          className={STEP_CLASS}
+          disabled={at >= choices.length - 1}
+          onClick={() => setIndex(at + 1)}
+          aria-label="Raise top speed setting"
+        >
+          +
+        </button>
+        <NeonButton className="px-3 py-1.5" disabled={start.pending || value === undefined} onClick={submit}>
           START
         </NeonButton>
       </div>
@@ -52,6 +60,9 @@ export function TopSpeedQuestion({ maxKmh }: { maxKmh: number }) {
     </div>
   );
 }
+
+const STEP_CLASS =
+  "rounded border border-white/15 px-3 py-1.5 font-digital text-sm text-white transition-colors hover:border-neon-cyan/60 disabled:opacity-30";
 
 const MARK_CLASS: Record<GuideMark | "next", string> = {
   saved: "border-emerald-400/60 text-emerald-400",
@@ -108,6 +119,7 @@ export function GuidePanel({
         })}
       </ol>
       <ActionStatus pending={false} error={end.error} />
+      {guide.note && <div className="font-mono text-[11px] text-neon-yellow">{guide.note}</div>}
       {guide.checks.length > 0 && (
         <ul className="space-y-1 font-mono text-[11px] text-white/70" aria-label="Midpoint checks">
           {guide.checks.map((c) => (

@@ -9,7 +9,9 @@
 // stride measured and saved, with UNDO. ?calwizard=guiderun: the guided walk
 // from 0.6 to 5.0 km/h tapping at 5.0; =guidecheck both ends saved and the
 // midpoint check up next; =guidesplit the check 3.1 % off and split;
-// =guidedone the walk done with its summary. ?caloffer: a connected treadmill
+// =guidedone the walk done with its summary; =guidemoved RUN asked 0.6, the
+// deck ran 1.2 (a start at the treadmill), and the walk's slowest moved there.
+// ?caloffer: a connected treadmill
 // with no calibration, so the first-connect card shows. The math is a rough
 // stand-in for Rust's (calibration.rs and calibration/tap.rs, unit-tested there).
 import type { CalibrationGuideView, CalibrationRunView, Command, GuideCheck, GuideSpeed, StepRunView } from "../../ipc";
@@ -143,6 +145,7 @@ function undoSave() {
     if (i >= 0 && s.marks[i] === "saved") s.marks[i] = "pending";
     sweepCurrent();
   }
+  if (r.result) guideOutcomes.delete(key(r.result.point.speed));
   guideForget(r.target_kmh);
 }
 /** The saved points changed in Rust: the dashboard reloads them when `points_rev` moves. */
@@ -219,9 +222,18 @@ function sweepCurrent() {
 }
 /** The mock's guided walk: the ends, then midpoint checks split past 2 %, three levels down (Rust: calibration/guide.rs). */
 let guideEnds: [number, number] | null = null;
+/** The walk's note after a run the deck ran at another speed (Rust: `Guide::record`). */
+let guideNote: string | null = null;
 const guideOutcomes = new Map<number, { at: number; scale: number } | "skipped">();
 const key = (kmh: number) => Math.round(kmh * 10);
 function guideRecord(target: number, at: number, scale: number) {
+  guideNote = null;
+  if (guideEnds && key(at) !== key(target) && key(target) === key(guideEnds[0]) && at < guideEnds[1]) {
+    guideNote = `The deck ran ${at.toFixed(1)}, not ${target.toFixed(1)}, so ${at.toFixed(1)} is the slowest speed.`;
+    guideOutcomes.delete(key(target));
+    guideEnds = [at, guideEnds[1]];
+    target = at;
+  }
   if (guideEnds) guideOutcomes.set(key(target), { at, scale });
   guidePublish();
 }
@@ -286,6 +298,7 @@ function guidePlan(): CalibrationGuideView | null {
     next_kmh: next,
     remaining_error_pct: ended.length ? Math.max(...ended) : null,
     tolerance_pct: 2,
+    note: guideNote,
   };
 }
 function guidePublish() {
@@ -543,10 +556,15 @@ export const calibration: Scenario = {
       Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: 5, speed_kmh: 5.2 });
       tappingRun(5, 6, 5, { measured_kmh: 4.82 });
     }
+    if (calFlag === "guidemoved") {
+      guideLoad([]);
+      Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: 1.2, speed_kmh: 1.2 });
+      measured(0.6, 1.12, 1.2, 9);
+    }
     if (calFlag === "guidecheck") guideLoad([[0.6, 0.86], [5, 1.04]]);
     if (calFlag === "guidesplit") guideLoad([[0.6, 0.86], [5, 1.04], [2.8, 0.98]]);
     if (calFlag === "guidedone") guideLoad([[0.6, 0.86], [5, 1.04], [2.8, 0.98], [1.7, 0.925], [3.9, 1.015]]);
-    if (calFlag.startsWith("guide") && calFlag !== "guiderun") {
+    if (calFlag.startsWith("guide") && calFlag !== "guiderun" && calFlag !== "guidemoved") {
       Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: 5, speed_kmh: 5.2 });
     }
     // A stored 14.0 km/h the treadmill (12.0 max) can't run any more, and a 3.5 the user added.
