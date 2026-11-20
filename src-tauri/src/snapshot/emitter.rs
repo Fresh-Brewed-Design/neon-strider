@@ -2,7 +2,7 @@
 //! it to the windows as `app-state`.
 
 use super::{
-    build_snapshot, calls, daily_base, eyebreak, hud, lights_out, maintenance, odometer,
+    build_snapshot, calls, daily_base, desk_sync, eyebreak, hud, lights_out, maintenance, odometer,
     refresh_daily_base, seated, stasis, tray, walkaway, weekly, AppSnapshot, ConnectionSnapshot,
     SnapshotParts, EVENT_APP_STATE,
 };
@@ -86,6 +86,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
         },
     );
     let now_ms = crate::util::now_ms_u64();
+    snapshot.desk_sync = desk_sync::snapshot(snapshot.session.daily_distance_m);
     snapshot.walkaway = walkaway::snapshot(now_ms);
     snapshot.update = crate::update::snapshot(now_ms);
     snapshot.traffic = crate::traffic::snapshot();
@@ -184,6 +185,9 @@ impl Loop {
             // when the local week rolls over (a cheap check, no query).
             if session_changed || weekly::rolled_over() {
                 weekly::refresh(&app, active_id);
+            }
+            if session_changed {
+                desk_sync::refresh(&app, active_id);
             }
             // After the refresh, so the card judges the current week even when
             // the session starts just after Monday 00:00.

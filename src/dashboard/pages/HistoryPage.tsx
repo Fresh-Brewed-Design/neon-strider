@@ -9,6 +9,7 @@ import { mergeSessions, type MergedSession } from "../../services/sessionMerge";
 import { useAppState } from "../../state/useAppState";
 import { useTreadmillStore } from "../../store/treadmillStore";
 import { Calendar } from "../history/Calendar";
+import { DeskSyncPanel } from "../history/DeskSync";
 import { groupByDay, metersByDay, RANGES, totals, visibleSessions, type Range } from "../history/sessions";
 import { SessionRow } from "../history/SessionRow";
 import { TotalsPanel, WeeklyPanel } from "../history/Summary";
@@ -25,6 +26,7 @@ export function HistoryPage() {
   const confirm = useTreadmillStore((s) => s.confirm);
   const activeSessionId = useAppState((s) => s.session.active_id);
   const weekly = useAppState((s) => s.weekly);
+  const deskSync = useAppState((s) => s.desk_sync);
   const savedIds = useAppState((s) => s.strava.saved_session_ids) ?? [];
 
   const [raw, setRaw] = useState<Session[] | null>(null);
@@ -138,6 +140,7 @@ export function HistoryPage() {
           done={exportAction.done}
         />
         {weekly && <WeeklyPanel weekly={weekly} />}
+        {deskSync && <DeskSyncPanel sync={deskSync} />}
         <TotalsPanel meters={sum.meters} seconds={sum.seconds} kcal={sum.kcal} count={visible.length} />
 
         <Panel className="p-3">

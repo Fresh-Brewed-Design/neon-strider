@@ -3,6 +3,7 @@ import type { ActiveProgram } from "./ActiveProgram";
 import type { CallsSnapshot } from "./CallsSnapshot";
 import type { ConnectionSnapshot } from "./ConnectionSnapshot";
 import type { DeckSnapshot } from "./DeckSnapshot";
+import type { DeskSync } from "./DeskSync";
 import type { EyeBreakSnapshot } from "./EyeBreakSnapshot";
 import type { HudConfig } from "./HudConfig";
 import type { HudMonitor } from "./HudMonitor";
@@ -34,6 +35,11 @@ hud_monitors: Array<HudMonitor>, strava: StravaSnapshot, maintenance: Maintenanc
  * Last week against the week before, and this week so far.
  */
 weekly: WeeklySummary, 
+/**
+ * DESK_SYNC: how many of the recent desk days (days the PC was used)
+ * were walked on.
+ */
+desk_sync: DeskSync, 
 /**
  * The idle nudge: its settings and whether the HUD card shows.
  */
