@@ -282,6 +282,8 @@ pub struct OrchestratorState {
     pub start_sent_at: Option<Instant>,
     /// The raw 0x51 status byte when it is not one we know; None when known.
     pub unknown_status_code: Option<u8>,
+    /// Unknown status bytes already logged, so each is logged once.
+    pub unknown_status_logged: Vec<u8>,
     /// The deck reports standby (`protocol::STATUS_STANDBY`): off or asleep.
     /// It refuses every start, so none is sent (see `start_refusal`).
     pub deck_standby: bool,
@@ -379,6 +381,7 @@ impl Default for OrchestratorState {
             start_blocked: false,
             start_sent_at: None,
             unknown_status_code: None,
+            unknown_status_logged: Vec::new(),
             target_pending: None,
             target_note: None,
             target_speed_changed: false,
@@ -743,6 +746,29 @@ impl OrchestratorState {
 
     pub fn should_stop_session(&self) -> bool {
         self.session.active_session_id.is_some() && self.last_status == MachineStatus::Stopped
+    }
+
+    /// Take the status of a decoded frame. A byte we don't know (5, error, and
+    /// 7, study, are documented but never seen) changes nothing: the last
+    /// known status stands, so a session neither ends nor begins on it, and
+    /// `control_packet` sends nothing automatic while it lasts. Each new
+    /// unknown byte is logged once.
+    pub(crate) fn take_status(&mut self, t: &protocol::Telemetry) {
+        if t.status_known {
+            self.last_status = t.status;
+            self.unknown_status_code = None;
+            self.deck_standby = t.status_code == protocol::STATUS_STANDBY;
+            return;
+        }
+        self.unknown_status_code = Some(t.status_code);
+        if !self.unknown_status_logged.contains(&t.status_code) {
+            self.unknown_status_logged.push(t.status_code);
+            log::warn!(
+                "Unknown deck status byte {}: keeping {:?} until a known one",
+                t.status_code,
+                self.last_status
+            );
+        }
     }
 
     /// Whether a sample is due (at most one per `SAMPLE_EVERY`); marks it taken.
@@ -2192,7 +2218,11 @@ impl ProtocolEngine {
     /// paused one or pause a running one at target zero; otherwise send the
     /// target when its bytes change.
     fn control_packet(&mut self, state: &mut OrchestratorState, now: Instant) -> Option<Packet> {
-        if !state.may_drive() {
+        // An unknown status byte (an error, say): the deck may not be where
+        // the last known status says, so nothing automatic goes out, no start,
+        // resume, pause or target, until it reports a known one. A Pause or
+        // Stop the user asks for still goes (`pending_control`).
+        if !state.may_drive() || state.unknown_status_code.is_some() {
             return None;
         }
         let (target_speed, target_incline, source) = state.resolve_target();

@@ -163,6 +163,10 @@ pub(crate) struct SimDeck {
     /// the deck skips: (asked level, level it runs instead).
     incline_ceiling: u8,
     incline_skips: Vec<(u8, u8)>,
+    /// A status byte the frames report instead of the phase's own, while the
+    /// belt carries on as before (an unknown byte such as 5 or 7). Full
+    /// frames only: running, paused, stopping.
+    status_override: Option<u8>,
 }
 
 impl SimDeck {
@@ -188,7 +192,16 @@ impl SimDeck {
             skips: vec![],
             incline_ceiling: u8::MAX,
             incline_skips: vec![],
+            status_override: None,
         }
+    }
+
+    /// Frames report status byte `code` (None: the phase's own again); the
+    /// belt carries on as it was.
+    #[cfg(test)]
+    pub(crate) fn report_status(&mut self, code: Option<u8>, now: Instant) {
+        self.advance(now);
+        self.status_override = code;
     }
 
     /// A deck that runs only `floor`..=`ceiling` (speed bytes, 0.1 km/h).
@@ -315,7 +328,7 @@ impl SimDeck {
 
     /// The frame the deck answers a status poll with now.
     fn current_frame(&self) -> Vec<u8> {
-        let code = self.phase.code();
+        let code = self.status_override.unwrap_or(self.phase.code());
         let short = |b: &[u8]| protocol::raw_packet(b).expect("short frame");
         match self.phase {
             Phase::Idle => short(&[0x51, code]),
@@ -3309,5 +3322,82 @@ mod tests {
         }
         assert_eq!(r.controls_since(0, Control::Start), 0);
         assert_eq!(r.controls_since(0, Control::Ready), 0);
+    }
+
+    /// Fixture: Engage, then a walk at 3.0 km/h set by hand.
+    fn walking_at_three() -> Rig {
+        let mut r = Rig::new();
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(6.0);
+        r.set_speed(3.0);
+        r.run(20.0);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+        r
+    }
+
+    /// An unknown status byte mid-walk (7, study, documented but never seen)
+    /// changes nothing: the session carries on, nothing is sent for it, and
+    /// the walk is saved once with its whole belt time.
+    #[test]
+    fn an_unknown_status_byte_mid_walk_keeps_the_session() {
+        let mut r = walking_at_three();
+        let mark = r.mark();
+        r.deck.report_status(Some(7), r.t);
+        r.run(3.0);
+        assert_eq!(r.state.unknown_status_code, Some(7));
+        assert_eq!(r.state.last_status, protocol::MachineStatus::Running);
+        assert!(r.finalised.is_empty(), "the session didn't end");
+        assert_eq!(r.commands_since(mark), vec![], "nothing sent for it");
+        r.deck.report_status(None, r.t);
+        r.run(10.0);
+        assert_eq!(r.state.unknown_status_code, None);
+        assert!(r.deck.running_at(3.0));
+        let walked = r.deck.workout_s() as i64;
+        r.press(DeckAction::Stop);
+        r.run(12.0);
+        assert!(r.deck.belt_still());
+        assert_eq!(r.sessions_started, 1, "one session");
+        assert_eq!(r.finalised.len(), 1);
+        assert!(
+            (r.finalised[0] - walked).abs() <= 2,
+            "saved {} s, walked {walked} s",
+            r.finalised[0]
+        );
+    }
+
+    /// While the deck reports an unknown byte (5, error) nothing automatic
+    /// goes out: a speed set then waits for a known status, and a Stop the
+    /// user asks for still goes.
+    #[test]
+    fn an_unknown_status_byte_holds_automatic_commands() {
+        let mut r = walking_at_three();
+        let mark = r.mark();
+        r.deck.report_status(Some(5), r.t);
+        r.run(1.0);
+        r.set_speed(4.0);
+        r.run(3.0);
+        assert!(
+            !moves_belt(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+        assert!(r.deck.running_at(3.0));
+        r.deck.report_status(None, r.t);
+        r.run(8.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+
+        r.deck.report_status(Some(5), r.t);
+        r.run(1.0);
+        let mark = r.mark();
+        r.press(DeckAction::Stop);
+        r.run(12.0);
+        assert!(r.controls_since(mark, Control::Stop) >= 1, "the stop went");
+        assert!(r.deck.belt_still());
+        assert!(r.finalised.is_empty(), "no session end on the unknown byte");
+        r.deck.report_status(None, r.t);
+        r.run(5.0);
+        assert_eq!((r.sessions_started, r.finalised.len()), (1, 1));
+        assert!(!app_starts(&r.commands_since(mark)));
     }
 }

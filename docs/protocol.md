@@ -59,8 +59,12 @@ wake it, so Engage (or GO, a program, a speed set by hand) sends nothing and
 says the treadmill is off or asleep at once. Once it wakes (`6` to `0`) nothing
 starts by itself; the user presses Engage again.
 
-Anything else is unknown: the engine keeps treating it as stopped (nothing
-starts or ends a session on a guess), but the raw value is kept and the app
+Anything else is unknown, `5` and `7` included (see the names below): the
+engine keeps the last known status, so a walk carries on as one session and
+nothing starts a new one on a guess (`OrchestratorState::take_status`). While
+the byte lasts the app sends nothing automatic (no start, resume, pause or
+target), only polls and a Pause or Stop the user asks for. The raw value is
+kept, each new one is logged once (`Unknown deck status byte N`), and the app
 shows "Treadmill state unknown (code N)".
 
 ## Capturing the standby state
