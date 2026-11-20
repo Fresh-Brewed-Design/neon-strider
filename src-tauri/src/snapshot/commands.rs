@@ -247,6 +247,10 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             blocking(move || crate::traffic::set_recording(&app, on)).await
         }
         Command::TrafficOpenFolder => crate::traffic::open_folder(&app),
+
+        Command::GhostPodSet { on } => {
+            blocking(move || crate::ghost_pod::set_enabled(&app, on)).await
+        }
     }
 }
 

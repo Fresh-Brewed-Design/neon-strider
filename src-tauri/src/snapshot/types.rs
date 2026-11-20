@@ -51,6 +51,8 @@ pub struct AppSnapshot {
     pub traffic: crate::traffic::TrafficSnapshot,
     /// Lights out: stop the belt when the PC's display turns off.
     pub lights_out: LightsOutSnapshot,
+    /// Labs: GHOST_POD, the PC as a foot pod for a watch (off by default).
+    pub ghost_pod: crate::ghost_pod::GhostPodSnapshot,
 }
 
 /// Strava as the windows see it. Tokens and the client secret never appear here.
@@ -590,10 +592,15 @@ pub enum Command {
     },
     /// Show the folder the traffic recordings are saved in.
     TrafficOpenFolder,
-    /// Lights out: stop the belt (or pause a program until GO) when the PC's
+    /// Lights out: a full Stop (any program ends) when the PC's
     /// display turns off.
     LightsOutSetConfig {
         enabled: bool,
+    },
+    /// Labs: GHOST_POD on (`on`) or off. On, the PC advertises as a Bluetooth
+    /// foot pod and sends the belt speed to a paired watch once a second.
+    GhostPodSet {
+        on: bool,
     },
 }
 
@@ -856,6 +863,8 @@ mod tests {
         assert_eq!(c, Command::UpdateAutoInstall { on: false });
         let c: Command = serde_json::from_str(r#"{"type":"traffic_record","on":true}"#).unwrap();
         assert_eq!(c, Command::TrafficRecord { on: true });
+        let c: Command = serde_json::from_str(r#"{"type":"ghost_pod_set","on":true}"#).unwrap();
+        assert_eq!(c, Command::GhostPodSet { on: true });
         let c: Command = serde_json::from_str(r#"{"type":"traffic_open_folder"}"#).unwrap();
         assert_eq!(c, Command::TrafficOpenFolder);
 

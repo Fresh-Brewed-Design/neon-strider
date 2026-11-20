@@ -5,6 +5,7 @@ import type { ConnectionSnapshot } from "./ConnectionSnapshot";
 import type { DeckSnapshot } from "./DeckSnapshot";
 import type { DeskSync } from "./DeskSync";
 import type { EyeBreakSnapshot } from "./EyeBreakSnapshot";
+import type { GhostPodSnapshot } from "./GhostPodSnapshot";
 import type { HudConfig } from "./HudConfig";
 import type { HudMonitor } from "./HudMonitor";
 import type { HudView } from "./HudView";
@@ -71,4 +72,8 @@ traffic: TrafficSnapshot,
 /**
  * Lights out: stop the belt when the PC's display turns off.
  */
-lights_out: LightsOutSnapshot, };
+lights_out: LightsOutSnapshot, 
+/**
+ * Labs: GHOST_POD, the PC as a foot pod for a watch (off by default).
+ */
+ghost_pod: GhostPodSnapshot, };

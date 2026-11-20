@@ -203,6 +203,14 @@ export const snapshot: AppSnapshot = {
     auto_install: true,
   },
   traffic: { recording: false, file_path: null, file_name: null, packets: 0, bytes: 0, elapsed_s: 0, stop_reason: null },
+  ghost_pod: {
+    enabled: false,
+    status: "off",
+    label: "OFFLINE",
+    message: "Switch it on to let a watch read the belt as a foot pod.",
+    watches: 0,
+    speed_kmh: 0,
+  },
 };
 
 /** Send the current snapshot to every listener, as Rust's `app-state` event does. */
@@ -632,6 +640,41 @@ if (trafficFlag === "saved") {
   stopTraffic("Stopped by itself at the 4-hour limit.");
 }
 
+// Labs: GHOST_POD. ?ghostpod=advertising|connected|error picks its status;
+// switching it on in the preview advertises, then a watch connects 3 s later.
+const GHOST_POD: Record<"off" | "starting" | "advertising" | "connected" | "error", [string, string]> = {
+  off: ["OFFLINE", "Switch it on to let a watch read the belt as a foot pod."],
+  starting: ["BOOTING", "Starting the pod."],
+  advertising: ["BROADCASTING", "Waiting for a watch. Add a foot pod sensor on it; the pod shows under this PC's Bluetooth name."],
+  connected: ["LINKED", "A watch is connected and gets the belt speed every second."],
+  error: ["FAULT", "This PC's Bluetooth adapter can't act as a sensor (no peripheral role)."],
+};
+let ghostPodTimer: ReturnType<typeof setTimeout> | null = null;
+function setGhostPod(status: keyof typeof GHOST_POD) {
+  const [label, message] = GHOST_POD[status];
+  Object.assign(snapshot.ghost_pod, {
+    enabled: status !== "off",
+    status,
+    label,
+    message,
+    watches: status === "connected" ? 1 : 0,
+    speed_kmh: status === "connected" ? snapshot.deck.speed_kmh : 0,
+  });
+}
+function switchGhostPod(on: boolean) {
+  if (ghostPodTimer) clearTimeout(ghostPodTimer);
+  ghostPodTimer = null;
+  setGhostPod(on ? "advertising" : "off");
+  if (on) {
+    ghostPodTimer = setTimeout(() => {
+      setGhostPod("connected");
+      publish();
+    }, 3000);
+  }
+}
+const ghostPodFlag = params.get("ghostpod");
+if (ghostPodFlag && ghostPodFlag in GHOST_POD) setGhostPod(ghostPodFlag as keyof typeof GHOST_POD);
+
 // ?custom: the HUD sits where it was dragged (a custom position).
 if (params.has("custom")) snapshot.hud.custom = { dx: 400, top: 120 };
 
@@ -925,6 +968,7 @@ const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) =>
   update_auto_install: (c) => (snapshot.update.auto_install = c.on),
   traffic_record: (c) => (c.on ? startTraffic(0) : stopTraffic()),
   traffic_open_folder: () => {},
+  ghost_pod_set: (c) => switchGhostPod(c.on),
   strava_set_credentials: () => (snapshot.strava.has_credentials = true),
   strava_connect: () => {
     Object.assign(snapshot.strava, { connected: true, athlete_name: "Preview Athlete" });
