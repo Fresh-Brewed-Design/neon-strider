@@ -37,7 +37,7 @@ if (params.has("call")) {
 
 // ?lightsout: the toast Rust sends when the display turns off mid-walk.
 if (params.has("lightsout")) {
-  setTimeout(() => emit("hud-update", { type: "LIGHTS_OUT", message: "DISPLAY DARK // DECK POWERING DOWN" }), 300);
+  setTimeout(() => emit("hud-update", { type: "LIGHTS_OUT", message: "DISPLAY DARK // DECK SHUTDOWN" }), 300);
 }
 
 // ?toasts=deck: the program toast is the one for a start at the treadmill taken

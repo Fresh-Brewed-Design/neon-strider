@@ -1072,28 +1072,22 @@ mod tests {
             };
             if let Some(effect) = m.tick(true, &input) {
                 r.state.set_test_now(r.t);
-                lights_out::apply(&mut r.state, effect, r.t);
+                lights_out::apply(&mut r.state, effect);
                 applied.push(effect);
             }
         }
         applied
     }
 
-    #[test]
-    fn lights_out_stops_a_walk_and_the_display_waking_starts_nothing() {
+    /// Display off: one Stop, the deck winds down, the session is saved once
+    /// and the deck goes to its own sleep. Display back on: nothing is sent,
+    /// the belt stays still and the hold stands.
+    fn lights_out_stops_and_sleeps(r: &mut Rig) {
         use crate::snapshot::lights_out::{Effect, LightsOut};
         let mut m = LightsOut::default();
-        let mut r = Rig::new();
-        r.run(1.0);
-        r.press(DeckAction::Start);
-        r.run(5.0);
-        r.set_speed(3.0);
-        assert!(lights_out_for(&mut r, &mut m, false, 30).is_empty());
-        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
-
-        // The display turns off: one Stop, the normal one.
+        assert!(lights_out_for(r, &mut m, false, 5).is_empty());
         let mark = r.mark();
-        assert_eq!(lights_out_for(&mut r, &mut m, true, 20), vec![Effect::Stop]);
+        assert_eq!(lights_out_for(r, &mut m, true, 20), vec![Effect::Stop]);
         assert_eq!(r.commands_since(mark), vec![PacketKind::AtomicAction]);
         assert_eq!(r.controls_since(mark, Control::Stop), 1);
         assert!(
@@ -1101,64 +1095,81 @@ mod tests {
             "{:?}",
             r.deck.history
         );
-        assert_eq!(r.finalised.len(), 1, "the walk was saved");
+        assert_eq!(r.finalised.len(), 1, "the walk was saved once");
         assert!(r.state.hold_auto_start);
 
-        // The deck goes to its own sleep while the display stays off.
-        assert!(lights_out_for(&mut r, &mut m, true, 15 * 60).is_empty());
+        assert!(lights_out_for(r, &mut m, true, 15 * 60).is_empty());
         assert_eq!(r.deck.status_code(), 6, "standby, screen off");
 
-        // The display wakes: only the notice; nothing is sent, the belt
-        // stays still and the hold stands.
         let mark = r.mark();
-        assert_eq!(lights_out_for(&mut r, &mut m, false, 1), vec![Effect::Back]);
-        assert!(lights_out_for(&mut r, &mut m, false, 5 * 60).is_empty());
+        assert_eq!(lights_out_for(r, &mut m, false, 1), vec![Effect::Back]);
+        assert!(lights_out_for(r, &mut m, false, 5 * 60).is_empty());
         assert_eq!(r.commands_since(mark), vec![]);
         assert!(r.deck.belt_still());
         assert!(r.state.hold_auto_start);
         assert_eq!(r.sessions_started, 1);
+        assert_eq!(r.finalised.len(), 1);
     }
 
     #[test]
-    fn lights_out_holds_a_program_for_go() {
-        use crate::snapshot::lights_out::{Effect, LightsOut};
-        let mut m = LightsOut::default();
+    fn lights_out_stops_a_walk_and_the_display_waking_starts_nothing() {
+        let mut r = Rig::new();
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(5.0);
+        r.set_speed(3.0);
+        r.run(30.0);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+        lights_out_stops_and_sleeps(&mut r);
+    }
+
+    #[test]
+    fn lights_out_ends_a_walking_program() {
         let mut r = post_meal_walking();
-        let step_before = r.program().step_index;
+        lights_out_stops_and_sleeps(&mut r);
+        assert!(r.state.active_program().is_none(), "the program ended");
+    }
 
-        assert_eq!(
-            lights_out_for(&mut r, &mut m, true, 15),
-            vec![Effect::PauseProgram]
-        );
-        let a = r.program();
-        assert_eq!(
-            (a.phase, a.paused, a.wait, a.step_index),
-            (
-                ProgramPhase::Walking,
-                true,
-                Some(ProgramWait::LightsOut),
-                step_before
-            )
-        );
-        assert_eq!(r.deck.status_code(), 10, "the program's pause");
-        assert!(r.deck.belt_still());
-        assert!(r.state.hold_auto_start);
-
-        // The display wakes: the program still waits; nothing starts it.
+    #[test]
+    fn lights_out_ends_a_resting_program() {
+        let mut r = Rig::new();
+        r.run(1.0);
+        r.run_program(WORKDAY);
+        r.run(5.0 * 60.0 + 20.0);
+        assert_eq!(r.program().phase, ProgramPhase::Resting);
+        assert_eq!(r.deck.status_code(), 10, "the rest pauses the belt");
         let mark = r.mark();
-        assert_eq!(lights_out_for(&mut r, &mut m, false, 1), vec![Effect::Back]);
-        assert!(lights_out_for(&mut r, &mut m, false, 120).is_empty());
-        let sent = r.commands_since(mark);
-        assert!(!app_starts(&sent), "{sent:?}");
+        let mut m = crate::snapshot::lights_out::LightsOut::default();
+        assert_eq!(
+            lights_out_for(&mut r, &mut m, true, 20),
+            vec![crate::snapshot::lights_out::Effect::Stop]
+        );
+        assert_eq!(r.controls_since(mark, Control::Stop), 1);
+        assert!(r.state.active_program().is_none(), "the program ended");
+        assert_eq!(r.finalised.len(), 1, "saved once");
+        let mark = r.mark();
+        assert!(lights_out_for(&mut r, &mut m, false, 30 * 60).len() == 1);
+        assert!(!moves_belt(&r.commands_since(mark)));
         assert!(r.deck.belt_still());
-        assert_eq!(r.program().wait, Some(ProgramWait::LightsOut));
+    }
 
-        // GO carries on at the same step.
-        r.go();
-        r.run(15.0);
-        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
-        let a = r.program();
-        assert_eq!((a.paused, a.wait, a.step_index), (false, None, step_before));
-        assert_eq!(r.sessions_started, 1, "the same session");
+    #[test]
+    fn lights_out_sends_one_stop_to_a_still_awake_deck() {
+        use crate::snapshot::lights_out::{Effect, LightsOut};
+        let mut r = Rig::new();
+        r.run(5.0);
+        assert_eq!(r.deck.status_code(), 0);
+        let mark = r.mark();
+        let mut m = LightsOut::default();
+        assert_eq!(lights_out_for(&mut r, &mut m, true, 60), vec![Effect::Stop]);
+        assert_eq!(r.controls_since(mark, Control::Stop), 1, "sent once");
+        assert!(r.deck.belt_still());
+        assert!(!r.state.stop_requested, "nothing left waiting");
+        let mark = r.mark();
+        assert_eq!(
+            lights_out_for(&mut r, &mut m, false, 60),
+            vec![Effect::Back]
+        );
+        assert_eq!(r.commands_since(mark), vec![]);
     }
 }

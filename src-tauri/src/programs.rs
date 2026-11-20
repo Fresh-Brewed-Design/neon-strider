@@ -101,9 +101,6 @@ pub enum ProgramWait {
     HoldComplete,
     /// After a restart or reconnect the belt was found still mid-step.
     BeltStill,
-    /// The PC's display turned off with lights out on: the belt was paused
-    /// (`snapshot/lights_out.rs`).
-    LightsOut,
 }
 
 impl ProgramWait {
@@ -113,7 +110,6 @@ impl ProgramWait {
             ProgramWait::RestComplete => "REST COMPLETE // PRESS GO",
             ProgramWait::HoldComplete => "HOLD COMPLETE // PRESS GO",
             ProgramWait::BeltStill => "BELT STILL // PRESS GO",
-            ProgramWait::LightsOut => "LIGHTS OUT // PRESS GO",
         }
     }
 }
@@ -814,23 +810,6 @@ impl OrchestratorState {
         });
         self.last_manual_interaction = now;
         Ok(())
-    }
-
-    /// Pause a walking program until GO for `why`, from outside the program
-    /// (lights out): the belt pauses, the step timer stops, and the hold is
-    /// set, so nothing but a press (GO, Engage, a start at the treadmill)
-    /// moves the belt again. A paused or resting program is left as it is.
-    /// Returns whether it now waits.
-    pub fn hold_program_for_go(&mut self, why: ProgramWait, now: Instant) -> bool {
-        let Some(mut run) = self.program.take() else {
-            return false;
-        };
-        let walking = run.phase == ProgramPhase::Walking && !run.paused;
-        if walking {
-            self.wait_for_go(&mut run, why, now);
-        }
-        self.program = Some(run);
-        walking
     }
 
     pub fn resume_program(&mut self, now: Instant) -> Result<(), String> {

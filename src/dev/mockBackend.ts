@@ -243,14 +243,12 @@ if (params.has("daily") && Number.isFinite(dailyFlag)) snapshot.session.daily_di
 // ?program=ready: Workday's rest is over on a still belt, and cycle 4 waits for GO
 // (REST COMPLETE // PRESS GO). ?program=hold: a walking step after a 0 km/h step waits.
 // ?program=still: the belt was found still after a reconnect. ?program=resting: mid-rest.
-// ?program=lightsout: paused for GO because the display turned off (LIGHTS_OUT).
 // ?program=paused: paused by the user (plain GO, no wait).
 const programFlag = params.get("program");
 const PROGRAM_SCENARIOS: Record<string, Partial<ActiveProgram>> = {
   ready: { cycle: 4, paused: true, wait: "rest_complete", seconds_remaining: 300 },
   hold: { step_index: 1, step_count: 3, paused: true, wait: "hold_complete", seconds_remaining: 120 },
   still: { paused: true, wait: "belt_still" },
-  lightsout: { paused: true, wait: "lights_out" },
   resting: { phase: "resting", seconds_remaining: 1294 },
   paused: { paused: true },
 };

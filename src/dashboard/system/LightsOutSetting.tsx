@@ -4,7 +4,7 @@ import { useAction } from "../../components/useAction";
 import { useAppSnapshot } from "../../state/useAppState";
 import { Toggle } from "./fields";
 
-/** Lights out: stop the belt when the PC's display turns off, so the treadmill sleeps too. */
+/** Lights out: stop the treadmill (ending any program) when the PC's display turns off. */
 export function LightsOutSetting() {
   const s = useAppSnapshot();
   const action = useAction();
@@ -16,7 +16,7 @@ export function LightsOutSetting() {
         tone="magenta"
         checked={s.lights_out.enabled}
         onChange={(enabled) => void action.run(() => dispatch({ type: "lights_out_set_config", enabled }))}
-        description="When the display turns off, the belt stops (a program pauses for GO) so the treadmill can go dark."
+        description="When the display turns off, the treadmill stops and any program ends, so the deck can sleep."
       />
       <ActionStatus pending={action.pending} error={action.error} className="mt-1" />
     </div>

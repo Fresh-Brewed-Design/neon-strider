@@ -166,14 +166,14 @@ async fn step(
         walkaway_pause(state, reason);
     }
 
-    // Lights out. Last: it only ever stops or pauses.
+    // Lights out. Last: it only ever stops.
     let input = lights_out::Input {
         connected: treadmill_ready(connected, state),
         display_off: crate::platform::display_off(),
         belt: lights_out::belt(state),
     };
     if let Some(effect) = lights_out::with(|rt| rt.machine.tick(rt.enabled, &input)) {
-        lights_out::apply(state, effect, std::time::Instant::now());
+        lights_out::apply(state, effect);
         if effect == lights_out::Effect::Stop {
             // A walk-away card on the stopped belt has nothing left to resume.
             walkaway::with(|rt| rt.machine.acknowledge(now));

@@ -2,6 +2,6 @@
 
 export type LightsOutSnapshot = { 
 /**
- * Stop the belt when the PC's display turns off.
+ * Stop the treadmill (ending any program) when the PC's display turns off.
  */
 enabled: boolean, };
