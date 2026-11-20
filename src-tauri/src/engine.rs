@@ -37,6 +37,10 @@ const COMMAND_GAP: Duration = Duration::from_millis(150);
 /// second Pause) of the handshake.
 const HANDSHAKE_PRIME_GAP: Duration = Duration::from_millis(150);
 const HANDSHAKE_ACT_GAP: Duration = Duration::from_millis(400);
+/// After a Start goes out, a still deck is not started again for this long:
+/// the frame that says it took the start (the countdown) comes with the next
+/// poll, so the frames before it still say stopped or paused.
+const START_ANSWER_WAIT: Duration = Duration::from_secs(2);
 /// How often the deck is asked for a status frame.
 /// A nack or echo this soon after a target packet is the deck's answer to it.
 const TARGET_REPLY_WINDOW: Duration = Duration::from_secs(2);
@@ -2193,6 +2197,12 @@ impl ProtocolEngine {
         }
         let (target_speed, target_incline, source) = state.resolve_target();
         let has_target = source != TargetSource::Unset;
+        // A Start just went out and the deck hasn't answered it yet: the
+        // frames until the next poll's still say stopped or paused, and
+        // priming again would send a second READY and Start.
+        let start_unanswered = state
+            .start_sent_at
+            .is_some_and(|t| now.saturating_duration_since(t) < START_ANSWER_WAIT);
 
         match state.last_status {
             // Not after an unanswered Engage (`start_blocked`): the deck is
@@ -2206,6 +2216,7 @@ impl ProtocolEngine {
                     && target_speed > AUTO_START_MIN_KMH
                     && !state.start_blocked
                     && !state.hold_auto_start
+                    && !start_unanswered
                     && state.profile_sweep.is_none() =>
             {
                 // A speed set by hand on a deck in standby: it would only
@@ -2227,6 +2238,7 @@ impl ProtocolEngine {
                     && source != TargetSource::Program
                     && !state.start_blocked
                     && !state.hold_auto_start
+                    && !start_unanswered
                     && state.profile_sweep.is_none() =>
             {
                 state.handshake_step = HandshakeStep::Priming;

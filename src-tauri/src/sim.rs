@@ -833,7 +833,6 @@ mod tests {
     /// it from the next poll. Whatever the poll phase, the app should send one
     /// READY and one Start per Engage.
     #[test]
-    #[ignore = "engine bug: a READY sent just after a poll re-primes the start before the countdown frame arrives"]
     fn engage_sends_one_ready_and_one_start_whatever_the_poll_phase() {
         for offset_ms in (0..600).step_by(50) {
             let mut r = Rig::new();
