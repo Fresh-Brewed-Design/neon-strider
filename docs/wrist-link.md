@@ -40,5 +40,5 @@ the Treadmill activity's data screen. With GHOST_POD paired and WRIST_LINK on, t
 and this one to the same PC? It also shows whether the PC's advertisement carries the 128-bit UUID
 (if the field stays on `SCAN`, it does not, and phase 0 finds the PC another way, for example by its name).
 
-If it fails, Jeremy picks the fallback from the plan (phone relay, drop the native foot pod, or a
+If it fails, Fresh Brewed Design picks the fallback from the plan (phone relay, drop the native foot pod, or a
 second Bluetooth adapter).
