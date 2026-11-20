@@ -2,7 +2,7 @@
 // and a skipped 1.5 km/h, plus its top incline level (12) and a skipped level 7, so the Live slider, the speed fields and the
 // program editor snap to it and System -> Diagnostics shows FORGET.
 // ?deckprofile=sweep shows DECK_SWEEP switched on and running over the speeds,
-// =inclinesweep over the incline levels.
+// =inclinesweep over the incline levels, =sweepon switched on with no sweep running.
 import { params, snapshot } from "../mockState";
 import type { Scenario } from "./types";
 
@@ -35,7 +35,7 @@ export const deckProfile: Scenario = {
             : flag === "inclinesweep"
               ? { done: 3, total: 10, kmh: 3.5, level: 4 }
               : null,
-        sweep_enabled: flag === "sweep" || flag === "inclinesweep",
+        sweep_enabled: flag === "sweep" || flag === "inclinesweep" || flag === "sweepon",
       },
     });
   },

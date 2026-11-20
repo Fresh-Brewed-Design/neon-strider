@@ -154,7 +154,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?daily=12.34`: today's km (DAILY_TOTAL)
 - `?deck=paused`: with `?stasis=...`, the belt is paused (Engage reads RE-JACK)
 - `?decknote=refused|adjusted`: the HUD note after the deck refuses or changes a target
-- `?deckprofile`: DECK_PROFILE learned (floor 0.6, ceiling 4.0, 1.5 skipped, top incline level 12, level 7 skipped; Diagnostics shows FORGET); `=sweep` with the LABS // DECK_SWEEP switch on and a speed sweep running, `=inclinesweep` an incline sweep running
+- `?deckprofile`: DECK_PROFILE learned (floor 0.6, ceiling 4.0, 1.5 skipped, top incline level 12, level 7 skipped; Diagnostics shows FORGET); `=sweep` with the LABS // DECK_SWEEP switch on and a speed sweep running, `=inclinesweep` an incline sweep running, `=sweepon` the switch on with no sweep running
 - `?desksync=open|new|few`: History's DESK_SYNC card
 - `?due`: the belt reminder well past its interval
 - `?engage=timeout`: the deck's screen is off, so Engage waits and fails
