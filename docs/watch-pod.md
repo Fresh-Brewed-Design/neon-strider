@@ -51,8 +51,10 @@ the first slice builds.
 - The pod uses the Windows GATT server (`GattServiceProvider`), which needs an adapter that
   supports the peripheral role. The app checks `IsPeripheralRoleSupported` and says so in plain
   English when it doesn't.
-- Windows advertises with the PC's own Bluetooth name; an app can't choose it. The watch will
-  list the pod under the PC's name.
+- Windows advertises with the PC's own Bluetooth name; an app can't choose it (the GATT server
+  has no name setting, and the advertisement publisher refuses a local name). So the watch can't
+  list the pod as `NEON STRIDER`: it shows the PC's name. Renaming the PC (Settings, System,
+  About) is the only way to change it, and that renames it everywhere.
 - Most adapters can be a central (to the treadmill) and a peripheral (to the watch) at once,
   but not all. If the treadmill link drops when the pod starts, switch the pod off.
 
