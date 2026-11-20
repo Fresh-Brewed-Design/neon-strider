@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.41.6 (2026-11-20)
+
+### Fixed
+
+- Changing calibration points while the belt runs no longer changes its speed. The new calibration applies at your next speed change or program step.
+
 ## 1.41.5 (2026-11-20)
 
 ### Fixed
