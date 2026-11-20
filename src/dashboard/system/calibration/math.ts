@@ -62,23 +62,3 @@ export function scaleRefusal(scale: number, limits: ScaleLimits | null | undefin
 /** The factor Rust applies for a stored one: the stored value held inside the limits. */
 export const appliedScale = (scale: number, limits: ScaleLimits) =>
   Math.min(limits.max_scale, Math.max(limits.min_scale, scale));
-
-/**
- * A new run folded into a saved point: stride and factor become the mean of
- * every run, each run weighing the same. A run without a step count keeps the
- * saved stride, since its own stride was only borrowed from the calibration.
- */
-export function averagedPoint(
-  saved: { speed: number; stride_length_cm: number; distance_scale: number; runs?: number },
-  run: { stride_length_cm: number; distance_scale: number },
-  strideMeasured: boolean,
-) {
-  const n = Math.max(1, Math.round(saved.runs ?? 1));
-  const mean = (old: number, next: number) => (old * n + next) / (n + 1);
-  return {
-    speed: saved.speed,
-    stride_length_cm: strideMeasured ? mean(saved.stride_length_cm, run.stride_length_cm) : saved.stride_length_cm,
-    distance_scale: mean(saved.distance_scale, run.distance_scale),
-    runs: n + 1,
-  };
-}

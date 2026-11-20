@@ -1272,6 +1272,56 @@ mod tests {
         assert_eq!(r.controls_since(mark, Control::Pause), 0);
     }
 
+    /// RUN ALL: the press runs the slowest speed. Saving it never moves the
+    /// belt; STOP stops it, closes the open run, and nothing starts the belt
+    /// again until his RUN on the next speed.
+    #[test]
+    fn a_calibration_sweep_only_moves_the_belt_on_his_run() {
+        crate::calibration::set_wizard_for_test(true);
+        let mut r = Rig::new();
+        r.run(5.0);
+        r.state.set_test_now(r.t);
+        crate::calibration::sweep_start(&mut r.state, &[4.0, 3.0]).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+
+        // SAVE: the belt keeps 3.0 until RUN.
+        crate::calibration::sweep_next(true).unwrap();
+        r.run(10.0);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+
+        // RUN on 4.0, then STOP mid-settle: the run closes, the sweep waits.
+        r.state.set_test_now(r.t);
+        crate::calibration::sweep_run(&mut r.state).unwrap();
+        r.run(10.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        crate::calibration::on_stop();
+        r.press(crate::engine::DeckAction::Stop);
+        r.run(10.0);
+        assert!(r.deck.belt_still());
+        let snap = crate::calibration::snapshot(r.state.hardware_speed);
+        assert_eq!(snap.run, None);
+        assert_eq!(snap.sweep.as_ref().and_then(|s| s.current), Some(1));
+
+        let mark = r.mark();
+        r.run(20.0);
+        assert!(
+            !moves_belt(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+        assert!(r.deck.belt_still(), "nothing restarts the belt after STOP");
+
+        r.state.set_test_now(r.t);
+        crate::calibration::sweep_run(&mut r.state).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        crate::calibration::sweep_next(false).unwrap();
+        let snap = crate::calibration::snapshot(r.state.hardware_speed);
+        assert_eq!(snap.sweep.unwrap().current, None, "both speeds done");
+        crate::calibration::close_all();
+    }
+
     #[test]
     fn a_calibration_run_is_refused_while_a_program_runs() {
         let mut r = post_meal_walking();
@@ -1449,6 +1499,7 @@ mod tests {
                     seconds: 20,
                     sound: true,
                     pause_belt: true,
+                    fit_rests: true,
                 },
                 ..Default::default()
             };
@@ -1467,6 +1518,7 @@ mod tests {
                     true,
                     now,
                     Some(0),
+                    false,
                     false,
                 );
             }
@@ -1586,6 +1638,60 @@ mod tests {
             "nothing pauses it again"
         );
         assert!(r.deck.running_at(4.0));
+    }
+
+    #[test]
+    fn an_eye_break_due_mid_walk_waits_for_the_program_rest_and_never_pauses_the_walk() {
+        use crate::snapshot::eyebreak::EyeBreakPhase;
+        let mut r = Rig::new();
+        let mut eyes = Eyes::new(&r);
+        // Seven minutes at the screen, then Workday: 5 min at 3 km/h, rest 25.
+        eyes.run(&mut r, 420);
+        r.run_program(WORKDAY);
+        // Past the break's time (10 min of screen use), still walking.
+        eyes.run(&mut r, 200);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+        assert!(!r.program().paused);
+        assert_ne!(eyes.shown(), EyeBreakPhase::Break);
+        assert!(eyes.rt.machine.phase() == EyeBreakPhase::Idle);
+        let mark = r.mark();
+        // The heads-up, then the rest: the break starts there.
+        eyes.run(&mut r, 50);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Upcoming);
+        assert!(crate::snapshot::eyebreak::snapshot_of(&eyes.rt).at_rest);
+        assert!(r.deck.running_at(3.0));
+        eyes.run(&mut r, 70);
+        assert_eq!(r.program().phase, ProgramPhase::Resting);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Break);
+        assert!(!eyes.rt.machine.holds_belt());
+        assert!(r.deck.belt_still());
+        // Only the rest's own pauses: the same as Workday with no eye breaks.
+        let mut plain = Rig::new();
+        let mut off = Eyes::new(&plain);
+        off.rt.cfg.enabled = false;
+        off.run(&mut plain, 420);
+        plain.run_program(WORKDAY);
+        off.run(&mut plain, 200);
+        let plain_mark = plain.mark();
+        off.run(&mut plain, 120);
+        assert_eq!(
+            r.controls_since(mark, Control::Pause),
+            plain.controls_since(plain_mark, Control::Pause)
+        );
+        // No resume card after the break.
+        eyes.run(&mut r, 30);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Idle);
+        // The rest runs out and the next cycle waits for GO; nothing starts it.
+        eyes.run(&mut r, 26 * 60);
+        let a = r.program();
+        assert_eq!((a.paused, a.wait), (true, Some(ProgramWait::RestComplete)));
+        assert!(r.deck.belt_still());
+        assert!(
+            !app_starts(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+        assert!(!eyes.rt.machine.holds_belt());
     }
 
     #[test]

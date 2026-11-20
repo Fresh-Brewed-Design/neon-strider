@@ -27,6 +27,16 @@ describe("EyeBreakCard", () => {
     expect(screen.getByText("IMPLANT COOLDOWN IN 48 S")).toBeInTheDocument();
   });
 
+  it("says a break set for the program's rest pauses nothing", () => {
+    const s = withEye({ phase: "upcoming", remaining_s: 30, at_rest: true });
+    s.deck.status = "Running";
+    render(<EyeBreakCard snapshot={s} />);
+    expect(
+      screen.getByText("Finish what you are typing, then look away. The break starts at the program's rest."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/The belt will pause/)).toBeNull();
+  });
+
   it("counts down a break and SKIP sends one command", async () => {
     render(<EyeBreakCard snapshot={withEye({ phase: "break", remaining_s: 72 })} />);
     expect(screen.getByText("OCULAR_IMPLANT // COOLDOWN")).toBeInTheDocument();

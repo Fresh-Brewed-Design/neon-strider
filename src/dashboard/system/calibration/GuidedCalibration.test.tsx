@@ -37,10 +37,11 @@ describe("GuidedCalibration", () => {
     expect(dispatched()).toContainEqual({ type: "calibration_run_start", target_kmh: 4 });
   });
 
-  it("a repeated point's result is averaged into that point", async () => {
+  it("a repeated point saves Rust's average of the runs", async () => {
     const { rerender } = render(<GuidedCalibration />);
     await act(async () => fireEvent.click(screen.getByText("ADD RUN")));
     const point = { speed: 3, stride_length_cm: 72, distance_scale: 1.0, runs: 1 };
+    const averaged = { speed: 3, stride_length_cm: 70, distance_scale: 0.95, runs: 2 };
     const next = structuredClone(mock);
     next.calibration.wizard_enabled = true;
     next.calibration.run = {
@@ -48,16 +49,13 @@ describe("GuidedCalibration", () => {
       phase: "counted",
       elapsed_s: 60,
       reported_kmh: 3,
-      result: { point, real_kmh: 3.16, real_m: 52.6, reported_m: 50, cadence_spm: 72, stride_measured: true },
+      result: { point, real_kmh: 3.16, real_m: 52.6, reported_m: 50, cadence_spm: 72, stride_measured: true, averaged },
     };
     current = next;
     rerender(<GuidedCalibration />);
     expect(screen.getByText("72.0 cm")).toBeTruthy();
     await act(async () => fireEvent.click(screen.getByText("AVERAGE IN")));
-    const [avg] = useTreadmillStore.getState().calibrationPoints;
-    expect(avg.runs).toBe(2);
-    expect(avg.stride_length_cm).toBeCloseTo(70, 5);
-    expect(avg.distance_scale).toBeCloseTo(0.95, 5);
+    expect(useTreadmillStore.getState().calibrationPoints).toEqual([averaged]);
     expect(dispatched()).toContainEqual({ type: "calibration_run_close" });
   });
 
@@ -69,6 +67,54 @@ describe("GuidedCalibration", () => {
     expect(screen.getByText("COUNT_WINDOW")).toBeTruthy();
     expect(screen.getByText("0:23.0")).toBeTruthy();
     expect(screen.getByText("DONE")).toBeTruthy();
+  });
+
+  it("RUN ALL sends every row's speed, slowest first", async () => {
+    render(<GuidedCalibration />);
+    await act(async () => fireEvent.click(screen.getByText("RUN ALL")));
+    expect(dispatched()).toContainEqual({ type: "calibration_sweep_start", targets_kmh: [2, 3, 4, 5, 6] });
+  });
+
+  it("a sweep between speeds offers RUN on the next one and locks the row buttons", async () => {
+    current = structuredClone(mock);
+    current.calibration.wizard_enabled = true;
+    current.calibration.sweep = { targets_kmh: [2, 3, 4], marks: ["saved", "skipped", "pending"], current: 2 };
+    render(<GuidedCalibration />);
+    expect(screen.getByText("SWEEP 3/3")).toBeTruthy();
+    expect(screen.queryByText("RUN ALL")).toBeNull();
+    for (const b of screen.getAllByText("RUN")) expect((b as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => fireEvent.click(screen.getByText("RUN 4.0 km/h")));
+    expect(dispatched()).toContainEqual({ type: "calibration_sweep_run" });
+    // STOP is there too, and nothing in the sweep starts the belt by itself.
+    await act(async () => fireEvent.click(screen.getByText("STOP")));
+    expect(dispatched()).toContainEqual({ type: "stop" });
+  });
+
+  it("in a sweep, saving marks the speed saved and the run panel has a STOP", async () => {
+    current = structuredClone(mock);
+    current.calibration.wizard_enabled = true;
+    current.calibration.sweep = { targets_kmh: [3, 4], marks: ["pending", "pending"], current: 0 };
+    const point = { speed: 3, stride_length_cm: 70, distance_scale: 0.9, runs: 1 };
+    current.calibration.run = {
+      target_kmh: 3,
+      phase: "counted",
+      elapsed_s: 60,
+      reported_kmh: 3,
+      result: { point, real_kmh: 3.3, real_m: 55, reported_m: 50, cadence_spm: null, stride_measured: false, averaged: null },
+    };
+    render(<GuidedCalibration />);
+    expect(screen.getByText("STOP")).toBeTruthy();
+    await act(async () => fireEvent.click(screen.getByText("AVERAGE IN")));
+    expect(dispatched()).toContainEqual({ type: "calibration_sweep_next", saved: true });
+    expect(dispatched()).not.toContainEqual({ type: "calibration_run_close" });
+  });
+
+  it("STOP in the run panel is never disabled", () => {
+    current = structuredClone(mock);
+    current.calibration.wizard_enabled = true;
+    current.calibration.run = { target_kmh: 4, phase: "counting", elapsed_s: 5, reported_kmh: null, result: null };
+    render(<GuidedCalibration />);
+    expect((screen.getByText("STOP") as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("shows a timed run waiting for its tally under the repeated point's row", () => {
