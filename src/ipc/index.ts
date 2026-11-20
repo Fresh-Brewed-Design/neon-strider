@@ -58,6 +58,8 @@ export type { ProgramWait } from "./bindings/ProgramWait";
 export type { SavedFile } from "./bindings/SavedFile";
 export type { SeatedSnapshot } from "./bindings/SeatedSnapshot";
 export type { SessionSnapshot } from "./bindings/SessionSnapshot";
+export type { SettingLimits } from "./bindings/SettingLimits";
+export type { SettingRange } from "./bindings/SettingRange";
 export type { StartResult } from "./bindings/StartResult";
 export type { StepRunView } from "./bindings/StepRunView";
 export type { StravaActivity } from "./bindings/StravaActivity";
@@ -80,6 +82,9 @@ export type { WeekStats } from "./bindings/WeekStats";
 export type { WhatsNew } from "./bindings/WhatsNew";
 export type { ZoneBand } from "./bindings/ZoneBand";
 export type { UnlistenFn };
+
+/** Every settings range and cap, written from Rust's constants by `cargo test`. */
+export { SETTING_LIMITS } from "./bindings/SETTING_LIMITS";
 
 export function getSnapshot(): Promise<AppSnapshot> {
   return invoke<AppSnapshot>("get_snapshot");

@@ -178,7 +178,7 @@ impl OrchestratorState {
         if self.profile_sweep.is_some() {
             return Err("The sweep is already running.".into());
         }
-        if !self.last_status.is_moving() || self.hardware_speed < 0.05 {
+        if !self.last_status.is_moving() || self.hardware_speed < crate::engine::STILL_KMH {
             return Err(match kind {
                 SweepKind::Speed => {
                     "Start the belt first: the sweep only changes the speed of a moving belt."
@@ -212,7 +212,7 @@ impl OrchestratorState {
             Some(byte) => self.physical_for_byte(byte, 0),
             None => intent
                 .map(|i| i.speed)
-                .filter(|kmh| *kmh >= 0.05)
+                .filter(|kmh| *kmh >= crate::engine::STILL_KMH)
                 .unwrap_or_else(|| {
                     let byte = (self.hardware_speed * 10.0).round().clamp(1.0, 255.0) as u8;
                     self.physical_for_byte(byte, 0)

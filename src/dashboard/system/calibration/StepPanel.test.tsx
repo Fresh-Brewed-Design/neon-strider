@@ -140,7 +140,7 @@ describe("GAIT_SYNC", () => {
   it("an undone stride says what UNDO did", () => {
     current!.calibration.run = measuredRun(steps({ phase: "measured", result: stepResult, undone: true }));
     render(<GuidedCalibration />);
-    expect(screen.getByText("UNDO put back the point at 3.0 km/h as the belt run left it.")).toBeTruthy();
+    expect(screen.getByText("UNDO restored the 3.0 km/h point to the belt run's result.")).toBeTruthy();
     expect(screen.getAllByText("UNDO")).toHaveLength(1);
   });
 

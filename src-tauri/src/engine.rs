@@ -23,47 +23,81 @@ use std::time::{Duration, Instant};
 
 /// How long the deck may sit paused before the session is saved (and the user
 /// told so). The session stays open: a resume continues it.
+/// Five minutes: past a short break, so an ordinary pause doesn't save half a
+/// session, and soon enough that a walk left paused is saved while the PC is on.
 const PAUSE_SAVE_AFTER: Duration = Duration::from_secs(300);
 
 /// Below this a speed means "belt still" (km/h, physical or hardware).
+/// Half the deck's 0.1 km/h step: float noise at zero never reads as moving, and
+/// the slowest real step always does.
 pub(crate) const STILL_KMH: f32 = 0.05;
 /// A stopped deck is only auto-started for a target above this.
+/// The deck's smallest speed step.
 const AUTO_START_MIN_KMH: f32 = 0.1;
 /// Manual input wins over a running program for this long.
+/// Each press restarts it, so a run of presses ends before a program takes its
+/// speed back; 5 s is a few presses' worth without the program feeling ignored.
 pub(crate) const MANUAL_LOCKOUT: Duration = Duration::from_secs(5);
 /// Least time between the last write and the next command packet.
+/// Several BLE connection intervals (7.5 to 50 ms) between two writes, and a
+/// quarter of the 600 ms poll, so a press still feels immediate.
 const COMMAND_GAP: Duration = Duration::from_millis(150);
 /// Least time between the deck's Ready (or first Pause) and the Start (or
 /// second Pause) of the handshake.
+/// The same 150 ms as any two writes (`COMMAND_GAP`).
 const HANDSHAKE_PRIME_GAP: Duration = Duration::from_millis(150);
+/// Between the handshake's two packets: under one 600 ms poll, and long enough
+/// for the deck to have handled the first before the second arrives.
 const HANDSHAKE_ACT_GAP: Duration = Duration::from_millis(400);
-/// How often the deck is asked for a status frame.
 /// A nack or echo this soon after a target packet is the deck's answer to it.
+/// Three polls of 600 ms: the deck answers a target packet in the next frame or
+/// two, and a later nack belongs to something else.
 const TARGET_REPLY_WINDOW: Duration = Duration::from_secs(2);
 /// How long the note on an adjusted or refused target stays up.
+/// Long enough to read a one-line note after glancing up from the keyboard.
 const TARGET_NOTE_SHOWN: Duration = Duration::from_secs(8);
+/// How often the deck is asked for a status frame.
+/// The deck answers a poll within a frame or two; 600 ms gives about two speed
+/// readings a second for the HUD and physics while leaving the link room for commands.
 const POLL_EVERY: Duration = Duration::from_millis(600);
 /// While a stop is in flight it is repeated this often...
+/// Under two polls, so a stop the deck missed goes out again before the walker notices.
 const STOP_REISSUE_INTERVAL: Duration = Duration::from_secs(1);
 /// ...for at most this long, if the deck never reports the belt at rest.
+/// The deck winds down from top speed in a few seconds (status 4, docs/protocol.md);
+/// 20 s is well past that, so only a deck that ignores stops runs it out.
 const STOP_TIMEOUT: Duration = Duration::from_secs(20);
 /// Incline levels above this are never sent, whatever the settings say.
+/// The top of the Highest incline level setting (0 to 20, TreadmillSection), so a
+/// corrupted setting can never send a level no FitShow deck has.
 pub(crate) const INCLINE_LEVEL_LIMIT: u8 = 20;
 /// A sample is recorded at most this often...
+/// One sample a second, the usual trackpoint rate of a recorded activity.
 const SAMPLE_EVERY: Duration = Duration::from_secs(1);
 /// ...and the session row rewritten at most this often, so a crash loses little.
+/// A crash loses at most 5 s of totals, at one small write every 5 s.
 const SESSION_FLUSH_EVERY: Duration = Duration::from_secs(5);
 /// A deck timer at or under this on connect is an idle deck, not a workout.
+/// The deck's 3, 2, 1 countdown (docs/protocol.md) can leave up to 3 s on its timer
+/// with no workout behind it.
 const RESUME_MARGIN_S: u16 = 3;
 /// A link lost within this long of the last telemetry, with the belt moving,
 /// is a dropout: the intents and session are kept for the reconnect.
+/// Two of the watchdog's 15 s retries (`link::RETRY_EVERY`): a BLE dropout with
+/// the walker still on the belt reconnects inside that.
 const DROPOUT_GRACE: Duration = Duration::from_secs(30);
 /// Physics steps longer than this are a stall (sleep, lost link), not walking.
+/// Eight missed polls of 600 ms: longer is no longer a late frame. GHOST_POD's
+/// `PodMeter::advance` uses the same 5 s.
 const MAX_PHYSICS_STEP_S: f64 = 5.0;
 /// Stride used when there is no calibration, cm.
+/// The common 0.415 times height estimate for a walking stride, at an adult
+/// height of about 178 cm; calibration replaces it.
 const DEFAULT_STRIDE_CM: f32 = 74.0;
 /// Slack on top of the deck's timer when matching a session to the deck's
 /// current workout: the deck holds its clock while paused.
+/// Two hours covers a long lunch pause; longer and the deck's own pause timeout
+/// has ended the workout anyway.
 const RESUME_SLACK_MS: i64 = 2 * 60 * 60 * 1000;
 
 /// `now` minus `ago`, or `now` itself if the clock doesn't reach back that far.
@@ -1988,6 +2022,8 @@ const PRESS_UNSENT_REPORT: Duration = Duration::from_secs(4);
 /// How long the deck reports the same speed or incline, with no target sent
 /// in that time, before a value short of the app's target counts as the
 /// deck's own setting (`DeckWatch::check`).
+/// Five polls: the deck ramps to a target over a second or two, so a value that
+/// holds for 3 s is where the deck stopped, not a step on the way.
 const DECK_SETTLED: Duration = Duration::from_secs(3);
 
 /// One tick of `ProtocolEngine::notice_deck_changes`.

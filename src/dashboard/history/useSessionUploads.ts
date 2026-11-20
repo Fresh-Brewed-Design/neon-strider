@@ -50,6 +50,7 @@ export function useSessionUploads(onUploaded: () => void) {
     setNotes((n) => ({ ...n, [p.row]: { ok: result.ok, text: result.message } }));
     if (result.ok) {
       onUploaded();
+      // The tick fades after 5 s; the note stays 8 s, long enough to read a sentence.
       setTimeout(() => setUploads((u) => ({ ...u, [p.row]: "idle" })), 5000);
       setTimeout(() => setNotes((n) => ({ ...n, [p.row]: { ok: true, text: "" } })), 8000);
     }

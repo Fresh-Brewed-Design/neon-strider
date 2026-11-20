@@ -10,19 +10,36 @@ use chrono::{DateTime, Local, NaiveDate, NaiveTime, SecondsFormat, TimeZone, Utc
 use std::collections::BTreeMap;
 
 /// Walks shorter than this are junk (a belt start/stop) and never auto-uploaded.
-const MIN_WALK_DISTANCE_M: f64 = 50.0;
+/// 50 m is under a minute at the slowest walk, so any real walk passes, while a
+/// belt started and stopped again does not. DESK_SYNC and the weekly summary
+/// count a walked day by the same distance.
+pub const MIN_WALK_DISTANCE_M: f64 = 50.0;
+/// A coffee or a call between two walks is one walk on Strava; a lunch break is two.
 const DEFAULT_MERGE_MINUTES: u32 = 10;
+/// The "join walks closer than" range: a minute, up to an hour (longer gaps are
+/// separate outings). SessionsSection reads it from `SettingLimits`.
+pub const MIN_MERGE_MINUTES: u32 = 1;
+pub const MAX_MERGE_MINUTES: u32 = 60;
 pub const DEFAULT_SHIFT_END: &str = "18:00";
 /// Refresh the access token when it expires within this many seconds.
+/// Five minutes covers a slow upload that starts just before the token expires.
 const REFRESH_MARGIN_S: i64 = 300;
 /// Permissions asked for at connect. `activity:write` uploads and edits;
 /// `activity:read` lets us list recent activities (duplicate check);
 /// `profile:read_all` is what makes `GET /athlete` include the shoes.
 pub const REQUESTED_SCOPE: &str = "read,activity:write,activity:read,profile:read_all";
+/// Shorter walks are the idle nudge's breaks: kept off the feed, still uploaded.
 pub const DEFAULT_MUTE_MINUTES: u32 = 20;
+/// The "mute walks under" range: a minute up to a four-hour walk, past which
+/// nothing at a desk is short. UploadOptions reads it from `SettingLimits`.
+pub const MIN_MUTE_MINUTES: u32 = 1;
+pub const MAX_MUTE_MINUTES: u32 = 240;
 /// Another app's activity this close to ours (either side) is the same walk.
+/// A watch started a few minutes before or after the belt is the same walk;
+/// two real walks are rarely that close.
 const DUPLICATE_TOLERANCE_MS: i64 = 5 * MINUTE_MS;
 /// The list request looks this far past each end of our walk.
+/// Twice the tolerance, so a match at its edge is still in the list.
 const DUPLICATE_WINDOW_PAD_S: i64 = 10 * 60;
 
 const MINUTE_MS: i64 = 60_000;
@@ -48,7 +65,10 @@ pub fn parse_shift_end(raw: &str) -> Option<NaiveTime> {
 pub fn parse_merge_minutes(raw: Option<&str>) -> u32 {
     raw.and_then(|s| s.trim().trim_matches('"').parse::<f64>().ok())
         .filter(|v| v.is_finite())
-        .map(|v| v.round().clamp(1.0, 60.0) as u32)
+        .map(|v| {
+            v.round()
+                .clamp(MIN_MERGE_MINUTES as f64, MAX_MERGE_MINUTES as f64) as u32
+        })
         .unwrap_or(DEFAULT_MERGE_MINUTES)
 }
 
@@ -74,7 +94,10 @@ pub fn mute_mode_setting(mode: MuteMode) -> &'static str {
 pub fn parse_mute_minutes(raw: Option<&str>) -> u32 {
     raw.and_then(|s| s.trim().trim_matches('"').parse::<f64>().ok())
         .filter(|v| v.is_finite())
-        .map(|v| v.round().clamp(1.0, 240.0) as u32)
+        .map(|v| {
+            v.round()
+                .clamp(MIN_MUTE_MINUTES as f64, MAX_MUTE_MINUTES as f64) as u32
+        })
         .unwrap_or(DEFAULT_MUTE_MINUTES)
 }
 
@@ -93,6 +116,7 @@ pub fn clean_gear_id(raw: Option<&str>) -> Result<Option<String>, String> {
     let Some(id) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
         return Ok(None);
     };
+    // Strava gear ids are a letter and a number, far under 40 characters.
     if id.len() > 40
         || !id
             .chars()
