@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.33.0 (2026-11-20)
+
+### New
+
+- History CSV export now has average and maximum heart rate columns (bpm) at the end, empty for walks without a heart rate reading.
+
 ## 1.32.0 (2026-11-20)
 
 ### New

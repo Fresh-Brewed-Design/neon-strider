@@ -5,7 +5,7 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_opener::OpenerExt;
 
 const CSV_HEADER: &str =
-    "id,start_local,end_local,duration_s,distance_km,avg_speed_kmh,avg_incline_pct,calories,steps,strava_id";
+    "id,start_local,end_local,duration_s,distance_km,avg_speed_kmh,avg_incline_pct,calories,steps,strava_id,avg_heart_rate_bpm,max_heart_rate_bpm";
 
 /// Quote a field when it holds a comma, quote, or line break (RFC 4180).
 fn csv_field(value: &str) -> String {
@@ -26,7 +26,7 @@ fn local_iso(ms: i64) -> String {
 }
 
 /// One CSV line (no trailing newline). Distances are km (3 decimals), speed
-/// km/h (2), incline % (1), calories 1 decimal, steps whole numbers.
+/// km/h (2), incline % (1), calories 1 decimal, steps whole numbers, heart rate whole bpm (empty without one).
 fn csv_row(s: &Session) -> String {
     let fields = [
         s.id.map(|id| id.to_string()).unwrap_or_default(),
@@ -39,6 +39,8 @@ fn csv_row(s: &Session) -> String {
         format!("{:.1}", s.calories),
         format!("{:.0}", s.steps),
         s.strava_id.clone().unwrap_or_default(),
+        s.avg_heart_rate.map(|b| b.to_string()).unwrap_or_default(),
+        s.max_heart_rate.map(|b| b.to_string()).unwrap_or_default(),
     ];
     fields
         .iter()
@@ -130,7 +132,7 @@ mod tests {
     fn row_uses_the_documented_precision() {
         let row = csv_row(&session());
         let cols: Vec<&str> = row.split(',').collect();
-        assert_eq!(cols.len(), 10);
+        assert_eq!(cols.len(), 12);
         assert_eq!(cols[0], "7");
         assert_eq!(cols[3], "1805");
         assert_eq!(cols[4], "2.346"); // km, 3 decimals
@@ -139,9 +141,23 @@ mod tests {
         assert_eq!(cols[7], "123.5");
         assert_eq!(cols[8], "3457");
         assert_eq!(cols[9], "12345");
+        assert_eq!(cols[10], ""); // no heart rate saved
+        assert_eq!(cols[11], "");
         // Local ISO time shape, whatever the machine's zone.
         assert_eq!(cols[1].len(), 19);
         assert_eq!(&cols[1][10..11], "T");
+    }
+
+    #[test]
+    fn heart_rate_columns_come_last_as_whole_bpm() {
+        assert!(CSV_HEADER.ends_with(",strava_id,avg_heart_rate_bpm,max_heart_rate_bpm"));
+        let mut s = session();
+        s.avg_heart_rate = Some(112);
+        s.max_heart_rate = Some(131);
+        let row = csv_row(&s);
+        assert!(row.ends_with(",12345,112,131"));
+        s.strava_id = None;
+        assert!(csv_row(&s).ends_with(",,112,131"));
     }
 
     #[test]
@@ -151,9 +167,9 @@ mod tests {
         s.strava_id = Some("a,\"b\"".into());
         let row = csv_row(&s);
         assert!(row.starts_with(','));
-        assert!(row.ends_with(",\"a,\"\"b\"\"\""));
+        assert!(row.ends_with(",\"a,\"\"b\"\"\",,"));
         s.strava_id = None;
-        assert!(csv_row(&s).ends_with(','));
+        assert!(csv_row(&s).ends_with(",,,"));
     }
 
     #[test]

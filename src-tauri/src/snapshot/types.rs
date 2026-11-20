@@ -13,48 +13,71 @@ use crate::protocol::MachineStatus;
 use crate::strava_status::{StravaActivity, StravaHint};
 use serde::{Deserialize, Serialize};
 
+// Fields are grouped by feature under `// ---- ... ----` markers: a new field
+// goes at the end of its feature's group, or in a new group at the end.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS)]
 #[ts(export, export_to = "../../src/ipc/bindings/")]
 pub struct AppSnapshot {
+    // ---- The treadmill and the walk ----
     pub connection: ConnectionSnapshot,
     pub deck: DeckSnapshot,
     pub session: SessionSnapshot,
+
+    // ---- Programs ----
     pub programs: Vec<Program>,
     pub active_program: Option<ActiveProgram>,
+
+    // ---- Neural flow ----
     pub neural: NeuralSnapshot,
+
+    // ---- HUD ----
     pub hud: HudConfig,
     /// How the HUD panel shows right now: in full, as a strip or not at all
     /// (`hud.idle_mode` while the belt is still; see `snapshot/stasis.rs`).
     pub hud_view: HudView,
     /// Displays the HUD can be placed on. Refreshed every few seconds, not per tick.
     pub hud_monitors: Vec<HudMonitor>,
+
+    // ---- Strava ----
     pub strava: StravaSnapshot,
+
+    // ---- Belt reminder and stats ----
     pub maintenance: MaintenanceSnapshot,
     /// Last week against the week before, and this week so far.
     pub weekly: WeeklySummary,
     /// DESK_SYNC: how many of the recent desk days (days the PC was used)
     /// were walked on.
     pub desk_sync: DeskSync,
+    /// Distance and belt hours over every saved session plus the live one.
+    pub odometer: OdometerSnapshot,
+
+    // ---- Desk: idle nudge, eye breaks, calls, walk-away, LIGHTS_OUT ----
     /// The idle nudge: its settings and whether the HUD card shows.
     pub seated: SeatedSnapshot,
     /// Eye breaks: their settings, the phase and the tone counters.
     pub eye_break: crate::snapshot::EyeBreakSnapshot,
     /// Slow down on calls: its settings and whether the microphone is in use.
     pub calls: CallsSnapshot,
-    /// Distance and belt hours over every saved session plus the live one.
-    pub odometer: OdometerSnapshot,
     /// Walk-away safety: its settings and which HUD card shows.
     pub walkaway: WalkAwaySnapshot,
-    /// Auto-update: the running version, any update on offer and its notes.
-    pub update: crate::update::UpdateSnapshot,
-    /// The Diagnostics traffic recorder (off at every start).
-    pub traffic: crate::traffic::TrafficSnapshot,
     /// Lights out: stop the belt when the PC's display turns off.
     pub lights_out: LightsOutSnapshot,
+
+    // ---- Auto-update ----
+    /// Auto-update: the running version, any update on offer and its notes.
+    pub update: crate::update::UpdateSnapshot,
+
+    // ---- Diagnostics ----
+    /// The Diagnostics traffic recorder (off at every start).
+    pub traffic: crate::traffic::TrafficSnapshot,
+
+    // ---- Labs ----
     /// The guided calibration (Labs): its switch, limits and any run.
     pub calibration: crate::calibration::CalibrationSnapshot,
     /// Labs: GHOST_POD, the PC as a foot pod for a watch (off by default).
     pub ghost_pod: crate::ghost_pod::GhostPodSnapshot,
+
+    // ---- HEART_LINK ----
     pub heart_rate: crate::heart_rate::HeartRateSnapshot,
 }
 
@@ -433,10 +456,14 @@ pub enum HudAnchor {
     BottomRight,
 }
 
+// Variants are grouped by feature under `// ---- ... ----` markers, in the same
+// order as the match in `commands.rs`: a new variant goes at the end of its
+// feature's group, or in a new group at the end of both.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[ts(export, export_to = "../../src/ipc/bindings/")]
 pub enum Command {
+    // ---- Belt: start, stop, speed and incline ----
     Start,
     Pause,
     Stop,
@@ -453,6 +480,15 @@ pub enum Command {
     SetInclineLevel {
         level: u8,
     },
+
+    // ---- Treadmill link ----
+    /// Try the saved treadmill now instead of waiting for the next retry.
+    ConnectNow,
+    /// Show the dashboard with its connect dialog open (the HUD's link label
+    /// when no treadmill is saved yet).
+    OpenConnectDialog,
+
+    // ---- Programs ----
     ProgramSave {
         /// id 0 creates a new program.
         program: Program,
@@ -467,6 +503,8 @@ pub enum Command {
     ProgramResume,
     ProgramSkip,
     ProgramEnd,
+
+    // ---- HUD and dashboard windows ----
     HudToggleWidget {
         widget: HudWidget,
     },
@@ -504,6 +542,8 @@ pub enum Command {
     HudSetMinified {
         minified: bool,
     },
+
+    // ---- Strava ----
     StravaSetCredentials {
         client_id: String,
         client_secret: String,
@@ -539,11 +579,6 @@ pub enum Command {
     },
     /// Show the Downloads\Neon Strider folder.
     StravaOpenSaveFolder,
-    /// Try the saved treadmill now instead of waiting for the next retry.
-    ConnectNow,
-    /// Show the dashboard with its connect dialog open (the HUD's link label
-    /// when no treadmill is saved yet).
-    OpenConnectDialog,
     /// Shoe to put on every upload; None = no shoe.
     StravaSetGear {
         gear_id: Option<String>,
@@ -561,6 +596,8 @@ pub enum Command {
         rollup_title: String,
         description: String,
     },
+
+    // ---- Belt reminder (maintenance) ----
     /// The belt was just serviced.
     MaintenanceMarkServiced,
     /// Correct the last service date (epoch ms; not in the future, not before 2020).
@@ -573,14 +610,18 @@ pub enum Command {
         km: f32,
         days: u32,
     },
-    /// The user dismissed the last-week card; remembered per ISO week.
-    WeeklySummaryAck,
     /// What the belt reminder counts (distance or belt hours) and the hours
     /// interval, 5 to 1000.
     MaintenanceSetBasis {
         basis: MaintenanceBasis,
         hours: f32,
     },
+
+    // ---- Weekly summary ----
+    /// The user dismissed the last-week card; remembered per ISO week.
+    WeeklySummaryAck,
+
+    // ---- Idle nudge (STASIS_ALERT) ----
     /// Idle nudge settings: on or off, minutes 15 to 240, and up to three
     /// programs for the card's buttons (`None` or empty = the first three saved).
     SeatedSetConfig {
@@ -596,6 +637,8 @@ pub enum Command {
     },
     /// SNOOZE 15 MIN on the card: hide it for 15 minutes; the idle time is kept.
     SeatedSnooze,
+
+    // ---- Eye breaks (OCULAR_IMPLANT) ----
     /// Eye-break settings: on or off, minutes of screen use between breaks (10 to
     /// 120), seconds a break lasts (20 to 300), whether the HUD plays tones,
     /// whether a break pauses a walking belt and whether breaks fit into a
@@ -617,11 +660,15 @@ pub enum Command {
     /// STAY STILL on the eye-break resume card: the card goes, the belt stays
     /// paused.
     EyeBreakStayStill,
+
+    // ---- Slow down on calls ----
     /// Slow-down-on-calls settings: on or off, and the quiet speed 0.5 to 6 km/h.
     CallsSetConfig {
         enabled: bool,
         quiet_kmh: f32,
     },
+
+    // ---- Walk-away safety ----
     /// Walk-away settings: pause on lock, and pause after no input for
     /// `idle_minutes` (2 to 30).
     WalkawaySetConfig {
@@ -635,6 +682,15 @@ pub enum Command {
     WalkawayResume,
     /// END on the walk-away paused card: stop and end the session.
     WalkawayEnd,
+
+    // ---- LIGHTS_OUT ----
+    /// Lights out: a full Stop (any program ends) when the PC's
+    /// display turns off.
+    LightsOutSetConfig {
+        enabled: bool,
+    },
+
+    // ---- Auto-update ----
     /// Check for an update now (System -> Updates).
     UpdateCheck,
     /// Download, verify and install the offered update, then restart. A moving
@@ -654,6 +710,8 @@ pub enum Command {
     UpdateAutoInstall {
         on: bool,
     },
+
+    // ---- Diagnostics: traffic recorder ----
     /// Diagnostics: record every packet to and from the treadmill to a new
     /// file (`on`), or stop. Sends nothing to the treadmill.
     TrafficRecord {
@@ -661,6 +719,8 @@ pub enum Command {
     },
     /// Show the folder the traffic recordings are saved in.
     TrafficOpenFolder,
+
+    // ---- DECK_PROFILE and DECK_SWEEP ----
     /// Diagnostics: forget the speeds DECK_PROFILE learned from the deck's
     /// replies. Sends nothing to the treadmill.
     DeckProfileForget,
@@ -674,11 +734,8 @@ pub enum Command {
     DeckProfileSweepSet {
         on: bool,
     },
-    /// Lights out: a full Stop (any program ends) when the PC's
-    /// display turns off.
-    LightsOutSetConfig {
-        enabled: bool,
-    },
+
+    // ---- Guided calibration (Labs) ----
     /// Labs: the guided calibration wizard on or off (persisted, off by default).
     CalibrationSetWizard {
         on: bool,
@@ -720,11 +777,25 @@ pub enum Command {
     },
     /// End the sweep and any run. The belt keeps going.
     CalibrationSweepEnd,
+
+    // ---- GHOST_POD and WRIST_LINK (Labs) ----
     /// Labs: GHOST_POD on (`on`) or off. On, the PC advertises as a Bluetooth
     /// foot pod and sends the belt speed to a paired watch once a second.
     GhostPodSet {
         on: bool,
     },
+    /// Labs: GHOST_POD's power switch. On, the pod also serves running power
+    /// (the Cycling Power service) while GHOST_POD is on.
+    GhostPodPowerSet {
+        on: bool,
+    },
+    /// Labs: WRIST_LINK on (`on`) or off. On, the PC also serves the service
+    /// the watch's Connect IQ data field reads the belt from. Needs GHOST_POD.
+    WristLinkSet {
+        on: bool,
+    },
+
+    // ---- HEART_LINK ----
     /// HEART_LINK: scan for heart rate sensors (about 5 s); the result is
     /// `heart_rate.found`.
     HeartRateScan,
@@ -739,16 +810,6 @@ pub enum Command {
     /// percentage of.
     HeartRateMaxSet {
         bpm: u16,
-    },
-    /// Labs: GHOST_POD's power switch. On, the pod also serves running power
-    /// (the Cycling Power service) while GHOST_POD is on.
-    GhostPodPowerSet {
-        on: bool,
-    },
-    /// Labs: WRIST_LINK on (`on`) or off. On, the PC also serves the service
-    /// the watch's Connect IQ data field reads the belt from. Needs GHOST_POD.
-    WristLinkSet {
-        on: bool,
     },
 }
 
