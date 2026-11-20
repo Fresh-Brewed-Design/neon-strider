@@ -139,11 +139,14 @@ fn deck_snapshot(state: &OrchestratorState, max_incline_level: u8) -> DeckSnapsh
 
 fn profile_snapshot(state: &OrchestratorState) -> DeckProfileSnapshot {
     let p = &state.deck_profile;
+    let hw = |b: u8| b as f32 / 10.0;
     let kmh = |b: u8| state.to_physical_speed(b as f32 / 10.0);
     DeckProfileSnapshot {
         learned: p.len() as u32,
         floor_kmh: p.floor().map(kmh),
         ceiling_kmh: p.ceiling().map(kmh),
+        floor_hw_kmh: p.floor().map(hw),
+        ceiling_hw_kmh: p.ceiling().map(hw),
         skipped_kmh: p.skipped().into_iter().map(kmh).collect(),
     }
 }

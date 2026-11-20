@@ -34,6 +34,29 @@ export function roundSpeed(v: number): number {
   return Math.round(v * 100) / 100;
 }
 
+/** Settings the deck's limits would replace, in the deck's own km/h. */
+export interface DeckLimitOffer {
+  minSpeed?: number;
+  maxSpeed?: number;
+}
+
+/**
+ * What DECK_PROFILE's floor and ceiling offer in place of the min and max speed
+ * settings: a limit only when the setting is looser than the deck's. A setting
+ * you tightened yourself, or that already matches, is left as it is. Null when
+ * there is nothing to offer.
+ */
+export function deckLimitOffer(
+  p: DeckProfileSnapshot,
+  minSpeed: number,
+  maxSpeed: number,
+): DeckLimitOffer | null {
+  const offer: DeckLimitOffer = {};
+  if (p.floor_hw_kmh != null && minSpeed < p.floor_hw_kmh - 1e-6) offer.minSpeed = p.floor_hw_kmh;
+  if (p.ceiling_hw_kmh != null && maxSpeed > p.ceiling_hw_kmh + 1e-6) offer.maxSpeed = p.ceiling_hw_kmh;
+  return Object.keys(offer).length > 0 ? offer : null;
+}
+
 const kmh = (v: number) => `${v.toFixed(1)} km/h`;
 
 /** One line on what DECK_PROFILE knows. */
@@ -44,4 +67,12 @@ export function profileSummary(p: DeckProfileSnapshot): string {
   if (p.ceiling_kmh != null) parts.push(`fastest ${kmh(p.ceiling_kmh)}`);
   if (p.skipped_kmh.length > 0) parts.push(`skips ${p.skipped_kmh.map((v) => v.toFixed(1)).join(", ")}`);
   return `${parts.join(", ")}.`;
+}
+
+/** The deck's seen limits as a range, e.g. "0.6 to 4.0 km/h". */
+export function limitsText(p: DeckProfileSnapshot): string {
+  if (p.floor_kmh != null && p.ceiling_kmh != null) return `${p.floor_kmh.toFixed(1)} to ${kmh(p.ceiling_kmh)}`;
+  if (p.floor_kmh != null) return `no slower than ${kmh(p.floor_kmh)}`;
+  if (p.ceiling_kmh != null) return `no faster than ${kmh(p.ceiling_kmh)}`;
+  return "its limits";
 }

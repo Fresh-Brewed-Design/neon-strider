@@ -222,6 +222,9 @@ pub struct DeckProfileSnapshot {
     /// The deck's floor and ceiling, calibrated km/h, once seen.
     pub floor_kmh: Option<f32>,
     pub ceiling_kmh: Option<f32>,
+    /// The same limits in the deck's own km/h, the unit of the min and max speed settings.
+    pub floor_hw_kmh: Option<f32>,
+    pub ceiling_hw_kmh: Option<f32>,
     /// Speeds asked that the deck changed or refused, calibrated km/h.
     pub skipped_kmh: Vec<f32>,
 }
