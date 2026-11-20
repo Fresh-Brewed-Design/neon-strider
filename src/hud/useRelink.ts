@@ -3,7 +3,7 @@ import type { ConnectionSnapshot } from "../ipc";
 import { relinkKey, relinkView } from "./status";
 import { useHudSend } from "./useHudSend";
 
-/** A click with no visible effect stops showing LINKING… after this long. */
+/** A click with no visible effect stops showing LINKING… after this long: a scan (5 s) and a moment. */
 const PENDING_MS = 6000;
 
 /**

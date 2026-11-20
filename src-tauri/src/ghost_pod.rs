@@ -58,6 +58,7 @@ const FLAG_RUNNING: u8 = 0x04;
 pub const FEATURES: u16 = 0x0007;
 
 /// At or above this the pod says "running" rather than "walking".
+/// Around 7 km/h is where people switch from walking to running.
 const RUNNING_KMH: f32 = 7.0;
 
 /// SC control point op codes and result codes.
@@ -172,6 +173,7 @@ impl PodMeter {
     /// Add `dt_s` seconds at `speed_mps`. Gaps over 5 s (sleep, a stalled
     /// tick) add nothing.
     pub fn advance(&mut self, speed_mps: f32, dt_s: f64) {
+        // The engine's stall limit too (`engine::MAX_PHYSICS_STEP_S`).
         if dt_s > 0.0 && dt_s <= 5.0 && speed_mps > 0.0 {
             self.total_m += speed_mps as f64 * dt_s;
         }
@@ -303,16 +305,16 @@ pub fn status_label(status: PodStatus) -> &'static str {
 /// The sentence for a status; `error` is the reason when it failed.
 pub fn status_message(status: PodStatus, error: Option<&str>) -> String {
     match status {
-        PodStatus::Off => "Switch it on to let a watch read the belt as a foot pod.".to_string(),
+        PodStatus::Off => "Switch GHOST_POD on to let a watch read the belt as a foot pod.".to_string(),
         PodStatus::Starting => "Starting the pod.".to_string(),
         PodStatus::Advertising => {
-            "Waiting for a watch. Add a foot pod sensor on it; the pod shows under this PC's Bluetooth name."
+            "Waiting for a watch. Add a foot pod sensor on the watch; GHOST_POD shows under the PC's Bluetooth name."
                 .to_string()
         }
         PodStatus::Connected => {
             "A watch is connected and gets the belt speed every second.".to_string()
         }
-        PodStatus::Error => error.unwrap_or("The pod stopped.").to_string(),
+        PodStatus::Error => error.unwrap_or("GHOST_POD stopped.").to_string(),
     }
 }
 

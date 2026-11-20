@@ -33,13 +33,20 @@ const DEFAULT_INTERVAL_KM: f32 = 200.0;
 /// The old default, Jogwell's manual's 100 miles. A saved value this
 /// close to it was never chosen, so it loads as the current default.
 const OLD_DEFAULT_INTERVAL_KM: f32 = 160.934;
+/// A quarter: belt lubrication intervals for home treadmills are usually given
+/// as every three months or a distance, whichever comes first.
 const DEFAULT_INTERVAL_DAYS: u32 = 90;
-const MIN_INTERVAL_KM: f32 = 50.0;
-const MAX_INTERVAL_KM: f32 = 5000.0;
-const MAX_INTERVAL_DAYS: u32 = 730;
+/// Ranges: a quarter of the sticker's 200 km up to 25 times it, and up to two years;
+/// wide enough for any deck's manual, narrow enough to catch a typo.
+/// Distance and days are shared with MaintenanceSection through `SettingLimits`.
+pub(crate) const MIN_INTERVAL_KM: f32 = 50.0;
+pub(crate) const MAX_INTERVAL_KM: f32 = 5000.0;
+pub(crate) const MAX_INTERVAL_DAYS: u32 = 730;
+/// 200 km at a 4 km/h desk walk is 50 belt hours, the same service point.
 const DEFAULT_INTERVAL_HOURS: f32 = 50.0;
-const MIN_INTERVAL_HOURS: f32 = 5.0;
-const MAX_INTERVAL_HOURS: f32 = 1000.0;
+/// One tenth to twenty times the default, as for distance.
+pub(crate) const MIN_INTERVAL_HOURS: f32 = 5.0;
+pub(crate) const MAX_INTERVAL_HOURS: f32 = 1000.0;
 /// 2020-01-01T00:00:00Z. Earlier "service dates" are typos.
 const MIN_LAST_SERVICE_MS: i64 = 1_577_836_800_000;
 

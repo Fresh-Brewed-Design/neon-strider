@@ -141,7 +141,7 @@ export function GuidePanel({
         <div>
           <Hint>
             {nextIsCheck
-              ? "A check run halfway between two calibrated speeds measures the error there."
+              ? "A check run measures the distance error halfway between two calibrated speeds."
               : `RUN sets the belt to the next speed, ${guide.next_kmh.toFixed(1)} km/h.`}
           </Hint>
           <div className="mt-2 flex items-start gap-2">

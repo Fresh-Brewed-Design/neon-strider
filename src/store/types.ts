@@ -58,6 +58,8 @@ export interface HistorySlice {
 export interface ConfirmState {
   title: string;
   message: string;
+  /** Optional detail line under the message, in small type. */
+  hint?: string;
   onConfirm: () => void;
   onCancel?: () => void;
 }

@@ -272,18 +272,18 @@ impl Guide {
                 self.slow_kmh = ran;
                 key = ran;
                 self.note = Some(format!(
-                    "The deck ran {ran:.1}, not {asked:.1}, so {ran:.1} is the slowest speed."
+                    "The deck ran {ran:.1} km/h when asked for {asked:.1}, so {ran:.1} km/h is the slowest speed."
                 ));
             } else if same(target_kmh, self.top_kmh) && ran > self.slow_kmh + 1e-3 {
                 self.set(target_kmh, None);
                 self.top_kmh = ran;
                 key = ran;
                 self.note = Some(format!(
-                    "The deck ran {ran:.1}, not {asked:.1}, so {ran:.1} is the top speed."
+                    "The deck ran {ran:.1} km/h when asked for {asked:.1}, so {ran:.1} km/h is the top speed."
                 ));
             } else {
                 self.note = Some(format!(
-                    "The deck ran {ran:.1}, not {asked:.1}, so the check uses {ran:.1}."
+                    "The deck ran {ran:.1} km/h when asked for {asked:.1}, so the check uses {ran:.1} km/h."
                 ));
             }
         }
@@ -601,7 +601,11 @@ mod tests {
             .iter()
             .any(|s| same(s.kmh, 1.2) && s.mark == GuideMark::Saved));
         assert_eq!(v.next_kmh, Some(4.0));
-        assert!(v.note.as_deref().unwrap().contains("1.2 is the slowest"));
+        assert!(v
+            .note
+            .as_deref()
+            .unwrap()
+            .contains("1.2 km/h is the slowest"));
         g.record(4.0, 4.0, 0.8);
         assert_eq!(g.next(), Some(midpoint(1.2, 4.0).unwrap()));
         assert_eq!(g.view().note, None);

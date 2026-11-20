@@ -42,7 +42,7 @@ export function usePlacement(hud: HudConfig | undefined): Placement & { dragging
 
   useEffect(() => {
     if (!live?.done) return;
-    const t = setTimeout(() => setLive(null), caughtUp ? 0 : 3000);
+    const t = setTimeout(() => setLive(null), caughtUp ? 0 : 3000); // a snapshot heartbeat and a half
     return () => clearTimeout(t);
   }, [live, caughtUp]);
 

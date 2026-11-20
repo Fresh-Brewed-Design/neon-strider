@@ -22,8 +22,10 @@ pub(crate) const HUD_LABEL: &str = "hud";
 /// The event that carries toasts to the HUD page.
 const EVENT_HUD_UPDATE: &str = "hud-update";
 /// Logical width of the HUD strip.
+/// The width the HUD's cards are laid out for (`hud.html`).
 pub(crate) const HUD_STRIP_WIDTH: f64 = 340.0;
 /// Logical height before the first placement.
+/// Taller than the full panel, so nothing is cut off before the page reports its size.
 const PROVISIONAL_HEIGHT: f64 = 800.0;
 /// Slack (physical px) around the content's rectangle. Small, so the strip
 /// doesn't block clicks on whatever sits just beside the HUD (a window's close

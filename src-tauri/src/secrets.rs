@@ -9,8 +9,9 @@
 use crate::persistence;
 use tauri::AppHandle;
 
-/// Credential Manager target prefix: the bundle identifier.
-const SERVICE: &str = "com.freshbreweddesign.neonstrider";
+/// Credential Manager target prefix: the identifier this build runs under, so
+/// dev builds keep their own entries and never read the release app's.
+const SERVICE: &str = crate::IDENTIFIER;
 
 /// A secret the app stores.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
