@@ -160,6 +160,8 @@ export const snapshot: AppSnapshot = {
     minutes: 20,
     seconds: 90,
     sound: true,
+    pause_belt: true,
+    holds_belt: false,
     phase: "idle",
     remaining_s: 0,
     blink_seq: 0,
@@ -365,10 +367,19 @@ const WEEKLY_SCENARIOS: Record<string, Partial<WeeklySummary>> = {
 };
 if (weeklyFlag !== null) Object.assign(snapshot.weekly, { show_card: true }, WEEKLY_SCENARIOS[weeklyFlag]);
 
-// ?eyebreak=upcoming|break shows the eye-break HUD card.
+// ?eyebreak=upcoming|break|resume shows the eye-break (OCULAR_IMPLANT) HUD card: the
+// heads-up, the cooldown with the belt it paused, or the resume card after it
+// (RESUME / STAY STILL). ?eyebreak=still is the cooldown with the belt left alone.
 const eyeBreakFlag = params.get("eyebreak");
 if (eyeBreakFlag === "upcoming") Object.assign(snapshot.eye_break, { enabled: true, phase: "upcoming", remaining_s: 48 });
-if (eyeBreakFlag === "break") Object.assign(snapshot.eye_break, { enabled: true, phase: "break", remaining_s: 72 });
+if (eyeBreakFlag === "break" || eyeBreakFlag === "still")
+  Object.assign(snapshot.eye_break, { enabled: true, phase: "break", remaining_s: 72, holds_belt: eyeBreakFlag === "break" });
+if (eyeBreakFlag === "resume") Object.assign(snapshot.eye_break, { enabled: true, phase: "complete", holds_belt: true });
+if (eyeBreakFlag === "break" || eyeBreakFlag === "resume") {
+  // The break paused the walk: the program at its step, or the treadmill's pause.
+  if (snapshot.active_program) Object.assign(snapshot.active_program, { paused: true, wait: null });
+  Object.assign(snapshot.deck, { status: "Paused", speed_kmh: 0 });
+}
 
 // ?seated shows the sit-too-long HUD card. Variants, comma-separated: off (treadmill off,
 // nothing picked yet), queued (treadmill off, second program remembered), long (long
@@ -828,10 +839,22 @@ const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) =>
   },
   seated_snooze: () => Object.assign(snapshot.seated, { show_card: false, pending_program_id: null }),
   eye_break_set_config: (c) => {
-    Object.assign(snapshot.eye_break, { enabled: c.enabled, minutes: c.minutes, seconds: c.seconds, sound: c.sound });
-    if (!c.enabled) Object.assign(snapshot.eye_break, { phase: "idle", remaining_s: 0 });
+    const { enabled, minutes, seconds, sound, pause_belt } = c;
+    Object.assign(snapshot.eye_break, { enabled, minutes, seconds, sound, pause_belt });
+    if (!c.enabled) Object.assign(snapshot.eye_break, { phase: "idle", remaining_s: 0, holds_belt: false });
   },
-  eye_break_skip: () => Object.assign(snapshot.eye_break, { phase: "idle", remaining_s: 0 }),
+  eye_break_skip: () =>
+    Object.assign(snapshot.eye_break, {
+      phase: snapshot.eye_break.holds_belt ? "complete" : "idle",
+      remaining_s: 0,
+    }),
+  eye_break_resume: () => {
+    if (!snapshot.connection.connected) throw "The treadmill is offline";
+    Object.assign(snapshot.eye_break, { phase: "idle", holds_belt: false });
+    if (snapshot.active_program) setProgramPaused(false);
+    else snapshot.deck.status = "Running";
+  },
+  eye_break_stay_still: () => Object.assign(snapshot.eye_break, { phase: "idle", holds_belt: false }),
   calls_set_config: (c) => Object.assign(snapshot.calls, { enabled: c.enabled, quiet_kmh: c.quiet_kmh }),
   walkaway_set_config: (c) => {
     if (c.idle_minutes < 2 || c.idle_minutes > 30) throw "Idle time must be between 2 and 30 minutes";

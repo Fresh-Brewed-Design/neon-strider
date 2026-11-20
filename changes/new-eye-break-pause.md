@@ -1,0 +1,1 @@
+- OCULAR_IMPLANT breaks now pause the belt if you are walking (a running program pauses at its step). When the break is over the HUD shows OCULAR_IMPLANT // RECALIBRATED: RESUME starts you walking again, STAY STILL keeps the belt paused. It never restarts by itself. Turn off "Pause the belt for breaks" in System -> Desk to keep walking through them.

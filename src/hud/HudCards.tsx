@@ -140,27 +140,52 @@ export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
 }
 
 /**
- * Eye break: a quiet heads-up a minute ahead, then the break with its
- * countdown. SKIP is the only button; the belt is never touched. Rust counts the
- * time; the tones are played by the HUD (`useEyeBreakTones`).
+ * Eye break (OCULAR_IMPLANT): a quiet heads-up a minute ahead, then the
+ * cooldown with its countdown and SKIP. A walking belt is paused for it (with
+ * "Pause the belt" on); after the break, while that pause holds, the card asks
+ * RESUME (a press: GO or the treadmill's resume) or STAY STILL. Nothing here
+ * starts the belt by itself. Rust counts the time and owns the pause; the tones
+ * are played by the HUD (`useEyeBreakTones`).
  */
 export function EyeBreakCard({ snapshot }: { snapshot: AppSnapshot }) {
   const { send, error } = useHudSend();
   const e = snapshot.eye_break;
+  if (e.phase === "complete") {
+    return (
+      <div className="hud-toast hud-eyebreak accent-cyan" role="alert">
+        <div className="hud-toast-body">
+          <span className="hud-toast-message">OCULAR_IMPLANT // RECALIBRATED</span>
+          <span className="hud-sub">Break over. The belt stays paused until you resume.</span>
+        </div>
+        <HudNote error={error} />
+        <div className="hud-seated-actions">
+          <SmallButton onClick={() => send({ type: "eye_break_resume" })}>RESUME</SmallButton>
+          <SmallButton onClick={() => send({ type: "eye_break_stay_still" })}>STAY STILL</SmallButton>
+        </div>
+      </div>
+    );
+  }
   const onBreak = e.phase === "break";
+  const walking = snapshot.deck.status === "Running";
   return (
     <div className="hud-toast hud-eyebreak accent-cyan" role="alert">
-      <div className="hud-toast-body">
-        <span className="hud-label">OPTIC_RESET</span>
-        <span className="hud-toast-message">
-          {onBreak ? `LOOK AWAY // ${e.remaining_s} S` : `EYE BREAK IN ${e.remaining_s} S`}
-        </span>
-        <span className="hud-sub">
-          {onBreak
-            ? "Look at something far away, and blink when the tone sounds."
-            : "Finish what you are typing, then look away."}
-        </span>
-      </div>
+      {onBreak ? (
+        <div className="hud-toast-body">
+          <span className="hud-toast-message">OCULAR_IMPLANT // COOLDOWN</span>
+          <span className="hud-eyebreak-count">{e.remaining_s} S</span>
+          <span className="hud-sub">
+            Look away from the screen.{e.holds_belt ? " The belt is paused." : ""}
+          </span>
+        </div>
+      ) : (
+        <div className="hud-toast-body">
+          <span className="hud-label">OCULAR_IMPLANT</span>
+          <span className="hud-toast-message">IMPLANT COOLDOWN IN {e.remaining_s} S</span>
+          <span className="hud-sub">
+            Finish what you are typing, then look away.{e.pause_belt && walking ? " The belt will pause." : ""}
+          </span>
+        </div>
+      )}
       <HudNote error={error} />
       <div className="hud-seated-actions">
         <SmallButton onClick={() => send({ type: "eye_break_skip" })}>SKIP</SmallButton>

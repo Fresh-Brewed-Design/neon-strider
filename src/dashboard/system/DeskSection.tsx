@@ -62,28 +62,36 @@ function WalkAwaySettings() {
   );
 }
 
-/** Eye breaks: off by default; the belt is never touched. */
+/** Eye breaks (OCULAR_IMPLANT): off by default; with them on, a break pauses a walking belt unless turned off. */
 function EyeBreakSettings() {
   const s = useAppSnapshot();
+  const pauseAction = useAction();
   if (!s) return null;
   const e = s.eye_break;
-  const save = (patch: { enabled?: boolean; minutes?: number; seconds?: number; sound?: boolean }) =>
-    send({
-      type: "eye_break_set_config",
-      enabled: e.enabled,
-      minutes: e.minutes,
-      seconds: e.seconds,
-      sound: e.sound,
-      ...patch,
-    });
+  const config = (patch: {
+    enabled?: boolean;
+    minutes?: number;
+    seconds?: number;
+    sound?: boolean;
+    pause_belt?: boolean;
+  }) => ({
+    type: "eye_break_set_config" as const,
+    enabled: e.enabled,
+    minutes: e.minutes,
+    seconds: e.seconds,
+    sound: e.sound,
+    pause_belt: e.pause_belt,
+    ...patch,
+  });
+  const save = (patch: Parameters<typeof config>[0]) => send(config(patch));
   return (
     <>
       <Toggle
-        label="Eye breaks"
+        label="OCULAR_IMPLANT"
         tone="cyan"
         checked={e.enabled}
         onChange={(enabled) => save({ enabled })}
-        description="While you use the PC, the HUD warns a minute ahead, then asks you to look into the distance and blink, with a tone every 10 seconds and one at the end. It never touches the belt. Typing or clicking with the PC unlocked counts as screen time; only the time of the last input is kept."
+        description="Eye breaks: look away from the screen now and then. The HUD warns a minute ahead, then asks you to look into the distance and blink, with a tone every 10 seconds and one at the end. Typing or clicking with the PC unlocked counts as screen time; only the time of the last input is kept."
       />
       {e.enabled && (
         <>
@@ -114,6 +122,16 @@ function EyeBreakSettings() {
             onChange={(sound) => save({ sound })}
             description="A soft beep to blink, two rising beeps when the break is over. Played by the HUD."
           />
+          <div>
+            <Toggle
+              label="Pause the belt for breaks"
+              tone="cyan"
+              checked={e.pause_belt}
+              onChange={(pause_belt) => void pauseAction.run(() => dispatch(config({ pause_belt })))}
+              description="A break that starts while you walk pauses the belt, a running program too. It never restarts by itself: after the break the HUD asks you to resume or stay still. Off, you keep walking while you look away."
+            />
+            <ActionStatus pending={pauseAction.pending} error={pauseAction.error} className="mt-1" />
+          </div>
         </>
       )}
     </>
