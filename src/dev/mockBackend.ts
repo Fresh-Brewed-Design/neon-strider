@@ -64,6 +64,7 @@ export const snapshot: AppSnapshot = {
     incline_pct: 5.0,
     incline_offset_pct: 0,
     incline_pct_per_level: 1.25,
+    target_note: null,
     target_incline_level: 4,
     target_incline_pct: 5.0,
     min_speed_kmh: 0.6,
@@ -468,6 +469,11 @@ if (params.get("neural") === "active") {
   Object.assign(snapshot.deck, { speed_kmh: 3.3, target_speed_kmh: 3.3 });
 }
 
+// ?decknote=refused|adjusted: the HUD note after the deck refuses or changes a target.
+const deckNoteFlag = params.get("decknote");
+if (deckNoteFlag === "refused") snapshot.deck.target_note = "DECK_REFUSED // 3.5 KM/H, TILT 6.3 %";
+if (deckNoteFlag === "adjusted") snapshot.deck.target_note = "DECK_ADJUSTED // 0.6 KM/H -> 0.8 KM/H, TILT 6.3 % -> 7.5 %";
+
 // ?engage=timeout: the deck's screen is off. It shows the last Engage's failure, and
 // Engage waits 8 s and fails again. ?status=N: the deck sent an unknown status byte N.
 const engageTimeout = params.get("engage") === "timeout";
@@ -700,11 +706,12 @@ function runBelt(kmh: number) {
   calRun(kmh, "settling");
 }
 /** ?calwizard: two saved points and a 3 m belt loop. */
+// ?calwizard=oldpoint adds a point stored at 0.15, below the limit.
 const CAL_CONFIG = {
   belt_length: 300,
   calibration_points: [
     { speed: 3, stride_length_cm: 68.4, distance_scale: 0.912 },
-    { speed: 4.5, stride_length_cm: 74.1, distance_scale: 0.887 },
+    { speed: 4.5, stride_length_cm: 74.1, distance_scale: calFlag === "oldpoint" ? 0.15 : 0.887 },
   ],
 };
 /** The preview runs no settings sync: the store settings ?calwizard starts with. */
@@ -712,7 +719,7 @@ export function previewSettings() {
   return calFlag === null ? null : { beltLength: CAL_CONFIG.belt_length, calibrationPoints: CAL_CONFIG.calibration_points };
 }
 if (calFlag !== null) {
-  snapshot.calibration.wizard_enabled = true;
+  snapshot.calibration.wizard_enabled = calFlag !== "oldpoint";
   if (calFlag === "counting" || calFlag === "counted") Object.assign(snapshot.deck, { raw_speed_kmh: 3, speed_kmh: 3.3 });
   if (calFlag === "counting") calRun(3, "counting", 23);
   if (calFlag === "counted") calRun(3, "counted", 62.4);

@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.15.2 (2026-11-20)
+
+### Fixed
+
+- Calibration points outside the factor limits (0.2 to 3.0) are refused in the old wizard, the point editor and when saving, with the reason shown. A point stored outside the limits shows the value that is applied.
+
+## 1.15.1 (2026-11-20)
+
+### Fixed
+
+- The HUD note after the deck refuses or changes a target now shows tilt in percent, like the TILT stat, and writes KM/H in capitals both times.
+
+## 1.15.0 (2026-11-20)
+
+### New
+
+- The HUD now reads the treadmill's echo of each speed or incline you set. When the deck took something other than what was asked (it lifts speeds under its floor, say) or refused it, a short `DECK_ADJUSTED` or `DECK_REFUSED` note shows under the VEL and TILT controls for a few seconds, and the asked-versus-got values go to the log.
+
+## 1.14.0 (2026-11-20)
+
+### New
+
+- OCULAR_IMPLANT breaks now pause the belt if you are walking (a running program pauses at its step). When the break is over the HUD shows OCULAR_IMPLANT // RECALIBRATED: RESUME starts you walking again, STAY STILL keeps the belt paused. It never restarts by itself. Turn off "Pause the belt for breaks" in System -> Desk to keep walking through them.
+
 ## 1.13.0 (2026-11-20)
 
 ### New
