@@ -1,0 +1,1 @@
+- GROUND_TRUTH (Labs guided calibration): add a target speed to the list or remove one, so the list matches the speeds you actually walk at. The list is kept between runs.

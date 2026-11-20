@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { dispatch, type CalibrationLimits, type CalibrationRunView } from "../../../ipc";
 import { ActionStatus } from "../../../components/ActionStatus";
 import { useAction } from "../../../components/useAction";
@@ -7,8 +7,20 @@ import { useAppSnapshot } from "../../../state/useAppState";
 import { useTreadmillStore } from "../../../store/treadmillStore";
 import { GhostButton, Hint, Label, NeonButton } from "../../ui";
 import { cx } from "../../util";
+import { readPref, writePref } from "../../localPrefs";
 import { INPUT_CLASS, NumberField } from "../fields";
-import { calibrationRows, chrono, runRowFor, type CalibrationRow } from "./guided";
+import {
+  addTarget,
+  calibrationRows,
+  chrono,
+  parseTargets,
+  removeTarget,
+  runRowFor,
+  targetProblem,
+  type CalibrationRow,
+} from "./guided";
+
+const TARGETS_KEY = "neon-strider.calibration-targets";
 
 /**
  * Labs: the guided calibration. One row per speed; RUN (his press) sets the
@@ -26,12 +38,32 @@ export function GuidedCalibration() {
   // Which RUN was pressed, only for its status line; the open run itself is Rust's.
   const [pressed, setPressed] = useState<number | null>(null);
   const runAction = useAction();
+  const minSpeed = useTreadmillStore((s) => s.minSpeed);
+  const maxSpeed = useTreadmillStore((s) => s.maxSpeed);
+  // The speeds on offer, kept on this PC between runs; null until one is added or removed.
+  const [saved, setSaved] = useState<number[] | null>(null);
+  const [newSpeed, setNewSpeed] = useState("");
+  const [targetError, setTargetError] = useState<string | null>(null);
   const cal = snap?.calibration;
   if (!cal) return null;
 
+  const targets = saved ?? parseTargets(readPref(TARGETS_KEY), cal.limits.default_targets_kmh, minSpeed, maxSpeed);
+  const setTargets = (next: number[]) => {
+    setSaved(next);
+    writePref(TARGETS_KEY, JSON.stringify(next));
+  };
+  const addNew = () => {
+    const kmh = newSpeed.trim() === "" ? NaN : Number(newSpeed);
+    const problem = targetProblem(targets, kmh, minSpeed, maxSpeed);
+    setTargetError(problem);
+    if (problem) return;
+    setTargets(addTarget(targets, kmh));
+    setNewSpeed("");
+  };
+
   const run = cal.run;
   // The run's speed always has a row, even if its point was deleted mid-run.
-  const rows = calibrationRows(points, [...cal.limits.default_targets_kmh, ...(run ? [run.target_kmh] : [])]);
+  const rows = calibrationRows(points, [...targets, ...(run ? [run.target_kmh] : [])]);
   const runRow = run ? runRowFor(rows, run.target_kmh) : null;
 
   const start = (row: CalibrationRow) => {
@@ -85,6 +117,17 @@ export function GuidedCalibration() {
                 >
                   {row.point ? "REPEAT" : "RUN"}
                 </NeonButton>
+                {!row.point && !(run && row === runRow) && (
+                  <button
+                    type="button"
+                    onClick={() => setTargets(removeTarget(targets, row.targetKmh))}
+                    aria-label={`Remove ${row.targetKmh.toFixed(1)} km/h from the list`}
+                    title="Remove from the list"
+                    className="p-2 text-white/50 transition-colors hover:text-neon-magenta"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
                 {row.point && row.index !== null && (
                   <button
                     type="button"
@@ -121,6 +164,30 @@ export function GuidedCalibration() {
           </div>
         ))}
       </div>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="block">
+          <Label>ADD_SPEED</Label>
+          <input
+            type="number"
+            min={minSpeed}
+            max={maxSpeed}
+            step={0.1}
+            value={newSpeed}
+            onChange={(e) => setNewSpeed(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addNew()}
+            className={cx(INPUT_CLASS, "mt-1 block w-24")}
+          />
+        </label>
+        <GhostButton onClick={addNew}>
+          <Plus size={14} className="mr-1 inline" />
+          ADD
+        </GhostButton>
+      </div>
+      {targetError && (
+        <p role="alert" className="font-mono text-xs text-neon-magenta">
+          {targetError}
+        </p>
+      )}
     </div>
   );
 }

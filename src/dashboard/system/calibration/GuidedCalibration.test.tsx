@@ -22,6 +22,7 @@ const dispatched = () =>
 const saved = { speed: 3, stride_length_cm: 68, distance_scale: 0.9 };
 
 beforeEach(() => {
+  localStorage.clear();
   vi.mocked(invoke).mockClear();
   current = structuredClone(mock);
   current.calibration.wizard_enabled = true;
@@ -76,5 +77,31 @@ describe("GuidedCalibration", () => {
     expect(screen.getByText("TALLY")).toBeTruthy();
     expect(screen.getByText("BELT_LOOPS")).toBeTruthy();
     expect(screen.getByText("REPLACE POINT")).toBeTruthy();
+  });
+
+  it("adds a target speed and keeps it between runs", () => {
+    const { unmount } = render(<GuidedCalibration />);
+    fireEvent.change(screen.getByLabelText("ADD_SPEED"), { target: { value: "3.5" } });
+    fireEvent.click(screen.getByText("ADD"));
+    expect(screen.getByText("3.5 km/h")).toBeTruthy();
+    unmount();
+    render(<GuidedCalibration />);
+    expect(screen.getByText("3.5 km/h")).toBeTruthy();
+  });
+
+  it("refuses a speed already listed", () => {
+    render(<GuidedCalibration />);
+    fireEvent.change(screen.getByLabelText("ADD_SPEED"), { target: { value: "4" } });
+    fireEvent.click(screen.getByText("ADD"));
+    expect(screen.getByRole("alert").textContent).toMatch(/already/);
+  });
+
+  it("removes a target speed, and the removal is kept", () => {
+    const { unmount } = render(<GuidedCalibration />);
+    fireEvent.click(screen.getByLabelText("Remove 4.0 km/h from the list"));
+    expect(screen.queryByText("4.0 km/h")).toBeNull();
+    unmount();
+    render(<GuidedCalibration />);
+    expect(screen.queryByText("4.0 km/h")).toBeNull();
   });
 });

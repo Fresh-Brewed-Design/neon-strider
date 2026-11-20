@@ -43,3 +43,43 @@ export function chrono(seconds: number): string {
   const rest = ((tenths - m * 600) / 10).toFixed(1).padStart(4, "0");
   return `${m}:${rest}`;
 }
+
+/** The most speeds the list holds, so the rows stay a list and not a wall. */
+export const MAX_TARGETS = 12;
+
+/** Speeds sorted, rounded to 0.1 km/h and without repeats. */
+function tidy(speeds: number[]): number[] {
+  const out: number[] = [];
+  for (const s of [...speeds].sort((a, b) => a - b)) {
+    const v = Math.round(s * 10) / 10;
+    if (!out.some((o) => Math.abs(o - v) <= SAME_SPEED_KMH)) out.push(v);
+  }
+  return out;
+}
+
+/** The saved list of target speeds; anything unreadable falls back to the defaults. */
+export function parseTargets(raw: string | null, defaults: number[], minKmh: number, maxKmh: number): number[] {
+  try {
+    const parsed: unknown = raw === null ? null : JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      const speeds = parsed.filter((v): v is number => typeof v === "number" && v >= minKmh && v <= maxKmh);
+      return tidy(speeds).slice(0, MAX_TARGETS);
+    }
+  } catch {
+    // A damaged value is the same as none.
+  }
+  return tidy(defaults);
+}
+
+/** Why a speed can't join the list, or null when it can. */
+export function targetProblem(targets: number[], kmh: number, minKmh: number, maxKmh: number): string | null {
+  if (!Number.isFinite(kmh)) return "Enter a speed in km/h.";
+  if (kmh < minKmh || kmh > maxKmh) return `Pick a speed from ${minKmh.toFixed(1)} to ${maxKmh.toFixed(1)} km/h.`;
+  if (targets.some((t) => Math.abs(t - kmh) <= SAME_SPEED_KMH)) return "That speed is already in the list.";
+  if (targets.length >= MAX_TARGETS) return `The list holds at most ${MAX_TARGETS} speeds. Remove one first.`;
+  return null;
+}
+
+export const addTarget = (targets: number[], kmh: number): number[] => tidy([...targets, kmh]);
+export const removeTarget = (targets: number[], kmh: number): number[] =>
+  targets.filter((t) => Math.abs(t - kmh) > SAME_SPEED_KMH);
