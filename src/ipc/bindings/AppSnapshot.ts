@@ -7,6 +7,7 @@ import type { DeskSync } from "./DeskSync";
 import type { HudConfig } from "./HudConfig";
 import type { HudMonitor } from "./HudMonitor";
 import type { HudView } from "./HudView";
+import type { LightsOutSnapshot } from "./LightsOutSnapshot";
 import type { MaintenanceSnapshot } from "./MaintenanceSnapshot";
 import type { NeuralSnapshot } from "./NeuralSnapshot";
 import type { OdometerSnapshot } from "./OdometerSnapshot";
@@ -39,7 +40,7 @@ weekly: WeeklySummary,
  */
 desk_sync: DeskSync, 
 /**
- * The sit-too-long nudge: its settings and whether the HUD card shows.
+ * The idle nudge: its settings and whether the HUD card shows.
  */
 seated: SeatedSnapshot, 
 /**
@@ -61,4 +62,8 @@ update: UpdateSnapshot,
 /**
  * The Diagnostics traffic recorder (off at every start).
  */
-traffic: TrafficSnapshot, };
+traffic: TrafficSnapshot, 
+/**
+ * Lights out: stop the belt when the PC's display turns off.
+ */
+lights_out: LightsOutSnapshot, };

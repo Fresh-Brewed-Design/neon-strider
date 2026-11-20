@@ -1,4 +1,4 @@
-// Tray icon variants (running, offline) derived from icons/tray.png; see
+// Tray icon variants (running, offline, and each with the update dot) derived from icons/tray.png; see
 // src/tray_art.rs.
 #[path = "src/tray_art.rs"]
 mod tray_art;
@@ -32,23 +32,23 @@ fn tray_variants() {
     let out = std::env::var("OUT_DIR").expect("OUT_DIR");
     let out = Path::new(&out);
 
+    let (w, h) = (info.width, info.height);
     let mut running = rgba.to_vec();
-    tray_art::running(&mut running, info.width, info.height);
-    write_png(
-        &out.join("tray-running.png"),
-        &running,
-        info.width,
-        info.height,
-    );
-
+    tray_art::running(&mut running, w, h);
     let mut offline = rgba.to_vec();
     tray_art::offline(&mut offline);
-    write_png(
-        &out.join("tray-offline.png"),
-        &offline,
-        info.width,
-        info.height,
-    );
+    for (name, px) in [
+        ("idle", rgba.to_vec()),
+        ("running", running),
+        ("offline", offline),
+    ] {
+        if name != "idle" {
+            write_png(&out.join(format!("tray-{name}.png")), &px, w, h);
+        }
+        let mut dotted = px;
+        tray_art::update_dot(&mut dotted, w, h);
+        write_png(&out.join(format!("tray-{name}-dot.png")), &dotted, w, h);
+    }
 }
 
 fn main() {

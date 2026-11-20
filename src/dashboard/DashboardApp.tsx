@@ -11,6 +11,7 @@ import { ProgramsPage } from "./pages/ProgramsPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { HudPage } from "./pages/HudPage";
 import { SystemPage } from "./pages/SystemPage";
+import { UpdateDot } from "./system/updates/UpdateDot";
 import { showUpdateBadge } from "./system/updates/updates";
 import { WhatsNewDialog } from "./system/updates/WhatsNewDialog";
 
@@ -112,14 +113,7 @@ export function DashboardApp() {
                   {active && <span className="absolute inset-y-1.5 left-0 w-0.5 rounded bg-neon-cyan shadow-[0_0_8px_#00f3ff]" />}
                   <Icon size={16} />
                   <span className="font-mono text-xs font-bold uppercase tracking-[0.2em]">{label}</span>
-                  {id === "system" && updateBadge && (
-                    <span
-                      className="ml-auto h-2 w-2 shrink-0 rounded-full bg-neon-magenta shadow-[0_0_6px_#ff00ff]"
-                      role="img"
-                      aria-label="Update available"
-                      title="Update available"
-                    />
-                  )}
+                  {id === "system" && updateBadge && <UpdateDot className="ml-auto" />}
                 </button>
               </li>
             );

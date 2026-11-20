@@ -3,9 +3,13 @@
 
 import type { AppSnapshot, UpdateSnapshot } from "../../../ipc";
 
-/** The System nav badge: an update is on offer and wasn't put off with "Not now". */
+/**
+ * The pink "update waiting" dot on the System nav and the Updates tab. Rust
+ * decides it (`update::show_update_dot`, which the tray icon follows too), so
+ * all three show and clear together.
+ */
 export function showUpdateBadge(u: UpdateSnapshot | undefined): boolean {
-  return !!u && u.status.state === "available" && !u.dismissed;
+  return !!u?.dot;
 }
 
 /** Rust is checking, downloading or installing. */

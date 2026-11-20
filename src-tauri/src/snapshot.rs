@@ -11,8 +11,8 @@
 //! - `emitter`: collecting the snapshot and pushing it to the windows
 //!
 //! The feature modules that contribute a part of the snapshot or act on it
-//! (calls, desk, desk_sync, hud_drag, maintenance, odometer, seated, tray, walkaway,
-//! weekly) are declared here rather than in `lib.rs`, so this module owns
+//! (calls, desk, desk_sync, hud_drag, lights_out, maintenance, odometer, seated, tray,
+//! walkaway, weekly) are declared here rather than in `lib.rs`, so this module owns
 //! their wiring.
 
 #[path = "calls.rs"]
@@ -23,6 +23,8 @@ pub mod desk;
 pub mod desk_sync;
 #[path = "hud_drag.rs"]
 pub mod hud_drag;
+#[path = "lights_out.rs"]
+pub mod lights_out;
 #[path = "maintenance.rs"]
 pub mod maintenance;
 #[path = "odometer.rs"]
@@ -46,6 +48,7 @@ pub use calls::CallsSnapshot;
 pub use desk_sync::DeskSync;
 pub use emitter::spawn_emitter;
 pub use hud::{hud_config, on_setting_written, refresh_monitors, toggle_minified};
+pub use lights_out::LightsOutSnapshot;
 pub use maintenance::{MaintenanceBasis, MaintenanceSnapshot};
 pub use odometer::OdometerSnapshot;
 pub use seated::SeatedSnapshot;
@@ -110,7 +113,7 @@ fn deck_snapshot(state: &OrchestratorState, max_incline_level: u8) -> DeckSnapsh
         incline_pct: incline_pct(state.hardware_incline, state),
         target_incline_level: target_incline,
         target_incline_pct: incline_pct(target_incline, state),
-        min_speed_kmh: state.min_speed,
+        min_speed_kmh: state.min_physical_speed(),
         max_speed_kmh: state.to_physical_speed(state.max_speed),
         max_incline_level,
         max_incline_pct: incline_pct(max_incline_level, state),
@@ -167,8 +170,8 @@ fn neural_snapshot(state: &OrchestratorState) -> NeuralSnapshot {
 }
 
 /// Build a snapshot from state. Pure (no Tauri, no locks, no I/O) so it can be
-/// unit-tested. `desk_sync`, `walkaway`, `update`, `traffic` and `hud_view` are left at their defaults:
-/// they depend on the clock, so the emitter fills them in.
+/// unit-tested. `desk_sync`, `walkaway`, `update`, `traffic`, `lights_out` and `hud_view` are left
+/// at their defaults: they depend on the clock or shared state, so the emitter fills them in.
 pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSnapshot {
     AppSnapshot {
         connection: parts.connection,
@@ -190,6 +193,7 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         walkaway: WalkAwaySnapshot::default(),
         update: crate::update::UpdateSnapshot::default(),
         traffic: crate::traffic::TrafficSnapshot::default(),
+        lights_out: LightsOutSnapshot::default(),
     }
 }
 
@@ -387,6 +391,8 @@ mod tests {
         assert_eq!(s.deck.raw_speed_kmh, 6.0);
         assert_eq!(s.deck.speed_kmh, 3.0);
         assert_eq!(s.deck.max_speed_kmh, 6.0);
+        // Both limits are calibrated: min_speed 0.6 (hardware) is 0.3 km/h.
+        assert!((s.deck.min_speed_kmh - 0.3).abs() < 1e-5);
     }
 
     #[test]

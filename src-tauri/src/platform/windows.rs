@@ -275,6 +275,58 @@ pub fn session_locked() -> bool {
     LOCKED.load(Ordering::Relaxed)
 }
 
+// ---------------------------------------------------------------------------
+// Display power
+// ---------------------------------------------------------------------------
+//
+// Why GUID_CONSOLE_DISPLAY_STATE: Windows sends WM_POWERBROADCAST /
+// PBT_POWERSETTINGCHANGE to a registered window whenever the console display
+// turns off, on or dims, whatever turned it off (the power plan's "turn off
+// the display" timeout, the lock screen's own timeout, a monitor-off tool), and
+// once right after registering with the current state. It is an event, so
+// nothing polls, and it is the real display state rather than a guess from the
+// idle time. The session watcher's hidden window already has a message loop,
+// so it registers for this too.
+
+/// GUID_CONSOLE_DISPLAY_STATE (winnt.h), defined here so the crate needs no
+/// `Win32_System_SystemServices` feature for one constant.
+const GUID_CONSOLE_DISPLAY_STATE: windows::core::GUID =
+    windows::core::GUID::from_u128(0x6fe69556_704a_47a0_8f24_c28d936fda47);
+
+static DISPLAY_OFF: AtomicBool = AtomicBool::new(false);
+
+pub fn display_off() -> bool {
+    DISPLAY_OFF.load(Ordering::Relaxed)
+}
+
+/// The setting's data: 0 off, 1 on, 2 dimmed. Dimmed still lights the room,
+/// and is on its way back on at the next input, so only 0 is off.
+fn display_state_is_off(data: u8) -> bool {
+    data == 0
+}
+
+/// One PBT_POWERSETTINGCHANGE: record the display state if it is ours.
+///
+/// # Safety
+/// `lparam` must be the `POWERBROADCAST_SETTING` pointer of that message.
+unsafe fn on_power_setting(lparam: LPARAM) {
+    use windows::Win32::System::Power::POWERBROADCAST_SETTING;
+    let ptr = lparam.0 as *const POWERBROADCAST_SETTING;
+    if ptr.is_null() {
+        return;
+    }
+    // SAFETY: Windows passes a valid POWERBROADCAST_SETTING for the length of
+    // the message; `Data` holds at least `DataLength` bytes (4 for this GUID).
+    let setting = unsafe { &*ptr };
+    if setting.PowerSetting != GUID_CONSOLE_DISPLAY_STATE || setting.DataLength < 1 {
+        return;
+    }
+    let off = display_state_is_off(setting.Data[0]);
+    if DISPLAY_OFF.swap(off, Ordering::Relaxed) != off {
+        log::info!("Display {}", if off { "off" } else { "on" });
+    }
+}
+
 pub fn spawn_session_lock_watcher() {
     let spawned = std::thread::Builder::new()
         .name("session-lock".to_string())
@@ -295,8 +347,15 @@ unsafe extern "system" fn session_wnd_proc(
     lparam: LPARAM,
 ) -> LRESULT {
     use windows::Win32::UI::WindowsAndMessaging::{
-        DefWindowProcW, WM_WTSSESSION_CHANGE, WTS_SESSION_LOCK, WTS_SESSION_UNLOCK,
+        DefWindowProcW, PBT_POWERSETTINGCHANGE, WM_POWERBROADCAST, WM_WTSSESSION_CHANGE,
+        WTS_SESSION_LOCK, WTS_SESSION_UNLOCK,
     };
+    if msg == WM_POWERBROADCAST && wparam.0 as u32 == PBT_POWERSETTINGCHANGE {
+        // SAFETY: this is that message, so `lparam` is its setting.
+        unsafe { on_power_setting(lparam) };
+        // TRUE: handled.
+        return LRESULT(1);
+    }
     if msg == WM_WTSSESSION_CHANGE {
         match wparam.0 as u32 {
             WTS_SESSION_LOCK => {
@@ -358,6 +417,21 @@ fn run_session_watch() -> windows::core::Result<()> {
     // SAFETY: `hwnd` is the window just created on this thread.
     unsafe { WTSRegisterSessionNotification(hwnd, NOTIFY_FOR_THIS_SESSION) }?;
     log::info!("Walk-away: watching for the PC locking");
+    // The display state next. A failure here leaves the lock watch running.
+    // SAFETY: `hwnd` is our window on this thread; the GUID is a static. The
+    // registration lives as long as the window (the app), so it is never
+    // unregistered.
+    let display = unsafe {
+        windows::Win32::System::Power::RegisterPowerSettingNotification(
+            windows::Win32::Foundation::HANDLE(hwnd.0),
+            &GUID_CONSOLE_DISPLAY_STATE,
+            windows::Win32::UI::WindowsAndMessaging::DEVICE_NOTIFY_WINDOW_HANDLE,
+        )
+    };
+    match display {
+        Ok(_) => log::info!("Lights out: watching the display power state"),
+        Err(e) => log::warn!("Lights out: could not watch the display power state: {}", e),
+    }
     pump_messages();
     Ok(())
 }
@@ -674,6 +748,13 @@ mod mic {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_display_that_is_off_counts_as_off() {
+        assert!(display_state_is_off(0));
+        assert!(!display_state_is_off(1), "on");
+        assert!(!display_state_is_off(2), "dimmed");
+    }
 
     #[test]
     fn alt_shortcuts_map_to_their_actions() {
