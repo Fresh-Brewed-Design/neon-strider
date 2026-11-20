@@ -177,7 +177,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?maxhr=178`: a max heart rate of 178 bpm set in System -> Heart rate (program heart zones use it)
 - `?minified`: the running strip; with `?program=resting|paused`, `?noprogram` or `?idle`
 - `?neural=active`: Neural flow easing the belt off while typing
-- `?nohistory`: History empty (no walks saved)
+- `?nohistory`: History empty: no walks, an empty week and DESK_SYNC
 - `?noprogram`: no program running
 - `?nostrava`: no Strava credentials or account
 - `?offline`: no treadmill saved yet
