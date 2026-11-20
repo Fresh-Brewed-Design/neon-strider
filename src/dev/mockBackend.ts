@@ -355,7 +355,7 @@ const WEEKLY_SCENARIOS: Record<string, Partial<WeeklySummary>> = {
 };
 if (weeklyFlag !== null) Object.assign(snapshot.weekly, { show_card: true }, WEEKLY_SCENARIOS[weeklyFlag]);
 
-// ?seated shows the sit-too-long HUD card. Variants, comma-separated: off (treadmill off,
+// ?seated shows the idle-nudge HUD card (STASIS_ALERT). Variants, comma-separated: off (treadmill off,
 // nothing picked yet), queued (treadmill off, second program remembered), long (long
 // program names, to check wrapping), none / one (no or one saved program), many (six
 // saved programs with long names; the card shows the first three).

@@ -32,7 +32,7 @@ pub struct AppSnapshot {
     pub maintenance: MaintenanceSnapshot,
     /// Last week against the week before, and this week so far.
     pub weekly: WeeklySummary,
-    /// The sit-too-long nudge: its settings and whether the HUD card shows.
+    /// The idle nudge: its settings and whether the HUD card shows.
     pub seated: SeatedSnapshot,
     /// Slow down on calls: its settings and whether the microphone is in use.
     pub calls: CallsSnapshot,
@@ -513,20 +513,20 @@ pub enum Command {
         basis: MaintenanceBasis,
         hours: f32,
     },
-    /// Sit-too-long nudge settings: on or off, minutes 15 to 240, and up to three
+    /// Idle nudge settings: on or off, minutes 15 to 240, and up to three
     /// programs for the card's buttons (`None` or empty = the first three saved).
     SeatedSetConfig {
         enabled: bool,
         minutes: u32,
         program_ids: Option<Vec<u32>>,
     },
-    /// ENGAGE on the sit-too-long card: what Engage does on a still belt.
+    /// ENGAGE on the idle-nudge card: what Engage does on a still belt.
     SeatedEngage,
-    /// A program button on the sit-too-long card.
+    /// A program button on the idle-nudge card.
     SeatedStart {
         id: u32,
     },
-    /// SNOOZE 15 MIN on the card: hide it for 15 minutes; the time seated is kept.
+    /// SNOOZE 15 MIN on the card: hide it for 15 minutes; the idle time is kept.
     SeatedSnooze,
     /// Slow-down-on-calls settings: on or off, and the quiet speed 0.5 to 6 km/h.
     CallsSetConfig {

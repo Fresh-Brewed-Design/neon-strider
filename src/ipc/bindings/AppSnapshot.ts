@@ -33,7 +33,7 @@ hud_monitors: Array<HudMonitor>, strava: StravaSnapshot, maintenance: Maintenanc
  */
 weekly: WeeklySummary, 
 /**
- * The sit-too-long nudge: its settings and whether the HUD card shows.
+ * The idle nudge: its settings and whether the HUD card shows.
  */
 seated: SeatedSnapshot, 
 /**
