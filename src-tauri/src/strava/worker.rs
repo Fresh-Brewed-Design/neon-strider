@@ -12,10 +12,15 @@ use crate::strava_status as status;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 
+/// A finished walk is also passed at once (`SESSION_ENDED`), so the minute pass is a backstop.
 const PASS_INTERVAL: Duration = Duration::from_secs(60);
+/// After the treadmill connect at startup, before the update check at 30 s.
 const FIRST_PASS_DELAY: Duration = Duration::from_secs(20);
 /// The engine writes a session's final totals off-thread when it ends.
+/// A single SQLite write takes milliseconds; 3 s is ample. The dashboard waits 1.5 s
+/// for the same reason (`sessionCoordinator.ts`).
 const AFTER_SESSION_DELAY: Duration = Duration::from_secs(3);
+/// Strava's rate limit is per 15 minutes, so a failed pass retries in the next window.
 const FAILURE_BACKOFF: Duration = Duration::from_secs(15 * 60);
 
 static SESSION_ENDED: tokio::sync::Notify = tokio::sync::Notify::const_new();

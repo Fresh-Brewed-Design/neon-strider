@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
-import { dispatch, type MaintenanceBasis } from "../../ipc";
+import { dispatch, SETTING_LIMITS, type MaintenanceBasis } from "../../ipc";
 import { useAppSnapshot } from "../../state/useAppState";
 import { Hint, Label, NeonButton } from "../ui";
 import { cx, send } from "../util";
@@ -146,8 +146,8 @@ export function MaintenanceSection() {
           <NumberField
             label="Every"
             value={Math.round(m.interval_hours * 10) / 10}
-            min={5}
-            max={1000}
+            min={SETTING_LIMITS.maintenance_hours.min}
+            max={SETTING_LIMITS.maintenance_hours.max}
             step={5}
             unit="belt hours"
             onCommit={(hours) => dispatch({ type: "maintenance_set_basis", basis: m.basis, hours })}
@@ -156,8 +156,8 @@ export function MaintenanceSection() {
           <NumberField
             label="Every"
             value={Math.round(m.interval_km * 10) / 10}
-            min={50}
-            max={5000}
+            min={SETTING_LIMITS.maintenance_km.min}
+            max={SETTING_LIMITS.maintenance_km.max}
             step={10}
             unit="km"
             onCommit={(km) => dispatch({ type: "maintenance_set_intervals", km, days: m.interval_days })}
@@ -166,8 +166,8 @@ export function MaintenanceSection() {
         <NumberField
           label="Or every"
           value={m.interval_days}
-          min={0}
-          max={730}
+          min={SETTING_LIMITS.maintenance_days.min}
+          max={SETTING_LIMITS.maintenance_days.max}
           unit="days (0 = no limit)"
           onCommit={(days) => dispatch({ type: "maintenance_set_intervals", km: m.interval_km, days })}
         />

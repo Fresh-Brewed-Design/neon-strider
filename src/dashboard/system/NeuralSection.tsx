@@ -1,6 +1,5 @@
-import type { NeuralSensitivity } from "../../ipc";
+import { SETTING_LIMITS, type NeuralSensitivity } from "../../ipc";
 import { useAppSnapshot } from "../../state/useAppState";
-import { NEURAL_FLOOR_MAX, NEURAL_FLOOR_MIN } from "../../store/slices/settingsSlice";
 import { useTreadmillStore } from "../../store/treadmillStore";
 import { Hint, Label } from "../ui";
 import { cx } from "../util";
@@ -91,8 +90,8 @@ export function NeuralSection() {
           <SliderField
             label="Slowest speed"
             tone="green"
-            min={NEURAL_FLOOR_MIN}
-            max={NEURAL_FLOOR_MAX}
+            min={SETTING_LIMITS.neural_floor_pct.min}
+            max={SETTING_LIMITS.neural_floor_pct.max}
             step={1}
             value={floor}
             format={(v) => `${v.toFixed(0)}% of your speed`}

@@ -27,10 +27,12 @@ const REDIRECT_URI: &str = "http://127.0.0.1:18392/callback";
 const AUTHORIZE_URL: &str = "https://www.strava.com/oauth/authorize";
 const TOKEN_URL: &str = "https://www.strava.com/oauth/token";
 const DEAUTHORIZE_URL: &str = "https://www.strava.com/oauth/deauthorize";
+/// Five minutes to log in on Strava's page, type a password and approve.
 const AUTH_TIMEOUT: Duration = Duration::from_secs(300);
 /// A previous Connect's listener can hold the port for up to a second after it
 /// is superseded; retry the bind this many times, this far apart.
 const BIND_RETRIES: u32 = 8;
+/// Eight tries 300 ms apart wait 2.4 s, past the second the old listener can hold it.
 const BIND_RETRY_DELAY: Duration = Duration::from_millis(300);
 
 /// Bumped by every Connect (and Cancel) so an older callback listener gives up its port.
@@ -97,6 +99,7 @@ fn wait_for_callback(server: Server, generation: u64) -> Result<Callback, String
         if Instant::now() >= deadline {
             return Err("Timed out waiting for Strava. Try again.".to_string());
         }
+        // Wakes once a second to check the deadline and whether a newer Connect superseded it.
         let request = match server.recv_timeout(Duration::from_secs(1)) {
             Ok(Some(r)) => r,
             Ok(None) => continue,

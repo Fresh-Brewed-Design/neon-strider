@@ -1,8 +1,5 @@
-import {
-  MERGE_THRESHOLD_MAX,
-  MERGE_THRESHOLD_MIN,
-  saveSessionMergeThreshold,
-} from "../../services/sessionMergeSetting";
+import { SETTING_LIMITS } from "../../ipc";
+import { saveSessionMergeThreshold } from "../../services/sessionMergeSetting";
 import { useTreadmillStore } from "../../store/treadmillStore";
 import { NumberField, Section } from "./fields";
 
@@ -18,8 +15,8 @@ export function SessionsSection() {
       <NumberField
         label="Join sessions closer than"
         unit="minutes"
-        min={MERGE_THRESHOLD_MIN}
-        max={MERGE_THRESHOLD_MAX}
+        min={SETTING_LIMITS.session_merge_minutes.min}
+        max={SETTING_LIMITS.session_merge_minutes.max}
         value={minutes}
         hint="Measured from the end of one record to the start of the next."
         onCommit={saveSessionMergeThreshold}

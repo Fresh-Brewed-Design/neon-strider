@@ -14,9 +14,13 @@ const DEFAULT_ROLLUP_TITLE: &str =
 const DEFAULT_DESCRIPTION: &str = "DECK_CYCLES {duration} \u{b7} DISPLACEMENT {distance_km} km \u{b7} ALTITUDE_BIAS {avg_incline}% \u{b7} METABOLIC_BURN {calories} kcal\nLogged by Neon Strider";
 
 /// Strava titles are cut to this many characters.
-const MAX_TITLE_CHARS: usize = 100;
+/// Longer titles are cut in Strava's feed anyway.
+pub const MAX_TITLE_CHARS: usize = 100;
 /// Longest template text accepted when saving.
+/// Room for placeholders that expand to fewer characters, but not a pasted page.
+/// TemplateEditor reads it from `SettingLimits`.
 pub const MAX_TITLE_TEMPLATE_CHARS: usize = 300;
+/// A long description with every placeholder, well under Strava's own limit.
 pub const MAX_DESCRIPTION_TEMPLATE_CHARS: usize = 2000;
 
 /// What a template can show about one activity (a walk, or a day's rollup).

@@ -90,6 +90,8 @@ impl StravaIssue {
 }
 
 /// Collapse whitespace into one line and cut at `max` characters.
+/// Callers cut Strava's messages at 120 to 140 characters, about two lines
+/// under a button, and a field name at 60.
 pub fn one_line(text: &str, max: usize) -> String {
     let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if flat.chars().count() <= max {
@@ -278,6 +280,7 @@ fn http_issue(status: u16, retry: Option<u32>, body: &str) -> StravaIssue {
 }
 
 fn wait_text(secs: u32) -> String {
+    // From a minute and a half, minutes read better than a count of seconds.
     if secs >= 90 {
         format!("{} min", (secs + 30) / 60)
     } else {

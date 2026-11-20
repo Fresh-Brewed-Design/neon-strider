@@ -44,19 +44,30 @@ const INSTALLER_NOTE_MARKER: &str = "<!-- installer-note -->";
 const MINUTE_MS: u64 = 60_000;
 const DAY_MS: u64 = 24 * 60 * MINUTE_MS;
 /// The first check waits this long after startup, so it doesn't compete with the connect.
+/// A treadmill connect takes up to about 15 s (scan, settle, retries); 30 s is after it.
 const STARTUP_DELAY_MS: u64 = 30_000;
 /// A failed background check (offline at startup, say) is retried this soon.
+/// Hourly is soon enough for a release and stays far inside GitHub's 60
+/// anonymous requests an hour.
 const RETRY_AFTER_FAILURE_MS: u64 = 60 * MINUTE_MS;
 /// How often the scheduler looks at the clock and the belt.
+/// The waits it checks are minutes long, so 5 s is precise enough and costs nothing.
 const SCHEDULER_TICK: Duration = Duration::from_secs(5);
 /// Auto-install waits for the belt to be still, with no program, this long...
+/// As long as walk-away's default idle pause: a walk that stopped that long ago is over.
 const AUTO_BELT_STILL_MS: u64 = 10 * MINUTE_MS;
 /// ...and for this long without keyboard or mouse input on the PC.
+/// The same 5 minutes that counts as PC use elsewhere (`seated::ACTIVE_WINDOW_MS`).
 const AUTO_PC_IDLE_MS: u64 = 5 * MINUTE_MS;
 /// After an automatic install fails, the next automatic try waits this long.
+/// As for a failed check: hourly, so a broken download doesn't retry in a loop.
 const AUTO_RETRY_MS: u64 = 60 * MINUTE_MS;
 /// "What's new" opens the dashboard by itself only this soon after the install began.
+/// An install restarts the app within a minute or two; 15 minutes covers a slow
+/// PC, and a later start (next morning) shouldn't pop the dashboard open.
 const WHATS_NEW_OPEN_WITHIN_MS: u64 = 15 * MINUTE_MS;
+/// GitHub's API answers in under a second; 20 s covers a slow link without
+/// leaving Check now spinning.
 const HTTP_TIMEOUT: Duration = Duration::from_secs(20);
 
 // ---------------------------------------------------------------------------
@@ -934,6 +945,7 @@ fn start_install(app: &AppHandle, auto: bool) -> Result<(), String> {
         save_running_program(&app).await;
         with(|rt| rt.status = UpdateStatus::Installing);
         // Let the windows show "Installing" before the app closes.
+        // Two snapshot ticks (250 ms) plus a repaint, so the windows show it.
         tokio::time::sleep(Duration::from_millis(600)).await;
         if auto && !still_idle_for_auto(&app).await {
             return;

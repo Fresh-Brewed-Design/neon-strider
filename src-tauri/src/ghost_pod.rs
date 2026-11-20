@@ -58,6 +58,7 @@ const FLAG_RUNNING: u8 = 0x04;
 pub const FEATURES: u16 = 0x0007;
 
 /// At or above this the pod says "running" rather than "walking".
+/// Around 7 km/h is where people switch from walking to running.
 const RUNNING_KMH: f32 = 7.0;
 
 /// SC control point op codes and result codes.
@@ -172,6 +173,7 @@ impl PodMeter {
     /// Add `dt_s` seconds at `speed_mps`. Gaps over 5 s (sleep, a stalled
     /// tick) add nothing.
     pub fn advance(&mut self, speed_mps: f32, dt_s: f64) {
+        // The engine's stall limit too (`engine::MAX_PHYSICS_STEP_S`).
         if dt_s > 0.0 && dt_s <= 5.0 && speed_mps > 0.0 {
             self.total_m += speed_mps as f64 * dt_s;
         }

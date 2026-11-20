@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { dispatch, type Command } from "../ipc";
 import { errorText } from "../components/useAction";
 
+/** A failed press's note stays long enough to read one line at a glance. */
 const NOTE_MS = 6000;
+/** Two lines of the HUD's 11px mono text at its 340 px width. */
 const MAX_CHARS = 56;
 
 /** A rejected command as a short themed line: `SYS // TREADMILL NOT CONNECTED`. */

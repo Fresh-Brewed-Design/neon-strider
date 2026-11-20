@@ -1,4 +1,4 @@
-import { dispatch } from "../../ipc";
+import { dispatch, SETTING_LIMITS } from "../../ipc";
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { roundSpeed, snapToDeck } from "../../state/deckSpeeds";
@@ -8,7 +8,8 @@ import { cx, send } from "../util";
 import { NumberField, Section, Toggle } from "./fields";
 import { LightsOutSetting } from "./LightsOutSetting";
 
-const MAX_PROGRAM_BUTTONS = 3;
+const L = SETTING_LIMITS;
+const MAX_PROGRAM_BUTTONS = L.seated_program_buttons;
 
 /** Walk-away safety: pause the belt on lock, or after a long time without input. */
 function WalkAwaySettings() {
@@ -54,11 +55,11 @@ function WalkAwaySettings() {
         <NumberField
           label="Pause after"
           unit="minutes without input"
-          min={2}
-          max={30}
+          min={L.walkaway_idle_minutes.min}
+          max={L.walkaway_idle_minutes.max}
           step={1}
           value={w.idle_minutes}
-          hint="2 to 30. Long enough to watch a video while you walk."
+          hint={`${L.walkaway_idle_minutes.min} to ${L.walkaway_idle_minutes.max}. Long enough to watch a video while you walk.`}
           onCommit={(idle_minutes) => save({ idle_minutes: Math.round(idle_minutes) })}
         />
       )}
@@ -109,21 +110,21 @@ function EyeBreakSettings() {
           <NumberField
             label="Break every"
             unit="minutes of screen use"
-            min={10}
-            max={120}
+            min={L.eye_break_minutes.min}
+            max={L.eye_break_minutes.max}
             step={5}
             value={e.minutes}
-            hint="10 to 120. The 20-minute habit is popular, but studies on myopia favour 5 minutes an hour."
+            hint={`${L.eye_break_minutes.min} to ${L.eye_break_minutes.max}. The 20-minute habit is popular, but studies on myopia favour 5 minutes an hour.`}
             onCommit={(minutes) => save({ minutes })}
           />
           <NumberField
             label="Break lasts"
             unit="seconds"
-            min={20}
-            max={300}
+            min={L.eye_break_seconds.min}
+            max={L.eye_break_seconds.max}
             step={10}
             value={e.seconds}
-            hint="20 to 300. Focusing needs about 90 seconds to relax; 20 seconds is often too short."
+            hint={`${L.eye_break_seconds.min} to ${L.eye_break_seconds.max}. Focusing needs about 90 seconds to relax; 20 seconds is often too short.`}
             onCommit={(seconds) => save({ seconds })}
           />
           <Toggle
@@ -207,11 +208,11 @@ export function DeskSection() {
           <NumberField
             label="Remind after"
             unit="minutes of PC use"
-            min={15}
-            max={240}
+            min={L.seated_minutes.min}
+            max={L.seated_minutes.max}
             step={5}
             value={seated.minutes}
-            hint="15 to 240. Walking for 2 minutes, or being away from the PC for 15, starts the count again."
+            hint={`${L.seated_minutes.min} to ${L.seated_minutes.max}. Walking for 2 minutes, or being away from the PC for 15, starts the count again.`}
             onCommit={(minutes) => saveSeated({ minutes })}
           />
           <div>
@@ -288,8 +289,8 @@ export function DeskSection() {
           <NumberField
             label="Quiet speed"
             unit="km/h"
-            min={0.5}
-            max={6}
+            min={L.calls_quiet_kmh.min}
+            max={L.calls_quiet_kmh.max}
             step={0.1}
             value={calls.quiet_kmh}
             hint="A running program is eased too, for the current step only; the saved program is not changed."
