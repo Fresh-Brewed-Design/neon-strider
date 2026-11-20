@@ -160,10 +160,10 @@ fn migration_3_research_programs(tx: &Transaction) -> rusqlite::Result<()> {
     Ok(())
 }
 
-/// Migration 4: desk days (roadmap #28). One row per local calendar day the PC
+/// Migration 5: desk days (roadmap #28). One row per local calendar day the PC
 /// had keyboard or mouse input while the app ran, for DESK_SYNC ("walked on 9
 /// of your last 10 desk days"). `day` is the local date as `YYYY-MM-DD`.
-fn migration_4_desk_days(tx: &Transaction) -> rusqlite::Result<()> {
+fn migration_5_desk_days(tx: &Transaction) -> rusqlite::Result<()> {
     tx.execute_batch(
         "CREATE TABLE IF NOT EXISTS desk_days (
             day TEXT PRIMARY KEY NOT NULL,
@@ -276,7 +276,7 @@ const MIGRATIONS: &[Migration] = &[
     migration_1_baseline,
     migration_2_indexes,
     migration_3_research_programs,
-    migration_4_desk_days,
+    migration_5_desk_days,
 ];
 
 fn schema_version(conn: &Connection) -> rusqlite::Result<u32> {

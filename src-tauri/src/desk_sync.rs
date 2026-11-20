@@ -3,7 +3,7 @@
 //!
 //! A desk day is a local calendar day the PC had keyboard or mouse input while
 //! the app ran. The desk loop calls `note_input` once a second; the first input
-//! of a day writes one row to `desk_days` (migration 4) and later ticks that day
+//! of a day writes one row to `desk_days` (migration 5) and later ticks that day
 //! only compare a date. A day the PC wasn't used is simply not a desk day: it
 //! neither counts nor breaks anything.
 //!
