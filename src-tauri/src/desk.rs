@@ -1,11 +1,12 @@
-//! Desk features at runtime: the sit-too-long nudge, slow-down-on-calls,
-//! walk-away safety and lights out.
+//! Desk features at runtime: the sit-too-long nudge, eye breaks,
+//! slow-down-on-calls, walk-away safety and lights out.
 //!
 //! One loop, once a second. It reads the belt and the treadmill link under one
 //! short lock of the orchestrator, runs the pure state machines (`seated.rs`,
-//! `calls.rs`, `walkaway.rs`, `lights_out.rs`) and applies what they decide: start a remembered
-//! program, ease the belt to the quiet speed and back, or pause it when the user
-//! walks away. The microphone is polled on its own thread (`calls::mic`), the
+//! `eyebreak.rs`, `calls.rs`, `walkaway.rs`, `lights_out.rs`) and applies what
+//! they decide: start a remembered program, pause the belt for an eye break,
+//! ease the belt to the quiet speed and back, or pause it when the user walks
+//! away. The microphone is polled on its own thread (`calls::mic`), the
 //! session lock is watched on another (`platform::spawn_session_lock_watcher`).
 //!
 //! This file is declared from `snapshot.rs` (`#[path]`), not `lib.rs`.
@@ -66,6 +67,96 @@ fn walkaway_pause(state: &mut OrchestratorState, reason: walkaway::WalkAwayReaso
     }
 }
 
+/// The belt as the eye-break machine sees it: walking (and how it would be
+/// paused), paused that way, or anything else.
+fn eye_belt(ready: bool, state: &OrchestratorState) -> eyebreak::Belt {
+    use eyebreak::{Belt, Hold};
+    if !ready {
+        return Belt::Other;
+    }
+    let moving = belt_running(state) && !state.stop_requested;
+    match &state.program {
+        Some(r) if r.phase == ProgramPhase::Walking => {
+            let hold = Hold::Program(r.program.id);
+            if r.paused && r.wait.is_none() {
+                Belt::Paused(hold)
+            } else if !r.paused && moving {
+                Belt::Walking(hold)
+            } else {
+                Belt::Other
+            }
+        }
+        // Resting: still, and a later step will do the rest.
+        Some(_) => Belt::Other,
+        None if moving => Belt::Walking(Hold::Manual),
+        None if state.last_status == MachineStatus::Paused && !state.stop_requested => {
+            Belt::Paused(Hold::Manual)
+        }
+        None => Belt::Other,
+    }
+}
+
+/// Pause the belt for an eye break: the program's pause (as the HUD's pause
+/// button), or the treadmill's own (as the HUD's pause on a manual walk).
+fn eye_break_pause(state: &mut OrchestratorState, hold: eyebreak::Hold) {
+    match hold {
+        eyebreak::Hold::Program(id) => {
+            log::info!("Eye break: pausing program {}", id);
+            if let Err(e) = state.pause_program(std::time::Instant::now()) {
+                log::warn!("Eye break: could not pause the program: {}", e);
+            }
+        }
+        eyebreak::Hold::Manual => {
+            log::info!("Eye break: pausing the belt");
+            state.trigger_action(DeckAction::Pause);
+        }
+    }
+}
+
+/// One eye-break tick against the belt: runs the machine and applies a pause.
+/// It never starts the belt.
+pub(crate) fn eye_break_tick(
+    state: &mut OrchestratorState,
+    rt: &mut eyebreak::Runtime,
+    ready: bool,
+    now: u64,
+    idle_ms: Option<u64>,
+    locked: bool,
+) {
+    let tick = eyebreak::Tick {
+        idle_ms,
+        locked,
+        belt: eye_belt(ready, state),
+    };
+    if let Some(eyebreak::Effect::Pause(hold)) = rt.machine.tick(&rt.cfg, now, &tick) {
+        eye_break_pause(state, hold);
+    }
+}
+
+/// RESUME on the eye-break card, the press itself: Engage's start, which is GO
+/// on a paused program and the treadmill's resume on a manual walk (at the
+/// speed it had). A deck in standby refuses it (the engine says why) and the
+/// card stays. Without a link nothing is sent.
+pub(crate) fn eye_break_resume_on(
+    state: &mut OrchestratorState,
+    ready: bool,
+    machine: &mut eyebreak::EyeBreak,
+) -> Result<(), String> {
+    if !ready {
+        return Err(ENGAGE_OFFLINE.to_string());
+    }
+    if !machine.holds_belt() {
+        return Ok(());
+    }
+    let refused = state.start_refusal().is_some();
+    state.trigger_action(DeckAction::Start);
+    if !refused {
+        log::info!("Eye break: RESUME from the card");
+        machine.release();
+    }
+    Ok(())
+}
+
 /// The target speed the call logic reads and writes: the running program's live
 /// step target, or the manual one (falling back to what the deck reports).
 fn belt_view(state: &OrchestratorState) -> calls::Belt {
@@ -115,6 +206,11 @@ async fn step(
     let mut out = Outcome::default();
     let mut guard = ORCHESTRATOR.lock().await;
     let state: &mut OrchestratorState = &mut guard;
+    let locked = crate::platform::session_locked();
+
+    // Eye breaks. First, so a break's pause is in before walk-away looks.
+    let ready = treadmill_ready(connected, state);
+    eyebreak::with(|rt| eye_break_tick(state, rt, ready, now, idle_ms, locked));
 
     // Sit-too-long nudge.
     let tick = seated::Tick {
@@ -157,7 +253,7 @@ async fn step(
     let input = walkaway::Input {
         connected: treadmill_ready(connected, state),
         walking: belt_walking(state),
-        locked: crate::platform::session_locked(),
+        locked,
         idle_ms,
         call_active: input.mic_in_use,
     };
@@ -240,11 +336,6 @@ pub fn spawn(app: AppHandle) {
             let idle =
                 crate::platform::input_idle_for().or_else(|| idle_ms.map(Duration::from_millis));
             desk_sync::note_input(&app, idle);
-            let eye = eyebreak::Tick {
-                idle_ms,
-                locked: crate::platform::session_locked(),
-            };
-            eyebreak::with(|rt| rt.machine.tick(&rt.cfg, now, &eye));
             let out = step(connected, now, idle_ms, &mut machine).await;
             if let Some(id) = out.started_program {
                 let app_c = app.clone();
@@ -299,6 +390,22 @@ pub async fn walkaway_end() -> Result<(), String> {
     log::info!("Walk-away: ending the session");
     ORCHESTRATOR.lock().await.trigger_action(DeckAction::Stop);
     Ok(())
+}
+
+/// RESUME on the eye-break card.
+pub async fn eye_break_resume() -> Result<(), String> {
+    let connected = bluetooth::is_bluetooth_connected().await;
+    let mut state = ORCHESTRATOR.lock().await;
+    let ready = treadmill_ready(connected, &state);
+    eyebreak::with(|rt| eye_break_resume_on(&mut state, ready, &mut rt.machine))
+}
+
+/// STAY STILL on the eye-break card: the card goes and the belt stays paused
+/// (the HUD's GO or Engage starts it later, like any pause).
+pub fn eye_break_stay_still() {
+    if eyebreak::with(|rt| rt.machine.release()) {
+        log::info!("Eye break: STAY STILL from the card");
+    }
 }
 
 /// SNOOZE 15 MIN.
