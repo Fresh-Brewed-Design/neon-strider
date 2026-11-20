@@ -29,4 +29,12 @@ scanning: boolean,
 /**
  * What the last scan found.
  */
-found: Array<HeartRateSensor>, };
+found: Array<HeartRateSensor>, 
+/**
+ * The maximum heart rate (bpm) that program zones are a percentage of.
+ */
+max_bpm: number, 
+/**
+ * False while `max_bpm` is still the default estimate.
+ */
+max_bpm_set: boolean, };

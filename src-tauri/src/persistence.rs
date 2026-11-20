@@ -1913,9 +1913,10 @@ mod db_tests {
         assert_eq!(list[2].steps[0].speed_kmh, 4.5);
         assert_eq!(list[3].id, 9);
         assert_eq!(list[4].id, 10);
+        assert_eq!(list[5].id, 11);
         assert_eq!(
             get_setting_str(&conn, "program_next_id").as_deref(),
-            Some("11")
+            Some("12")
         );
         assert_eq!(
             get_setting_str(&conn, "seated_minutes").as_deref(),

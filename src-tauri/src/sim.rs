@@ -1111,11 +1111,11 @@ mod tests {
         r.run(20.0);
         r.press(DeckAction::Pause);
         r.run(10.0);
-        assert!(r.deck.belt_still());
+        assert_eq!(r.deck.status_code(), 10, "paused");
         let mark = r.mark();
         r.state.heart_bpm = Some(120);
         r.run(120.0);
-        assert!(r.deck.belt_still(), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(r.deck.status_code(), 10, "still paused");
         assert!(
             !moves_belt(&r.commands_since(mark)),
             "{:?}",
@@ -1126,7 +1126,7 @@ mod tests {
     /// The seeded VO2 zone program against the deck: a high pulse leaves the
     /// warm-up (no zone) alone and trims the first climb down by targets
     /// alone; paused at the treadmill mid-climb with a low pulse, the belt
-    /// stays still until GO.
+    /// stays paused until a start press.
     #[test]
     fn the_seeded_vo2_zone_program_trims_its_climbs_and_never_starts_a_still_belt() {
         let mut r = Rig::new();
@@ -1162,19 +1162,19 @@ mod tests {
         let t = r.t;
         r.deck.press_pause(t);
         r.run(10.0);
-        assert!(r.deck.belt_still());
+        assert_eq!(r.deck.status_code(), 10, "paused");
         let mark = r.mark();
         r.state.heart_bpm = Some(120);
         r.run(120.0);
-        assert!(r.deck.belt_still(), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(r.deck.status_code(), 10, "still paused");
         assert!(
             !moves_belt(&r.commands_since(mark)),
             "{:?}",
             r.commands_since(mark)
         );
 
-        // GO is the press that moves it again.
-        r.go();
+        // A start press (Engage or RE-JACK) moves it again.
+        r.press(DeckAction::Start);
         r.run(15.0);
         assert!(r.deck.speed_kmh() > 4.0, "{} km/h", r.deck.speed_kmh());
     }
