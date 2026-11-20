@@ -226,6 +226,9 @@ export const snapshot: AppSnapshot = {
     message: "Switch it on to let a watch read the belt as a foot pod.",
     watches: 0,
     speed_kmh: 0,
+    power_enabled: false,
+    power_watches: 0,
+    power_w: 0,
   },
 };
 
@@ -827,7 +830,28 @@ const CAL_COMMANDS: Partial<Record<Command["type"], (c: Command) => void>> = {
   },
   calibration_run_count: (c) => {
     const r = snapshot.calibration.run;
-    if (c.type !== "calibration_run_count" || !r?.reported_kmh || c.count.method !== "loops") return;
+    if (c.type !== "calibration_run_count" || !r?.reported_kmh) return;
+    if (c.count.method === "steps_only") {
+      // The factor stays the nearest saved point's; the stride is the distance it gives over the steps.
+      const near = CAL_CONFIG.calibration_points.reduce((a, b) =>
+        Math.abs(b.speed - r.reported_kmh!) < Math.abs(a.speed - r.reported_kmh!) ? b : a,
+      );
+      const reported_m = (r.reported_kmh / 3.6) * r.elapsed_s;
+      const real_m = reported_m / near.distance_scale;
+      const stride = (real_m / c.count.steps) * 100;
+      if (c.count.steps < 10) throw "Count at least 10 steps.";
+      if (stride < 20 || stride > 200) throw `The step count gives a ${stride.toFixed(0)} cm stride, outside 20 to 200 cm. Check the step count.`;
+      r.result = {
+        point: { speed: Math.round(r.reported_kmh * 10) / 10, stride_length_cm: stride, distance_scale: near.distance_scale },
+        real_kmh: (real_m / r.elapsed_s) * 3.6,
+        real_m,
+        reported_m,
+        cadence_spm: (c.count.steps / r.elapsed_s) * 60,
+        stride_measured: true,
+      };
+      return;
+    }
+    if (c.count.method !== "loops") return;
     const { loops, belt_length_cm, steps } = c.count;
     if (!(loops > 0)) throw "Enter how many loops you counted.";
     const real_m = (loops * belt_length_cm) / 100;
@@ -848,6 +872,8 @@ const CAL_COMMANDS: Partial<Record<Command["type"], (c: Command) => void>> = {
 
 // Labs: GHOST_POD. ?ghostpod=advertising|connected|error picks its status;
 // switching it on in the preview advertises, then a watch connects 3 s later.
+// ?ghostpower=waiting|linked turns its power switch on, with no watch reading
+// power yet or a watch getting 135 W.
 const GHOST_POD: Record<"off" | "starting" | "advertising" | "connected" | "error", [string, string]> = {
   off: ["OFFLINE", "Switch it on to let a watch read the belt as a foot pod."],
   starting: ["BOOTING", "Starting the pod."],
@@ -866,6 +892,15 @@ function setGhostPod(status: keyof typeof GHOST_POD) {
     watches: status === "connected" ? 1 : 0,
     speed_kmh: status === "connected" ? snapshot.deck.speed_kmh : 0,
   });
+  setGhostPower(snapshot.ghost_pod.power_enabled);
+}
+function setGhostPower(on: boolean, linked = snapshot.ghost_pod.status === "connected") {
+  const reading = on && snapshot.ghost_pod.enabled && linked;
+  Object.assign(snapshot.ghost_pod, {
+    power_enabled: on,
+    power_watches: reading ? 1 : 0,
+    power_w: reading ? 135 : 0,
+  });
 }
 function switchGhostPod(on: boolean) {
   if (ghostPodTimer) clearTimeout(ghostPodTimer);
@@ -880,6 +915,11 @@ function switchGhostPod(on: boolean) {
 }
 const ghostPodFlag = params.get("ghostpod");
 if (ghostPodFlag && ghostPodFlag in GHOST_POD) setGhostPod(ghostPodFlag as keyof typeof GHOST_POD);
+const ghostPowerFlag = params.get("ghostpower");
+if (ghostPowerFlag === "waiting" || ghostPowerFlag === "linked") {
+  if (!snapshot.ghost_pod.enabled) setGhostPod("connected");
+  setGhostPower(true, ghostPowerFlag === "linked");
+}
 
 // ?custom: the HUD sits where it was dragged (a custom position).
 if (params.has("custom")) snapshot.hud.custom = { dx: 400, top: 120 };
@@ -1188,6 +1228,7 @@ const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) =>
   traffic_open_folder: () => {},
   ...CAL_COMMANDS,
   ghost_pod_set: (c) => switchGhostPod(c.on),
+  ghost_pod_power_set: (c) => setGhostPower(c.on),
   strava_set_credentials: () => (snapshot.strava.has_credentials = true),
   strava_connect: () => {
     Object.assign(snapshot.strava, { connected: true, athlete_name: "Preview Athlete" });

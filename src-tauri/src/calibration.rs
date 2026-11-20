@@ -103,6 +103,10 @@ pub enum CalibrationCount {
     },
     /// Steps of a stride he already knows.
     Steps { steps: u32, stride_cm: f32 },
+    /// Steps alone, for a belt with no mark to count. The distance factor
+    /// stays what the calibration already has at this speed; the stride is the
+    /// distance that factor gives, over the steps.
+    StepsOnly { steps: u32 },
 }
 
 /// A timed count: how long it ran and the deck's mean reported speed.
@@ -175,11 +179,13 @@ pub fn summarize_samples(samples: &[f32]) -> Result<f32, String> {
 }
 
 /// The point from one run. `stride_at` gives the current calibration's stride
-/// at a real speed, used when he counted loops but no steps.
+/// at a real speed, used when he counted loops but no steps. `scale_at` gives
+/// its distance factor at a reported speed, used when he counted steps only.
 pub fn point_from_count(
     m: Measurement,
     count: &CalibrationCount,
     stride_at: impl Fn(f32) -> f32,
+    scale_at: impl Fn(f32) -> f32,
 ) -> Result<CalibrationResult, String> {
     if !m.elapsed_s.is_finite() || m.elapsed_s < MIN_RUN_S {
         return Err(format!(
@@ -215,6 +221,15 @@ pub fn point_from_count(
             }
             (steps as f32 * stride_cm / 100.0, Some(steps))
         }
+        CalibrationCount::StepsOnly { steps } => {
+            let scale = scale_at(m.reported_kmh);
+            if !in_range(scale, MIN_SCALE, MAX_SCALE) {
+                return Err(format!(
+                    "The current distance factor is {scale:.2}, outside {MIN_SCALE} to {MAX_SCALE}. Fix it in the calibration points first."
+                ));
+            }
+            (reported_m / scale, Some(steps))
+        }
     };
     if let Some(n) = steps {
         if n < MIN_STEPS {
@@ -231,6 +246,7 @@ pub fn point_from_count(
     let measured_stride = match count {
         CalibrationCount::Loops { .. } => steps.map(|n| real_m / n as f32 * 100.0),
         CalibrationCount::Steps { stride_cm, .. } => Some(*stride_cm),
+        CalibrationCount::StepsOnly { steps } => Some(real_m / *steps as f32 * 100.0),
     };
     let stride_cm = match measured_stride {
         Some(cm) if !in_range(cm, MIN_STRIDE_CM, MAX_STRIDE_CM) => {
@@ -357,9 +373,10 @@ impl Run {
         &mut self,
         count: &CalibrationCount,
         stride_at: impl Fn(f32) -> f32,
+        scale_at: impl Fn(f32) -> f32,
     ) -> Result<(), String> {
         let m = self.measurement.ok_or("Time a count first.")?;
-        let result = point_from_count(m, count, stride_at);
+        let result = point_from_count(m, count, stride_at, scale_at);
         self.result = result.as_ref().ok().cloned();
         result.map(|_| ())
     }
@@ -808,7 +825,18 @@ pub(crate) fn count_stop(raw_kmh: f32) -> Result<(), String> {
 }
 
 pub(crate) fn count(state: &OrchestratorState, count: &CalibrationCount) -> Result<(), String> {
-    on_run(|run| run.count(count, |kmh| state.calculate_stride_length(kmh)))
+    on_run(|run| {
+        run.count(
+            count,
+            |kmh| state.calculate_stride_length(kmh),
+            // The factor at the point's own speed (reported km/h in tenths, as
+            // the point is saved), so a steps-only point keeps it exactly.
+            |hw_kmh| {
+                let speed = (hw_kmh * 10.0).round() / 10.0;
+                speed / state.to_physical_speed(speed)
+            },
+        )
+    })
 }
 
 /// Close the run (saved or cancelled). The belt keeps going.
@@ -892,11 +920,13 @@ mod tests {
     }
 
     const NO_STRIDE: fn(f32) -> f32 = |_| 74.0;
+    const NO_SCALE: fn(f32) -> f32 = |_| 1.0;
 
     #[test]
     fn loops_give_the_scale_and_steps_the_stride() {
         // 3.6 km/h reported for 60 s is 60 m; 25 loops of 3 m is 75 m really.
-        let r = point_from_count(m(60.0, 3.6), &loops(25.0, Some(100)), NO_STRIDE).unwrap();
+        let r =
+            point_from_count(m(60.0, 3.6), &loops(25.0, Some(100)), NO_STRIDE, NO_SCALE).unwrap();
         assert!((r.reported_m - 60.0).abs() < 1e-3);
         assert!((r.real_m - 75.0).abs() < 1e-3);
         assert!((r.point.distance_scale - 0.8).abs() < 1e-4);
@@ -910,10 +940,15 @@ mod tests {
     #[test]
     fn loops_without_steps_keep_the_current_stride_at_the_real_speed() {
         let seen = std::cell::Cell::new(0.0);
-        let r = point_from_count(m(60.0, 3.6), &loops(20.0, None), |kmh| {
-            seen.set(kmh);
-            66.0
-        })
+        let r = point_from_count(
+            m(60.0, 3.6),
+            &loops(20.0, None),
+            |kmh| {
+                seen.set(kmh);
+                66.0
+            },
+            NO_SCALE,
+        )
         .unwrap();
         // 60 m really: scale 1.0, real speed 3.6 km/h.
         assert!((r.point.distance_scale - 1.0).abs() < 1e-4);
@@ -924,46 +959,72 @@ mod tests {
     }
 
     #[test]
+    fn steps_alone_set_the_stride_and_keep_the_factor() {
+        // The calibration says 0.8 at 3.6 km/h: 60 m reported is 75 m really,
+        // and 100 steps over 75 m is a 75 cm stride.
+        let c = CalibrationCount::StepsOnly { steps: 100 };
+        let r = point_from_count(m(60.0, 3.6), &c, NO_STRIDE, |_| 0.8).unwrap();
+        assert!((r.point.distance_scale - 0.8).abs() < 1e-4);
+        assert!((r.point.stride_length_cm - 75.0).abs() < 1e-3);
+        assert!((r.real_m - 75.0).abs() < 1e-3);
+        assert_eq!(r.cadence_spm, Some(100.0));
+        assert!(r.stride_measured);
+        // Too few steps, or a stride outside the limits, is refused.
+        let few = CalibrationCount::StepsOnly { steps: 5 };
+        assert!(point_from_count(m(60.0, 3.6), &few, NO_STRIDE, NO_SCALE).is_err());
+        let wild = CalibrationCount::StepsOnly { steps: 10 };
+        assert!(point_from_count(m(60.0, 3.6), &wild, NO_STRIDE, NO_SCALE).is_err());
+        // A stored factor outside the limits is not carried into a new point.
+        assert!(point_from_count(m(60.0, 3.6), &c, NO_STRIDE, |_| 0.0).is_err());
+    }
+
+    #[test]
     fn steps_of_a_known_stride_give_the_scale() {
         // 80 steps of 75 cm = 60 m; the deck said 3.0 km/h for 60 s = 50 m.
         let c = CalibrationCount::Steps {
             steps: 80,
             stride_cm: 75.0,
         };
-        let r = point_from_count(m(60.0, 3.0), &c, NO_STRIDE).unwrap();
+        let r = point_from_count(m(60.0, 3.0), &c, NO_STRIDE, NO_SCALE).unwrap();
         assert!((r.point.distance_scale - 50.0 / 60.0).abs() < 1e-4);
         assert_eq!(r.point.stride_length_cm, 75.0);
     }
 
     #[test]
     fn the_point_speed_is_the_reported_speed_in_tenths() {
-        let r = point_from_count(m(30.0, 2.96), &loops(8.0, None), NO_STRIDE).unwrap();
+        let r = point_from_count(m(30.0, 2.96), &loops(8.0, None), NO_STRIDE, NO_SCALE).unwrap();
         assert_eq!(r.point.speed, 3.0);
     }
 
     #[test]
     fn short_still_or_miscounted_runs_are_refused() {
-        assert!(point_from_count(m(10.0, 3.0), &loops(4.0, None), NO_STRIDE).is_err());
-        assert!(point_from_count(m(60.0, 0.0), &loops(20.0, None), NO_STRIDE).is_err());
-        assert!(point_from_count(m(60.0, 3.0), &loops(0.0, None), NO_STRIDE).is_err());
-        assert!(point_from_count(m(60.0, 3.0), &loops(f32::NAN, None), NO_STRIDE).is_err());
+        assert!(point_from_count(m(10.0, 3.0), &loops(4.0, None), NO_STRIDE, NO_SCALE).is_err());
+        assert!(point_from_count(m(60.0, 0.0), &loops(20.0, None), NO_STRIDE, NO_SCALE).is_err());
+        assert!(point_from_count(m(60.0, 3.0), &loops(0.0, None), NO_STRIDE, NO_SCALE).is_err());
+        assert!(
+            point_from_count(m(60.0, 3.0), &loops(f32::NAN, None), NO_STRIDE, NO_SCALE).is_err()
+        );
         // 50 m reported against 1 loop (3 m): factor 16.7.
-        assert!(point_from_count(m(60.0, 3.0), &loops(1.0, None), NO_STRIDE).is_err());
+        assert!(point_from_count(m(60.0, 3.0), &loops(1.0, None), NO_STRIDE, NO_SCALE).is_err());
         // Five steps are too few for a stride.
-        assert!(point_from_count(m(60.0, 3.0), &loops(17.0, Some(5)), NO_STRIDE).is_err());
+        assert!(
+            point_from_count(m(60.0, 3.0), &loops(17.0, Some(5)), NO_STRIDE, NO_SCALE).is_err()
+        );
         // 50 m in 20 steps is a 250 cm stride.
-        assert!(point_from_count(m(60.0, 3.0), &loops(17.0, Some(20)), NO_STRIDE).is_err());
+        assert!(
+            point_from_count(m(60.0, 3.0), &loops(17.0, Some(20)), NO_STRIDE, NO_SCALE).is_err()
+        );
         let bad_belt = CalibrationCount::Loops {
             loops: 17.0,
             belt_length_cm: 10.0,
             steps: None,
         };
-        assert!(point_from_count(m(60.0, 3.0), &bad_belt, NO_STRIDE).is_err());
+        assert!(point_from_count(m(60.0, 3.0), &bad_belt, NO_STRIDE, NO_SCALE).is_err());
         let bad_stride = CalibrationCount::Steps {
             steps: 80,
             stride_cm: 10.0,
         };
-        assert!(point_from_count(m(60.0, 3.0), &bad_stride, NO_STRIDE).is_err());
+        assert!(point_from_count(m(60.0, 3.0), &bad_stride, NO_STRIDE, NO_SCALE).is_err());
     }
 
     #[test]
@@ -977,12 +1038,12 @@ mod tests {
                 steps: Some(steps),
             };
             let reported = real_m / 60.0 * 3.6;
-            let r = point_from_count(m(60.0, reported), &c, NO_STRIDE).unwrap();
+            let r = point_from_count(m(60.0, reported), &c, NO_STRIDE, NO_SCALE).unwrap();
             assert!((r.point.stride_length_cm - stride).abs() < 0.01, "{stride}");
         }
         // And a factor of 0.31, as seen on a real deck (issue #62).
         // 3.1 km/h for 60 s is 51.67 m reported; 166.67 m really is 55.56 loops.
-        let r = point_from_count(m(60.0, 3.1), &loops(55.5556, None), NO_STRIDE).unwrap();
+        let r = point_from_count(m(60.0, 3.1), &loops(55.5556, None), NO_STRIDE, NO_SCALE).unwrap();
         assert!((r.point.distance_scale - 0.31).abs() < 1e-3);
     }
 
@@ -1029,13 +1090,14 @@ mod tests {
         assert_eq!(v.reported_kmh, Some(3.0));
 
         // 3.0 km/h for 40 s = 33.3 m reported; 10 loops of 3 m = 30 m.
-        run.count(&loops(10.0, Some(45)), NO_STRIDE).unwrap();
+        run.count(&loops(10.0, Some(45)), NO_STRIDE, NO_SCALE)
+            .unwrap();
         let p = run.view(later).result.unwrap().point;
         assert!((p.distance_scale - 33.333 / 30.0).abs() < 1e-3);
         assert_eq!(p.speed, 3.0);
 
         // A bad count keeps no result.
-        assert!(run.count(&loops(0.0, None), NO_STRIDE).is_err());
+        assert!(run.count(&loops(0.0, None), NO_STRIDE, NO_SCALE).is_err());
         assert_eq!(run.view(later).result, None);
     }
 
@@ -1053,7 +1115,7 @@ mod tests {
         let v = run.view(t);
         assert_eq!(v.phase, CalibrationPhase::Settling);
         assert_eq!(v.reported_kmh, None, "nothing at 0 km/h to save");
-        assert!(run.count(&loops(10.0, None), NO_STRIDE).is_err());
+        assert!(run.count(&loops(10.0, None), NO_STRIDE, NO_SCALE).is_err());
     }
 
     #[test]

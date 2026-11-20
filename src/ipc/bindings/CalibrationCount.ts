@@ -3,4 +3,4 @@
 /**
  * What he counted during one run.
  */
-export type CalibrationCount = { "method": "loops", loops: number, belt_length_cm: number, steps: number | null, } | { "method": "steps", steps: number, stride_cm: number, };
+export type CalibrationCount = { "method": "loops", loops: number, belt_length_cm: number, steps: number | null, } | { "method": "steps", steps: number, stride_cm: number, } | { "method": "steps_only", steps: number, };

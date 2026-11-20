@@ -7,6 +7,10 @@
 //! for the deck right now, and the status text. `ghost_pod/worker.rs` owns the
 //! setting and the 1 s tick; the GATT server itself is in `platform/`.
 //!
+//! With its power switch on, the pod also serves the Cycling Power service
+//! (0x1818) the way a Stryd pod does, so the watch gets running power: watts
+//! from METABOLIC_BURN's estimate (speed, incline, weight; roadmap #77).
+//!
 //! It only reports. RSC has no message from the watch for pause or resume, so
 //! nothing here ever moves the belt. Pausing the belt makes the pod report
 //! 0 km/h, which lets the watch's Auto Pause stop its timer.
@@ -14,7 +18,7 @@
 #[path = "ghost_pod/worker.rs"]
 mod worker;
 
-pub use worker::{init, set_enabled, snapshot, spawn};
+pub use worker::{init, set_enabled, set_power, snapshot, spawn};
 
 use crate::engine::{OrchestratorState, STILL_KMH};
 use serde::{Deserialize, Serialize};
@@ -27,6 +31,23 @@ pub const RSC_MEASUREMENT: u16 = 0x2A53;
 pub const RSC_FEATURE: u16 = 0x2A54;
 /// SC Control Point (write, indicate).
 pub const SC_CONTROL_POINT: u16 = 0x2A55;
+
+/// Cycling Power service: what Stryd serves for running power.
+pub const CP_SERVICE: u16 = 0x1818;
+/// Cycling Power Measurement (notify).
+pub const CP_MEASUREMENT: u16 = 0x2A63;
+/// Cycling Power Feature (read).
+pub const CP_FEATURE: u16 = 0x2A65;
+/// Sensor Location (read), required by the Cycling Power service.
+pub const SENSOR_LOCATION: u16 = 0x2A5D;
+/// Sensor Location value: top of shoe, where a foot pod sits.
+const LOCATION_TOP_OF_SHOE: u8 = 0x01;
+
+/// Share of the metabolic rate a body turns into work (muscle efficiency of
+/// about 25 %), so the watts land near what a running power pod reports.
+const MUSCLE_EFFICIENCY: f64 = 0.25;
+/// Watts in one kcal per minute (4184 J / 60 s).
+const WATTS_PER_KCAL_MIN: f64 = 4184.0 / 60.0;
 
 /// RSC Measurement flag bits.
 const FLAG_STRIDE: u8 = 0x01;
@@ -180,6 +201,54 @@ pub fn frame_for(state: &OrchestratorState) -> RscFrame {
     }
 }
 
+/// The Cycling Power Feature value (u32): no optional features, so the
+/// measurement is the instantaneous power alone.
+pub fn power_feature_value() -> Vec<u8> {
+    0u32.to_le_bytes().to_vec()
+}
+
+/// The Sensor Location value (u8).
+pub fn sensor_location_value() -> Vec<u8> {
+    vec![LOCATION_TOP_OF_SHOE]
+}
+
+/// Encode a Cycling Power Measurement: flags (u16, none set), instantaneous
+/// power (s16, watts), little-endian (Cycling Power Service 1.1).
+pub fn encode_power(watts: u16) -> Vec<u8> {
+    let w = watts.min(i16::MAX as u16) as i16;
+    let mut out = vec![0, 0];
+    out.extend_from_slice(&w.to_le_bytes());
+    out
+}
+
+/// Running power for a calibrated speed and incline: METABOLIC_BURN's rate
+/// (ACSM walking equation) in watts, times the muscle efficiency. 0 when the
+/// speed or weight isn't positive.
+pub fn watts_for(speed_kmh: f32, grade_pct: f32, body_mass_kg: f32) -> u16 {
+    let kcal_min = crate::engine::walking_kcal_per_min(
+        speed_kmh as f64,
+        grade_pct as f64,
+        body_mass_kg as f64,
+    );
+    clamp_round(
+        kcal_min * WATTS_PER_KCAL_MIN * MUSCLE_EFFICIENCY,
+        i16::MAX as f64,
+    ) as u16
+}
+
+/// The deck right now as watts. A paused, stopped or still belt sends 0 W.
+pub fn power_for(state: &OrchestratorState) -> u16 {
+    let kmh = state.to_physical_speed(state.hardware_speed);
+    if !(state.last_status.is_moving() && kmh > STILL_KMH) {
+        return 0;
+    }
+    watts_for(
+        kmh,
+        state.incline_pct(state.hardware_incline),
+        state.body_mass_kg,
+    )
+}
+
 /// Where the pod is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, ts_rs::TS)]
 #[ts(export, export_to = "../../src/ipc/bindings/")]
@@ -210,6 +279,12 @@ pub struct GhostPodSnapshot {
     pub watches: u32,
     /// What the pod is sending now, km/h (0 while the belt is still).
     pub speed_kmh: f32,
+    /// The power switch (off by default): the pod also serves running power.
+    pub power_enabled: bool,
+    /// Watches subscribed to the power measurements.
+    pub power_watches: u32,
+    /// The watts being sent now (0 while the belt is still or power is off).
+    pub power_w: u16,
 }
 
 /// The status word, in the deck's voice.
@@ -359,6 +434,59 @@ mod tests {
             frame_for(&deck(MachineStatus::Running, 0.0)),
             RscFrame::STILL
         );
+    }
+
+    #[test]
+    fn power_measurement_matches_the_spec_layout() {
+        // 135 W = 0x0087; flags 0.
+        assert_eq!(encode_power(135), vec![0x00, 0x00, 0x87, 0x00]);
+        assert_eq!(encode_power(0), vec![0, 0, 0, 0]);
+        // Saturates at the largest s16 instead of going negative.
+        assert_eq!(encode_power(u16::MAX), vec![0, 0, 0xff, 0x7f]);
+        assert_eq!(power_feature_value(), vec![0, 0, 0, 0]);
+        assert_eq!(sensor_location_value(), vec![0x01]);
+    }
+
+    #[test]
+    fn watts_follow_metabolic_burn_and_rise_with_the_incline() {
+        // 70 kg at 4 km/h: VO2 10.1667 mL/kg/min flat, 22.1667 at 10 %
+        // (engine.rs's worked example). L/min * 5 kcal * 4184/60 * 0.25.
+        let flat = watts_for(4.0, 0.0, 70.0);
+        let hill = watts_for(4.0, 10.0, 70.0);
+        assert_eq!(flat, 62); // 10.1667 * 0.07 * 5 * 69.733 * 0.25 = 62.0
+        assert_eq!(hill, 135); // 22.1667 * 0.07 * 5 * 69.733 * 0.25 = 135.3
+                               // Heavier means more watts; a downhill counts as level.
+        assert!(watts_for(4.0, 0.0, 90.0) > flat);
+        assert_eq!(watts_for(4.0, -5.0, 70.0), flat);
+        // Nothing to estimate from.
+        assert_eq!(watts_for(0.0, 10.0, 70.0), 0);
+        assert_eq!(watts_for(4.0, 10.0, 0.0), 0);
+        assert_eq!(watts_for(f32::NAN, 0.0, 70.0), 0);
+    }
+
+    #[test]
+    fn a_paused_or_stopped_belt_sends_zero_watts() {
+        let mut moving = deck(MachineStatus::Running, 4.0);
+        moving.body_mass_kg = 70.0;
+        assert!(power_for(&moving) > 0);
+        for status in [MachineStatus::Paused, MachineStatus::Stopped] {
+            let mut s = deck(status, 4.0);
+            s.body_mass_kg = 70.0;
+            assert_eq!(power_for(&s), 0);
+        }
+        assert_eq!(power_for(&deck(MachineStatus::Running, 0.0)), 0);
+    }
+
+    #[test]
+    fn power_follows_the_deck_incline() {
+        let mut s = deck(MachineStatus::Running, 4.0);
+        s.body_mass_kg = 70.0;
+        let flat = power_for(&s);
+        s.hardware_incline = 10;
+        let pct = s.incline_pct(10);
+        assert!(pct > 0.0);
+        assert_eq!(power_for(&s), watts_for(4.0, pct, 70.0));
+        assert!(power_for(&s) > flat);
     }
 
     #[test]

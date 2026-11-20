@@ -1,10 +1,10 @@
 name: Build roadmap issue
 
-# When Jeremy labels one of his own issues `roadmap:next`, Claude builds it and
+# When Fresh Brewed Design labels one of its own issues `roadmap:next`, Claude builds it and
 # opens a PR that closes the issue. Nobody else can start it: both the person
-# who added the label and the issue's author must be Jeremy's account (by user
+# who added the label and the issue's author must be Fresh Brewed Design's account (by user
 # ID, which never changes), and the public cannot add labels at all. Claude is
-# given only the issue's title and body and Jeremy's own comments, never other
+# given only the issue's title and body and Fresh Brewed Design's own comments, never other
 # people's. An issue-triggered workflow always runs the copy on main, so a PR
 # that edits this file changes nothing until it is merged.
 on:
@@ -14,7 +14,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  issues: read
+  issues: write # the comment that explains a build with no PR
   id-token: write # the Claude GitHub App's token, so its PRs run CI
 
 # One build per issue at a time, so several labelled issues build side by side.
@@ -25,7 +25,7 @@ concurrency:
 
 env:
   CARGO_PROFILE_DEV_DEBUG: 0
-  JEREMY_ID: "3596382"
+  OWNER_ID: "3596382"
 
 jobs:
   build:
@@ -104,7 +104,8 @@ jobs:
             console.log(`Claude answered: ${text}`);
           ' "$RUNNER_TEMP/claude-check.json"
 
-      - uses: anthropics/claude-code-action@6d5ae526d25ce88daa2200be073e1a373167f064 # v1.0.265
+      - id: build
+        uses: anthropics/claude-code-action@6d5ae526d25ce88daa2200be073e1a373167f064 # v1.0.265
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           path_to_claude_code_executable: ${{ steps.claude.outputs.path }}
@@ -112,10 +113,12 @@ jobs:
           include_comments_by_actor: freshbreweddesign
           # Without an allow-list every tool call is refused (nobody is there to
           # approve it) and Claude stops at once. The job runs on a throwaway
-          # machine with this repository's token only, on a task Jeremy wrote.
+          # machine with this repository's token only, on a task Fresh Brewed Design wrote.
+          # WebSearch and WebFetch let it read docs and crates; the prompt treats
+          # what they return as data.
           claude_args: >-
             --max-turns 200
-            --allowedTools "Bash,Read,Write,Edit,MultiEdit,Glob,Grep,TodoWrite,Task"
+            --allowedTools "Bash,Read,Write,Edit,MultiEdit,Glob,Grep,TodoWrite,Task,WebSearch,WebFetch"
           prompt: |
             Build roadmap issue #${{ github.event.issue.number }} of ${{ github.repository }}
             and open one pull request into main for it.
@@ -136,7 +139,7 @@ jobs:
             - Open the PR with `gh pr create --base main`, labelled `release:major`,
               `release:minor`, `release:patch` or `release:none` per CLAUDE.md. Its body
               says what changed and why, lists the checks with their results, and says
-              how Jeremy can test it on the treadmill if it changes how the app drives the
+              how you can test it on the treadmill if it changes how the app drives the
               belt. End the body with `Closes #${{ github.event.issue.number }}` if the PR
               builds the whole issue, or `Part of #${{ github.event.issue.number }}` if only
               a step.
@@ -144,17 +147,44 @@ jobs:
               Don't edit ROADMAP.md, CHANGELOG.md or version numbers. Don't comment on,
               close or relabel issues.
 
-      # "Success" must mean a PR exists: Claude can end early without one.
+      # "Success" must mean a PR exists: Claude can end early without one. When
+      # it did, comment Claude's last message and any refused tools on the issue,
+      # since the action hides its output from the log.
       - name: Check a pull request was opened
+        if: ${{ !cancelled() }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE: ${{ github.event.issue.number }}
           STARTED: ${{ github.event.issue.updated_at }}
+          EXEC_FILE: ${{ steps.build.outputs.execution_file }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           found=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 50 --json body,createdAt,url --jq "[.[] | select(.createdAt >= \"$STARTED\") | select(.body | test(\"(Closes|Part of) #$ISSUE([^0-9]|$)\"))] | .[0].url // empty")
-          if [ -z "$found" ]; then
-            echo "::error::Claude finished without opening a pull request for issue #$ISSUE. Open the Claude step above for what it did."
-            exit 1
+          if [ -n "$found" ]; then
+            echo "Pull request: $found"
+            exit 0
           fi
-          echo "Pull request: $found"
+          echo "::error::Claude finished without opening a pull request for issue #$ISSUE."
+          body="$RUNNER_TEMP/explain-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.md"
+          node -e '
+            const fs = require("fs");
+            const [file, out, url] = process.argv.slice(1);
+            let msgs = [];
+            try { const j = JSON.parse(fs.readFileSync(file, "utf8")); msgs = Array.isArray(j) ? j : [j]; } catch {}
+            const res = msgs.filter((m) => m && m.type === "result").pop() || {};
+            const denied = (res.permission_denials || []).map((d) => {
+              const arg = d.tool_input && (d.tool_input.command || d.tool_input.file_path || d.tool_input.url || d.tool_input.query);
+              return `- ${d.tool_name}${arg ? `: \`${String(arg).replace(/`/g, "").slice(0, 200)}\`` : ""}`;
+            });
+            const NL = String.fromCharCode(10);
+            let text = String(res.result || "").trim();
+            if (text.length > 6000) text = text.slice(0, 6000) + NL + NL + "(cut off)";
+            const parts = ["The build ended without opening a pull request.", ""];
+            parts.push(text ? "Last message from Claude:" + NL + NL + text : "Claude left no final message.");
+            if (denied.length) parts.push("", "Tools it was refused:", ...denied);
+            parts.push("", `[Run log](${url})`);
+            fs.writeFileSync(out, parts.join(NL) + NL);
+          ' "${EXEC_FILE:-/nonexistent}" "$body" "$RUN_URL"
+          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body-file "$body"
+          exit 1
