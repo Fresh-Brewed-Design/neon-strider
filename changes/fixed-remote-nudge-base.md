@@ -1,1 +1,0 @@
-- After a speed or incline change on the treadmill's remote or its own buttons, the HUD, shortcut and dashboard + and - now step from what the deck is running, and a press of one no longer puts the other back to the value from before the remote.
