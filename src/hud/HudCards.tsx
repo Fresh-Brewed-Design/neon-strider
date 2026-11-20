@@ -87,7 +87,7 @@ function seatedLine(snapshot: AppSnapshot, programs: number): string | null {
 }
 
 /**
- * Sat too long: a nudge to get up and walk. Persistent like the maintenance
+ * Belt still too long: a nudge to get up and walk. Persistent like the maintenance
  * card: it stays until acted on. ENGAGE is the HUD's Engage (a plain walk), and
  * needs the treadmill on; a program button starts it now, or, with the
  * treadmill off, remembers it and starts it as soon as the treadmill connects
@@ -103,7 +103,7 @@ export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
     <div className="hud-toast hud-seated accent-yellow" role="alert">
       <div className="hud-toast-body">
         <span className="hud-label">STASIS_ALERT</span>
-        <span className="hud-toast-message">{s.seated_minutes} MIN SEATED</span>
+        <span className="hud-toast-message">{s.seated_minutes} MIN IDLE</span>
       </div>
       <button
         type="button"

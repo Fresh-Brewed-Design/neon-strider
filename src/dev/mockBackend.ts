@@ -158,11 +158,13 @@ export const snapshot: AppSnapshot = {
   calls: { enabled: true, quiet_kmh: 2, mic_in_use: false, quiet_active: false },
   odometer: { distance_km: 412.6, belt_hours: 138.2, since_ms: Date.UTC(2026, 2, 12) },
   walkaway: { lock_enabled: true, idle_enabled: true, idle_minutes: 10, card: "none", pause_in_s: 0, reason: null },
+  lights_out: { enabled: false },
   update: {
     current_version: "1.2.0",
     status: { state: "up_to_date" },
     offer: null,
     dismissed: false,
+    dot: false,
     hud_card: false,
     notes_warning: null,
     show_notes_at_ms: null,
@@ -177,6 +179,7 @@ export const snapshot: AppSnapshot = {
 /** Send the current snapshot to every listener, as Rust's `app-state` event does. */
 function publish() {
   snapshot.hud_view = hudView();
+  snapshot.update.dot = updateDot();
   void emit("app-state", structuredClone(snapshot));
 }
 
@@ -355,7 +358,7 @@ const WEEKLY_SCENARIOS: Record<string, Partial<WeeklySummary>> = {
 };
 if (weeklyFlag !== null) Object.assign(snapshot.weekly, { show_card: true }, WEEKLY_SCENARIOS[weeklyFlag]);
 
-// ?seated shows the sit-too-long HUD card. Variants, comma-separated: off (treadmill off,
+// ?seated shows the idle-nudge HUD card (STASIS_ALERT). Variants, comma-separated: off (treadmill off,
 // nothing picked yet), queued (treadmill off, second program remembered), long (long
 // program names, to check wrapping), none / one (no or one saved program), many (six
 // saved programs with long names; the card shows the first three).
@@ -430,6 +433,9 @@ function refuseWhileStopping() {
 // ?walkaway=warning: the idle warning counting down (STAY cancels it, reaching 0
 // pauses). ?walkaway=paused (or =lock): the belt was paused because the PC was
 // locked; ?walkaway=idle: paused after no input.
+// ?lightsout: LIGHTS_OUT switched on (System -> Desk).
+if (params.has("lightsout")) snapshot.lights_out.enabled = true;
+
 const walkawayFlag = params.get("walkaway");
 if (walkawayFlag === "warning") {
   Object.assign(snapshot.walkaway, { card: "warning", pause_in_s: 30 });
@@ -476,12 +482,18 @@ const PREVIEW_NOTES = [
   "- Tilt calibration applies at once, without a reconnect.",
 ].join("\n");
 
+/** The "update waiting" dot, as `update::show_update_dot` decides it. */
+function updateDot(): boolean {
+  return snapshot.update.status.state === "available" && !snapshot.update.dismissed;
+}
+
 function offerUpdate(dismissed = false) {
   const offer = { version: "1.3.0", notes: PREVIEW_NOTES, published: "2026-11-20T09:30:00Z" };
   Object.assign(snapshot.update, {
     status: { state: "available", ...offer },
     offer,
     dismissed,
+    dot: !dismissed,
     hud_card: !dismissed,
   });
 }
@@ -818,6 +830,7 @@ const COMMANDS: { [K in Command["type"]]?: (c: Extract<Command, { type: K }>) =>
     Object.assign(snapshot.walkaway, { lock_enabled: c.lock_enabled, idle_enabled: c.idle_enabled, idle_minutes: c.idle_minutes });
     if (!c.idle_enabled && snapshot.walkaway.card === "warning") snapshot.walkaway.card = "none";
   },
+  lights_out_set_config: (c) => (snapshot.lights_out.enabled = c.enabled),
   walkaway_stay: () => Object.assign(snapshot.walkaway, { card: "none", pause_in_s: 0 }),
   walkaway_resume: () => {
     if (!snapshot.connection.connected) throw "The treadmill is offline";
@@ -895,6 +908,7 @@ const slow = <T,>(fn: () => T) => new Promise((resolve) => setTimeout(resolve, 1
 const QUERIES: Record<string, (args: Record<string, unknown>) => unknown> = {
   get_snapshot: () => {
     snapshot.hud_view = hudView();
+    snapshot.update.dot = updateDot();
     return snapshot;
   },
   open_log_folder: () => null,
