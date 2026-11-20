@@ -2,9 +2,9 @@
 //! it to the windows as `app-state`.
 
 use super::{
-    build_snapshot, calls, daily_base, eyebreak, hud, maintenance, odometer, refresh_daily_base,
-    seated, stasis, tray, walkaway, weekly, AppSnapshot, ConnectionSnapshot, SnapshotParts,
-    EVENT_APP_STATE,
+    build_snapshot, calls, daily_base, eyebreak, hud, lights_out, maintenance, odometer,
+    refresh_daily_base, seated, stasis, tray, walkaway, weekly, AppSnapshot, ConnectionSnapshot,
+    SnapshotParts, EVENT_APP_STATE,
 };
 use crate::bluetooth::{self, ORCHESTRATOR};
 use crate::programs::{self, SavedRun};
@@ -89,6 +89,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     snapshot.walkaway = walkaway::snapshot(now_ms);
     snapshot.update = crate::update::snapshot(now_ms);
     snapshot.traffic = crate::traffic::snapshot();
+    snapshot.lights_out = lights_out::snapshot();
     // Recomputed every tick, so the end of the grace after a stop reaches the
     // HUD with the next on-change emit (within a tick).
     snapshot.hud_view = stasis::view(&snapshot, deck_silent, Instant::now());

@@ -38,6 +38,10 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 /// Open (or focus) the dashboard window.
 pub(crate) fn show_dashboard(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window(DASHBOARD_LABEL) {
+        // Reopening a hidden window is "opening" too: the click that asked for it
+        // (a HUD button, the tray) can still steal focus back, and that blur must
+        // not hide the window again before it was seen.
+        *lock(&OPENED_AT) = Some(Instant::now());
         let _ = window.show();
         let _ = window.set_focus();
         return;

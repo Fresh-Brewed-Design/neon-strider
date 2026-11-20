@@ -1,3 +1,4 @@
+import { useAppState } from "../../state/useAppState";
 import { CalibrationPanel } from "../system/calibration/CalibrationPanel";
 import { DeskSection } from "../system/DeskSection";
 import { DiagnosticsSection } from "../system/DiagnosticsSection";
@@ -8,6 +9,8 @@ import { SessionsSection } from "../system/SessionsSection";
 import { StartupSection } from "../system/StartupSection";
 import { StravaSection } from "../system/strava/StravaSection";
 import { TreadmillSection } from "../system/TreadmillSection";
+import { UpdateDot } from "../system/updates/UpdateDot";
+import { showUpdateBadge } from "../system/updates/updates";
 import { UpdatesSection } from "../system/updates/UpdatesSection";
 import { Page } from "../ui";
 
@@ -25,7 +28,8 @@ const SECTIONS = [
 ];
 
 /** Sticky links to each section, since the page is long. */
-function SectionIndex() {
+export function SectionIndex() {
+  const updateDot = useAppState((s) => showUpdateBadge(s.update)) ?? false;
   return (
     <nav
       aria-label="System sections"
@@ -36,9 +40,10 @@ function SectionIndex() {
           key={s.id}
           type="button"
           onClick={() => document.getElementById(s.id)?.scrollIntoView({ behavior: "smooth", block: "start" })}
-          className="shrink-0 rounded px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.12em] text-white/50 transition-colors hover:bg-white/5 hover:text-neon-cyan"
+          className="flex shrink-0 items-center gap-1.5 rounded px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.12em] text-white/50 transition-colors hover:bg-white/5 hover:text-neon-cyan"
         >
           {s.label}
+          {s.id === "sys-updates" && updateDot && <UpdateDot />}
         </button>
       ))}
     </nav>

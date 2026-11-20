@@ -5,6 +5,7 @@ import { useAppSnapshot } from "../../state/useAppState";
 import { GhostButton, Hint, Label } from "../ui";
 import { cx, send } from "../util";
 import { NumberField, Section, Toggle } from "./fields";
+import { LightsOutSetting } from "./LightsOutSetting";
 
 const MAX_PROGRAM_BUTTONS = 3;
 
@@ -120,7 +121,7 @@ function EyeBreakSettings() {
   );
 }
 
-/** Settings for the sit-too-long nudge and for easing the belt during calls. */
+/** Settings for the idle nudge and for easing the belt during calls. */
 export function DeskSection() {
   const s = useAppSnapshot();
   if (!s) return null;
@@ -156,7 +157,7 @@ export function DeskSection() {
       description="Small nudges for a day at the PC. The treadmill switches itself off when idle, so none of this can start it: a program you pick waits until the treadmill connects."
     >
       <Toggle
-        label="Sit-too-long nudge"
+        label="Idle nudge"
         tone="yellow"
         checked={seated.enabled}
         onChange={(enabled) => saveSeated({ enabled })}
@@ -228,6 +229,10 @@ export function DeskSection() {
       <div className="border-t border-white/10" />
 
       <WalkAwaySettings />
+
+      <div className="border-t border-white/10" />
+
+      <LightsOutSetting />
 
       <div className="border-t border-white/10" />
 

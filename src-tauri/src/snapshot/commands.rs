@@ -1,8 +1,8 @@
 //! What each `Command` does. `snapshot::dispatch` is the IPC entry point.
 
 use super::{
-    calls, desk, eyebreak, hud, hud_drag, maintenance, seated, stasis, walkaway, weekly, Command,
-    HudConfig, HudWidget,
+    calls, desk, eyebreak, hud, hud_drag, lights_out, maintenance, seated, stasis, walkaway,
+    weekly, Command, HudConfig, HudWidget,
 };
 use crate::bluetooth::{self, ORCHESTRATOR};
 use crate::engine::OrchestratorState;
@@ -225,6 +225,9 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         }
         Command::WalkawayResume => desk::walkaway_resume().await,
         Command::WalkawayEnd => desk::walkaway_end().await,
+        Command::LightsOutSetConfig { enabled } => {
+            blocking(move || lights_out::set_enabled(&app, enabled)).await
+        }
 
         Command::UpdateCheck => {
             crate::update::check(&app, true).await;

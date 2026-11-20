@@ -104,7 +104,7 @@ steady."
 
 **In the app:** "Moderate walking toward the weekly 150 minutes."
 
-## Sit-too-long nudge
+## Idle nudge
 
 **Was:** after 60 minutes of PC use without walking. **Now:** 30 minutes.
 
@@ -121,7 +121,7 @@ value you set is kept. The range stays 15 to 240.
 
 ## Snooze
 
-**Was and is:** 15 minutes. Kept. No study tests a snooze. Seated time keeps counting while it
+**Was and is:** 15 minutes. Kept. No study tests a snooze. Idle time keeps counting while it
 is snoozed, so the next card still comes about half an interval later, which keeps the breaks
 close to every 30 minutes.
 
