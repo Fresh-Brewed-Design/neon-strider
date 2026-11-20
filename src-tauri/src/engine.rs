@@ -1239,15 +1239,16 @@ impl OrchestratorState {
             return;
         };
         let kmh = |b: u8| self.to_physical_speed(b as f32 / 10.0);
+        let tilt = |level: u8| self.incline_pct(level);
         let note = match reply {
             protocol::DeckReply::Nack => {
                 log::warn!(
                     "Deck refused target: speed byte {asked_speed}, incline {asked_incline}"
                 );
                 Some(format!(
-                    "DECK_REFUSED // {:.1} km/h, level {} not taken",
+                    "DECK_REFUSED // {:.1} KM/H, TILT {:.1} %",
                     kmh(asked_speed),
-                    asked_incline
+                    tilt(asked_incline)
                 ))
             }
             protocol::DeckReply::TargetEcho { speed, incline }
@@ -1265,7 +1266,11 @@ impl OrchestratorState {
                     ));
                 }
                 if incline != asked_incline {
-                    parts.push(format!("LEVEL {asked_incline} -> {incline}"));
+                    parts.push(format!(
+                        "TILT {:.1} % -> {:.1} %",
+                        tilt(asked_incline),
+                        tilt(incline)
+                    ));
                 }
                 Some(format!("DECK_ADJUSTED // {}", parts.join(", ")))
             }

@@ -1024,10 +1024,28 @@ mod tests {
         r.state.on_deck_reply(protocol::DeckReply::Nack);
         let note = r.state.current_target_note().expect("a note");
         assert!(note.starts_with("DECK_REFUSED"), "{note}");
+        assert!(
+            note.contains("KM/H, TILT") && note.ends_with(" %"),
+            "{note}"
+        );
         // A nack with no target in flight says nothing.
         r.state.target_note = None;
         r.state.on_deck_reply(protocol::DeckReply::Nack);
         assert_eq!(r.state.current_target_note(), None);
+    }
+
+    #[test]
+    fn an_incline_the_deck_changed_is_noted_in_percent() {
+        let mut r = Rig::new();
+        r.state.set_test_now(r.t);
+        r.state.target_pending = Some((30, 3, r.t));
+        r.state.on_deck_reply(protocol::DeckReply::TargetEcho {
+            speed: 30,
+            incline: 4,
+        });
+        let note = r.state.current_target_note().expect("a note");
+        let (a, b) = (r.state.incline_pct(3), r.state.incline_pct(4));
+        assert_eq!(note, format!("DECK_ADJUSTED // TILT {a:.1} % -> {b:.1} %"));
     }
 
     #[test]

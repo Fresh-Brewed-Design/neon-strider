@@ -468,6 +468,11 @@ if (params.get("neural") === "active") {
   Object.assign(snapshot.deck, { speed_kmh: 3.3, target_speed_kmh: 3.3 });
 }
 
+// ?decknote=refused|adjusted: the HUD note after the deck refuses or changes a target.
+const deckNoteFlag = params.get("decknote");
+if (deckNoteFlag === "refused") snapshot.deck.target_note = "DECK_REFUSED // 3.5 KM/H, TILT 6.3 %";
+if (deckNoteFlag === "adjusted") snapshot.deck.target_note = "DECK_ADJUSTED // 0.6 KM/H -> 0.8 KM/H, TILT 6.3 % -> 7.5 %";
+
 // ?engage=timeout: the deck's screen is off. It shows the last Engage's failure, and
 // Engage waits 8 s and fails again. ?status=N: the deck sent an unknown status byte N.
 const engageTimeout = params.get("engage") === "timeout";
