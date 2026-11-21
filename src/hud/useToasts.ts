@@ -14,6 +14,7 @@ export interface Toast extends ToastPayload {
   key: string;
 }
 
+/** Long enough to read a one-line toast; one with a button stays longer so it can be pressed. */
 const LIFETIME_MS = 5000;
 const ACTIONABLE_LIFETIME_MS = 8000;
 

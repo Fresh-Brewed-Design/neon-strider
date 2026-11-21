@@ -112,7 +112,8 @@ export function GuidePanel({
               className={cx("flex items-center gap-1 rounded border px-2 py-1 font-digital text-xs", MARK_CLASS[key])}
             >
               {s.mark === "saved" && <Check size={12} aria-hidden />}
-              {s.kmh.toFixed(1)}
+              {/* The speed the deck ran, when Rust measured another than planned. */}
+              {(s.ran_kmh ?? s.kmh).toFixed(1)}
               <span className="sr-only">{key}</span>
             </li>
           );
@@ -140,7 +141,7 @@ export function GuidePanel({
         <div>
           <Hint>
             {nextIsCheck
-              ? "A check run halfway between two calibrated speeds measures the error there."
+              ? "A check run measures the distance error halfway between two calibrated speeds."
               : `RUN sets the belt to the next speed, ${guide.next_kmh.toFixed(1)} km/h.`}
           </Hint>
           <div className="mt-2 flex items-start gap-2">

@@ -23,7 +23,7 @@ mod worker;
 
 pub use worker::{
     current_bpm, forget_sensor, init, max_heart_rate, pick_sensor, scan, set_max_heart_rate,
-    snapshot, spawn, DEFAULT_MAX_BPM,
+    snapshot, spawn, DEFAULT_MAX_BPM, MAX_MAX_BPM, MIN_MAX_BPM,
 };
 
 use serde::{Deserialize, Serialize};
@@ -40,6 +40,7 @@ const CONTACT_MASK: u8 = 0x06;
 const CONTACT_LOST: u8 = 0x04;
 
 /// Readings outside this are noise (a u8 can say 255).
+/// Above any measured human maximum; 251 to 255 is a sensor glitch.
 const MAX_BPM: u16 = 250;
 
 /// The beats per minute in one Heart Rate Measurement, or `None` when the
@@ -114,12 +115,59 @@ pub struct HeartRateSnapshot {
     pub max_bpm_set: bool,
 }
 
-/// A heart rate zone in beats per minute.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
+/// A heart rate zone in beats per minute, and where the pulse sits in it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 #[ts(export, export_to = "../../src/ipc/bindings/")]
 pub struct ZoneBand {
     pub low_bpm: u32,
     pub high_bpm: u32,
+    /// Under, in or over the zone; none without a fresh reading.
+    pub position: Option<ZonePosition>,
+    /// The deck-voice word for the position (`ZONE // LOCKED`).
+    pub label: String,
+    /// One plain sentence for the position.
+    pub message: String,
+}
+
+/// Where the pulse is against a heart rate zone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
+pub enum ZonePosition {
+    Under,
+    In,
+    Over,
+}
+
+/// The zone `low`..=`high` (bpm, as the program's trim computes them) with
+/// the reading `bpm` placed against it. The same rule as the trim: above
+/// `high` is over, below `low` is under, so the HUD and the belt agree. The
+/// whole bpm shown are the first and last readings that count as in (low
+/// rounded up, high rounded down), so the range on screen matches. Pure.
+pub fn zone_band(low: f32, high: f32, bpm: Option<u32>) -> ZoneBand {
+    let position = bpm.map(|b| {
+        let b = b as f32;
+        if b > high {
+            ZonePosition::Over
+        } else if b < low {
+            ZonePosition::Under
+        } else {
+            ZonePosition::In
+        }
+    });
+    let (label, message) = match position {
+        Some(ZonePosition::Under) => ("ZONE // UNDER", "Heart rate is below the zone."),
+        Some(ZonePosition::In) => ("ZONE // LOCKED", "Heart rate is in the zone."),
+        Some(ZonePosition::Over) => ("ZONE // OVER", "Heart rate is above the zone."),
+        None => ("ZONE // WAIT", "Waiting for a heart rate reading."),
+    };
+    ZoneBand {
+        low_bpm: low.ceil() as u32,
+        high_bpm: high.floor() as u32,
+        position,
+        label: label.to_string(),
+        message: message.to_string(),
+    }
 }
 
 /// Shown while a picked sensor does not answer. A Garmin watch only
@@ -234,11 +282,14 @@ pub fn status_message(status: HeartStatus, error: Option<&str>, reading: bool) -
             "Scan for a heart rate sensor and pick your watch to show heart rate.".to_string()
         }
         HeartStatus::Searching => {
-            "Looking for the sensor; on a watch, switch on Broadcast Heart Rate.".to_string()
+            "Looking for the heart rate sensor. On a watch, switch on Broadcast Heart Rate."
+                .to_string()
         }
         HeartStatus::Waiting => WAITING_MESSAGE.to_string(),
         HeartStatus::Connected if reading => "Reading heart rate from the sensor.".to_string(),
-        HeartStatus::Connected => "Linked to the sensor and waiting for a reading.".to_string(),
+        HeartStatus::Connected => {
+            "Linked to the heart rate sensor, waiting for a reading.".to_string()
+        }
         HeartStatus::Error => error.unwrap_or("The heart rate link stopped.").to_string(),
     }
 }
@@ -374,6 +425,47 @@ mod tests {
     }
 
     #[test]
+    fn a_reading_sits_under_in_or_over_the_zone() {
+        let band = |bpm| zone_band(133.0, 152.0, bpm);
+        let under = band(Some(132));
+        assert_eq!(under.position, Some(ZonePosition::Under));
+        assert_eq!(under.label, "ZONE // UNDER");
+        // The bounds themselves are in the zone.
+        assert_eq!(band(Some(133)).position, Some(ZonePosition::In));
+        assert_eq!(band(Some(152)).position, Some(ZonePosition::In));
+        assert_eq!(band(Some(142)).label, "ZONE // LOCKED");
+        let over = band(Some(153));
+        assert_eq!(over.position, Some(ZonePosition::Over));
+        assert_eq!(over.label, "ZONE // OVER");
+        // No reading: the zone still shows, with no position.
+        let none = band(None);
+        assert_eq!(none.position, None);
+        assert_eq!((none.low_bpm, none.high_bpm), (133, 152));
+        assert_eq!(none.label, "ZONE // WAIT");
+    }
+
+    #[test]
+    fn the_range_shown_is_the_readings_that_count_as_in() {
+        // 85 to 95 % of 190 is 161.5 to 180.5: the screen says 162 to 180,
+        // and 161 and 181 are outside it.
+        let b = zone_band(161.5, 180.5, Some(161));
+        assert_eq!(b.position, Some(ZonePosition::Under));
+        assert_eq!((b.low_bpm, b.high_bpm), (162, 180));
+        assert_eq!(
+            zone_band(161.5, 180.5, Some(162)).position,
+            Some(ZonePosition::In)
+        );
+        assert_eq!(
+            zone_band(161.5, 180.5, Some(180)).position,
+            Some(ZonePosition::In)
+        );
+        assert_eq!(
+            zone_band(161.5, 180.5, Some(181)).position,
+            Some(ZonePosition::Over)
+        );
+    }
+
+    #[test]
     fn messages_are_short_and_have_no_dashes() {
         let msgs = [
             WAITING_MESSAGE.to_string(),
@@ -381,6 +473,10 @@ mod tests {
             describe_failure(Step::DiscoverServices, "x").message,
             describe_failure(Step::Subscribe, "x").message,
             describe_failure(Step::Subscribe, NO_MEASUREMENT).message,
+            zone_band(130.0, 150.0, Some(120)).message,
+            zone_band(130.0, 150.0, Some(140)).message,
+            zone_band(130.0, 150.0, Some(160)).message,
+            zone_band(130.0, 150.0, None).message,
         ];
         for m in msgs {
             assert!(!m.contains('\u{2014}') && !m.contains('\u{2013}'), "{m}");

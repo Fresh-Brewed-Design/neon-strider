@@ -41,12 +41,13 @@ export function dayKey(ms: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export function formatDayHeading(ms: number): string {
-  const d = new Date(ms);
-  const today = dayKey(Date.now());
-  const yesterday = dayKey(Date.now() - 86_400_000);
+/** "Today", "Yesterday" or a dated heading. Days are compared as local calendar dates, so a 23 or 25 hour day around a clock change does not shift the label. */
+export function formatDayHeading(ms: number, nowMs: number = Date.now()): string {
+  const now = new Date(nowMs);
+  const today = dayKey(nowMs);
+  const yesterday = dayKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).getTime());
   const key = dayKey(ms);
   if (key === today) return "Today";
   if (key === yesterday) return "Yesterday";
-  return d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+  return new Date(ms).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: "numeric" });
 }

@@ -59,6 +59,7 @@ const CMD_STATUS: u8 = 0x51;
 const CMD_CONTROL: u8 = 0x53;
 
 /// Control packets are this long before the checksum and tail.
+/// 15-byte control packets (docs/protocol.md) less the checksum and tail.
 const CONTROL_BODY_LEN: usize = 13;
 
 /// Byte 2 of a control packet.

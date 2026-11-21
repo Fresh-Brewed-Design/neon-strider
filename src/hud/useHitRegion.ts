@@ -50,7 +50,7 @@ export function useHitRegion(ref: RefObject<HTMLElement | null>, active: boolean
     const observer = new ResizeObserver(report);
     observer.observe(el);
     window.addEventListener("resize", report);
-    const interval = setInterval(report, 1000);
+    const interval = setInterval(report, 1000); // backstop for moves the observers miss (a monitor change)
     report();
 
     return () => {

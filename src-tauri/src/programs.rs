@@ -30,12 +30,17 @@ const RESUME_MAX_AGE_MS: i64 = 10 * 60 * 1000;
 /// waiting over lunch should still be there. Older ones are dropped.
 const RESUME_STILL_MAX_AGE_MS: i64 = 4 * 60 * 60 * 1000;
 /// Elapsed time is saved at most this often; structural changes save at once.
+/// A crash or update loses at most 5 s of a step, as for the session row.
 const ACTIVE_RUN_SAVE_EVERY: Duration = Duration::from_secs(5);
 
-const MAX_NAME_CHARS: usize = 40;
-const MAX_STEPS: usize = 20;
-/// Below this a speed means "belt held still" (same threshold the engine uses).
-const MOVING_KMH: f32 = 0.05;
+/// Fits a program button on the HUD and the idle-nudge card.
+pub(crate) const MAX_NAME_CHARS: usize = 40;
+/// A long interval program (the VO2 max one has 10 steps) with room to spare,
+/// while the editor stays one screen.
+pub(crate) const MAX_STEPS: usize = 20;
+/// Below this a speed means "belt held still": the engine's own threshold.
+const MOVING_KMH: f32 = STILL_KMH;
+/// Half a minute to finish a sentence before the belt stops for a rest.
 const REST_WARNING_S: f64 = 30.0;
 /// A step with a heart rate zone changes the speed by this much at a time:
 /// one deck step, the smallest change the belt makes.
@@ -240,6 +245,10 @@ pub struct ProgramRun {
     /// Watches for a start at the treadmill while the run holds the belt still
     /// (paused, waiting for GO, or resting). Not saved.
     pub deck_start: DeckStartWatch,
+    /// The deck has reported the belt moving since the run last started or
+    /// resumed walking, so a Paused report after it is a pause of that walk
+    /// (`notice_deck_pause`), not the deck still answering a GO. Not saved.
+    pub deck_moved: bool,
     /// When the speed was last trimmed to hold a heart rate zone. Not saved.
     pub zone_trimmed_at: Option<Instant>,
 }
@@ -398,6 +407,7 @@ pub(crate) fn validate_program(p: &Program, min_speed: f32, max_speed: f32) -> R
         }
         // The calibrated floor is rarely a round number; a speed typed as the
         // floor shown (to 0.01 km/h) is not below it.
+        // 0.005 is half the 0.01 km/h the floor is shown to.
         if s.speed_kmh != 0.0 && (s.speed_kmh < min_speed - 0.005 || s.speed_kmh > max_speed) {
             return Err(format!(
                 "Step {}: speed must be 0 or between {:.1} and {:.1} km/h",
@@ -430,6 +440,9 @@ pub(crate) fn validate_program(p: &Program, min_speed: f32, max_speed: f32) -> R
         if p.steps[last].duration_minutes.is_none() {
             return Err("A step that runs until ended can't repeat".to_string());
         }
+        // A cycle starts every `r` minutes and the rest is what is left after
+        // the steps, so a spacing no longer than the walk would leave no rest
+        // (Workday: the spacing must be longer than the break).
         if r <= total_minutes(p) {
             return Err("Repeat interval must be longer than the program".to_string());
         }
@@ -439,7 +452,11 @@ pub(crate) fn validate_program(p: &Program, min_speed: f32, max_speed: f32) -> R
 
 /// The examples a new install starts with. Values and sources are in
 /// docs/research.md. Existing installs were moved to these by
-/// `persistence::migration_3_research_programs`, which keeps its own copy.
+/// `persistence::migration_3_research_programs` and
+/// `persistence::migration_8_seeded_programs`, which keep their own copies.
+/// The ids match what a v1.6 install ends up with after every migration
+/// (id 4 was Micro-break, merged into Workday), so a migrated install and
+/// a new one hold the same list.
 pub fn seed_programs() -> Vec<Program> {
     let program =
         |id: u32, name: &str, step: ProgramStep, repeat: Option<f32>, note: &str| Program {
@@ -466,22 +483,31 @@ pub fn seed_programs() -> Vec<Program> {
         program(
             2,
             "Workday",
-            step(Some(5.0), 3.0, 5.0),
-            Some(30.0),
+            step(Some(WORKDAY_MINUTES), WORKDAY_KMH, WORKDAY_INCLINE_PCT),
+            Some(WORKDAY_EVERY_MINUTES),
             NOTE_WORKDAY,
         ),
         program(3, "Focus", step(None, 2.0, 0.0), None, NOTE_FOCUS),
-        program(
-            4,
-            "Micro-break",
-            step(Some(2.0), 3.2, 0.0),
-            Some(20.0),
-            NOTE_MICRO_BREAK,
-        ),
         program(5, "Brisk", step(Some(30.0), 5.0, 0.0), None, NOTE_BRISK),
         vo2_max_program(6),
+        interval_walk_program(7),
     ]
 }
+
+/// Workday's two settings are the program's own fields: the break length
+/// is its one step's minutes and the spacing is `repeat_every_minutes`, both
+/// edited like any program's, with speed and incline. The defaults are
+/// Duran et al. (2023)'s best dose: 5 minutes of light walking every 30 was
+/// the only one of their four doses that lowered the glucose rise after
+/// meals. The limits are the ones every program has (`validate_program`):
+/// the spacing must be longer than the break, since the rest between breaks
+/// is the spacing minus the break.
+const WORKDAY_MINUTES: f32 = 5.0;
+const WORKDAY_EVERY_MINUTES: f32 = 30.0;
+/// Light walking, about 3.7 METs by the ACSM equation, in line with the
+/// trials' light breaks (docs/research.md).
+const WORKDAY_KMH: f32 = 3.0;
+const WORKDAY_INCLINE_PCT: f32 = 5.0;
 
 /// The Norwegian 4x4 for the deck: warm-up, four 4-minute climbs each followed
 /// by 3 minutes of easy walking, cool-down. The deck tops out at 8 km/h and
@@ -517,13 +543,60 @@ fn vo2_max_program(id: u32) -> Program {
     }
 }
 
-pub const NOTE_VO2_MAX: &str = "Four hard 4-minute climbs with easy walks between train VO2 max.";
+/// Interval walking training (IWT, "Japanese walking"; Nemoto et al. 2007):
+/// a warm-up, then five rounds of 3 brisk minutes and 3 easy ones, 35 minutes
+/// in all. Every step moves the belt and nothing repeats, so no step starts a
+/// still belt: running it is the one press, like VO2 max. Existing installs
+/// get it from `persistence::migration_8_seeded_programs`,
+/// which keeps its own copy.
+fn interval_walk_program(id: u32) -> Program {
+    let step = |minutes: f32, speed_kmh: f32, incline_pct: f32| ProgramStep {
+        duration_minutes: Some(minutes),
+        speed_kmh,
+        incline_pct,
+        zone: None,
+    };
+    let mut steps = vec![step(INTERVAL_WARMUP_MINUTES, INTERVAL_WARMUP_KMH, 0.0)];
+    for _ in 0..INTERVAL_ROUNDS {
+        steps.push(step(
+            INTERVAL_MINUTES,
+            INTERVAL_BRISK_KMH,
+            INTERVAL_BRISK_INCLINE_PCT,
+        ));
+        steps.push(step(INTERVAL_MINUTES, INTERVAL_EASY_KMH, 0.0));
+    }
+    Program {
+        id,
+        name: "Interval walk".to_string(),
+        steps,
+        repeat_every_minutes: None,
+        note: Some(NOTE_INTERVAL_WALK.to_string()),
+    }
+}
 
-pub const NOTE_POST_MEAL: &str = "A walk soon after eating blunts the rise in blood sugar.";
-pub const NOTE_WORKDAY: &str = "Five minutes every half hour offsets long sitting.";
-pub const NOTE_FOCUS: &str = "Slow and flat, so typing and thinking stay steady.";
-pub const NOTE_MICRO_BREAK: &str = "Two easy minutes every 20 lower blood sugar after meals.";
-pub const NOTE_BRISK: &str = "Moderate walking toward the weekly 150 minutes.";
+/// A short warm-up at an ordinary walking pace before the first brisk round.
+const INTERVAL_WARMUP_MINUTES: f32 = 5.0;
+const INTERVAL_WARMUP_KMH: f32 = 4.0;
+/// IWT asks for 5 or more rounds a day; five is the trial's minimum dose.
+const INTERVAL_ROUNDS: usize = 5;
+/// Equal 3 minute blocks, brisk then easy, as in the trial.
+const INTERVAL_MINUTES: f32 = 3.0;
+/// Brisk: about 6.4 METs by the ACSM equation, inside the 6 to 7 METs aimed
+/// at for a fast walk and well under VO2 max's 9. The deck tops out at
+/// 8 km/h, so a fast walk gets its effort from a moderate incline.
+const INTERVAL_BRISK_KMH: f32 = 6.0;
+const INTERVAL_BRISK_INCLINE_PCT: f32 = 5.0;
+/// Easy: about 2.7 METs, flat, a slow walk to recover.
+const INTERVAL_EASY_KMH: f32 = 3.5;
+
+pub const NOTE_VO2_MAX: &str =
+    "Four hard climbs of four minutes, split by easy walks, train VO2 max.";
+pub const NOTE_POST_MEAL: &str = "Walking soon after a meal blunts the rise in blood sugar.";
+pub const NOTE_WORKDAY: &str = "Five easy minutes every half hour keep the body online.";
+pub const NOTE_FOCUS: &str = "A slow, flat walk keeps typing and thinking steady.";
+pub const NOTE_BRISK: &str = "Thirty brisk minutes count toward a weekly 150 of moderate activity.";
+pub const NOTE_INTERVAL_WALK: &str =
+    "Five rounds alternate three brisk minutes with three easy ones.";
 
 /// Test fixture: the three programs v1.6 seeded (Post-meal 10 min at 4.0 km/h
 /// and 10 %, Workday 5 min every 30 at 3.0 km/h and 5 %, Focus at 2.5 km/h and
@@ -726,10 +799,12 @@ impl OrchestratorState {
         });
     }
 
-    /// resolve_target lets manual intent win for 5 s after the last manual
+    /// resolve_target lets manual intent win for `MANUAL_LOCKOUT` after the last manual
     /// interaction; push that timestamp into the past so the program applies now.
     fn prioritize_program(&mut self, now: Instant) {
-        self.last_manual_interaction = now.checked_sub(Duration::from_secs(6)).unwrap_or(now);
+        self.last_manual_interaction = now
+            .checked_sub(crate::engine::MANUAL_LOCKOUT + Duration::from_secs(1))
+            .unwrap_or(now);
     }
 
     /// A paused deck only auto-resumes when the target exceeds the engine's
@@ -767,6 +842,7 @@ impl OrchestratorState {
         run.wait = Some(why);
         run.last_tick = now;
         run.deck_start = DeckStartWatch::default();
+        run.deck_moved = false;
         self.set_program_intent_from(run);
         self.manual_intent = Some(ControlIntent {
             speed: 0.0,
@@ -798,6 +874,53 @@ impl OrchestratorState {
     /// in the meantime. The engine calls this before deciding what to send;
     /// it returns true while a start is being confirmed, and the engine then
     /// leaves the belt alone instead of pausing it.
+    /// A pause at the treadmill (its own buttons or remote, or the deck's
+    /// Pause sent from a shortcut) while the program walks a moving step: the
+    /// program pauses with it, the same as its own pause. Its step timer
+    /// stops, the HUD and dashboard offer GO, and GO (or a start at the
+    /// treadmill, `watch_for_deck_start`) resumes the step. Without this the
+    /// program walked on against a paused belt, and GO had nothing to resume.
+    ///
+    /// It counts only once the deck has reported the belt moving since the
+    /// run last started or resumed (`ProgramRun::deck_moved`): until then a
+    /// Paused report is the deck not yet answering GO. A reconnect that holds
+    /// automatic starts is left to the program's own wait (`BeltStill`), and a
+    /// run restored after a restart to its re-apply. Nothing is sent: the deck
+    /// is paused already, and the program's paused target is zero.
+    pub(crate) fn notice_deck_pause(&mut self, now: Instant) {
+        if self.awaiting_first_packet || self.stop_requested || self.hold_auto_start {
+            return;
+        }
+        let moving = self.last_status.is_moving();
+        let deck_paused = self.last_status == MachineStatus::Paused;
+        let Some(run) = self.program.as_mut() else {
+            return;
+        };
+        // A 0 km/h step pauses the belt itself: that pause is the program's.
+        if run.phase != ProgramPhase::Walking
+            || run.paused
+            || run.restored
+            || run.target.speed < MOVING_KMH
+        {
+            run.deck_moved = false;
+            return;
+        }
+        if moving {
+            run.deck_moved = true;
+            return;
+        }
+        if !deck_paused || !run.deck_moved {
+            return;
+        }
+        log::info!(
+            "Belt paused at the treadmill: pausing program {}",
+            run.program.id
+        );
+        if let Err(e) = self.pause_program(now) {
+            log::warn!("Pause at the treadmill: {}", e);
+        }
+    }
+
     pub(crate) fn watch_for_deck_start(&mut self, now: Instant) -> bool {
         let moving = self.last_status.is_moving();
         let app_start = self.handshake_step != crate::protocol::HandshakeStep::Idle
@@ -907,6 +1030,7 @@ impl OrchestratorState {
             restored: false,
             saved_at: None,
             deck_start: DeckStartWatch::default(),
+            deck_moved: false,
             zone_trimmed_at: None,
         };
         self.set_program_intent_from(&run);
@@ -957,6 +1081,7 @@ impl OrchestratorState {
         run.paused = true;
         run.last_tick = now;
         run.deck_start = DeckStartWatch::default();
+        run.deck_moved = false;
         let incline = run.target.incline;
         let run = run.clone();
         self.set_program_intent_from(&run);
@@ -1237,6 +1362,7 @@ impl OrchestratorState {
             (step.speed_kmh + ZONE_TRIM_RANGE_KMH).min(self.to_physical_speed(self.top_hw_speed()));
         // A speed set by hand outside the range is the user's choice: the zone
         // leaves it alone rather than pull it back by up to a km/h at once.
+        // 0.001 km/h is float slack, far under the deck's 0.1 step.
         if run.target.speed < floor - 0.001 || run.target.speed > ceiling + 0.001 {
             return;
         }
@@ -1324,18 +1450,16 @@ impl OrchestratorState {
     }
 
     /// The current step's heart rate zone in bpm while it is a walking step
-    /// with a zone (paused or not), for the PULSE_RATE chart's band.
-    pub fn zone_band(&self) -> Option<crate::heart_rate::ZoneBand> {
+    /// with a zone (paused or not), for PULSE_RATE: the chart's band, and
+    /// whether `bpm` is under, in or over it, by the same bounds the trim uses.
+    pub fn zone_band(&self, bpm: Option<u32>) -> Option<crate::heart_rate::ZoneBand> {
         let run = self.program.as_ref()?;
         if run.phase != ProgramPhase::Walking {
             return None;
         }
         let zone = run.program.steps.get(run.step_index)?.zone?;
         let (low, high) = zone.bounds_bpm(self.max_heart_rate);
-        Some(crate::heart_rate::ZoneBand {
-            low_bpm: low.round() as u32,
-            high_bpm: high.round() as u32,
-        })
+        Some(crate::heart_rate::zone_band(low, high, bpm))
     }
 
     /// Create (id 0) or replace a program after validating it.
@@ -1345,6 +1469,7 @@ impl OrchestratorState {
         let max_speed = self.to_physical_speed(self.top_hw_speed());
         // Each step at a speed the deck runs (DECK_PROFILE); 0 stays 0.
         for step in &mut program.steps {
+            // 0.005: half the 0.01 km/h the floor is shown to, as in `validate`.
             if step.speed_kmh >= min_speed - 0.005 && step.speed_kmh <= max_speed {
                 step.speed_kmh = self.snap_speed(step.speed_kmh);
             }
@@ -1478,7 +1603,12 @@ impl OrchestratorState {
     /// on the reconnect (see `tick_program`). A run that holds the belt still
     /// keeps for hours (a program left waiting for GO over lunch is still
     /// there); a walking one only for minutes.
-    fn restore_run(&mut self, saved: &SavedRun, now_ms: i64, now: Instant) -> Result<(), String> {
+    pub(crate) fn restore_run(
+        &mut self,
+        saved: &SavedRun,
+        now_ms: i64,
+        now: Instant,
+    ) -> Result<(), String> {
         let age = now_ms - saved.saved_at_ms;
         let max_age = if saved.holds_belt_still() {
             RESUME_STILL_MAX_AGE_MS
@@ -1516,6 +1646,7 @@ impl OrchestratorState {
             restored: true,
             saved_at: now.checked_sub(Duration::from_millis(age as u64)),
             deck_start: DeckStartWatch::default(),
+            deck_moved: false,
             zone_trimmed_at: None,
         };
         self.set_program_intent_from(&run);
@@ -2156,6 +2287,21 @@ mod tests {
             let note = p.note.as_deref().unwrap();
             assert!(note.len() <= 70 && note.ends_with('.'), "{}", note);
             assert_eq!(note.matches(". ").count(), 0, "{}", note);
+            // The writing rules: no dashes or semicolons, no deictic words.
+            assert!(
+                !note.contains(['\u{2014}', '\u{2013}', ';', '-']),
+                "{}",
+                note
+            );
+            for word in ["this", "that", "it", "here", "below"] {
+                assert!(
+                    !note
+                        .split([' ', ',', '.'])
+                        .any(|w| w.eq_ignore_ascii_case(word)),
+                    "{}",
+                    note
+                );
+            }
         }
         validate_program(&base(), 0.6, 12.0).unwrap();
 
@@ -2282,7 +2428,7 @@ mod tests {
         let l = initial_programs(None, None);
         assert!(l.seeded);
         assert_eq!(l.programs, seed_programs());
-        assert_eq!(l.next_id, 7);
+        assert_eq!(l.next_id, 8);
 
         // Present (even empty) is never reseeded.
         let l = initial_programs(Some("[]"), None);
@@ -3452,22 +3598,45 @@ mod tests {
     #[test]
     fn the_chart_band_is_the_running_zone_in_bpm() {
         let t0 = Instant::now();
-        assert_eq!(state().zone_band(), None);
+        assert_eq!(state().zone_band(Some(150)), None);
         let mut s = zone_state(t0);
-        assert_eq!(
-            s.zone_band(),
-            Some(crate::heart_rate::ZoneBand {
-                low_bpm: 170,
-                high_bpm: 190,
-            })
-        );
+        let band = s.zone_band(None).expect("band");
+        assert_eq!((band.low_bpm, band.high_bpm), (170, 190));
+        assert_eq!(band.position, None);
         // A step without a zone has no band.
         s.program.as_mut().unwrap().program.steps[0].zone = None;
-        assert_eq!(s.zone_band(), None);
+        assert_eq!(s.zone_band(Some(150)), None);
         // Nor does a rest between cycles.
         let mut s = zone_state(t0);
         s.program.as_mut().unwrap().phase = ProgramPhase::Resting;
-        assert_eq!(s.zone_band(), None);
+        assert_eq!(s.zone_band(Some(150)), None);
+    }
+
+    #[test]
+    fn the_zone_position_agrees_with_the_trim() {
+        use crate::heart_rate::ZonePosition;
+        let t0 = Instant::now();
+        // 85 to 95 % of 190 is 161.5 to 180.5 bpm: 161 is under, 181 over.
+        let mut s = zone_state(t0);
+        s.max_heart_rate = 190;
+        let at = |s: &OrchestratorState, bpm| s.zone_band(Some(bpm)).and_then(|b| b.position);
+        assert_eq!(at(&s, 161), Some(ZonePosition::Under));
+        assert_eq!(at(&s, 162), Some(ZonePosition::In));
+        assert_eq!(at(&s, 180), Some(ZonePosition::In));
+        assert_eq!(at(&s, 181), Some(ZonePosition::Over));
+        // The trim slows the belt exactly when the HUD says over.
+        s.heart_bpm = Some(181);
+        run_ticks(&mut s, t0, 0, 21);
+        assert!(program_speed(&s) < 5.0, "over trims the speed down");
+        // And holds it in the zone.
+        let held = program_speed(&s);
+        s.heart_bpm = Some(180);
+        run_ticks(&mut s, t0, 21, 80);
+        assert_eq!(program_speed(&s), held);
+        // A paused step still shows where the pulse is.
+        let mut s = zone_state(t0);
+        s.program.as_mut().unwrap().paused = true;
+        assert_eq!(at(&s, 150), Some(ZonePosition::Under));
     }
 
     fn program_speed(s: &OrchestratorState) -> f32 {
@@ -3613,5 +3782,110 @@ mod tests {
         let saved = s.programs.iter().find(|p| p.id == seeded.id).unwrap();
         assert_eq!(saved.steps[1].zone.unwrap().low_pct, 70.0);
         assert_eq!(saved.note, None, "a new zone changes what the program does");
+    }
+
+    // -----------------------------------------------------------------------
+    // A pause at the treadmill (#158).
+    // -----------------------------------------------------------------------
+
+    /// Post-meal walking at 4.0 km/h on a synced engine for 3 s, then paused
+    /// at the treadmill and reported Paused for 5 s.
+    fn post_meal_paused_at_the_treadmill(t0: Instant) -> (OrchestratorState, ProtocolEngine) {
+        let mut s = state();
+        moving(&mut s, BEFORE.speed, BEFORE.incline);
+        s.hardware_speed = 4.0;
+        s.run_program(1, t0).unwrap();
+        let mut engine = ProtocolEngine::new();
+        engine.has_synced_reality = true;
+        s.awaiting_first_packet = false;
+        drive(&mut s, &mut engine, t0, 3);
+        assert!(!s.active_program().unwrap().paused);
+        s.last_status = MachineStatus::Paused;
+        s.hardware_speed = 0.0;
+        let sent = drive(&mut s, &mut engine, t0 + secs(3), 5);
+        assert!(!moves_belt(&sent) && !pauses_belt(&sent), "{sent:?}");
+        (s, engine)
+    }
+
+    #[test]
+    fn a_pause_at_the_treadmill_pauses_the_walking_program() {
+        let t0 = Instant::now();
+        let (mut s, mut engine) = post_meal_paused_at_the_treadmill(t0);
+        let a = s.active_program().unwrap();
+        assert_eq!(
+            (a.phase, a.paused, a.wait),
+            (ProgramPhase::Walking, true, None)
+        );
+        assert_eq!(a.step_index, 0);
+        assert_eq!(s.program_intent.map(|i| i.speed), Some(0.0));
+        // The step timer holds, and nothing restarts the belt.
+        let left = a.seconds_remaining;
+        let sent = drive(&mut s, &mut engine, t0 + secs(8), 60);
+        assert!(!moves_belt(&sent), "{sent:?}");
+        assert_eq!(s.active_program().unwrap().seconds_remaining, left);
+        assert!(s.active_program().unwrap().paused);
+    }
+
+    #[test]
+    fn go_after_a_pause_at_the_treadmill_resumes_the_step() {
+        let t0 = Instant::now();
+        let (mut s, mut engine) = post_meal_paused_at_the_treadmill(t0);
+        s.resume_program(t0 + secs(8)).unwrap();
+        assert_eq!(s.handshake_step, crate::protocol::HandshakeStep::Priming);
+        let sent = drive(&mut s, &mut engine, t0 + secs(8), 2);
+        assert!(app_starts(&sent), "{sent:?}");
+        // The deck still reports Paused until it answers: GO stands.
+        let a = s.active_program().unwrap();
+        assert_eq!((a.paused, a.step_index), (false, 0));
+        assert_eq!(s.program_intent.map(|i| i.speed), Some(4.0));
+    }
+
+    #[test]
+    fn engage_after_a_pause_at_the_treadmill_is_the_programs_go() {
+        let t0 = Instant::now();
+        let (mut s, _) = post_meal_paused_at_the_treadmill(t0);
+        s.set_test_now(t0 + secs(8));
+        s.trigger_action(crate::engine::DeckAction::Start);
+        let a = s.active_program().unwrap();
+        assert_eq!((a.paused, a.wait), (false, None));
+        assert_eq!(s.resolve_target().2, crate::engine::TargetSource::Program);
+    }
+
+    #[test]
+    fn a_start_at_the_treadmill_after_its_pause_is_the_programs_go() {
+        let t0 = Instant::now();
+        let (mut s, mut engine) = post_meal_paused_at_the_treadmill(t0);
+        // The deck counts down, then resumes at the speed it paused at.
+        s.last_status = MachineStatus::Starting;
+        let mut sent = drive(&mut s, &mut engine, t0 + secs(8), 3);
+        s.last_status = MachineStatus::Running;
+        s.hardware_speed = 4.0;
+        sent.extend(drive(&mut s, &mut engine, t0 + secs(11), 5));
+        assert!(!app_starts(&sent) && !pauses_belt(&sent), "{sent:?}");
+        let a = s.active_program().unwrap();
+        assert_eq!((a.paused, a.wait), (false, None));
+        assert_eq!(s.program_intent.map(|i| i.speed), Some(4.0));
+        assert_eq!(
+            s.take_program_toast(),
+            Some(ProgramToast::deck_go("Post-meal"))
+        );
+    }
+
+    /// Run on a paused deck: the deck reports Paused until it answers the
+    /// program's start. That is not a pause at the treadmill.
+    #[test]
+    fn a_paused_report_before_the_belt_moved_is_not_a_pause() {
+        let t0 = Instant::now();
+        let mut s = state();
+        s.last_status = MachineStatus::Paused;
+        s.manual_intent = Some(ControlIntent {
+            speed: 0.0,
+            incline: 0,
+        });
+        let mut engine = still_for(&mut s, t0, 1);
+        s.run_program(1, t0 + secs(1)).unwrap();
+        let sent = drive(&mut s, &mut engine, t0 + secs(1), 2);
+        assert!(app_starts(&sent), "{sent:?}");
+        assert!(!s.active_program().unwrap().paused);
     }
 }

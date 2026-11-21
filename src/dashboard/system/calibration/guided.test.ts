@@ -88,7 +88,7 @@ describe("the guided walk's summary", () => {
     tolerance_pct: 2,
     ...g,
   });
-  const saved = (kmh: number[]) => kmh.map((k) => ({ kmh: k, mark: "saved" as const, end: false }));
+  const saved = (kmh: number[]) => kmh.map((k) => ({ kmh: k, ran_kmh: null, mark: "saved" as const, end: false }));
 
   it("lists speeds in plain words", () => {
     expect(speedList([0.6])).toBe("0.6 km/h");
@@ -100,26 +100,32 @@ describe("the guided walk's summary", () => {
     const lines = guideSummary(
       view({
         speeds: saved([0.6, 2.8, 5]),
-        checks: [{ lo_kmh: 0.6, hi_kmh: 5, mid_kmh: 2.8, verdict: "at_limit", error_pct: 2.6 }],
+        checks: [{ lo_kmh: 0.6, hi_kmh: 5, mid_kmh: 2.8, halfway_kmh: null, ran_kmh: null, verdict: "at_limit", error_pct: 2.6 }],
         remaining_error_pct: 2.6,
       }),
     );
-    expect(lines).toContain("Distance is still up to 2.6 % off between some of those speeds.");
+    expect(lines).toContain("Distance is still up to 2.6 % off between some calibrated speeds.");
   });
 
   it("says a skipped check leaves the error unknown", () => {
     const g = view({
       speeds: saved([0.6, 5]),
-      checks: [{ lo_kmh: 0.6, hi_kmh: 5, mid_kmh: 2.8, verdict: "skipped", error_pct: null }],
+      checks: [{ lo_kmh: 0.6, hi_kmh: 5, mid_kmh: 2.8, halfway_kmh: null, ran_kmh: null, verdict: "skipped", error_pct: null }],
     });
-    expect(guideSummary(g)).toEqual(["Calibrated 0.6 and 5.0 km/h.", "A skipped check leaves the error there unknown."]);
+    expect(guideSummary(g)).toEqual(["Calibrated 0.6 and 5.0 km/h.", "A skipped check leaves the distance error at its midpoint unknown."]);
     expect(checkLine(g.checks[0], 2)).toBe("0.6 to 5.0 km/h: the check at 2.8 km/h was skipped, so the error there is unknown.");
+  });
+
+  it("says when the deck skips the halfway speed and the check moved", () => {
+    const c = { lo_kmh: 0.6, hi_kmh: 5, mid_kmh: 2.7, halfway_kmh: 2.8, ran_kmh: null, verdict: "pending" as const, error_pct: null };
+    expect(checkLine(c, 2)).toBe("0.6 to 5.0 km/h: the deck skips 2.8, so the check at 2.7 km/h waits for RUN.");
+    expect(checkLine({ ...c, halfway_kmh: null }, 2)).toBe("0.6 to 5.0 km/h: the check at 2.7 km/h waits for RUN.");
   });
 
   it("says when no deck speed fits between the two ends", () => {
     expect(guideSummary(view({ top_kmh: 0.7, speeds: saved([0.6, 0.7]) }))).toEqual([
       "Calibrated 0.6 and 0.7 km/h.",
-      "The deck has no speed between those two to check.",
+      "The deck has no speed between the two calibrated speeds to check.",
     ]);
   });
 });
