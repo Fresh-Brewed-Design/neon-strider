@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.44.0 (2026-11-21)
+
+### New
+
+- The HUD page can switch the Alt + Insert minify hotkey off, or move it to Alt + Pause or Alt + Scroll Lock, so it stops clashing with other apps such as JetBrains IDEs.
+
 ## 1.43.3 (2026-11-21)
 
 ### Fixed
