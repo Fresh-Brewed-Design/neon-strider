@@ -104,6 +104,25 @@ const DEFAULT_STRIDE_CM: f32 = 74.0;
 /// has ended the workout anyway.
 const RESUME_SLACK_MS: i64 = 2 * 60 * 60 * 1000;
 
+/// HUD toast text for a saved walk: duration, distance, average speed (left
+/// out for a zero-length walk) and today's total including this walk. A
+/// no-break space joins each number to its unit, so a wrap never splits them.
+fn session_saved_message(duration_s: i64, distance_m: f64, today_m: f64) -> String {
+    let mut msg = format!(
+        "SESSION SAVED · {} · {:.2}\u{a0}km",
+        crate::util::format_duration(duration_s),
+        distance_m / 1000.0
+    );
+    if duration_s > 0 {
+        msg.push_str(&format!(
+            " · {:.1}\u{a0}km/h",
+            distance_m / duration_s as f64 * 3.6
+        ));
+    }
+    msg.push_str(&format!(" · TODAY {:.2}\u{a0}km", today_m / 1000.0));
+    msg
+}
+
 /// `now` minus `ago`, or `now` itself if the clock doesn't reach back that far.
 fn before(now: Instant, ago: Duration) -> Instant {
     now.checked_sub(ago).unwrap_or(now)
@@ -1223,7 +1242,11 @@ impl OrchestratorState {
             app,
             serde_json::json!({
                 "type": "STATUS",
-                "message": format!("SESSION SAVED · {} · {:.2} km", duration, km),
+                "message": session_saved_message(
+                    self.session.duration_seconds,
+                    self.session.distance_meters,
+                    crate::snapshot::daily_total_with_live(self.session.distance_meters),
+                ),
                 "isActionable": true,
             }),
         );
@@ -2565,6 +2588,22 @@ impl ProtocolEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn session_saved_toast_has_speed_and_today() {
+        assert_eq!(
+            session_saved_message(1930, 1840.0, 6200.0),
+            "SESSION SAVED · 32:10 · 1.84\u{a0}km · 3.4\u{a0}km/h · TODAY 6.20\u{a0}km"
+        );
+    }
+
+    #[test]
+    fn session_saved_toast_skips_speed_for_zero_duration() {
+        assert_eq!(
+            session_saved_message(0, 0.0, 1500.0),
+            "SESSION SAVED · 0:00 · 0.00\u{a0}km · TODAY 1.50\u{a0}km"
+        );
+    }
 
     // Hand calculation, 75 kg at 4.0 km/h (S = 4000/60 = 66.667 m/min):
     //   level:   VO2 = 0.1*66.667 + 3.5            = 10.1667 mL/kg/min
