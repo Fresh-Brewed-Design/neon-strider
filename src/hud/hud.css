@@ -204,6 +204,7 @@ body,
 /* Neural flow easing the belt off: one quiet row under the stats. */
 .hud-neural {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
@@ -214,9 +215,7 @@ body,
 .hud-neural .hud-label {
   color: var(--accent);
   letter-spacing: 0.14em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
   min-width: 0;
 }
 .hud-neural-speed {
@@ -224,6 +223,7 @@ body,
   align-items: baseline;
   gap: 4px;
   flex-shrink: 0;
+  margin-left: auto;
   font-family: var(--hud-font-display);
   font-size: 12px;
   font-weight: 700;
@@ -306,17 +306,17 @@ body,
 /* ---- Running strip (minified) -------------------------------------- */
 
 /* Speed, time and distance on one line, heart rate under them with a sensor
-   picked, the program step, then expand, Engage/Stasis and Dump. Values
-   shrink before anything clips. */
+   picked, the program step, then expand, Engage/Stasis and Dump. At a
+   larger Windows text size a stat or a button that can't fit moves to the
+   next row; values are never cut. */
 .hud-run-strip { display: flex; flex-direction: column; gap: 7px; }
 
 .hud-run-stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, auto));
+  display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px 8px;
 }
-.hud-run-stats .hud-strip-total { min-width: 0; }
 
 /* Heart rate with a sensor picked: the bpm, its spark chart filling the rest
    of the row, bottom-aligned with the value. */
@@ -337,6 +337,7 @@ body,
 
 .hud-run-program {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: 8px;
   min-width: 0;
@@ -348,9 +349,8 @@ body,
 .hud-run-seg { white-space: nowrap; }
 .hud-run-seg-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 
-.hud-run-strip .hud-strip-row { flex-wrap: nowrap; }
 .hud-run-strip .hud-btn-expand { margin-left: 0; }
-.hud-run-strip .hud-btn-main { flex: 1 1 auto; min-width: 0; }
+.hud-run-strip .hud-btn-main { flex: 1 1 auto; min-width: max-content; padding: 0 10px; }
 .hud-run-strip .hud-btn-stop { flex-shrink: 0; height: 30px; }
 .hud-run-strip .hud-note { margin-top: 0; }
 
@@ -358,7 +358,9 @@ body,
 
 .hud-stats {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* Two columns, or one when a column would be under 90px (the largest
+     Windows text sizes, where the 340 px window is under 200px wide). */
+  grid-template-columns: repeat(auto-fit, minmax(max(90px, 34%), 1fr));
   gap: 1px;
   background: var(--hud-line);
   border-bottom: 1px solid var(--hud-line);
@@ -370,6 +372,21 @@ body,
   gap: 2px;
   padding: 8px 12px;
   background: var(--hud-bg);
+  /* The cell is the size reference for its value (cqi below), so a long
+     value can't widen its column and push the next one off the panel. */
+  container-type: inline-size;
+  min-width: 0;
+}
+
+/* Windows' text size zooms the whole HUD (WebView2 treats it like browser
+   zoom), so at 121 % the 340 px window lays out only 281 px wide. A value
+   keeps 22px while its cell has room, shrinks with a narrow cell (about
+   six digits per cell width), and its unit drops under the number rather
+   than past the edge. Never under 15px. */
+.hud-stat .hud-value {
+  flex-wrap: wrap;
+  row-gap: 0;
+  font-size: clamp(15px, 21cqi, 22px);
 }
 
 /* An odd last cell spans the row instead of leaving a hole. */
@@ -458,7 +475,8 @@ body,
 
 .hud-steppers {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* Side by side while both fit (- 12.0 + needs about 104px), else stacked. */
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
   gap: 8px;
 }
 
@@ -510,10 +528,11 @@ body,
   overflow-wrap: anywhere;
 }
 .hud-auto-actions {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
+.hud-auto-actions .hud-btn { flex: 1 1 0; min-width: max-content; }
 
 /* A program waiting for GO (its next step would start a still belt): a
    yellow edge, a headline that can't be missed, and a filled, glowing GO. */
