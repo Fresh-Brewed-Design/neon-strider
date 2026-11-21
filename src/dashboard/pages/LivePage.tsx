@@ -98,8 +98,9 @@ export function LivePage() {
             unit="km/h"
             actual={deck.speed_kmh}
             target={deck.target_speed_kmh}
-            min={0}
-            max={Math.max(deck.max_speed_kmh, 0.1)}
+            // The lowest setting is the belt's floor: only Pause or Stop take it to 0.
+            min={deck.min_speed_kmh}
+            max={Math.max(deck.max_speed_kmh, deck.min_speed_kmh + 0.1)}
             step={0.1}
             presets={SPEED_PRESETS}
             formatPreset={(v) => v.toFixed(1)}

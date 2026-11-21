@@ -1312,7 +1312,21 @@ impl OrchestratorState {
         // speed setting, or the deck's floor once DECK_PROFILE knows it. A
         // byte below it would only be raised back to it when sent, so the
         // next up press would do nothing.
-        let floor = (self.floor_hw_speed() * 10.0).round() as i32;
+        let floor = ((self.floor_hw_speed() * 10.0).round() as i32).min(max_byte);
+        // A moving belt never goes below the floor on a press, whatever the
+        // intent says: a byte under it (stored while the belt was still, say)
+        // runs as the floor, so the press steps from the byte the deck runs,
+        // and only Pause or Stop take the belt to 0 (#177).
+        let raised = self.last_status.is_moving() && cur_byte < floor;
+        let cur_byte = if raised {
+            let running = ((self.hardware_speed * 10.0).round() as i32).clamp(floor, max_byte);
+            log::info!(
+                "Speed press on a moving belt from deck byte {cur_byte}, below the floor {floor}: steps from byte {running}"
+            );
+            running
+        } else {
+            cur_byte
+        };
         let min_byte = if cur_byte >= floor { floor } else { 0 };
         let mut target_byte = (cur_byte + dir).clamp(min_byte, max_byte);
         // Two bytes with exactly the same km/h both send as the lower one, and
@@ -1328,8 +1342,9 @@ impl OrchestratorState {
             target_byte += dir;
         }
 
-        // A press at the top speed still takes the deck's own setting.
-        if target_byte != cur_byte || deck_byte.is_some() {
+        // A press at the top speed still takes the deck's own setting, and a
+        // press held at the floor stores the floor in place of the byte under it.
+        if target_byte != cur_byte || deck_byte.is_some() || raised {
             let phys = self.physical_for_byte(target_byte as u8, cur.incline);
             self.store_editable_intent(ControlIntent {
                 speed: phys,
@@ -3415,6 +3430,33 @@ mod tests {
             state.trigger_action(DeckAction::SpeedDown);
             assert_eq!(manual_byte(&state), min_byte, "held at the Min speed");
         }
+    }
+
+    /// A moving belt whose intent sits under the floor runs the floor: a
+    /// down press holds it there and an up press steps one byte above it.
+    /// Neither ever takes the intent to 0, which would pause the belt.
+    #[test]
+    fn a_press_on_a_moving_belt_never_goes_below_the_floor() {
+        let mut state = OrchestratorState::default();
+        state.sync_config(&persistence::AppConfig::default());
+        state.last_status = MachineStatus::Running;
+        state.hardware_speed = 0.6;
+        let floor = (state.min_speed * 10.0).round() as u8;
+        let below = |s: &mut OrchestratorState| {
+            s.manual_intent = Some(ControlIntent {
+                speed: s.physical_for_byte(2, 0),
+                incline: 0,
+            })
+        };
+        below(&mut state);
+        for _ in 0..4 {
+            state.trigger_action(DeckAction::SpeedDown);
+            assert_eq!(manual_byte(&state), floor);
+            assert!(state.resolve_target().0 >= state.min_physical_speed());
+        }
+        below(&mut state);
+        state.trigger_action(DeckAction::SpeedUp);
+        assert_eq!(manual_byte(&state), floor + 1);
     }
 
     /// Forward (hardware to km/h) and inverse (km/h to hardware) lookups

@@ -13,25 +13,41 @@ use crate::util::blocking;
 use std::time::Instant;
 use tauri::AppHandle;
 
-/// Below this the engine treats a speed as "pause".
+/// Below this the engine treats a speed as "pause" on a still belt.
 const PAUSE_BELOW_KMH: f32 = crate::engine::STILL_KMH;
 
-/// Manual speed: below the engine's pause threshold means "pause" (0),
-/// anything else is held inside [calibrated min, calibrated max]. The engine
-/// would bump a small positive value up to the floor anyway; doing it here
-/// keeps the stored intent honest.
-pub(super) fn clamp_manual_speed(state: &OrchestratorState, kmh: f32) -> Result<f32, String> {
+/// Manual speed, held inside [calibrated min, calibrated max]. Below the
+/// engine's pause threshold on a still belt means "stay still" (0). On a
+/// moving belt it is held at the floor: a speed control never takes the belt
+/// to 0, only Pause or Stop do (#177). The engine would bump a small positive
+/// value up to the floor anyway; doing it here keeps the stored intent honest.
+pub(crate) fn clamp_manual_speed(state: &OrchestratorState, kmh: f32) -> Result<f32, String> {
     if !kmh.is_finite() {
         return Err("Speed must be a finite number".to_string());
     }
     if kmh < PAUSE_BELOW_KMH {
-        return Ok(0.0);
+        if !state.last_status.is_moving() {
+            return Ok(0.0);
+        }
+        log::info!(
+            "Speed {kmh:.2} km/h from set_speed (Live page slider or preset) on a moving belt: held at the floor {:.2} km/h, only Pause or Stop take the belt to 0",
+            state.min_physical_speed()
+        );
     }
     let max = state.to_physical_speed(state.top_hw_speed());
     // Snapped to a speed the deck runs (DECK_PROFILE), then kept in bounds.
     Ok(state
         .snap_speed(kmh.min(max).max(state.min_physical_speed()))
         .min(max))
+}
+
+/// `Command::SetSpeed`: a speed set by hand, clamped (`clamp_manual_speed`).
+/// The sim's scenarios set speeds through here too.
+pub(crate) fn set_speed(state: &mut OrchestratorState, kmh: f32) -> Result<(), String> {
+    let speed = clamp_manual_speed(state, kmh)?;
+    log::info!("Speed set by hand: {speed:.2} km/h (asked {kmh:.2})");
+    bluetooth::apply_manual_intent(state, Some(speed), None);
+    Ok(())
 }
 
 pub(super) fn clamp_incline_level(state: &OrchestratorState, level: u8) -> u8 {
@@ -85,12 +101,7 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         Command::ToggleStart => press("toggle-start").await,
         Command::NudgeSpeed { up } => press(if up { "speed-up" } else { "speed-down" }).await,
         Command::NudgeIncline { up } => press(if up { "incline-up" } else { "incline-down" }).await,
-        Command::SetSpeed { kmh } => {
-            let mut state = ORCHESTRATOR.lock().await;
-            let speed = clamp_manual_speed(&state, kmh)?;
-            bluetooth::apply_manual_intent(&mut state, Some(speed), None);
-            Ok(())
-        }
+        Command::SetSpeed { kmh } => set_speed(&mut *ORCHESTRATOR.lock().await, kmh),
         Command::SetInclineLevel { level } => {
             let mut state = ORCHESTRATOR.lock().await;
             let level = clamp_incline_level(&state, level);
@@ -502,6 +513,16 @@ mod tests {
         assert_eq!(clamp_manual_speed(&state, 4.5).unwrap(), 4.5);
         assert_eq!(clamp_manual_speed(&state, 99.0).unwrap(), 12.0);
         assert!(clamp_manual_speed(&state, f32::NAN).is_err());
+
+        // On a moving belt a speed control's lowest setting is the floor.
+        let moving = OrchestratorState {
+            last_status: crate::protocol::MachineStatus::Running,
+            ..OrchestratorState::default()
+        };
+        assert_eq!(clamp_manual_speed(&moving, 0.0).unwrap(), 0.6);
+        assert_eq!(clamp_manual_speed(&moving, -3.0).unwrap(), 0.6);
+        assert_eq!(clamp_manual_speed(&moving, 0.04).unwrap(), 0.6);
+        assert_eq!(clamp_manual_speed(&moving, 4.5).unwrap(), 4.5);
 
         assert_eq!(clamp_incline_level(&state, 5), 5);
         assert_eq!(clamp_incline_level(&state, 200), 12);

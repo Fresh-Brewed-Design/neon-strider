@@ -689,10 +689,11 @@ impl Rig {
         self.state.trigger_action(action);
     }
 
-    /// A speed set by hand (the dashboard slider, a typed value).
+    /// A speed set by hand (the dashboard slider, a preset), through the same
+    /// code as `Command::SetSpeed`.
     pub(crate) fn set_speed(&mut self, kmh: f32) {
         self.state.set_test_now(self.t);
-        crate::bluetooth::apply_manual_intent(&mut self.state, Some(kmh), None);
+        crate::snapshot::commands::set_speed(&mut self.state, kmh).unwrap();
     }
 
     /// `n` speed presses on the deck's remote, `up` or down, 0.3 s apart.
@@ -896,9 +897,9 @@ mod tests {
     }
 
     #[test]
-    fn a_program_taken_to_zero_by_hand_and_re_jacked_keeps_running() {
+    fn a_program_paused_by_hand_and_re_jacked_keeps_running() {
         let mut r = post_meal_walking();
-        r.set_speed(0.0);
+        r.press(DeckAction::Pause);
         r.run(12.0);
         assert_eq!(r.deck.status_code(), 10);
         assert!(r.deck.belt_still());
@@ -3779,5 +3780,80 @@ mod tests {
         assert!(!moves_belt(&r.commands_since(mark)));
         assert_eq!(r.controls_since(mark, Control::Stop), 0);
         assert_eq!(r.controls_since(mark, Control::Pause), 0);
+    }
+
+    /// 2026-11-20 on the owner's treadmill: a belt walking under speed
+    /// presses paused with "Triggering Pause (Source: MANUAL)", with no press
+    /// logged then: the Live page's speed slider sent its lowest setting, 0.
+    /// A speed set by hand on a moving belt now stops at the floor; only
+    /// Pause or Stop take the belt to 0.
+    #[test]
+    fn the_speed_slider_at_its_lowest_holds_a_moving_belt_at_the_floor() {
+        let mut r = walking_rig(6, 60);
+        let mark = r.mark();
+        for kmh in [2.0, 1.0, 0.4, 0.0, -1.0, 0.0] {
+            r.set_speed(kmh);
+            r.run(0.3);
+        }
+        r.run(10.0);
+        assert_eq!(r.controls_since(mark, Control::Pause), 0, "never paused");
+        assert_eq!(r.controls_since(mark, Control::Stop), 0);
+        assert!(r.deck.running_at(0.6), "{} km/h", r.deck.speed_kmh());
+        // Pause and Stop still take it to 0.
+        r.press(DeckAction::Pause);
+        r.run(10.0);
+        assert_eq!(r.deck.status_code(), 10);
+        assert!(r.deck.belt_still());
+        r.press(DeckAction::Start);
+        r.run(10.0);
+        assert!(r.deck.running_at(0.6), "{} km/h", r.deck.speed_kmh());
+        r.press(DeckAction::Stop);
+        r.run(15.0);
+        assert!(r.deck.belt_still());
+    }
+
+    /// A still belt keeps a slider at 0 as still: nothing starts.
+    #[test]
+    fn the_speed_slider_at_zero_leaves_a_still_belt_still() {
+        let mut r = Rig::new();
+        r.run(1.0);
+        let mark = r.mark();
+        r.set_speed(0.0);
+        r.run(10.0);
+        assert!(!app_starts(&r.commands_since(mark)));
+        assert!(r.deck.belt_still());
+    }
+
+    /// Speed down presses on a belt moving at the floor while the intent sits
+    /// below it (the up presses from still stored bytes under the floor) hold
+    /// the belt at the floor; before, they stepped the intent to 0 and paused
+    /// the belt.
+    #[test]
+    fn speed_down_presses_never_pause_a_belt_moving_at_the_floor() {
+        let mut r = Rig::new();
+        r.deck.set_limits(6, 60);
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(8.0);
+        assert!(r.deck.running_at(0.6), "{} km/h", r.deck.speed_kmh());
+        // An intent below the floor on a moving belt, as up presses from
+        // still left it before #176.
+        r.state.manual_intent = Some(protocol::ControlIntent {
+            speed: r.state.physical_for_byte(2, 0),
+            incline: 0,
+        });
+        let mark = r.mark();
+        for _ in 0..4 {
+            r.press(DeckAction::SpeedDown);
+            r.run(1.0);
+        }
+        r.run(8.0);
+        assert_eq!(r.controls_since(mark, Control::Pause), 0, "never paused");
+        assert!(r.deck.running_at(0.6), "{} km/h", r.deck.speed_kmh());
+        // The next up press steps one byte above the floor.
+        let mark = r.mark();
+        r.press(DeckAction::SpeedUp);
+        r.run(4.0);
+        assert_eq!(target_bytes_since(&r, mark), vec![7]);
     }
 }
