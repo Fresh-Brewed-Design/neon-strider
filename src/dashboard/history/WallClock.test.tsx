@@ -17,7 +17,7 @@ describe("WALL_CLOCK", () => {
     expect(screen.getByLabelText("09:00: walked on 10 of 12 desk days")).toBeTruthy();
     expect(screen.getByLabelText("10:00: walked on 3 of 12 desk days")).toBeTruthy();
     expect(screen.getAllByLabelText(/no walks$/)).toHaveLength(11);
-    expect(screen.getByText("An hour glows brighter for each of your last 12 desk days with a walk in that hour.")).toBeTruthy();
+    expect(screen.getByText("Brighter hours had walks on more of your last 12 desk days.")).toBeTruthy();
   });
 
   it("widens to a late hour Rust reports", () => {
