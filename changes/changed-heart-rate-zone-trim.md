@@ -1,0 +1,1 @@
+- Heart rate zone steps now wait 2 minutes of walking for your pulse to settle before they trim the speed, and wait again after a pause and GO. PULSE_RATE shows `ZONE // SETTLING` meanwhile.

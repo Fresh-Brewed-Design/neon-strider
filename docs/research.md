@@ -143,8 +143,13 @@ intensity the 4x4 studies prescribe.
 - The zone is a percentage of the maximum heart rate set in System, Heart rate; until one is
   set it uses 190 bpm (220 minus age at 30). A measured or age-based maximum of your own makes
   the zone right for you.
-- A pulse takes a minute or two to climb at the start of each effort, so expect the speed to
-  rise early in each climb and settle back once the pulse catches up.
+- A pulse takes a minute or two to climb at the start of each effort, so each zone step leaves
+  the speed alone for its first 2 minutes of running (#157), and again after a pause and GO.
+  After a step change in treadmill speed, heart rate follows with a time constant of about
+  58 s (57.6 s mean in 24 men, the same for steps up and down; Hunt et al. 2015). Two time
+  constants cover about 86 % of the change and leave half of each 4 minute climb to trim in;
+  waiting three (about 3 minutes) would leave one. Without the wait the trim pushed the speed up
+  early in each climb, then pulled it back once the pulse caught up.
 - Existing installs get the zones only on a VO2 max that was never edited; an edited one keeps
   what you set.
 
@@ -321,6 +326,9 @@ exercise inside a screen break, so this follows the trial's dose, not a tested b
   A systematic review with meta-analysis on the acute postprandial response to exercise before
   and after meal ingestion in healthy subjects and patients with impaired glucose tolerance.
   *Sports Medicine* 53(4): 849–869. https://doi.org/10.1007/s40279-022-01808-7
+- Hunt KJ, Fankhauser SE, Saengsuwan J (2015). Identification of heart rate dynamics during
+  moderate-to-vigorous treadmill exercise. *BioMedical Engineering OnLine* 14: 117.
+  https://doi.org/10.1186/s12938-015-0112-7
 - John D, Bassett D, Thompson D, Fairbrother J, Baldwin D (2009). Effect of using a treadmill
   workstation on performance of simulated office work tasks. *Journal of Physical Activity and
   Health* 6(5): 617–624. https://doi.org/10.1123/jpah.6.5.617

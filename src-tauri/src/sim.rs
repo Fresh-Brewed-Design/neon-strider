@@ -1071,6 +1071,50 @@ mod tests {
         r
     }
 
+    /// `programs::ZONE_SETTLE` in seconds: a zone step trims nothing before.
+    const SETTLE: f64 = crate::programs::ZONE_SETTLE.as_secs_f64();
+
+    /// A zone step with a pulse below the zone holds the step's speed while
+    /// the pulse settles, then trims it up by targets alone. A pause and GO
+    /// holds it again for the same wait.
+    #[test]
+    fn a_zone_holds_the_speed_while_the_pulse_settles_then_trims() {
+        let mut r = zone_rig();
+        r.state.heart_bpm = Some(150);
+        r.run_program(ZONE);
+        r.run(SETTLE - 5.0);
+        // The countdown took about 4 s of that, so the belt has run under the wait.
+        assert!(r.deck.running_at(4.0), "held: {} km/h", r.deck.speed_kmh());
+        let mark = r.mark();
+        r.run(30.0);
+        assert!(
+            r.deck.speed_kmh() > 4.05,
+            "trimmed up once settled: {} km/h",
+            r.deck.speed_kmh()
+        );
+        assert_eq!(controls(&r.commands_since(mark)), vec![]);
+
+        // Paused and GO: the step's trimmed speed holds for the wait again.
+        r.press(DeckAction::Pause);
+        r.run(10.0);
+        r.go();
+        r.run(15.0);
+        let resumed = r.deck.speed_kmh();
+        assert!(resumed > 4.05, "{resumed} km/h");
+        r.run(SETTLE - 30.0);
+        assert!(
+            (r.deck.speed_kmh() - resumed).abs() < 0.001,
+            "held after GO: {} km/h",
+            r.deck.speed_kmh()
+        );
+        r.run(30.0);
+        assert!(
+            r.deck.speed_kmh() > resumed + 0.05,
+            "{} km/h",
+            r.deck.speed_kmh()
+        );
+    }
+
     fn controls(sent: &[PacketKind]) -> Vec<PacketKind> {
         sent.iter()
             .copied()
@@ -1095,6 +1139,7 @@ mod tests {
         r.run_program(ZONE);
         r.run(20.0);
         assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        r.run(SETTLE);
         let mark = r.mark();
         r.state.heart_bpm = Some(195);
         r.run(70.0);
@@ -1120,7 +1165,7 @@ mod tests {
     fn a_zone_trim_racing_a_pause_at_the_treadmill_never_resumes_the_belt() {
         let mut r = zone_rig();
         r.run_program(ZONE);
-        r.run(20.0);
+        r.run(20.0 + SETTLE);
         assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
         let mark = r.mark();
         let t = r.t;
@@ -1206,10 +1251,17 @@ mod tests {
             r.deck.speed_kmh()
         );
 
-        // Into the first climb (6.0 km/h at 10 %), still above the zone.
+        // Into the first climb (6.0 km/h at 10 %), still above the zone:
+        // the climb holds its speed while the pulse settles, then trims.
         r.run(230.0);
         assert_eq!(r.program().step_index, 1);
         let mark = r.mark();
+        r.run(SETTLE - 10.0);
+        assert!(
+            r.deck.running_at(6.0),
+            "settling: {} km/h",
+            r.deck.speed_kmh()
+        );
         r.run(70.0);
         let speed = r.deck.speed_kmh();
         assert!((5.0..5.95).contains(&speed), "trimmed down: {} km/h", speed);

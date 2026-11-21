@@ -1,23 +1,29 @@
 // PULSE_RATE's heart rate zone (#125). ?hrzone=under|in|over: a watch reading
 // below, inside or above a 133 to 152 bpm zone step (70 to 80 % of 190);
-// =wait the zone step with the watch picked but no reading yet.
+// =wait the zone step with the watch picked but no reading yet; =settling a
+// reading below the zone while the step waits 75 s more for the pulse to settle.
 import type { ZoneBand } from "../../ipc";
 import { params, snapshot } from "../mockState";
 import type { Scenario } from "./types";
 
 /** Rust's `heart_rate::zone_band`, for the preview: same rule, same words. */
-export function mockZone(low: number, high: number, bpm: number | null): ZoneBand {
+export function mockZone(low: number, high: number, bpm: number | null, settleS: number | null = null): ZoneBand {
   const position = bpm === null ? null : bpm > high ? "over" : bpm < low ? "under" : "in";
   const text = {
     under: ["ZONE // UNDER", "Heart rate is below the zone."],
     in: ["ZONE // LOCKED", "Heart rate is in the zone."],
     over: ["ZONE // OVER", "Heart rate is above the zone."],
   } as const;
-  const [label, message] = position ? text[position] : ["ZONE // WAIT", "Waiting for a heart rate reading."];
-  return { low_bpm: Math.ceil(low), high_bpm: Math.floor(high), position, label, message };
+  const [label, message] =
+    position && settleS !== null
+      ? ["ZONE // SETTLING", "Heart rate is settling before the zone trims."]
+      : position
+        ? text[position]
+        : ["ZONE // WAIT", "Waiting for a heart rate reading."];
+  return { low_bpm: Math.ceil(low), high_bpm: Math.floor(high), position, label, message, settle_s: settleS };
 }
 
-const BPM: Record<string, number | null> = { under: 124, in: 143, over: 161, wait: null };
+const BPM: Record<string, number | null> = { under: 124, in: 143, over: 161, wait: null, settling: 124 };
 
 /** Ten minutes at one point per 5 s, easing from 110 bpm to `end`. */
 function history(end: number | null): (number | null)[] {
@@ -46,7 +52,7 @@ export const hrZone: Scenario = {
           : "Reading heart rate from the sensor.",
       bpm,
       history: history(bpm),
-      zone: mockZone(133, 152, bpm),
+      zone: mockZone(133, 152, bpm, flag === "settling" ? 75 : null),
     });
   },
 };

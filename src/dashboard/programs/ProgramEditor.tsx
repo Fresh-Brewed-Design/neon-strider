@@ -188,8 +188,9 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
             />
           </div>
           <Hint>
-            A heart zone trims a moving step&apos;s speed by up to 1 km/h and never starts the belt. Zones are a share of
-            the {maxBpm} bpm max heart rate in System, Heart rate.
+            A heart zone trims a moving step&apos;s speed by up to 1 km/h and never starts the belt. Each zone step
+            waits 2 minutes for the pulse to settle before trimming. Zones are a share of the {maxBpm} bpm max heart
+            rate in System, Heart rate.
           </Hint>
         </div>
       )}

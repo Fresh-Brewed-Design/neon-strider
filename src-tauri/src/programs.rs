@@ -53,6 +53,14 @@ const ZONE_TRIM_EVERY: Duration = Duration::from_secs(20);
 /// 1 km/h means the step doesn't suit the zone, not that the belt should run
 /// at a speed the user never picked.
 const ZONE_TRIM_RANGE_KMH: f32 = 1.0;
+/// A zone step leaves the belt alone for this much running time after it
+/// starts, resumes or takes GO, so the trim doesn't chase a pulse still
+/// climbing to the new effort. After a step change in treadmill speed the
+/// heart rate follows with a time constant of about 58 s (57.6 s mean, 24 men;
+/// Hunt, Fankhauser and Saengsuwan 2015, docs/research.md). Two time constants
+/// cover about 86 % of the change, and leave half of a 4 minute VO2 max climb
+/// to trim in; three (about 3 minutes) would leave one minute.
+pub(crate) const ZONE_SETTLE: Duration = Duration::from_secs(120);
 /// A zone's lowest allowed bound, in % of maximum heart rate: below 30 % is
 /// resting heart rate for most people, which walking can't hold down to.
 const ZONE_MIN_PCT: f32 = 30.0;
@@ -251,6 +259,10 @@ pub struct ProgramRun {
     pub deck_moved: bool,
     /// When the speed was last trimmed to hold a heart rate zone. Not saved.
     pub zone_trimmed_at: Option<Instant>,
+    /// Seconds the belt has run in this step since it started, resumed or
+    /// took GO; a zone trims nothing until `ZONE_SETTLE` has passed. Not
+    /// saved: a restored run waits again.
+    pub zone_settle_s: f64,
 }
 
 /// What the deck has reported since the run began holding the belt still: a
@@ -1032,6 +1044,7 @@ impl OrchestratorState {
             deck_start: DeckStartWatch::default(),
             deck_moved: false,
             zone_trimmed_at: None,
+            zone_settle_s: 0.0,
         };
         self.set_program_intent_from(&run);
         self.program = Some(run);
@@ -1082,6 +1095,8 @@ impl OrchestratorState {
         run.last_tick = now;
         run.deck_start = DeckStartWatch::default();
         run.deck_moved = false;
+        // The pulse falls while the belt is still; a zone waits again.
+        run.zone_settle_s = 0.0;
         let incline = run.target.incline;
         let run = run.clone();
         self.set_program_intent_from(&run);
@@ -1107,6 +1122,9 @@ impl OrchestratorState {
         run.paused = false;
         run.wait = None;
         run.last_tick = now;
+        // GO is a step up in effort from a still belt: a zone waits for the
+        // pulse again, however short the pause was.
+        run.zone_settle_s = 0.0;
         let run = run.clone();
         self.set_program_intent_from(&run);
         self.prioritize_program(now);
@@ -1146,6 +1164,8 @@ impl OrchestratorState {
         now: Instant,
     ) -> Option<ProgramRun> {
         let still = self.belt_still(now);
+        // Every new step is a new effort: its zone waits for the pulse.
+        run.zone_settle_s = 0.0;
         match run.phase {
             ProgramPhase::Walking => {
                 if run.step_index + 1 < run.program.steps.len() {
@@ -1288,6 +1308,13 @@ impl OrchestratorState {
         if counting {
             run.elapsed_s += dt;
         }
+        // Only time with the belt running settles the pulse to the step.
+        if run.phase == ProgramPhase::Walking
+            && !run.paused
+            && self.last_status == MachineStatus::Running
+        {
+            run.zone_settle_s += dt;
+        }
 
         for _ in 0..64 {
             let Some(len) = run.phase_len_s() else { break };
@@ -1341,6 +1368,7 @@ impl OrchestratorState {
             return;
         };
         if step.speed_kmh < MOVING_KMH
+            || run.zone_settle_s < ZONE_SETTLE.as_secs_f64()
             || run
                 .zone_trimmed_at
                 .is_some_and(|at| now.saturating_duration_since(at) < ZONE_TRIM_EVERY)
@@ -1459,7 +1487,21 @@ impl OrchestratorState {
         }
         let zone = run.program.steps.get(run.step_index)?.zone?;
         let (low, high) = zone.bounds_bpm(self.max_heart_rate);
-        Some(crate::heart_rate::zone_band(low, high, bpm))
+        let band = crate::heart_rate::zone_band(low, high, bpm);
+        Some(match self.zone_settle_left_s(run) {
+            Some(left) => band.settling(left),
+            None => band,
+        })
+    }
+
+    /// Whole seconds a walking, unpaused zone step still waits for the pulse
+    /// to settle before it trims; none once it trims (or can't: paused).
+    fn zone_settle_left_s(&self, run: &ProgramRun) -> Option<u32> {
+        if run.paused || run.wait.is_some() {
+            return None;
+        }
+        let left = ZONE_SETTLE.as_secs_f64() - run.zone_settle_s;
+        (left > 0.0).then(|| left.ceil() as u32)
     }
 
     /// Create (id 0) or replace a program after validating it.
@@ -1648,6 +1690,7 @@ impl OrchestratorState {
             deck_start: DeckStartWatch::default(),
             deck_moved: false,
             zone_trimmed_at: None,
+            zone_settle_s: 0.0,
         };
         self.set_program_intent_from(&run);
         self.program = Some(run);
@@ -3592,7 +3635,93 @@ mod tests {
         });
         moving(&mut s, 3.0, 0);
         s.run_program(9, t0).unwrap();
+        // Past the settle, so the trim works from the first tick.
+        s.program.as_mut().unwrap().zone_settle_s = ZONE_SETTLE.as_secs_f64();
         s
+    }
+
+    /// `zone_state` at the very start of its step, before the pulse settles.
+    fn fresh_zone_state(t0: Instant) -> OrchestratorState {
+        let mut s = zone_state(t0);
+        s.program.as_mut().unwrap().zone_settle_s = 0.0;
+        s
+    }
+
+    const SETTLE_S: u64 = ZONE_SETTLE.as_secs();
+
+    /// A zone step holds its speed while the pulse settles, then trims.
+    #[test]
+    fn a_zone_waits_for_the_pulse_to_settle_then_trims() {
+        let t0 = Instant::now();
+        let mut s = fresh_zone_state(t0);
+        s.heart_bpm = Some(150);
+        run_ticks(&mut s, t0, 0, SETTLE_S - 1);
+        assert_eq!(program_speed(&s), 5.0, "held for the settle");
+        let band = s.zone_band(Some(150)).unwrap();
+        assert_eq!(band.settle_s, Some(1));
+        assert_eq!(band.label, "ZONE // SETTLING");
+        run_ticks(&mut s, t0, SETTLE_S - 1, SETTLE_S);
+        assert_eq!(program_speed(&s), 5.0 + ZONE_TRIM_KMH, "trims once settled");
+        assert_eq!(s.zone_band(Some(150)).unwrap().settle_s, None);
+        assert_eq!(s.zone_band(Some(150)).unwrap().label, "ZONE // UNDER");
+    }
+
+    /// Only running time settles: a belt that isn't running yet (counting
+    /// down, say) doesn't count toward the wait.
+    #[test]
+    fn the_settle_counts_only_running_time() {
+        let t0 = Instant::now();
+        let mut s = fresh_zone_state(t0);
+        s.heart_bpm = Some(195);
+        s.last_status = MachineStatus::Starting;
+        run_ticks(&mut s, t0, 0, 200);
+        s.last_status = MachineStatus::Running;
+        run_ticks(&mut s, t0, 200, 200 + SETTLE_S - 1);
+        assert_eq!(program_speed(&s), 5.0);
+        run_ticks(&mut s, t0, 200 + SETTLE_S - 1, 200 + SETTLE_S);
+        assert_eq!(program_speed(&s), 5.0 - ZONE_TRIM_KMH);
+    }
+
+    /// A pause and GO, and each new step, start the wait again.
+    #[test]
+    fn a_pause_and_go_or_a_new_step_waits_again() {
+        let t0 = Instant::now();
+        let mut s = zone_state(t0);
+        s.heart_bpm = Some(195);
+        run_ticks(&mut s, t0, 0, 1);
+        assert_eq!(program_speed(&s), 5.0 - ZONE_TRIM_KMH);
+        s.pause_program(t0 + secs(2)).unwrap();
+        run_ticks(&mut s, t0, 2, 10);
+        s.resume_program(t0 + secs(10)).unwrap();
+        assert_eq!(
+            s.zone_band(Some(195)).unwrap().settle_s,
+            Some(SETTLE_S as u32)
+        );
+        run_ticks(&mut s, t0, 10, 10 + SETTLE_S - 1);
+        assert_eq!(program_speed(&s), 5.0 - ZONE_TRIM_KMH, "held after GO");
+        run_ticks(&mut s, t0, 10 + SETTLE_S - 1, 10 + SETTLE_S);
+        assert_eq!(program_speed(&s), 5.0 - 2.0 * ZONE_TRIM_KMH);
+
+        // Into a second zone step: the wait starts over.
+        let mut s = zone_state(t0);
+        let step = s.program.as_ref().unwrap().program.steps[0].clone();
+        s.program.as_mut().unwrap().program.steps.push(step);
+        s.heart_bpm = Some(195);
+        run_ticks(&mut s, t0, 0, 20 * 60);
+        assert_eq!(s.active_program().unwrap().step_index, 1);
+        assert!(s.zone_band(Some(195)).unwrap().settle_s.is_some());
+        let speed = program_speed(&s);
+        run_ticks(&mut s, t0, 20 * 60, 20 * 60 + SETTLE_S - 2);
+        assert_eq!(program_speed(&s), speed, "the second step waits too");
+    }
+
+    /// A paused zone step shows no countdown: nothing would trim it anyway.
+    #[test]
+    fn a_paused_zone_step_shows_no_settle() {
+        let t0 = Instant::now();
+        let mut s = fresh_zone_state(t0);
+        s.pause_program(t0 + secs(1)).unwrap();
+        assert_eq!(s.zone_band(Some(150)).unwrap().settle_s, None);
     }
 
     #[test]
