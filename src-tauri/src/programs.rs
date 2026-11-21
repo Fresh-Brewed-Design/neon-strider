@@ -440,6 +440,9 @@ pub(crate) fn validate_program(p: &Program, min_speed: f32, max_speed: f32) -> R
         if p.steps[last].duration_minutes.is_none() {
             return Err("A step that runs until ended can't repeat".to_string());
         }
+        // A cycle starts every `r` minutes and the rest is what is left after
+        // the steps, so a spacing no longer than the walk would leave no rest
+        // (Workday: the spacing must be longer than the break).
         if r <= total_minutes(p) {
             return Err("Repeat interval must be longer than the program".to_string());
         }
@@ -449,7 +452,11 @@ pub(crate) fn validate_program(p: &Program, min_speed: f32, max_speed: f32) -> R
 
 /// The examples a new install starts with. Values and sources are in
 /// docs/research.md. Existing installs were moved to these by
-/// `persistence::migration_3_research_programs`, which keeps its own copy.
+/// `persistence::migration_3_research_programs` and
+/// `persistence::migration_8_seeded_programs`, which keep their own copies.
+/// The ids match what a v1.6 install ends up with after every migration
+/// (id 4 was Micro-break, merged into Workday), so a migrated install and
+/// a new one hold the same list.
 pub fn seed_programs() -> Vec<Program> {
     let program =
         |id: u32, name: &str, step: ProgramStep, repeat: Option<f32>, note: &str| Program {
@@ -476,22 +483,31 @@ pub fn seed_programs() -> Vec<Program> {
         program(
             2,
             "Workday",
-            step(Some(5.0), 3.0, 5.0),
-            Some(30.0),
+            step(Some(WORKDAY_MINUTES), WORKDAY_KMH, WORKDAY_INCLINE_PCT),
+            Some(WORKDAY_EVERY_MINUTES),
             NOTE_WORKDAY,
         ),
         program(3, "Focus", step(None, 2.0, 0.0), None, NOTE_FOCUS),
-        program(
-            4,
-            "Micro-break",
-            step(Some(2.0), 3.2, 0.0),
-            Some(20.0),
-            NOTE_MICRO_BREAK,
-        ),
         program(5, "Brisk", step(Some(30.0), 5.0, 0.0), None, NOTE_BRISK),
         vo2_max_program(6),
+        interval_walk_program(7),
     ]
 }
+
+/// Workday's two settings are the program's own fields: the break length
+/// is its one step's minutes and the spacing is `repeat_every_minutes`, both
+/// edited like any program's, with speed and incline. The defaults are
+/// Duran et al. (2023)'s best dose: 5 minutes of light walking every 30 was
+/// the only one of their four doses that lowered the glucose rise after
+/// meals. The limits are the ones every program has (`validate_program`):
+/// the spacing must be longer than the break, since the rest between breaks
+/// is the spacing minus the break.
+const WORKDAY_MINUTES: f32 = 5.0;
+const WORKDAY_EVERY_MINUTES: f32 = 30.0;
+/// Light walking, about 3.7 METs by the ACSM equation, in line with the
+/// trials' light breaks (docs/research.md).
+const WORKDAY_KMH: f32 = 3.0;
+const WORKDAY_INCLINE_PCT: f32 = 5.0;
 
 /// The Norwegian 4x4 for the deck: warm-up, four 4-minute climbs each followed
 /// by 3 minutes of easy walking, cool-down. The deck tops out at 8 km/h and
@@ -527,13 +543,60 @@ fn vo2_max_program(id: u32) -> Program {
     }
 }
 
-pub const NOTE_VO2_MAX: &str = "Four hard 4-minute climbs with easy walks between train VO2 max.";
+/// Interval walking training (IWT, "Japanese walking"; Nemoto et al. 2007):
+/// a warm-up, then five rounds of 3 brisk minutes and 3 easy ones, 35 minutes
+/// in all. Every step moves the belt and nothing repeats, so no step starts a
+/// still belt: running it is the one press, like VO2 max. Existing installs
+/// get it from `persistence::migration_8_seeded_programs`,
+/// which keeps its own copy.
+fn interval_walk_program(id: u32) -> Program {
+    let step = |minutes: f32, speed_kmh: f32, incline_pct: f32| ProgramStep {
+        duration_minutes: Some(minutes),
+        speed_kmh,
+        incline_pct,
+        zone: None,
+    };
+    let mut steps = vec![step(INTERVAL_WARMUP_MINUTES, INTERVAL_WARMUP_KMH, 0.0)];
+    for _ in 0..INTERVAL_ROUNDS {
+        steps.push(step(
+            INTERVAL_MINUTES,
+            INTERVAL_BRISK_KMH,
+            INTERVAL_BRISK_INCLINE_PCT,
+        ));
+        steps.push(step(INTERVAL_MINUTES, INTERVAL_EASY_KMH, 0.0));
+    }
+    Program {
+        id,
+        name: "Interval walk".to_string(),
+        steps,
+        repeat_every_minutes: None,
+        note: Some(NOTE_INTERVAL_WALK.to_string()),
+    }
+}
 
-pub const NOTE_POST_MEAL: &str = "A walk soon after eating blunts the rise in blood sugar.";
-pub const NOTE_WORKDAY: &str = "Five minutes every half hour offsets long sitting.";
-pub const NOTE_FOCUS: &str = "Slow and flat, so typing and thinking stay steady.";
-pub const NOTE_MICRO_BREAK: &str = "Two easy minutes every 20 lower blood sugar after meals.";
-pub const NOTE_BRISK: &str = "Moderate walking toward the weekly 150 minutes.";
+/// A short warm-up at an ordinary walking pace before the first brisk round.
+const INTERVAL_WARMUP_MINUTES: f32 = 5.0;
+const INTERVAL_WARMUP_KMH: f32 = 4.0;
+/// IWT asks for 5 or more rounds a day; five is the trial's minimum dose.
+const INTERVAL_ROUNDS: usize = 5;
+/// Equal 3 minute blocks, brisk then easy, as in the trial.
+const INTERVAL_MINUTES: f32 = 3.0;
+/// Brisk: about 6.4 METs by the ACSM equation, inside the 6 to 7 METs aimed
+/// at for a fast walk and well under VO2 max's 9. The deck tops out at
+/// 8 km/h, so a fast walk gets its effort from a moderate incline.
+const INTERVAL_BRISK_KMH: f32 = 6.0;
+const INTERVAL_BRISK_INCLINE_PCT: f32 = 5.0;
+/// Easy: about 2.7 METs, flat, a slow walk to recover.
+const INTERVAL_EASY_KMH: f32 = 3.5;
+
+pub const NOTE_VO2_MAX: &str =
+    "Four hard climbs of four minutes, split by easy walks, train VO2 max.";
+pub const NOTE_POST_MEAL: &str = "Walking soon after a meal blunts the rise in blood sugar.";
+pub const NOTE_WORKDAY: &str = "Five easy minutes every half hour keep the body online.";
+pub const NOTE_FOCUS: &str = "A slow, flat walk keeps typing and thinking steady.";
+pub const NOTE_BRISK: &str = "Thirty brisk minutes count toward a weekly 150 of moderate activity.";
+pub const NOTE_INTERVAL_WALK: &str =
+    "Five rounds alternate three brisk minutes with three easy ones.";
 
 /// Test fixture: the three programs v1.6 seeded (Post-meal 10 min at 4.0 km/h
 /// and 10 %, Workday 5 min every 30 at 3.0 km/h and 5 %, Focus at 2.5 km/h and
@@ -1540,7 +1603,12 @@ impl OrchestratorState {
     /// on the reconnect (see `tick_program`). A run that holds the belt still
     /// keeps for hours (a program left waiting for GO over lunch is still
     /// there); a walking one only for minutes.
-    fn restore_run(&mut self, saved: &SavedRun, now_ms: i64, now: Instant) -> Result<(), String> {
+    pub(crate) fn restore_run(
+        &mut self,
+        saved: &SavedRun,
+        now_ms: i64,
+        now: Instant,
+    ) -> Result<(), String> {
         let age = now_ms - saved.saved_at_ms;
         let max_age = if saved.holds_belt_still() {
             RESUME_STILL_MAX_AGE_MS
@@ -2219,6 +2287,21 @@ mod tests {
             let note = p.note.as_deref().unwrap();
             assert!(note.len() <= 70 && note.ends_with('.'), "{}", note);
             assert_eq!(note.matches(". ").count(), 0, "{}", note);
+            // The writing rules: no dashes or semicolons, no deictic words.
+            assert!(
+                !note.contains(['\u{2014}', '\u{2013}', ';', '-']),
+                "{}",
+                note
+            );
+            for word in ["this", "that", "it", "here", "below"] {
+                assert!(
+                    !note
+                        .split([' ', ',', '.'])
+                        .any(|w| w.eq_ignore_ascii_case(word)),
+                    "{}",
+                    note
+                );
+            }
         }
         validate_program(&base(), 0.6, 12.0).unwrap();
 
@@ -2345,7 +2428,7 @@ mod tests {
         let l = initial_programs(None, None);
         assert!(l.seeded);
         assert_eq!(l.programs, seed_programs());
-        assert_eq!(l.next_id, 7);
+        assert_eq!(l.next_id, 8);
 
         // Present (even empty) is never reseeded.
         let l = initial_programs(Some("[]"), None);

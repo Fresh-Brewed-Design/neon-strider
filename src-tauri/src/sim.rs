@@ -1224,6 +1224,55 @@ mod tests {
         assert!(r.deck.speed_kmh() > 4.0, "{} km/h", r.deck.speed_kmh());
     }
 
+    /// The seeded Interval walk against the deck: one press runs the warm-up
+    /// and all five brisk and easy rounds with the belt moving throughout, no
+    /// step waits for GO, and the end leaves a belt that was still before
+    /// the program still.
+    #[test]
+    fn the_seeded_interval_walk_runs_every_round_without_waiting_for_go() {
+        let seeded = crate::programs::seed_programs()
+            .into_iter()
+            .find(|p| p.name == "Interval walk")
+            .expect("seeded");
+        let mut r = Rig::new();
+        r.state.programs.push(seeded.clone());
+        r.run(1.0);
+        r.run_program(seeded.id);
+        r.run(60.0);
+        assert!(
+            r.deck.running_at(4.0),
+            "warm-up: {} km/h",
+            r.deck.speed_kmh()
+        );
+
+        // Each step, 60 s in: the belt runs at the step's speed, no wait.
+        r.run(240.0);
+        for (i, step) in seeded.steps.iter().enumerate().skip(1) {
+            r.run(60.0);
+            let a = r.program();
+            assert_eq!((a.step_index as usize, a.wait), (i, None), "step {}", i);
+            assert!(
+                r.deck.running_at(step.speed_kmh),
+                "step {}: {} km/h",
+                i,
+                r.deck.speed_kmh()
+            );
+            r.run(120.0);
+        }
+
+        // 35 minutes in, the program is over and the belt is still again.
+        r.run(30.0);
+        assert!(r.state.active_program().is_none());
+        let mark = r.mark();
+        r.run(30.0);
+        assert!(r.deck.belt_still(), "{} km/h", r.deck.speed_kmh());
+        assert!(
+            !moves_belt(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+    }
+
     #[test]
     fn a_start_at_the_treadmill_on_a_waiting_program_is_its_go() {
         let mut r = Rig::new();
