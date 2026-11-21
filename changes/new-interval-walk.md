@@ -1,1 +1,0 @@
-- New program, Interval walk: a 5-minute warm-up, then five rounds of 3 brisk minutes at 6.0 km/h and 5 % and 3 easy minutes at 3.5 km/h, 35 minutes in all. It is easier than VO2 max and meant for most days of the week. Every step keeps the belt moving, so one press runs the whole walk.

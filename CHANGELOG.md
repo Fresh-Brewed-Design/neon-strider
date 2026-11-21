@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.43.0 (2026-11-21)
+
+### New
+
+- New program, Interval walk: a 5-minute warm-up, then five rounds of 3 brisk minutes at 6.0 km/h and 5 % and 3 easy minutes at 3.5 km/h, 35 minutes in all. It is easier than VO2 max and meant for most days of the week. Every step keeps the belt moving, so one press runs the whole walk.
+
+### Changed
+
+- Micro-break folds into Workday. Workday is 5 easy minutes every 30 by default. Set the walk length with the step minutes and the spacing with Repeat every, for example 2 minutes every 20.
+- An unedited Micro-break that nothing uses is removed. A Micro-break still picked on the sit-too-long card, run last or running stays as Micro-break. Programs you edited stay as they are.
+- The notes under Workday, Micro-break, Post-meal, Focus, Brisk and VO2 max are reworded to read more plainly. A program you edited keeps its note.
+
 ## 1.42.0 (2026-11-21)
 
 ### New
