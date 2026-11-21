@@ -55,6 +55,6 @@ if (params.has("toasts")) {
         ? { type: "AUTOMATION", message: "DECK START // POST-MEAL RESUMED", isActionable: false }
         : { type: "AUTOMATION", message: "WORKDAY IN 30S", isActionable: true },
     );
-    emit("hud-update", { type: "STATUS", message: "SESSION SAVED · 1.72 KM · 32:14" });
+    emit("hud-update", { type: "STATUS", message: "SESSION SAVED · 32:14 · 1.72\u00a0km · 3.2\u00a0km/h · TODAY 6.20\u00a0km" });
   }, 300);
 }

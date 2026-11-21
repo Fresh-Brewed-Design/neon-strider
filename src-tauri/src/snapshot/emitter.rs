@@ -3,8 +3,8 @@
 
 use super::{
     build_snapshot, calls, daily_base, desk_sync, eyebreak, hud, lights_out, maintenance, odometer,
-    refresh_daily_base, seated, stasis, tray, walkaway, weekly, AppSnapshot, ConnectionSnapshot,
-    SnapshotParts, EVENT_APP_STATE,
+    refresh_daily_base, seated, stasis, tray, tray_menu, walkaway, weekly, AppSnapshot,
+    ConnectionSnapshot, SnapshotParts, EVENT_APP_STATE,
 };
 use crate::bluetooth::{self, ORCHESTRATOR};
 use crate::programs::{self, SavedRun};
@@ -130,6 +130,10 @@ struct Loop {
     last_run_save: Option<(Option<SavedRun>, Instant)>,
     /// Tray tooltip and icon; throttles itself.
     tray: tray::Updater,
+    /// Tray menu; throttles itself.
+    tray_menu: tray_menu::Updater,
+    /// A HUD card showed on the last tick.
+    card_up: bool,
 }
 
 impl Loop {
@@ -145,6 +149,8 @@ impl Loop {
             last_monitor_refresh: None,
             last_run_save: None,
             tray: tray::Updater::default(),
+            tray_menu: tray_menu::Updater::default(),
+            card_up: false,
         }
     }
 
@@ -246,7 +252,8 @@ impl Loop {
     /// walk), the sit-too-long card, the eye-break cards, the walk-away cards and the update card all show on the
     /// HUD, so the HUD window must exist. It is never destroyed when they go away: an empty HUD is
     /// invisible and click-through.
-    fn ensure_hud_for_cards(&self, snapshot: &AppSnapshot) {
+    /// A HUD hidden from the tray menu comes back when a card appears.
+    fn ensure_hud_for_cards(&mut self, snapshot: &AppSnapshot) {
         let card = snapshot.maintenance.due
             || snapshot.weekly.show_card
             || snapshot.seated.show_card
@@ -255,7 +262,10 @@ impl Loop {
             || snapshot.update.hud_card;
         if card && self.app.get_webview_window("hud").is_none() {
             crate::ensure_hud_native(&self.app);
+        } else if card && !self.card_up && !crate::hud::shown(&self.app) {
+            crate::hud::set_shown(&self.app, true);
         }
+        self.card_up = card;
     }
 
     /// Send the snapshot when it changed, when a window appeared (it has no
@@ -291,8 +301,9 @@ impl Loop {
         let snapshot = assemble(connected, device_id).await;
         self.refresh_totals(snapshot.session.active_id);
         self.ensure_hud_for_cards(&snapshot);
-        self.tray
-            .apply(&self.app, &snapshot, crate::util::now_ms_u64());
+        let now_ms = crate::util::now_ms_u64();
+        self.tray.apply(&self.app, &snapshot, now_ms);
+        self.tray_menu.apply(&self.app, &snapshot, now_ms);
         self.emit(snapshot);
     }
 }

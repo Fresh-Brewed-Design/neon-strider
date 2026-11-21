@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 
 /** Payload of the `hud-update` event Rust emits. Hand-written: Rust builds it as plain JSON. */
 export interface ToastPayload {
-  type: "VELOCITY" | "ELEVATION" | "STATUS" | "AUTOMATION" | "STRAVA" | "ERGO" | "CALL" | "LIGHTS_OUT";
+  type: "VELOCITY" | "ELEVATION" | "STATUS" | "AUTOMATION" | "STRAVA" | "ERGO" | "CALL" | "LIGHTS_OUT" | "TRAY";
   message?: string;
   value?: number;
   isActionable?: boolean;
