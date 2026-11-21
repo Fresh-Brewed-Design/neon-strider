@@ -1,3 +1,5 @@
+import { sliderValue } from "./sliderValue";
+
 /**
  * A range input drawn as a neon track and square thumb. The real input sits on
  * top, invisible, so keyboard and pointer behave like any range input.
@@ -37,7 +39,7 @@ export function StylizedSlider({
           max={max}
           step={step}
           value={value}
-          onChange={(e) => onChange(Math.round(parseFloat(e.target.value) * 10) / 10)}
+          onChange={(e) => onChange(sliderValue(e.target.value, min, max))}
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
         />
 

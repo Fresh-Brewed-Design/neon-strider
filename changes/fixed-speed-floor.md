@@ -1,0 +1,3 @@
+- The speed slider on the Live page no longer pauses a moving belt. Its lowest setting is the slowest speed, and only Pause or Stop take the belt to 0.
+- Speed down presses on a belt at its slowest speed keep it there instead of pausing it.
+- The first speed up press on a still belt goes straight to the slowest speed, and the next press one step above it.

@@ -43,7 +43,7 @@ pub mod walkaway;
 #[path = "weekly.rs"]
 pub mod weekly;
 
-mod commands;
+pub(crate) mod commands;
 mod emitter;
 mod hud;
 mod stasis;
