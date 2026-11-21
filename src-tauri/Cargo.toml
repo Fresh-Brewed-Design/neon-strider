@@ -32,7 +32,8 @@ btleplug = "0.11"
 futures = "0.3"
 tokio = { version = "1", features = ["time", "sync", "macros"] }
 uuid = "1.0"
-reqwest = { version = "0.11", features = ["json", "multipart"] }
+# Native TLS (Windows SChannel) without ALPN, as on 0.11; 0.13 defaults to rustls.
+reqwest = { version = "0.13", default-features = false, features = ["native-tls-no-alpn", "charset", "http2", "system-proxy", "json", "multipart", "form", "query"] }
 url = "2.2"
 tiny_http = "0.12"
 chrono = "0.4"
