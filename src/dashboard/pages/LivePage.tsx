@@ -8,6 +8,7 @@ import { Sparkline } from "../../widgets/Sparkline";
 import { Axis } from "../live/Axis";
 import { PinToggle } from "../live/PinToggle";
 import { Transport } from "../live/Transport";
+import { ZoneReadout } from "../live/ZoneReadout";
 import { ActiveProgramCard } from "../programs/ActiveProgramCard";
 import { StatusPill } from "../StatusPill";
 import { MaintenanceBanner } from "../system/MaintenanceBanner";
@@ -148,17 +149,25 @@ export function LivePage() {
           {stats.map((w) => {
             const { value, unit } = w.read(s);
             const spark = w.spark?.(s);
+            const zone = w.zone?.(s);
+            // PULSE_RATE with a sensor takes two tiles, so its chart sits
+            // beside the bpm and the zone beside the name, and the page keeps
+            // the height it has without one. It is the last stat, so its row
+            // always has a free tile to take.
             return (
-              <Panel key={w.id} className="flex flex-col gap-0.5 px-3 py-1.5">
+              <Panel key={w.id} className={cx("flex flex-col gap-0.5 px-3 py-1.5", spark && "col-span-2")}>
                 <div className="flex items-start justify-between gap-1">
                   <Label className="min-w-0 tracking-[0.12em] [overflow-wrap:anywhere]">{w.codename}</Label>
+                  {zone && <ZoneReadout zone={zone} />}
                   <PinToggle widget={w.id} pinned={pinned.has(w.id)} />
                 </div>
-                <span className={cx("font-digital text-base tracking-wider", TONE_TEXT[w.accent])}>
-                  {value}
-                  {unit && <span className="ml-1 font-mono text-[11px] text-white/40">{unit}</span>}
-                </span>
-                {spark && <Sparkline data={spark} className={cx("block h-5 w-full", TONE_TEXT[w.accent])} />}
+                <div className="flex items-center gap-3">
+                  <span className={cx("shrink-0 font-digital text-base tracking-wider", TONE_TEXT[w.accent])}>
+                    {value}
+                    {unit && <span className="ml-1 font-mono text-[11px] text-white/40">{unit}</span>}
+                  </span>
+                  {spark && <Sparkline data={spark} className={cx("block h-5 min-w-0 flex-1", TONE_TEXT[w.accent])} />}
+                </div>
               </Panel>
             );
           })}

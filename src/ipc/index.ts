@@ -81,6 +81,7 @@ export type { WeeklySummary } from "./bindings/WeeklySummary";
 export type { WeekStats } from "./bindings/WeekStats";
 export type { WhatsNew } from "./bindings/WhatsNew";
 export type { ZoneBand } from "./bindings/ZoneBand";
+export type { ZonePosition } from "./bindings/ZonePosition";
 export type { UnlistenFn };
 
 /** Every settings range and cap, written from Rust's constants by `cargo test`. */

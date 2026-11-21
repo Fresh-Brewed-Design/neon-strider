@@ -305,8 +305,9 @@ body,
 
 /* ---- Running strip (minified) -------------------------------------- */
 
-/* Speed, time and distance on one line, the program step under them, then
-   expand, Engage/Stasis and Dump. Values shrink before anything clips. */
+/* Speed, time and distance on one line, heart rate under them with a sensor
+   picked, the program step, then expand, Engage/Stasis and Dump. Values
+   shrink before anything clips. */
 .hud-run-strip { display: flex; flex-direction: column; gap: 7px; }
 
 .hud-run-stats {
@@ -316,6 +317,23 @@ body,
   gap: 8px;
 }
 .hud-run-stats .hud-strip-total { min-width: 0; }
+
+/* Heart rate with a sensor picked: the bpm, its spark chart filling the rest
+   of the row, bottom-aligned with the value. */
+.hud-run-pulse {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  min-width: 0;
+}
+.hud-run-pulse .hud-strip-total { flex: 0 0 auto; }
+.hud-run-spark {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  height: 22px;
+  margin-bottom: 2px;
+}
 
 .hud-run-program {
   display: flex;
@@ -388,6 +406,32 @@ body,
   color: var(--accent, var(--hud-cyan));
   filter: drop-shadow(0 0 3px color-mix(in srgb, var(--accent, var(--hud-cyan)) 50%, transparent));
 }
+
+/* PULSE_RATE's heart rate zone: Rust's word in the position's colour, the
+   range under it. Both wrap rather than clip in a half-width cell. */
+.hud-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 2px;
+  min-width: 0;
+}
+
+.hud-zone-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  color: var(--hud-dim);
+}
+
+.hud-zone-label.is-placed {
+  color: var(--accent);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.hud-zone .hud-sub { font-variant-numeric: tabular-nums; }
 
 .hud-unit {
   font-family: var(--hud-font-mono);

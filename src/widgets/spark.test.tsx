@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { render } from "@testing-library/react";
 import { snapshot } from "../dev/mockBackend";
+import { mockZone } from "../dev/scenarios/hrzone";
 import { statWidget } from "./registry";
 import { MIN_SPAN_BPM, sparkGeometry } from "./spark";
 import { Sparkline } from "./Sparkline";
@@ -48,20 +49,20 @@ describe("sparkGeometry", () => {
   });
 
   it("draws the zone as a band from its high to its low bound", () => {
-    const g = sparkGeometry({ points: [100, 140], zone: { low_bpm: 120, high_bpm: 130 } }, 100, 24);
+    const g = sparkGeometry({ points: [100, 140], zone: mockZone(120, 130, null) }, 100, 24);
     // 100 to 140 over 21 units of height inside a 1.5 edge.
     expect(g?.band?.y).toBeCloseTo(1.5 + (10 / 40) * 21, 5);
     expect(g?.band?.height).toBeCloseTo((10 / 40) * 21, 5);
   });
 
   it("widens the scale to fit a zone above the line", () => {
-    const g = sparkGeometry({ points: [100, 100], zone: { low_bpm: 150, high_bpm: 160 } }, 100, 24);
+    const g = sparkGeometry({ points: [100, 100], zone: mockZone(150, 160, null) }, 100, 24);
     expect(g?.band?.y).toBeCloseTo(1.5, 5);
     expect(g?.line).toBe("M0 22.5 L100 22.5");
   });
 
   it("shows the band even before a reading arrives", () => {
-    const g = sparkGeometry({ points: [null, null], zone: { low_bpm: 120, high_bpm: 140 } }, 100, 24);
+    const g = sparkGeometry({ points: [null, null], zone: mockZone(120, 140, null) }, 100, 24);
     expect(g?.line).toBe("");
     expect(g?.band?.height).toBeGreaterThan(0);
   });
@@ -74,7 +75,7 @@ describe("PULSE_RATE spark chart", () => {
 
   it("reads the history and zone from the snapshot", () => {
     const history = [100, null, 104];
-    const zone = { low_bpm: 120, high_bpm: 140 };
+    const zone = mockZone(120, 140, null);
     const s = { ...snapshot, heart_rate: { ...snapshot.heart_rate, history, zone } };
     expect(statWidget("HEART_RATE")?.spark?.(s)).toEqual({ points: history, zone });
   });
@@ -83,7 +84,7 @@ describe("PULSE_RATE spark chart", () => {
     const { getByTestId, queryByTestId, rerender } = render(<Sparkline data={{ points: [100, 110], zone: null }} />);
     expect(getByTestId("sparkline")).toBeTruthy();
     expect(queryByTestId("spark-band")).toBeNull();
-    rerender(<Sparkline data={{ points: [100, 110], zone: { low_bpm: 105, high_bpm: 115 } }} />);
+    rerender(<Sparkline data={{ points: [100, 110], zone: mockZone(105, 115, null) }} />);
     expect(getByTestId("spark-band")).toBeTruthy();
   });
 });

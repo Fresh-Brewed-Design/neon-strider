@@ -17,6 +17,7 @@ import { guided } from "./guided";
 import { heartRate } from "./heart";
 import { history } from "./history";
 import { hrSpark } from "./hrspark";
+import { hrZone } from "./hrzone";
 import { hud } from "./hud";
 import { lightsOut } from "./lightsout";
 import { link } from "./link";
@@ -58,4 +59,5 @@ export const SCENARIOS: Scenario[] = [
   history,
   guided,
   hrSpark,
+  hrZone,
 ];
