@@ -37,6 +37,8 @@ export type { HudAnchor } from "./bindings/HudAnchor";
 export type { HudConfig } from "./bindings/HudConfig";
 export type { HudCustom } from "./bindings/HudCustom";
 export type { HudIdleMode } from "./bindings/HudIdleMode";
+export type { HudMinifyHotkey } from "./bindings/HudMinifyHotkey";
+export type { HudMinifyKey } from "./bindings/HudMinifyKey";
 export type { HudMonitor } from "./bindings/HudMonitor";
 export type { HudView } from "./bindings/HudView";
 export type { HudWidget } from "./bindings/HudWidget";

@@ -9,7 +9,8 @@
 //! where the pointer was.
 
 use crate::engine::DeckAction;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use crate::snapshot::{HudMinifyHotkey, HudMinifyKey};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, AtomicUsize, Ordering};
 use std::time::Instant;
 
 /// Typing key presses since the protocol worker last took the count.
@@ -18,6 +19,42 @@ static KEY_COUNTING: AtomicBool = AtomicBool::new(false);
 /// Epoch ms of the last keyboard or mouse input, plus one; 0 = none yet.
 /// Wall-clock time, so a sleeping PC counts as time away.
 static LAST_INPUT_MS: AtomicU64 = AtomicU64::new(0);
+
+/// The minify hotkey's key, as `minify_code` writes it (0 = off), so the hook
+/// thread reads the HUD setting without a lock. Alt+Insert until the
+/// settings load.
+static MINIFY_KEY: AtomicU8 = AtomicU8::new(MINIFY_INSERT);
+const MINIFY_INSERT: u8 = 1;
+
+fn minify_code(hotkey: HudMinifyHotkey) -> u8 {
+    match hotkey.active_key() {
+        None => 0,
+        Some(HudMinifyKey::Insert) => MINIFY_INSERT,
+        Some(HudMinifyKey::Pause) => 2,
+        Some(HudMinifyKey::ScrollLock) => 3,
+    }
+}
+
+fn minify_key_from(code: u8) -> Option<HudMinifyKey> {
+    match code {
+        MINIFY_INSERT => Some(HudMinifyKey::Insert),
+        2 => Some(HudMinifyKey::Pause),
+        3 => Some(HudMinifyKey::ScrollLock),
+        _ => None,
+    }
+}
+
+/// Follow the HUD setting (`snapshot::hud` calls this on load and change).
+pub(crate) fn set_minify_hotkey(hotkey: HudMinifyHotkey) {
+    MINIFY_KEY.store(minify_code(hotkey), Ordering::Relaxed);
+}
+
+/// The key that, with Alt, minifies or expands the HUD; `None` while the
+/// hotkey is off, so the key press goes to the app in front. An atomic read,
+/// safe on the hook thread.
+pub(crate) fn minify_key() -> Option<HudMinifyKey> {
+    minify_key_from(MINIFY_KEY.load(Ordering::Relaxed))
+}
 
 fn epoch_ms() -> u64 {
     std::time::SystemTime::now()
@@ -74,7 +111,8 @@ pub(crate) fn take_key_count() -> u32 {
     u32::try_from(KEY_COUNT.swap(0, Ordering::SeqCst)).unwrap_or(u32::MAX)
 }
 
-/// A global shortcut (Alt plus a key; see `platform` for which).
+/// A global shortcut (Alt plus a key; see `platform` for which, and the HUD
+/// setting `HudMinifyHotkey` for the minify one).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shortcut {
     SpeedUp,
@@ -187,6 +225,29 @@ mod tests {
         assert_eq!(Shortcut::ToggleProgram.label(), "toggle-automation");
         assert_eq!(Shortcut::ToggleMinified.deck_action(), None);
         assert_eq!(Shortcut::ToggleMinified.label(), "toggle-minified");
+    }
+
+    #[test]
+    fn the_minify_key_follows_the_setting() {
+        // Shared static: this is the only test that touches it.
+        assert_eq!(minify_key(), Some(HudMinifyKey::Insert));
+        for key in [
+            HudMinifyKey::Insert,
+            HudMinifyKey::Pause,
+            HudMinifyKey::ScrollLock,
+        ] {
+            set_minify_hotkey(HudMinifyHotkey { enabled: true, key });
+            assert_eq!(minify_key(), Some(key));
+            set_minify_hotkey(HudMinifyHotkey {
+                enabled: false,
+                key,
+            });
+            assert_eq!(minify_key(), None);
+        }
+        set_minify_hotkey(HudMinifyHotkey::DEFAULT);
+        assert_eq!(minify_key(), Some(HudMinifyKey::Insert));
+        assert_eq!(minify_key_from(0), None);
+        assert_eq!(minify_key_from(200), None);
     }
 
     #[test]

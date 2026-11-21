@@ -90,7 +90,8 @@ HEART_LINK (`heart_rate.rs`: pure Heart Rate Measurement decoding and snapshot t
     `HudPanel.tsx`, the cards `HudCards.tsx`, toasts `ToastCard.tsx`, notes `HudNote.tsx`, and
     status text in `status.ts`. While the belt is still, Rust may collapse the panel to a strip
     (`HudStrip.tsx`) or hide it (`hud.idle_mode`); minified by the user (`hud.minified`, the
-    header's minify button or Alt+Insert) it shows the running strip instead of the whole panel
+    header's minify button or its Alt hotkey, `hud.minify_hotkey`: on or off and Insert, Pause or
+    Scroll Lock, set on the HUD page, mirrored to `hooks::minify_key` for the hook thread) it shows the running strip instead of the whole panel
     until expanded (PULSE_RATE and its chart join the strip while a heart rate sensor is picked). Both are decided in `snapshot/stasis.rs` as `snapshot.hud_view`; cards and
     toasts always show
 - **Shared**: `src/widgets/registry.ts` defines every stat once for the HUD and dashboard.
@@ -178,6 +179,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?link=scanning|connecting|reconnecting|nodata|bt-off|failed`: each treadmill link state
 - `?maxhr=178`: a max heart rate of 178 bpm set in System -> Heart rate (program heart zones use it)
 - `?minified`: the running strip; with `?program=resting|paused`, `?noprogram` or `?idle`; with `?hrspark=...`, `?hrzone=...` or `?heart=on|waiting` it shows PULSE_RATE
+- `?minifykey=off|pause|scroll_lock`: the minify hotkey switched off, or set to Alt+Pause or Alt+Scroll Lock
 - `?neural=active`: Neural flow easing the belt off while typing
 - `?nohistory`: History empty: no walks, an empty week and DESK_SYNC
 - `?noprogram`: no program running

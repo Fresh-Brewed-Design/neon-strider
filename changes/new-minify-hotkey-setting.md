@@ -1,0 +1,1 @@
+- The HUD page can switch the Alt + Insert minify hotkey off, or move it to Alt + Pause or Alt + Scroll Lock, so it stops clashing with other apps such as JetBrains IDEs.

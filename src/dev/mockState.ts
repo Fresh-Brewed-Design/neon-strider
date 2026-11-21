@@ -115,6 +115,7 @@ export const snapshot: AppSnapshot = {
     custom: null,
     idle_mode: "full",
     minified: false,
+    minify_hotkey: { enabled: true, key: "insert" },
   },
   hud_view: "full",
   hud_monitors: [

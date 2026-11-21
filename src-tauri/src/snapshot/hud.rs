@@ -2,7 +2,9 @@
 //! list of displays. Rust owns both; the config is persisted to the same
 //! settings keys the dashboard reads and writes.
 
-use super::{maintenance, HudAnchor, HudConfig, HudIdleMode, HudMonitor, HudWidget};
+use super::{
+    maintenance, HudAnchor, HudConfig, HudIdleMode, HudMinifyHotkey, HudMonitor, HudWidget,
+};
 use crate::persistence::{self, KEY_IS_PINNED, KEY_PINNED_ELEMENTS};
 use crate::placement::{self, MonitorGeom};
 use std::sync::{Mutex, MutexGuard};
@@ -19,6 +21,9 @@ const KEY_HUD_POSITION: &str = "hud_position";
 const KEY_HUD_IDLE_MODE: &str = "hud_idle_mode";
 /// `true` while the user has the HUD minified to the running strip.
 const KEY_HUD_MINIFIED: &str = "hud_minified";
+/// `HudMinifyHotkey` as JSON (`{"enabled":true,"key":"insert"}`); missing
+/// or unreadable is the default, Alt+Insert on.
+const KEY_HUD_MINIFY_HOTKEY: &str = "hud_minify_hotkey";
 /// Longest display name accepted from a window.
 /// Display names are a few dozen characters; anything longer is not a name.
 const MAX_MONITOR_NAME: usize = 200;
@@ -32,6 +37,7 @@ static HUD: Mutex<HudConfig> = Mutex::new(HudConfig {
     custom: None,
     idle_mode: HudIdleMode::Full,
     minified: false,
+    minify_hotkey: HudMinifyHotkey::DEFAULT,
 });
 
 static MONITORS: Mutex<Vec<MonitorGeom>> = Mutex::new(Vec::new());
@@ -89,6 +95,12 @@ pub(super) fn parse_idle_mode(raw: &str) -> HudIdleMode {
     serde_json::from_str(raw)
         .or_else(|_| serde_json::from_str(&format!("\"{}\"", raw.trim().trim_matches('"'))))
         .unwrap_or_default()
+}
+
+/// The stored minify hotkey; anything unreadable (an unknown key from a
+/// newer build, say) is the default, so the hotkey keeps working.
+pub(super) fn parse_minify_hotkey(raw: &str) -> HudMinifyHotkey {
+    serde_json::from_str(raw).unwrap_or_default()
 }
 
 /// A stored boolean: `true`, bare or JSON-quoted; anything else is `false`.
@@ -150,7 +162,11 @@ pub(super) fn load(app: &AppHandle) {
             .map(|s| parse_idle_mode(&s))
             .unwrap_or_default(),
         minified: read(KEY_HUD_MINIFIED).is_some_and(|s| parse_flag(&s)),
+        minify_hotkey: read(KEY_HUD_MINIFY_HOTKEY)
+            .map(|s| parse_minify_hotkey(&s))
+            .unwrap_or_default(),
     };
+    crate::hooks::set_minify_hotkey(config.minify_hotkey);
     *hud_lock() = config;
 }
 
@@ -173,6 +189,10 @@ fn persist(app: &AppHandle, cfg: &HudConfig) {
             serde_json::to_string(&cfg.idle_mode).unwrap_or_default(),
         ),
         (KEY_HUD_MINIFIED, cfg.minified.to_string()),
+        (
+            KEY_HUD_MINIFY_HOTKEY,
+            serde_json::to_string(&cfg.minify_hotkey).unwrap_or_default(),
+        ),
     ];
     for (key, value) in writes {
         if let Err(e) = persistence::write_setting(app, key, &value) {
@@ -181,7 +201,8 @@ fn persist(app: &AppHandle, cfg: &HudConfig) {
     }
 }
 
-/// Minify the HUD, or expand it again (the Alt+Insert shortcut).
+/// Minify the HUD, or expand it again (the minify hotkey, Alt+Insert unless
+/// changed).
 pub fn toggle_minified(app: &AppHandle) {
     mutate(app, |cfg| cfg.minified = !cfg.minified);
 }
@@ -197,6 +218,7 @@ pub(super) fn mutate(app: &AppHandle, f: impl FnOnce(&mut HudConfig)) {
     if before == after {
         return;
     }
+    crate::hooks::set_minify_hotkey(after.minify_hotkey);
     persist(app, &after);
     sync_window(app, &before, &after);
 }
@@ -234,6 +256,7 @@ pub fn on_setting_written(app: &AppHandle, key: &str) {
         KEY_HUD_POSITION,
         KEY_HUD_IDLE_MODE,
         KEY_HUD_MINIFIED,
+        KEY_HUD_MINIFY_HOTKEY,
     ];
     if !hud_keys.contains(&key) {
         return;
@@ -428,6 +451,44 @@ mod tests {
         assert_eq!(parse_idle_mode("\"STRIP\""), HudIdleMode::Full);
         assert_eq!(parse_idle_mode("{\"mode\":1}"), HudIdleMode::Full);
         assert_eq!(parse_idle_mode("garbage"), HudIdleMode::Full);
+    }
+
+    #[test]
+    fn minify_hotkey_defaults_to_alt_insert_and_round_trips() {
+        use super::super::HudMinifyKey;
+        let default = HudConfig::default().minify_hotkey;
+        assert_eq!(default, HudMinifyHotkey::DEFAULT);
+        assert_eq!(default.active_key(), Some(HudMinifyKey::Insert));
+        for key in [
+            HudMinifyKey::Insert,
+            HudMinifyKey::Pause,
+            HudMinifyKey::ScrollLock,
+        ] {
+            for enabled in [true, false] {
+                let hotkey = HudMinifyHotkey { enabled, key };
+                let stored = serde_json::to_string(&hotkey).unwrap();
+                assert_eq!(parse_minify_hotkey(&stored), hotkey);
+                assert_eq!(hotkey.active_key(), enabled.then_some(key));
+            }
+        }
+        assert_eq!(
+            serde_json::to_string(&HudMinifyHotkey {
+                enabled: false,
+                key: HudMinifyKey::ScrollLock
+            })
+            .unwrap(),
+            r#"{"enabled":false,"key":"scroll_lock"}"#
+        );
+        // Missing, garbled or from a newer build: the default, still on.
+        for raw in [
+            "",
+            "null",
+            "true",
+            "garbage",
+            r#"{"enabled":false,"key":"f13"}"#,
+        ] {
+            assert_eq!(parse_minify_hotkey(raw), HudMinifyHotkey::DEFAULT, "{raw}");
+        }
     }
 
     #[test]

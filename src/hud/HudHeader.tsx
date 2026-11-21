@@ -14,6 +14,7 @@ export function HudHeader({
   logo,
   dragging,
   onMinify,
+  minifyKey = null,
   simulated = false,
 }: {
   link: { text: string; tone: LinkTone };
@@ -23,6 +24,8 @@ export function HudHeader({
   dragging: boolean;
   /** Minify to the running strip; omitted on the strips. */
   onMinify?: () => void;
+  /** The minify hotkey for the tooltip ("Alt+Insert"); null while it is off. */
+  minifyKey?: string | null;
   /** The linked deck is the dev builds' simulated treadmill. */
   simulated?: boolean;
 }) {
@@ -62,7 +65,7 @@ export function HudHeader({
             type="button"
             className="hud-btn hud-btn-minify"
             aria-label="Minify the HUD"
-            title="Shrink the HUD to a strip (Alt+Insert)"
+            title={minifyKey ? `Shrink the HUD to a strip (${minifyKey})` : "Shrink the HUD to a strip"}
             onClick={onMinify}
           >
             <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
