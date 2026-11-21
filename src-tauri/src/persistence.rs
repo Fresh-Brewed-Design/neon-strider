@@ -2790,6 +2790,59 @@ mod db_tests {
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
+    /// A file on disk from the old `init_db` (no WAL, no user_version), as an
+    /// install that predates the migrations has it, opens through the real path:
+    /// pragmas, pre-migration copy, migrations, and the rows survive a reopen.
+    #[test]
+    fn old_init_db_file_on_disk_opens_migrates_and_keeps_its_rows() {
+        let path = temp_db("old-file");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(PREVIOUS_INIT_DB_SCHEMA).unwrap();
+            seed_old_rows(&conn);
+            let mode: String = conn
+                .query_row("PRAGMA journal_mode", [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(mode, "delete");
+            assert_eq!(version(&conn), 0);
+        }
+
+        let conn = open_database(&path).unwrap();
+        let mode: String = conn
+            .query_row("PRAGMA journal_mode", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(mode, "wal");
+        assert_latest_schema(&conn);
+        assert_rows_intact(&conn);
+        drop(conn);
+
+        // The copy taken before migrating is the old file, unchanged.
+        let backups = path.parent().unwrap().join("backups");
+        let copy = std::fs::read_dir(&backups)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .find(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with("treadmill-pre-v0-")
+            })
+            .expect("pre-migration copy")
+            .path();
+        let old = Connection::open(&copy).unwrap();
+        assert_eq!(version(&old), 0);
+        let n: i64 = old
+            .query_row("SELECT COUNT(*) FROM sessions", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 1);
+        drop(old);
+
+        let conn = open_database(&path).unwrap();
+        assert_latest_schema(&conn);
+        assert_rows_intact(&conn);
+        drop(conn);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
     #[test]
     fn foreign_keys_reject_samples_for_missing_sessions() {
         let path = temp_db("fk");
