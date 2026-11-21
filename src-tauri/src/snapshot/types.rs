@@ -4,7 +4,7 @@
 
 use super::{
     CallsSnapshot, DeskSync, LightsOutSnapshot, MaintenanceBasis, MaintenanceSnapshot,
-    OdometerSnapshot, SeatedSnapshot, WalkAwaySnapshot, WeeklySummary,
+    OdometerSnapshot, SeatedSnapshot, WalkAwaySnapshot, WallClock, WeeklySummary,
 };
 use crate::link::{LastError, LinkState};
 use crate::placement;
@@ -48,6 +48,9 @@ pub struct AppSnapshot {
     /// DESK_SYNC: how many of the recent desk days (days the PC was used)
     /// were walked on.
     pub desk_sync: DeskSync,
+    /// WALL_CLOCK: for each local hour, how many of DESK_SYNC's desk days had
+    /// walking in it.
+    pub wall_clock: WallClock,
     /// Distance and belt hours over every saved session plus the live one.
     pub odometer: OdometerSnapshot,
 

@@ -1738,7 +1738,7 @@ pub fn session_rows_since(
     with_conn(app, |conn| {
         let mut stmt = conn.prepare(
             "SELECT start_time, COALESCE(distance_meters, 0), COALESCE(duration_seconds, 0),
-                    COALESCE(calories, 0)
+                    COALESCE(calories, 0), end_time
              FROM sessions
              WHERE start_time >= ?1 AND (?2 IS NULL OR id != ?2)",
         )?;
@@ -1748,6 +1748,7 @@ pub fn session_rows_since(
                 distance_m: row.get(1)?,
                 duration_s: row.get(2)?,
                 calories: row.get(3)?,
+                end_ms: row.get(4)?,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
