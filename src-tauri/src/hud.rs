@@ -51,6 +51,10 @@ static HIT_REL: Mutex<Option<Area>> = Mutex::new(None);
 /// the button's release, so a lost drag can't leave it blocking clicks.
 pub(crate) static DRAGGING: AtomicBool = AtomicBool::new(false);
 
+/// Hidden from the tray menu (Hide HUD). Not saved: every start shows it as
+/// before. A new card brings it back (`snapshot::emitter`).
+static HIDDEN: AtomicBool = AtomicBool::new(false);
+
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
 }
@@ -58,6 +62,30 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 /// Send a toast to the HUD page (and any other window listening).
 pub(crate) fn toast(app: &tauri::AppHandle, payload: serde_json::Value) {
     let _ = app.emit(EVENT_HUD_UPDATE, payload);
+}
+
+/// The HUD window is open and not hidden from the tray menu, so a toast
+/// shows.
+pub(crate) fn shown(app: &tauri::AppHandle) -> bool {
+    app.get_webview_window(HUD_LABEL).is_some() && !HIDDEN.load(Ordering::SeqCst)
+}
+
+/// Show the HUD (opening it if it isn't), or hide it until shown again.
+/// Hidden, it keeps running: its state, pins and cards are untouched.
+pub(crate) fn set_shown(app: &tauri::AppHandle, show: bool) {
+    let window = app.get_webview_window(HUD_LABEL);
+    if show {
+        HIDDEN.store(false, Ordering::SeqCst);
+        match window {
+            Some(w) => {
+                let _ = w.show();
+            }
+            None => ensure_hud_native(app),
+        }
+    } else if let Some(w) = window {
+        HIDDEN.store(true, Ordering::SeqCst);
+        let _ = w.hide();
+    }
 }
 
 /// (x, y) falls inside `rect`, widened by `HIT_MARGIN` on every side.
@@ -224,6 +252,7 @@ pub(crate) fn ensure_hud_native(app: &tauri::AppHandle) {
 
     match built {
         Ok(w) => {
+            HIDDEN.store(false, Ordering::SeqCst);
             // The mouse hook makes it interactive over its content.
             let _ = w.set_ignore_cursor_events(true);
             crate::platform::remember_hud_window(&w);

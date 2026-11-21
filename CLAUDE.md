@@ -25,7 +25,10 @@ shortcut), `TargetSource` (which intent won), `PacketKind` (what a packet is, fo
 `snapshot.rs` builds one `AppSnapshot` and emits it as `app-state` (on change, 2 s heartbeat);
 `dispatch` takes one typed `Command`. It is split into `snapshot/`: `types` (snapshot and command
 types), `hud` (HUD config and display list), `commands` (what each command does) and `emitter`
-(collecting and pushing the snapshot). The tray icon opens the dashboard; the windows are created
+(collecting and pushing the snapshot). The tray icon opens the dashboard; its right-click menu
+(`snapshot/tray_menu.rs`: a pure model built from the snapshot, updated in place by the emitter)
+sends the HUD's own `Command`s for the belt and programs, so it adds no path that moves the belt,
+and Hide HUD hides the HUD window until shown again or a card appears; the windows are created
 and placed by `dashboard.rs` and `hud.rs` (`display.rs` turns Tauri's monitors into `placement`
 geometry); `hooks.rs` holds what the global input hooks record and the Alt shortcuts they fire.
 Strava is Rust-owned too (`strava.rs` plus its `strava/` submodules: `settings`, `live`, `auth`,
