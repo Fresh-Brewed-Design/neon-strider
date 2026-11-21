@@ -14,6 +14,7 @@ const heart = (over: Partial<HeartRateSnapshot>): HeartRateSnapshot => ({
   found: [],
   max_bpm: 190,
   max_bpm_set: false,
+  incline_trim: false,
   ...over,
 });
 

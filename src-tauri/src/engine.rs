@@ -237,6 +237,10 @@ pub struct OrchestratorState {
     /// and only to trim the speed of a belt already running.
     pub heart_bpm: Option<u32>,
     pub max_heart_rate: u32,
+    /// Labs, ZONE_TILT: zones may trim incline as their step asks
+    /// (`programs::ZoneTrim`); off, every zone trims speed only. Set each
+    /// second from the saved switch.
+    pub zone_incline_trim: bool,
 
     // The deck's latest telemetry, raw.
     pub last_status: MachineStatus,
@@ -406,6 +410,7 @@ impl Default for OrchestratorState {
             program_intent: None,
             heart_bpm: None,
             max_heart_rate: u32::from(crate::heart_rate::DEFAULT_MAX_BPM),
+            zone_incline_trim: false,
             last_status: MachineStatus::Stopped,
             hardware_speed: 0.0,
             hardware_incline: 0,

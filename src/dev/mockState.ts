@@ -260,6 +260,7 @@ export const snapshot: AppSnapshot = {
     found: [],
     max_bpm: 190,
     max_bpm_set: false,
+    incline_trim: false,
   },
 };
 

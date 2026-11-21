@@ -23,7 +23,8 @@ mod worker;
 
 pub use worker::{
     current_bpm, forget_sensor, init, max_heart_rate, pick_sensor, scan, set_max_heart_rate,
-    snapshot, spawn, DEFAULT_MAX_BPM, MAX_MAX_BPM, MIN_MAX_BPM,
+    set_zone_incline_trim, snapshot, spawn, zone_incline_trim, DEFAULT_MAX_BPM, MAX_MAX_BPM,
+    MIN_MAX_BPM,
 };
 
 use serde::{Deserialize, Serialize};
@@ -113,6 +114,9 @@ pub struct HeartRateSnapshot {
     pub max_bpm: u32,
     /// False while `max_bpm` is still the default estimate.
     pub max_bpm_set: bool,
+    /// Labs, ZONE_TILT (off by default): program zones may trim incline as
+    /// each step asks, not just speed.
+    pub incline_trim: bool,
 }
 
 /// A heart rate zone in beats per minute, and where the pulse sits in it.
@@ -127,6 +131,23 @@ pub struct ZoneBand {
     pub label: String,
     /// One plain sentence for the position.
     pub message: String,
+    /// Seconds the step still waits for the pulse to settle before the zone
+    /// trims the belt (`programs::ZONE_SETTLE`); none once it trims.
+    pub settle_s: Option<u32>,
+}
+
+impl ZoneBand {
+    /// The band while the step waits `left_s` more seconds for the pulse to
+    /// settle: a reading shows `ZONE // SETTLING` (its position still
+    /// colours it), and no reading stays `ZONE // WAIT`.
+    pub fn settling(mut self, left_s: u32) -> Self {
+        self.settle_s = Some(left_s);
+        if self.position.is_some() {
+            self.label = "ZONE // SETTLING".to_string();
+            self.message = "Heart rate is settling before the zone trims.".to_string();
+        }
+        self
+    }
 }
 
 /// Where the pulse is against a heart rate zone.
@@ -167,6 +188,7 @@ pub fn zone_band(low: f32, high: f32, bpm: Option<u32>) -> ZoneBand {
         position,
         label: label.to_string(),
         message: message.to_string(),
+        settle_s: None,
     }
 }
 
@@ -477,10 +499,23 @@ mod tests {
             zone_band(130.0, 150.0, Some(140)).message,
             zone_band(130.0, 150.0, Some(160)).message,
             zone_band(130.0, 150.0, None).message,
+            zone_band(130.0, 150.0, Some(140)).settling(90).message,
         ];
         for m in msgs {
             assert!(!m.contains('\u{2014}') && !m.contains('\u{2013}'), "{m}");
             assert!(m.len() < 120, "{m}");
         }
+    }
+
+    #[test]
+    fn a_settling_zone_says_so_and_keeps_its_position() {
+        let b = zone_band(130.0, 150.0, Some(120)).settling(75);
+        assert_eq!(b.settle_s, Some(75));
+        assert_eq!(b.position, Some(ZonePosition::Under));
+        assert_eq!(b.label, "ZONE // SETTLING");
+        // Without a reading it still waits for one.
+        let b = zone_band(130.0, 150.0, None).settling(75);
+        assert_eq!((b.label.as_str(), b.settle_s), ("ZONE // WAIT", Some(75)));
+        assert_eq!(zone_band(130.0, 150.0, Some(140)).settle_s, None);
     }
 }

@@ -27,6 +27,10 @@ pub const DEFAULT_MAX_BPM: u16 = 190;
 static MAX_BPM: AtomicU16 = AtomicU16::new(DEFAULT_MAX_BPM);
 /// The user saved a maximum heart rate (else `MAX_BPM` is the default).
 static MAX_SET: AtomicBool = AtomicBool::new(false);
+/// Labs, ZONE_TILT: program zones may trim incline. Off by default, since it
+/// moves the deck in a way only a walk with a heart rate sensor can test.
+const KEY_INCLINE_TRIM: &str = "zone_incline_trim";
+static INCLINE_TRIM: AtomicBool = AtomicBool::new(false);
 /// How long the picker's scan listens: a sensor advertises about once a
 /// second, and the treadmill scan uses the same 5 s.
 const SCAN_TIME: Duration = Duration::from_secs(5);
@@ -102,6 +106,10 @@ pub fn init(app: &AppHandle) {
         MAX_BPM.store(bpm, Ordering::Relaxed);
         MAX_SET.store(true, Ordering::Relaxed);
     }
+    let incline = persistence::parse_setting::<bool>(
+        persistence::read_setting(app, KEY_INCLINE_TRIM).as_deref(),
+    );
+    INCLINE_TRIM.store(incline.unwrap_or(false), Ordering::Relaxed);
     let id = persistence::read_setting(app, KEY_ID).filter(|s| !s.is_empty());
     let name = persistence::read_setting(app, KEY_NAME).unwrap_or_default();
     if let Some(id) = id {
@@ -136,6 +144,19 @@ pub fn set_max_heart_rate(app: &AppHandle, bpm: u16) -> Result<(), String> {
     persistence::write_setting(app, KEY_MAX, &bpm.to_string())?;
     MAX_BPM.store(bpm, Ordering::Relaxed);
     MAX_SET.store(true, Ordering::Relaxed);
+    Ok(())
+}
+
+/// ZONE_TILT (Labs) is on: program zones may trim incline.
+pub fn zone_incline_trim() -> bool {
+    INCLINE_TRIM.load(Ordering::Relaxed)
+}
+
+/// Save the ZONE_TILT switch. The engine reads it on its next second.
+pub fn set_zone_incline_trim(app: &AppHandle, on: bool) -> Result<(), String> {
+    persistence::write_setting(app, KEY_INCLINE_TRIM, if on { "true" } else { "false" })?;
+    INCLINE_TRIM.store(on, Ordering::Relaxed);
+    log::info!("ZONE_TILT {}", if on { "on" } else { "off" });
     Ok(())
 }
 
@@ -224,6 +245,7 @@ pub fn snapshot() -> HeartRateSnapshot {
             found: rt.found.clone(),
             max_bpm: u32::from(max_heart_rate()),
             max_bpm_set: MAX_SET.load(Ordering::Relaxed),
+            incline_trim: zone_incline_trim(),
         }
     })
 }

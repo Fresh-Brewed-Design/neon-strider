@@ -16,4 +16,9 @@ label: string,
 /**
  * One plain sentence for the position.
  */
-message: string, };
+message: string, 
+/**
+ * Seconds the step still waits for the pulse to settle before the zone
+ * trims the belt (`programs::ZONE_SETTLE`); none once it trims.
+ */
+settle_s: number | null, };

@@ -53,6 +53,24 @@ const ZONE_TRIM_EVERY: Duration = Duration::from_secs(20);
 /// 1 km/h means the step doesn't suit the zone, not that the belt should run
 /// at a speed the user never picked.
 const ZONE_TRIM_RANGE_KMH: f32 = 1.0;
+/// A zone step leaves the belt alone for this much running time after it
+/// starts, resumes or takes GO, so the trim doesn't chase a pulse still
+/// climbing to the new effort. After a step change in treadmill speed the
+/// heart rate follows with a time constant of about 58 s (57.6 s mean, 24 men;
+/// Hunt, Fankhauser and Saengsuwan 2015, docs/research.md). Two time constants
+/// cover about 86 % of the change, and leave half of a 4 minute VO2 max climb
+/// to trim in; three (about 3 minutes) would leave one minute.
+pub(crate) const ZONE_SETTLE: Duration = Duration::from_secs(120);
+/// A zone that trims incline (Labs, ZONE_TILT) stays within this many
+/// percent of grade of the step's incline. By the ACSM walking equation, 1 km/h
+/// at 3 to 4 km/h costs about as much as 1.5 to 2 % of grade, so 2 % matches
+/// the speed trim's 1 km/h: a fine-tune of the step, not a new one.
+const ZONE_INCLINE_RANGE_PCT: f32 = 2.0;
+/// Incline moves one deck level at a time, no more often than this. A level
+/// (about 1 % of grade on most decks) is a bigger change in effort than
+/// 0.1 km/h, so it waits about one heart rate time constant (57.6 s, see
+/// `ZONE_SETTLE`) for most of its effect to show before the next.
+const ZONE_INCLINE_TRIM_EVERY: Duration = Duration::from_secs(60);
 /// A zone's lowest allowed bound, in % of maximum heart rate: below 30 % is
 /// resting heart rate for most people, which walking can't hold down to.
 const ZONE_MIN_PCT: f32 = 30.0;
@@ -113,9 +131,36 @@ pub struct ProgramStep {
 pub struct HeartZone {
     pub low_pct: f32,
     pub high_pct: f32,
+    /// What the zone trims while the Labs switch ZONE_TILT is on. None (every
+    /// zone saved before #126, and what a save stores for speed) trims speed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub trim: Option<ZoneTrim>,
+}
+
+/// What a heart rate zone moves to hold the pulse in it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
+pub enum ZoneTrim {
+    /// Speed only, within 1 km/h of the step's speed (the default).
+    Speed,
+    /// Incline only, within 2 % of the step's incline; the speed stays put.
+    Incline,
+    /// Incline first, then speed once the incline is at its limit.
+    Both,
 }
 
 impl HeartZone {
+    /// What the zone trims, with ZONE_TILT on (`incline_allowed`); off,
+    /// every zone trims speed only, as before #126.
+    fn trims(self, incline_allowed: bool) -> ZoneTrim {
+        match self.trim {
+            Some(t) if incline_allowed => t,
+            _ => ZoneTrim::Speed,
+        }
+    }
+
     /// The zone's bounds in beats per minute for a maximum heart rate.
     fn bounds_bpm(self, max_bpm: u32) -> (f32, f32) {
         let max = max_bpm as f32;
@@ -155,6 +200,15 @@ impl ProgramWait {
             ProgramWait::BeltStill => "BELT STILL // PRESS GO",
         }
     }
+}
+
+/// What one heart rate zone trim changes.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum ZoneLever {
+    /// The step's live speed, km/h.
+    Speed(f32),
+    /// The step's live incline, as a hardware level.
+    Incline(u8),
 }
 
 /// A HUD toast from the program tick.
@@ -249,8 +303,13 @@ pub struct ProgramRun {
     /// resumed walking, so a Paused report after it is a pause of that walk
     /// (`notice_deck_pause`), not the deck still answering a GO. Not saved.
     pub deck_moved: bool,
-    /// When the speed was last trimmed to hold a heart rate zone. Not saved.
-    pub zone_trimmed_at: Option<Instant>,
+    /// When a heart rate zone may trim again (the speed or incline was last
+    /// trimmed, plus that lever's wait). Not saved.
+    pub zone_next_trim: Option<Instant>,
+    /// Seconds the belt has run in this step since it started, resumed or
+    /// took GO; a zone trims nothing until `ZONE_SETTLE` has passed. Not
+    /// saved: a restored run waits again.
+    pub zone_settle_s: f64,
 }
 
 /// What the deck has reported since the run began holding the belt still: a
@@ -527,6 +586,7 @@ fn vo2_max_program(id: u32) -> Program {
     let climb_zone = Some(HeartZone {
         low_pct: 85.0,
         high_pct: 95.0,
+        trim: None,
     });
     let mut steps = vec![step(5.0, 4.5, 0.0, None)];
     for _ in 0..4 {
@@ -1031,7 +1091,8 @@ impl OrchestratorState {
             saved_at: None,
             deck_start: DeckStartWatch::default(),
             deck_moved: false,
-            zone_trimmed_at: None,
+            zone_next_trim: None,
+            zone_settle_s: 0.0,
         };
         self.set_program_intent_from(&run);
         self.program = Some(run);
@@ -1082,6 +1143,8 @@ impl OrchestratorState {
         run.last_tick = now;
         run.deck_start = DeckStartWatch::default();
         run.deck_moved = false;
+        // The pulse falls while the belt is still; a zone waits again.
+        run.zone_settle_s = 0.0;
         let incline = run.target.incline;
         let run = run.clone();
         self.set_program_intent_from(&run);
@@ -1107,6 +1170,9 @@ impl OrchestratorState {
         run.paused = false;
         run.wait = None;
         run.last_tick = now;
+        // GO is a step up in effort from a still belt: a zone waits for the
+        // pulse again, however short the pause was.
+        run.zone_settle_s = 0.0;
         let run = run.clone();
         self.set_program_intent_from(&run);
         self.prioritize_program(now);
@@ -1146,6 +1212,8 @@ impl OrchestratorState {
         now: Instant,
     ) -> Option<ProgramRun> {
         let still = self.belt_still(now);
+        // Every new step is a new effort: its zone waits for the pulse.
+        run.zone_settle_s = 0.0;
         match run.phase {
             ProgramPhase::Walking => {
                 if run.step_index + 1 < run.program.steps.len() {
@@ -1288,6 +1356,13 @@ impl OrchestratorState {
         if counting {
             run.elapsed_s += dt;
         }
+        // Only time with the belt running settles the pulse to the step.
+        if run.phase == ProgramPhase::Walking
+            && !run.paused
+            && self.last_status == MachineStatus::Running
+        {
+            run.zone_settle_s += dt;
+        }
 
         for _ in 0..64 {
             let Some(len) = run.phase_len_s() else { break };
@@ -1322,10 +1397,14 @@ impl OrchestratorState {
         warning
     }
 
-    /// Hold the step's heart rate zone: above it slow the belt a notch, below
-    /// it speed it up, within a range around the step's speed. Heart rate only
-    /// trims a belt that is already running: it never starts, resumes or
-    /// stops it, and a missing reading changes nothing.
+    /// Hold the step's heart rate zone: above it ease the belt a notch, below
+    /// it work it harder, within a range around the step's speed and incline.
+    /// Heart rate only trims a belt that is already running: it never
+    /// starts, resumes or stops it, and a missing reading changes nothing.
+    /// A step waits `ZONE_SETTLE` of running first, so the pulse has caught
+    /// up with the step. By the zone's `trims`: speed by 0.1 km/h, incline by
+    /// one deck level, or both, incline first away from the step's settings
+    /// and speed first back toward them.
     fn trim_speed_to_zone(&mut self, run: &mut ProgramRun, now: Instant) {
         if run.phase != ProgramPhase::Walking
             || run.paused
@@ -1334,46 +1413,123 @@ impl OrchestratorState {
         {
             return;
         }
-        let Some(step) = run.program.steps.get(run.step_index) else {
+        let Some(step) = run.program.steps.get(run.step_index).cloned() else {
             return;
         };
         let (Some(zone), Some(bpm)) = (step.zone, self.heart_bpm) else {
             return;
         };
         if step.speed_kmh < MOVING_KMH
-            || run
-                .zone_trimmed_at
-                .is_some_and(|at| now.saturating_duration_since(at) < ZONE_TRIM_EVERY)
+            || run.zone_settle_s < ZONE_SETTLE.as_secs_f64()
+            || run.zone_next_trim.is_some_and(|at| now < at)
         {
             return;
         }
         let (low, high) = zone.bounds_bpm(self.max_heart_rate);
         let bpm = bpm as f32;
-        let delta = if bpm > high {
-            -ZONE_TRIM_KMH
+        let harder = if bpm > high {
+            false
         } else if bpm < low {
-            ZONE_TRIM_KMH
+            true
         } else {
             return;
         };
+        let trims = zone.trims(self.zone_incline_trim);
+        let speed = self.zone_speed(&step, run.target.speed, harder);
+        let incline = match trims {
+            ZoneTrim::Speed => None,
+            ZoneTrim::Incline | ZoneTrim::Both => {
+                self.zone_incline_level(&step, run.target.incline, harder)
+            }
+        };
+        // Back toward the step's own speed first; away from it only once
+        // the incline can't go further.
+        let speed_returns = (harder && run.target.speed < step.speed_kmh - 0.001)
+            || (!harder && run.target.speed > step.speed_kmh + 0.001);
+        let lever = match trims {
+            ZoneTrim::Speed => speed.map(ZoneLever::Speed),
+            ZoneTrim::Incline => incline.map(ZoneLever::Incline),
+            ZoneTrim::Both if speed_returns => speed
+                .map(ZoneLever::Speed)
+                .or(incline.map(ZoneLever::Incline)),
+            ZoneTrim::Both => incline
+                .map(ZoneLever::Incline)
+                .or(speed.map(ZoneLever::Speed)),
+        };
+        match lever {
+            Some(ZoneLever::Speed(kmh)) => {
+                log::info!("Heart rate zone: {} bpm, speed {:.1} km/h", bpm, kmh);
+                run.target.speed = kmh;
+                run.zone_next_trim = Some(now + ZONE_TRIM_EVERY);
+            }
+            Some(ZoneLever::Incline(level)) => {
+                log::info!("Heart rate zone: {} bpm, incline level {}", bpm, level);
+                run.target.incline = level;
+                run.zone_next_trim = Some(now + ZONE_INCLINE_TRIM_EVERY);
+            }
+            // At its limits: look again after the speed trim's wait.
+            None => {
+                run.zone_next_trim = Some(now + ZONE_TRIM_EVERY);
+                return;
+            }
+        }
+        self.set_program_intent_from(run);
+    }
+
+    /// The speed one trim takes `current` to (`harder`: up), within
+    /// `ZONE_TRIM_RANGE_KMH` of the step's speed and the belt's limits. None
+    /// at the limit, or when the speed was set by hand outside the range: the
+    /// zone leaves that alone rather than pull it back by up to a km/h at once.
+    fn zone_speed(&self, step: &ProgramStep, current: f32, harder: bool) -> Option<f32> {
         // Step speeds are calibrated km/h, so the belt's limits are too.
         let floor = (step.speed_kmh - ZONE_TRIM_RANGE_KMH).max(self.min_physical_speed());
         let ceiling =
             (step.speed_kmh + ZONE_TRIM_RANGE_KMH).min(self.to_physical_speed(self.top_hw_speed()));
-        // A speed set by hand outside the range is the user's choice: the zone
-        // leaves it alone rather than pull it back by up to a km/h at once.
         // 0.001 km/h is float slack, far under the deck's 0.1 step.
-        if run.target.speed < floor - 0.001 || run.target.speed > ceiling + 0.001 {
-            return;
+        if current < floor - 0.001 || current > ceiling + 0.001 {
+            return None;
         }
-        let speed = (run.target.speed + delta).clamp(floor, ceiling);
-        run.zone_trimmed_at = Some(now);
-        if (speed - run.target.speed).abs() < 0.001 {
-            return;
+        let delta = if harder {
+            ZONE_TRIM_KMH
+        } else {
+            -ZONE_TRIM_KMH
+        };
+        let speed = (current + delta).clamp(floor, ceiling);
+        ((speed - current).abs() >= 0.001).then_some(speed)
+    }
+
+    /// The incline level one trim takes `current` to (`harder`: steeper): the
+    /// next level the deck runs (DECK_PROFILE, up to the top level) within
+    /// `ZONE_INCLINE_RANGE_PCT` of the step's incline. None at the limit, on
+    /// a deck whose levels don't change the grade, or when the incline was
+    /// set by hand outside the range (left alone, like the speed).
+    fn zone_incline_level(&self, step: &ProgramStep, current: u8, harder: bool) -> Option<u8> {
+        if !self.tilt_multiplier.is_finite() || self.tilt_multiplier.abs() < 0.01 {
+            return None;
         }
-        log::info!("Heart rate zone: {} bpm, speed {:.1} km/h", bpm, speed);
-        run.target.speed = speed;
-        self.set_program_intent_from(run);
+        let pct =
+            |level: u8| level_to_incline_pct(level, self.tilt_multiplier, self.incline_offset);
+        let base = pct(self.step_intent(step).incline);
+        // 0.001 % is float slack, far under a level.
+        let within = |level: u8| (pct(level) - base).abs() <= ZONE_INCLINE_RANGE_PCT + 0.001;
+        if !within(current) {
+            return None;
+        }
+        let mut levels = self.deck_incline_levels();
+        if levels.is_empty() {
+            levels = (0..=self.top_incline_level()).collect();
+        }
+        let now_pct = pct(current);
+        let candidates = levels.into_iter().filter(|l| within(*l));
+        if harder {
+            candidates
+                .filter(|l| pct(*l) > now_pct)
+                .min_by(|a, b| pct(*a).total_cmp(&pct(*b)))
+        } else {
+            candidates
+                .filter(|l| pct(*l) < now_pct)
+                .max_by(|a, b| pct(*a).total_cmp(&pct(*b)))
+        }
     }
 
     /// Adjust the live step target (not saved to the program). Returns false
@@ -1459,7 +1615,21 @@ impl OrchestratorState {
         }
         let zone = run.program.steps.get(run.step_index)?.zone?;
         let (low, high) = zone.bounds_bpm(self.max_heart_rate);
-        Some(crate::heart_rate::zone_band(low, high, bpm))
+        let band = crate::heart_rate::zone_band(low, high, bpm);
+        Some(match self.zone_settle_left_s(run) {
+            Some(left) => band.settling(left),
+            None => band,
+        })
+    }
+
+    /// Whole seconds a walking, unpaused zone step still waits for the pulse
+    /// to settle before it trims; none once it trims (or can't: paused).
+    fn zone_settle_left_s(&self, run: &ProgramRun) -> Option<u32> {
+        if run.paused || run.wait.is_some() {
+            return None;
+        }
+        let left = ZONE_SETTLE.as_secs_f64() - run.zone_settle_s;
+        (left > 0.0).then(|| left.ceil() as u32)
     }
 
     /// Create (id 0) or replace a program after validating it.
@@ -1472,6 +1642,13 @@ impl OrchestratorState {
             // 0.005: half the 0.01 km/h the floor is shown to, as in `validate`.
             if step.speed_kmh >= min_speed - 0.005 && step.speed_kmh <= max_speed {
                 step.speed_kmh = self.snap_speed(step.speed_kmh);
+            }
+            // Speed is the default trim: stored as none, as before #126, so
+            // a zone saved unchanged compares equal and keeps the note.
+            if let Some(z) = step.zone.as_mut() {
+                if z.trim == Some(ZoneTrim::Speed) {
+                    z.trim = None;
+                }
             }
         }
         validate_program(&program, min_speed, max_speed)?;
@@ -1647,7 +1824,8 @@ impl OrchestratorState {
             saved_at: now.checked_sub(Duration::from_millis(age as u64)),
             deck_start: DeckStartWatch::default(),
             deck_moved: false,
-            zone_trimmed_at: None,
+            zone_next_trim: None,
+            zone_settle_s: 0.0,
         };
         self.set_program_intent_from(&run);
         self.program = Some(run);
@@ -3585,6 +3763,7 @@ mod tests {
                 zone: Some(HeartZone {
                     low_pct: 85.0,
                     high_pct: 95.0,
+                    trim: None,
                 }),
             }],
             repeat_every_minutes: None,
@@ -3592,7 +3771,274 @@ mod tests {
         });
         moving(&mut s, 3.0, 0);
         s.run_program(9, t0).unwrap();
+        // Past the settle, so the trim works from the first tick.
+        s.program.as_mut().unwrap().zone_settle_s = ZONE_SETTLE.as_secs_f64();
         s
+    }
+
+    /// `zone_state` at the very start of its step, before the pulse settles.
+    fn fresh_zone_state(t0: Instant) -> OrchestratorState {
+        let mut s = zone_state(t0);
+        s.program.as_mut().unwrap().zone_settle_s = 0.0;
+        s
+    }
+
+    const SETTLE_S: u64 = ZONE_SETTLE.as_secs();
+
+    /// A zone step holds its speed while the pulse settles, then trims.
+    #[test]
+    fn a_zone_waits_for_the_pulse_to_settle_then_trims() {
+        let t0 = Instant::now();
+        let mut s = fresh_zone_state(t0);
+        s.heart_bpm = Some(150);
+        run_ticks(&mut s, t0, 0, SETTLE_S - 1);
+        assert_eq!(program_speed(&s), 5.0, "held for the settle");
+        let band = s.zone_band(Some(150)).unwrap();
+        assert_eq!(band.settle_s, Some(1));
+        assert_eq!(band.label, "ZONE // SETTLING");
+        run_ticks(&mut s, t0, SETTLE_S - 1, SETTLE_S);
+        assert_eq!(program_speed(&s), 5.0 + ZONE_TRIM_KMH, "trims once settled");
+        assert_eq!(s.zone_band(Some(150)).unwrap().settle_s, None);
+        assert_eq!(s.zone_band(Some(150)).unwrap().label, "ZONE // UNDER");
+    }
+
+    /// Only running time settles: a belt that isn't running yet (counting
+    /// down, say) doesn't count toward the wait.
+    #[test]
+    fn the_settle_counts_only_running_time() {
+        let t0 = Instant::now();
+        let mut s = fresh_zone_state(t0);
+        s.heart_bpm = Some(195);
+        s.last_status = MachineStatus::Starting;
+        run_ticks(&mut s, t0, 0, 200);
+        s.last_status = MachineStatus::Running;
+        run_ticks(&mut s, t0, 200, 200 + SETTLE_S - 1);
+        assert_eq!(program_speed(&s), 5.0);
+        run_ticks(&mut s, t0, 200 + SETTLE_S - 1, 200 + SETTLE_S);
+        assert_eq!(program_speed(&s), 5.0 - ZONE_TRIM_KMH);
+    }
+
+    /// A pause and GO, and each new step, start the wait again.
+    #[test]
+    fn a_pause_and_go_or_a_new_step_waits_again() {
+        let t0 = Instant::now();
+        let mut s = zone_state(t0);
+        s.heart_bpm = Some(195);
+        run_ticks(&mut s, t0, 0, 1);
+        assert_eq!(program_speed(&s), 5.0 - ZONE_TRIM_KMH);
+        s.pause_program(t0 + secs(2)).unwrap();
+        run_ticks(&mut s, t0, 2, 10);
+        s.resume_program(t0 + secs(10)).unwrap();
+        assert_eq!(
+            s.zone_band(Some(195)).unwrap().settle_s,
+            Some(SETTLE_S as u32)
+        );
+        run_ticks(&mut s, t0, 10, 10 + SETTLE_S - 1);
+        assert_eq!(program_speed(&s), 5.0 - ZONE_TRIM_KMH, "held after GO");
+        run_ticks(&mut s, t0, 10 + SETTLE_S - 1, 10 + SETTLE_S);
+        assert_eq!(program_speed(&s), 5.0 - 2.0 * ZONE_TRIM_KMH);
+
+        // Into a second zone step: the wait starts over.
+        let mut s = zone_state(t0);
+        let step = s.program.as_ref().unwrap().program.steps[0].clone();
+        s.program.as_mut().unwrap().program.steps.push(step);
+        s.heart_bpm = Some(195);
+        run_ticks(&mut s, t0, 0, 20 * 60);
+        assert_eq!(s.active_program().unwrap().step_index, 1);
+        assert!(s.zone_band(Some(195)).unwrap().settle_s.is_some());
+        let speed = program_speed(&s);
+        run_ticks(&mut s, t0, 20 * 60, 20 * 60 + SETTLE_S - 2);
+        assert_eq!(program_speed(&s), speed, "the second step waits too");
+    }
+
+    /// A paused zone step shows no countdown: nothing would trim it anyway.
+    #[test]
+    fn a_paused_zone_step_shows_no_settle() {
+        let t0 = Instant::now();
+        let mut s = fresh_zone_state(t0);
+        s.pause_program(t0 + secs(1)).unwrap();
+        assert_eq!(s.zone_band(Some(150)).unwrap().settle_s, None);
+    }
+
+    /// A 60 minute step at 4.0 km/h and 5 % (level 5 at 1 % a level) holding
+    /// 85 to 95 % of 200 bpm, trimming `trim`, with ZONE_TILT on and past the
+    /// settle.
+    fn incline_zone_state(t0: Instant, trim: ZoneTrim) -> OrchestratorState {
+        let mut s = state();
+        s.max_heart_rate = 200;
+        s.zone_incline_trim = true;
+        s.programs.push(Program {
+            id: 9,
+            name: "Tilt".to_string(),
+            steps: vec![ProgramStep {
+                duration_minutes: Some(60.0),
+                speed_kmh: 4.0,
+                incline_pct: 5.0,
+                zone: Some(HeartZone {
+                    low_pct: 85.0,
+                    high_pct: 95.0,
+                    trim: Some(trim),
+                }),
+            }],
+            repeat_every_minutes: None,
+            note: None,
+        });
+        moving(&mut s, 3.0, 0);
+        s.run_program(9, t0).unwrap();
+        s.program.as_mut().unwrap().zone_settle_s = ZONE_SETTLE.as_secs_f64();
+        s
+    }
+
+    fn program_incline(s: &OrchestratorState) -> u8 {
+        s.program_intent.expect("program intent").incline
+    }
+
+    /// Incline only: one level a minute, within 2 % of the step's incline,
+    /// and the speed stays put.
+    #[test]
+    fn an_incline_zone_moves_one_level_a_minute_within_its_range() {
+        let t0 = Instant::now();
+        let mut s = incline_zone_state(t0, ZoneTrim::Incline);
+        assert_eq!(program_incline(&s), 5);
+        s.heart_bpm = Some(195);
+        run_ticks(&mut s, t0, 0, 1);
+        assert_eq!(program_incline(&s), 4);
+        run_ticks(&mut s, t0, 1, 60);
+        assert_eq!(program_incline(&s), 4, "a minute between levels");
+        run_ticks(&mut s, t0, 60, 61);
+        assert_eq!(program_incline(&s), 3);
+        run_ticks(&mut s, t0, 61, 600);
+        assert_eq!(program_incline(&s), 3, "2 % below the step at most");
+        assert_eq!(program_speed(&s), 4.0, "the speed stays put");
+        s.heart_bpm = Some(150);
+        run_ticks(&mut s, t0, 600, 1200);
+        assert_eq!(program_incline(&s), 7, "2 % above the step at most");
+        assert_eq!(program_speed(&s), 4.0);
+    }
+
+    /// Only levels the deck runs (DECK_PROFILE), and never above its top.
+    #[test]
+    fn an_incline_zone_keeps_to_the_levels_the_deck_runs() {
+        use crate::deck_profile::Outcome;
+        let t0 = Instant::now();
+        let mut s = incline_zone_state(t0, ZoneTrim::Incline);
+        s.deck_profile.learn_level(4, Outcome::Took(5));
+        s.deck_profile.learn_level(9, Outcome::Took(6));
+        assert_eq!(s.deck_incline_levels(), vec![0, 1, 2, 3, 5, 6]);
+        s.heart_bpm = Some(150);
+        run_ticks(&mut s, t0, 0, 600);
+        assert_eq!(program_incline(&s), 6, "the deck's top level");
+        s.heart_bpm = Some(195);
+        let mut seen = vec![program_incline(&s)];
+        for t in 600..1400 {
+            run_ticks(&mut s, t0, t, t + 1);
+            seen.push(program_incline(&s));
+        }
+        seen.dedup();
+        assert_eq!(seen, vec![6, 5, 3], "level 4 is skipped");
+    }
+
+    /// With ZONE_TILT off, a step set to trim incline trims speed, as
+    /// before #126.
+    #[test]
+    fn with_the_labs_switch_off_every_zone_trims_speed() {
+        let t0 = Instant::now();
+        let mut s = incline_zone_state(t0, ZoneTrim::Incline);
+        s.zone_incline_trim = false;
+        s.heart_bpm = Some(195);
+        run_ticks(&mut s, t0, 0, 1);
+        assert_eq!(program_speed(&s), 4.0 - ZONE_TRIM_KMH);
+        assert_eq!(program_incline(&s), 5);
+    }
+
+    /// Both: incline first away from the step, speed once the incline is at
+    /// its limit; back the other way, speed first.
+    #[test]
+    fn both_moves_the_incline_first_and_unwinds_the_speed_first() {
+        let t0 = Instant::now();
+        let mut s = incline_zone_state(t0, ZoneTrim::Both);
+        s.heart_bpm = Some(195);
+        run_ticks(&mut s, t0, 0, 120);
+        assert_eq!((program_incline(&s), program_speed(&s)), (3, 4.0));
+        run_ticks(&mut s, t0, 120, 200);
+        assert_eq!(program_incline(&s), 3);
+        assert!(program_speed(&s) < 4.0, "then the speed");
+        let eased = program_speed(&s);
+        s.heart_bpm = Some(150);
+        // Speed back up toward the step's 4.0 first, the incline held.
+        run_ticks(&mut s, t0, 200, 260);
+        assert!(program_speed(&s) > eased);
+        assert!(program_speed(&s) < 4.0);
+        assert_eq!(program_incline(&s), 3);
+        run_ticks(&mut s, t0, 260, 900);
+        assert_eq!(program_incline(&s), 7, "then the incline, to its limit");
+        assert!(program_speed(&s) > 4.0, "and the speed after it");
+    }
+
+    /// An incline set by hand outside the range is the user's: left alone.
+    /// A paused step never trims it either.
+    #[test]
+    fn an_incline_zone_leaves_a_hand_set_incline_and_a_paused_belt_alone() {
+        let t0 = Instant::now();
+        let mut s = incline_zone_state(t0, ZoneTrim::Incline);
+        assert!(s.adjust_program_target(None, Some(10)));
+        s.heart_bpm = Some(195);
+        run_ticks(&mut s, t0, 0, 300);
+        assert_eq!(program_incline(&s), 10);
+
+        let mut s = incline_zone_state(t0, ZoneTrim::Incline);
+        s.pause_program(t0 + secs(1)).unwrap();
+        s.heart_bpm = Some(150);
+        run_ticks(&mut s, t0, 1, 600);
+        assert_eq!(s.active_program().unwrap().incline_pct, 5.0);
+        assert!(s.active_program().unwrap().paused);
+        assert_eq!(program_speed(&s), 0.0, "still paused");
+    }
+
+    /// A save stores speed as no trim, so old and new zones compare equal,
+    /// and keeps incline and both.
+    #[test]
+    fn a_save_stores_speed_as_the_default_trim() {
+        let mut s = state();
+        let step = |trim| ProgramStep {
+            duration_minutes: Some(5.0),
+            speed_kmh: 4.0,
+            incline_pct: 0.0,
+            zone: Some(HeartZone {
+                low_pct: 60.0,
+                high_pct: 70.0,
+                trim,
+            }),
+        };
+        let program = Program {
+            id: 0,
+            name: "T".to_string(),
+            steps: vec![
+                step(Some(ZoneTrim::Speed)),
+                step(Some(ZoneTrim::Incline)),
+                step(Some(ZoneTrim::Both)),
+                step(None),
+            ],
+            repeat_every_minutes: None,
+            note: None,
+        };
+        s.save_program(program).unwrap();
+        let saved = s.programs.last().unwrap();
+        let trims: Vec<_> = saved.steps.iter().map(|s| s.zone.unwrap().trim).collect();
+        assert_eq!(
+            trims,
+            vec![None, Some(ZoneTrim::Incline), Some(ZoneTrim::Both), None]
+        );
+        // A zone saved before #126 reads as speed, and writes back the same.
+        let old = r#"{"duration_minutes":5.0,"speed_kmh":4.0,"incline_pct":0.0,"zone":{"low_pct":60.0,"high_pct":70.0}}"#;
+        let read: ProgramStep = serde_json::from_str(old).unwrap();
+        assert_eq!(read.zone.unwrap().trim, None);
+        assert_eq!(serde_json::to_string(&read).unwrap(), old);
+        let tilt: ProgramStep = serde_json::from_str(
+            r#"{"duration_minutes":5.0,"speed_kmh":4.0,"incline_pct":0.0,"zone":{"low_pct":60.0,"high_pct":70.0,"trim":"incline"}}"#,
+        )
+        .unwrap();
+        assert_eq!(tilt.zone.unwrap().trim, Some(ZoneTrim::Incline));
     }
 
     #[test]
@@ -3702,7 +4148,11 @@ mod tests {
             duration_minutes: Some(5.0),
             speed_kmh,
             incline_pct: 0.0,
-            zone: Some(HeartZone { low_pct, high_pct }),
+            zone: Some(HeartZone {
+                low_pct,
+                high_pct,
+                trim: None,
+            }),
         };
         let program = |s: ProgramStep| Program {
             id: 0,
@@ -3743,7 +4193,8 @@ mod tests {
                 s.zone,
                 climb.then_some(HeartZone {
                     low_pct: 85.0,
-                    high_pct: 95.0
+                    high_pct: 95.0,
+                    trim: None,
                 }),
                 "{:?}",
                 s
@@ -3777,6 +4228,7 @@ mod tests {
         edit.steps[1].zone = Some(HeartZone {
             low_pct: 70.0,
             high_pct: 80.0,
+            trim: None,
         });
         s.save_program(edit).unwrap();
         let saved = s.programs.iter().find(|p| p.id == seeded.id).unwrap();

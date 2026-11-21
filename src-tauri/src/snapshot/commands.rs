@@ -457,6 +457,9 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         Command::HeartRateMaxSet { bpm } => {
             blocking(move || crate::heart_rate::set_max_heart_rate(&app, bpm)).await
         }
+        Command::HeartRateInclineTrimSet { on } => {
+            blocking(move || crate::heart_rate::set_zone_incline_trim(&app, on)).await
+        }
 
         // ---- Guided tasks ----
         Command::GuidedTaskStart { task } => {

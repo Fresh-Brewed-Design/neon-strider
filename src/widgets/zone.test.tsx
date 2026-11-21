@@ -54,6 +54,14 @@ describe("PULSE_RATE heart rate zone", () => {
     expect(screen.getByText("--")).toBeInTheDocument();
   });
 
+  it("says SETTLING while the step waits for the pulse, coloured by its position", () => {
+    const zone = mockZone(133, 152, 124, 75);
+    render(<StatCell id="HEART_RATE" snapshot={withZone(zone, 124)} />);
+    expect(screen.getByText("ZONE // SETTLING")).toHaveClass("is-placed", "accent-cyan");
+    expect(screen.getByTestId("hud-zone")).toHaveAttribute("title", "Heart rate is settling before the zone trims.");
+    expect(zone.message.split(". ")).toHaveLength(1);
+  });
+
   it("leaves the HUD cell as it was without a zone", () => {
     const { container } = render(<StatCell id="HEART_RATE" snapshot={withZone(null)} />);
     expect(screen.queryByTestId("hud-zone")).toBeNull();

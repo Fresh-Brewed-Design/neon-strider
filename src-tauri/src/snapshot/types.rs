@@ -910,6 +910,11 @@ pub enum Command {
     HeartRateMaxSet {
         bpm: u16,
     },
+    /// Labs, ZONE_TILT: let program heart rate zones trim incline as each
+    /// step asks (`on`), or speed only (off, the default).
+    HeartRateInclineTrimSet {
+        on: bool,
+    },
 
     // ---- Guided tasks ----
     /// Hold the dashboard open and on top while `task` runs (starting it again
