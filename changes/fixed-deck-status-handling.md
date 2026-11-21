@@ -1,0 +1,2 @@
+- Engage pressed just after a status poll no longer sends the treadmill a second start.
+- A status code the app doesn't know no longer ends the walk mid-session or counts the same belt time twice. While the treadmill shows one, the app sends it no automatic start, resume or speed change.

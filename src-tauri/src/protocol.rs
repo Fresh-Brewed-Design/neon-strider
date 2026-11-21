@@ -117,8 +117,9 @@ pub const STATUS_STANDBY: u8 = 6;
 /// the deck's own raw values, before calibration.
 #[derive(Debug, Clone)]
 pub struct Telemetry {
-    /// What the engine acts on. An unknown status byte maps to Stopped here (so
-    /// nothing starts or ends a session on a guess); `status_known` says so.
+    /// What the engine acts on. An unknown status byte maps to Stopped here,
+    /// with `status_known` false, and the engine then keeps the last known
+    /// status instead (`OrchestratorState::take_status`).
     pub status: MachineStatus,
     /// The raw status byte (index 2 of the 0x51 frame).
     pub status_code: u8,
