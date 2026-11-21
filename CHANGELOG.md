@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.43.3 (2026-11-21)
+
+### Fixed
+
+- Security updates to the network and database libraries.
+
 ## 1.43.2 (2026-11-21)
 
 ### Fixed
