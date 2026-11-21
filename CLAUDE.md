@@ -273,6 +273,7 @@ sticker on the deck gives 200 km (125 miles), which is the default.
   points (a settings sync, a point saved or deleted) never move a running belt: the deck keeps
   its byte (`CurveHold`) until the next speed change or step. Tests in `engine.rs`,
   `programs.rs` and `sim.rs` pin it.
+- Before building a feature, check `docs/features.md` (every feature, toast and card the app has) and grep the code for the behaviour itself; improve what exists instead of adding a near-duplicate. A PR that adds, removes or changes something a user would notice edits its line there.
 - After editing any Rust file, run `cargo check` in `src-tauri/`.
 - The Rust version is pinned in `rust-toolchain.toml`; bump it there and in the workflows together, and fix any new clippy lints in the same PR.
 - Packet decoding and speed/calibration scaling belong in **Rust**, not JS.

@@ -170,7 +170,7 @@ Cards are persistent: each stays until it is acted on or its condition clears (`
 - Daily total (`DAILY_TOTAL`): today's km including the live walk, a HUD and Live stat and the stasis strip's total; `rs/snapshot.rs`, `src/widgets/registry.ts`.
 - Lifetime odometer (`LIFETIME_ODOMETER`): total distance, belt hours and since-when, in System, Maintenance, and pinnable to the HUD as ODO; `rs/odometer.rs`.
 - Database: SQLite in WAL mode with versioned migrations, a copy before each upgrade, and 14 daily online backups; `rs/persistence.rs`, `rs/backup.rs`.
-- No hot spots or record features exist: History has no hot spot view, personal bests or celebration cards (checked in `src/dashboard/history/`).
+- No records or celebrations, on purpose: History has no personal bests, streak trophies or celebration cards; consistency counts only days the PC was used.
 
 ## Strava
 
