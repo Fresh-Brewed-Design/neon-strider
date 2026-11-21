@@ -3856,4 +3856,63 @@ mod tests {
         r.run(4.0);
         assert_eq!(target_bytes_since(&r, mark), vec![7]);
     }
+
+    /// From a still belt the first speed-up press goes straight to the floor
+    /// and starts the belt there, as a speed set by hand does; the second
+    /// goes one byte above it. Before, the presses stepped bytes 1 to 5 one
+    /// at a time, each sent as the floor, so they seemed to do nothing.
+    #[test]
+    fn the_first_speed_up_from_still_lands_on_the_floor_and_the_second_one_above() {
+        let mut r = Rig::new();
+        r.deck.set_limits(6, 60);
+        r.run(1.0);
+        let mark = r.mark();
+        r.press(DeckAction::SpeedUp);
+        assert_eq!(r.state.speed_byte(r.state.resolve_target().0), 6);
+        let intent = r.state.manual_intent.map(|i| i.speed).unwrap();
+        assert_eq!(r.state.speed_byte(intent), 6, "the intent is the floor");
+        r.run(10.0);
+        assert!(app_starts(&r.commands_since(mark)), "the press starts it");
+        assert!(r.deck.running_at(0.6), "{} km/h", r.deck.speed_kmh());
+        let mark = r.mark();
+        r.press(DeckAction::SpeedUp);
+        r.run(4.0);
+        assert_eq!(target_bytes_since(&r, mark), vec![7], "one above the floor");
+        assert!(r.deck.running_at(0.7), "{} km/h", r.deck.speed_kmh());
+        // Stop still takes it to 0, and the next press from still is the floor again.
+        r.press(DeckAction::Stop);
+        r.run(15.0);
+        assert!(r.deck.belt_still());
+        r.press(DeckAction::SpeedUp);
+        let intent = r.state.manual_intent.map(|i| i.speed).unwrap();
+        assert_eq!(r.state.speed_byte(intent), 6);
+    }
+
+    /// A press from still on a new connection is still a press: it starts
+    /// the belt as before, and nothing else does (no new automatic start).
+    #[test]
+    fn a_speed_up_from_still_after_a_reconnect_starts_only_on_the_press() {
+        let mut r = Rig::new();
+        r.deck.set_limits(6, 60);
+        r.run(1.0);
+        r.press(DeckAction::SpeedUp);
+        r.run(10.0);
+        r.press(DeckAction::Stop);
+        r.run(15.0);
+        assert!(r.deck.belt_still());
+        r.drop_link();
+        r.run(1.0);
+        assert!(r.reconnect());
+        let mark = r.mark();
+        r.run(20.0);
+        assert!(
+            !app_starts(&r.commands_since(mark)),
+            "nothing starts by itself"
+        );
+        assert!(r.deck.belt_still());
+        r.press(DeckAction::SpeedUp);
+        r.run(10.0);
+        assert!(app_starts(&r.commands_since(mark)));
+        assert!(r.deck.running_at(0.6), "{} km/h", r.deck.speed_kmh());
+    }
 }

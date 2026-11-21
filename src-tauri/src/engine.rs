@@ -1328,7 +1328,15 @@ impl OrchestratorState {
             cur_byte
         };
         let min_byte = if cur_byte >= floor { floor } else { 0 };
-        let mut target_byte = (cur_byte + dir).clamp(min_byte, max_byte);
+        // Up from under the floor on a still belt goes straight to the floor:
+        // every byte under it is sent as the floor, so stepping through them
+        // made the first presses do nothing (#176). The press may start the
+        // belt, as any speed set by hand does.
+        let mut target_byte = if cur_byte < floor && dir > 0 {
+            floor
+        } else {
+            (cur_byte + dir).clamp(min_byte, max_byte)
+        };
         // Two bytes with exactly the same km/h both send as the lower one, and
         // DECK_PROFILE may know the deck skips a byte: step past either so the
         // press still moves the deck.
@@ -3393,12 +3401,13 @@ mod tests {
         .0
     }
 
-    /// Every speed-up press moves the deck up a byte until the top speed, and
-    /// every speed-down press down a byte until the Min speed setting,
-    /// whatever the curve: a byte below it is sent as the Min speed, so a
-    /// press there would do nothing and leave the next up press dead.
+    /// From still, the first speed-up press goes to the Min speed setting
+    /// and every later one up a byte until the top speed, and every
+    /// speed-down press down a byte until the Min speed setting, whatever the
+    /// curve: a byte below it is sent as the Min speed, so a press there
+    /// would do nothing and leave the next up press dead.
     #[test]
-    fn speed_nudges_step_every_byte_from_zero_to_max_and_back() {
+    fn speed_nudges_step_every_byte_from_the_floor_to_max_and_back() {
         for config in [
             non_monotonic_calibration(5.0),
             monotonic_calibration(5.0),
@@ -3410,9 +3419,12 @@ mod tests {
             let mut state = OrchestratorState::default();
             state.sync_config(&config);
             let max_byte = (state.max_speed * 10.0).round() as u8;
+            let min_byte = (state.min_speed * 10.0).round() as u8;
+            assert_eq!(manual_byte(&state), 0);
+            state.trigger_action(DeckAction::SpeedUp);
             let mut byte = manual_byte(&state);
-            assert_eq!(byte, 0);
-            for _ in 0..max_byte {
+            assert_eq!(byte, min_byte, "first press from still: {config:?}");
+            for _ in min_byte..max_byte {
                 state.trigger_action(DeckAction::SpeedUp);
                 let next = manual_byte(&state);
                 assert_eq!(next, byte + 1, "up from byte {byte}: {config:?}");
@@ -3420,7 +3432,6 @@ mod tests {
             }
             state.trigger_action(DeckAction::SpeedUp);
             assert_eq!(manual_byte(&state), max_byte, "held at the top");
-            let min_byte = (state.min_speed * 10.0).round() as u8;
             for _ in min_byte..max_byte {
                 state.trigger_action(DeckAction::SpeedDown);
                 let next = manual_byte(&state);
@@ -3774,7 +3785,8 @@ mod tests {
     }
 
     /// A speed nudge on a still belt is a speed set by hand: it starts the
-    /// belt, one step up from the target shown (here 0, so at min speed).
+    /// belt, one step up from the target shown (here 0, so straight to the
+    /// min speed, #176).
     #[test]
     fn a_speed_nudge_on_a_still_belt_starts_it() {
         for status in [MachineStatus::Stopped, MachineStatus::Paused] {
@@ -3791,7 +3803,10 @@ mod tests {
             state.trigger_action(DeckAction::SpeedUp);
             assert!(!state.hold_auto_start, "{status:?}");
             let m = state.manual_intent.unwrap();
-            assert!((m.speed - 0.1).abs() < 0.01, "{status:?}: {m:?}");
+            assert!(
+                (m.speed - state.min_physical_speed()).abs() < 0.01,
+                "{status:?}: {m:?}"
+            );
             assert_eq!(
                 state.resolve_target().0,
                 state.min_physical_speed(),
