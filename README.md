@@ -57,7 +57,7 @@ tried.
 - **Neural flow** (optional). While a program runs, it eases the belt speed down when you're
   busy at the keyboard and mouse. It counts activity only; it never records which keys you
   press.
-- **Updates itself.** It checks GitHub when it starts and once a day, shows the release notes (every version you skipped included), and installs a signed update with one click.
+- **Updates itself.** It checks GitHub when it starts and every hour, shows the release notes (every version you skipped included), and installs a signed update with one click.
 
 ## Screens
 

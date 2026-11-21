@@ -1,0 +1,1 @@
+- Neon Strider now checks for updates every hour, so new versions show up and install by themselves without pressing check.

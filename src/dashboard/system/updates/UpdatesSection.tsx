@@ -51,7 +51,7 @@ export function UpdatesSection() {
     <Section
       id="sys-updates"
       title="Updates"
-      description="Neon Strider checks GitHub for a signed new version at start and once a day."
+      description="Neon Strider checks GitHub for a signed new version at start and every hour."
       status={
         <span className="shrink-0 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-white/50">
           {offer && u.status.state !== "up_to_date" ? (
