@@ -1,9 +1,18 @@
 import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
-import { dispatch, type HudAnchor, type HudIdleMode, type HudMonitor, type HudWidget } from "../../ipc";
+import {
+  dispatch,
+  type HudAnchor,
+  type HudIdleMode,
+  type HudMinifyHotkey,
+  type HudMonitor,
+  type HudWidget,
+} from "../../ipc";
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { useAppSnapshot } from "../../state/useAppState";
+import { MINIFY_KEYS, minifyKeyText } from "../../hud/minifyHotkey";
 import { MODULE_WIDGETS, STAT_WIDGETS, widgetName } from "../../widgets/registry";
+import { Toggle } from "../system/fields";
 import { GhostButton, Hint, Label, Page, Panel, Waiting } from "../ui";
 import { cx, send } from "../util";
 
@@ -153,7 +162,50 @@ function IdleModePicker({ mode }: { mode: HudIdleMode }) {
       </div>
       <ActionStatus pending={set.pending} error={set.error} />
       <Hint>Cards that need an answer still show, and a hidden HUD comes back when the belt moves.</Hint>
-      <Hint>Alt + Insert shrinks the HUD to a strip at any time, and brings it back.</Hint>
+    </div>
+  );
+}
+
+/** The Alt hotkey that minifies the HUD: on or off, and which key. Off, the key is kept for next time. */
+function MinifyHotkeyPicker({ hotkey }: { hotkey: HudMinifyHotkey }) {
+  const set = useAction();
+  const save = (next: HudMinifyHotkey) => void set.run(() => dispatch({ type: "hud_set_minify_hotkey", hotkey: next }));
+  const keyText = minifyKeyText(hotkey.key);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Toggle
+        label="Minify hotkey"
+        checked={hotkey.enabled}
+        onChange={(enabled) => save({ ...hotkey, enabled })}
+        description={
+          hotkey.enabled
+            ? `${keyText} shrinks the HUD to a strip and brings it back.`
+            : `Other apps get ${keyText}.`
+        }
+      />
+      {hotkey.enabled && (
+        <div className="flex flex-col gap-1" role="radiogroup" aria-label="Minify hotkey">
+          {MINIFY_KEYS.map((k) => (
+            <button
+              key={k.key}
+              type="button"
+              role="radio"
+              aria-checked={k.key === hotkey.key}
+              disabled={set.pending}
+              onClick={() => save({ ...hotkey, key: k.key })}
+              className={cx(
+                "w-full rounded border px-2 py-1.5 text-left font-mono text-[11px] transition-colors",
+                k.key === hotkey.key
+                  ? "border-neon-cyan bg-neon-cyan/15 text-neon-cyan"
+                  : "border-white/15 text-white/70 hover:border-neon-cyan/50",
+              )}
+            >
+              {minifyKeyText(k.key)}
+            </button>
+          ))}
+        </div>
+      )}
+      <ActionStatus pending={set.pending} error={set.error} />
     </div>
   );
 }
@@ -239,6 +291,7 @@ export function HudPage() {
           <PlacementRow anchor={anchor} custom={s.hud.custom !== null} />
           <MonitorPicker monitors={s.hud_monitors} selected={monitor} />
           <IdleModePicker mode={s.hud.idle_mode} />
+          <MinifyHotkeyPicker hotkey={s.hud.minify_hotkey} />
           <Hint>
             Clicks pass through the HUD except on its panel. Speed and tilt pop-ups stay hidden while VEL or TILT is on
             the HUD.

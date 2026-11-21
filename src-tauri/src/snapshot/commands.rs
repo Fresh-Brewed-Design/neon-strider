@@ -156,6 +156,7 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             Ok(())
         }
         Command::HudSetMinified { minified } => set_hud(&app, |cfg| cfg.minified = minified),
+        Command::HudSetMinifyHotkey { hotkey } => set_hud(&app, |cfg| cfg.minify_hotkey = hotkey),
 
         // ---- Strava ----
         Command::StravaSetCredentials {

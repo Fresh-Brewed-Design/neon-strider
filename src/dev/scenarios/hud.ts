@@ -1,7 +1,7 @@
 // The HUD's place and layout. ?anchor=top_left (or any corner) picks its corner,
 // ?onemonitor leaves a single display, ?custom puts it where it was dragged,
-// and ?minified shows the running strip (combine with ?program=resting|paused,
-// ?noprogram or ?idle).
+// ?minified shows the running strip (combine with ?program=resting|paused,
+// ?noprogram or ?idle), and ?minifykey=off|pause|scroll_lock sets the minify hotkey.
 import { emit } from "@tauri-apps/api/event";
 import type { AppSnapshot } from "../../ipc";
 import { expandHud, params, publish, snapshot } from "../mockState";
@@ -52,6 +52,9 @@ export const hud: Scenario = {
     if (params.has("onemonitor")) snapshot.hud_monitors = snapshot.hud_monitors.slice(0, 1);
     if (params.has("custom")) snapshot.hud.custom = { dx: 400, top: 120 };
     if (params.has("minified")) snapshot.hud.minified = true;
+    const minifyKey = params.get("minifykey");
+    if (minifyKey === "off") snapshot.hud.minify_hotkey = { enabled: false, key: "insert" };
+    else if (minifyKey === "pause" || minifyKey === "scroll_lock") snapshot.hud.minify_hotkey = { enabled: true, key: minifyKey };
   },
   commands: {
     hud_toggle_widget: ({ widget }) => {
@@ -73,5 +76,6 @@ export const hud: Scenario = {
       snapshot.hud.minified = false;
     },
     hud_set_minified: (c) => (snapshot.hud.minified = c.minified),
+    hud_set_minify_hotkey: (c) => (snapshot.hud.minify_hotkey = { ...c.hotkey }),
   },
 };
