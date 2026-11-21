@@ -269,6 +269,18 @@ fn daily_base() -> (f64, bool) {
     *DAILY_BASE.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// Today's distance as the HUD's DAILY_TOTAL shows it, for a live session of
+/// `live_m` metres: the cached base plus the live distance, which counts only
+/// when the session started today. Reads the cache, never the database.
+pub fn daily_total_with_live(live_m: f64) -> f64 {
+    let (base, live_counts_today) = daily_base();
+    total_with_live(base, live_counts_today, live_m)
+}
+
+fn total_with_live(base_m: f64, live_counts_today: bool, live_m: f64) -> f64 {
+    base_m + if live_counts_today { live_m } else { 0.0 }
+}
+
 /// Load the HUD config and the cached totals. Call once after the DB is initialised.
 pub fn init(app: &AppHandle) {
     hud::load(app);
@@ -506,6 +518,12 @@ mod tests {
     #[test]
     fn a_session_started_at_midnight_counts_toward_today() {
         let midnight = 1_700_000_000_000;
+        assert_eq!(total_with_live(4400.0, true, 1800.0), 6200.0);
+        assert_eq!(
+            total_with_live(4400.0, false, 1800.0),
+            4400.0,
+            "a walk started yesterday is not today's"
+        );
         assert!(started_today(Some(midnight), midnight));
         assert!(started_today(Some(midnight + 1), midnight));
         assert!(!started_today(Some(midnight - 1), midnight));
