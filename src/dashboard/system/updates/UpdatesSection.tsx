@@ -110,7 +110,7 @@ export function UpdatesSection() {
                 Not now
               </GhostButton>
             )}
-            {u.dismissed && <Hint>Update put off until tomorrow&apos;s check.</Hint>}
+            {u.dismissed && <Hint>Update put off for a day.</Hint>}
             {!u.dismissed && u.auto_install && !busy && (
               <span className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-neon-cyan/80">
                 Installs when idle
