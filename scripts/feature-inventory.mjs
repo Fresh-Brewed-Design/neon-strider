@@ -67,9 +67,14 @@ export function hudToasts() {
   const m = /type:\s*((?:"\w+"\s*\|?\s*)+);/.exec(src);
   if (m) {
     const line = src.slice(0, m.index).split("\n").length;
+    // Some toasts go out through helpers (Strava's worker, desk.rs, a const
+    // kind), so a type only counts as unused when its string appears nowhere
+    // in the Rust sources.
+    const rust = walk("src-tauri/src", /\.rs$/).map(read).join("\n");
     for (const t of m[1].match(/"(\w+)"/g) ?? []) {
       const name = t.replace(/"/g, "");
-      if (!emitted.has(name)) out.push(entry(ts, line, name, "declared, no Rust code emits it"));
+      if (!emitted.has(name) && !rust.includes(`"${name}"`))
+        out.push(entry(ts, line, name, "declared, never named in Rust"));
     }
   }
   return out;
