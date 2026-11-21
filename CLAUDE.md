@@ -145,6 +145,7 @@ npm run build     # tsc + vite build
 npm run lint      # eslint (repo is clean: 0 problems)
 npx tsc --noEmit  # typecheck
 npx vitest run    # unit tests (vitest + jsdom)
+node scripts/feature-inventory.mjs [word]   # what the app already has (toasts, cards, snapshot fields, settings), from the code
 cargo test        # in src-tauri/: Rust tests, and regenerates src/ipc/bindings
 cargo fmt --check # in src-tauri/: formatting
 cargo clippy --all-targets -- -D warnings   # in src-tauri/: lints, no warnings allowed
@@ -276,6 +277,7 @@ sticker on the deck gives 200 km (125 miles), which is the default.
   points (a settings sync, a point saved or deleted) never move a running belt: the deck keeps
   its byte (`CurveHold`) until the next speed change or step. Tests in `engine.rs`,
   `programs.rs` and `sim.rs` pin it.
+- Before building a feature, run `node scripts/feature-inventory.mjs <word>` and grep the code for the behaviour itself (toast and card text, snapshot fields, settings); improve what exists instead of adding a near-duplicate.
 - After editing any Rust file, run `cargo check` in `src-tauri/`.
 - The Rust version is pinned in `rust-toolchain.toml`; bump it there and in the workflows together, and fix any new clippy lints in the same PR.
 - Packet decoding and speed/calibration scaling belong in **Rust**, not JS.
