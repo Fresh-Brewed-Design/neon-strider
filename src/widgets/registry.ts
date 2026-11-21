@@ -1,5 +1,5 @@
 import { formatClock, km, lifetimeKm } from "../format";
-import type { AppSnapshot, HudWidget } from "../ipc";
+import type { AppSnapshot, HudWidget, ZoneBand } from "../ipc";
 import type { SparkData } from "./spark";
 
 export type Accent = "cyan" | "magenta" | "yellow" | "green";
@@ -19,6 +19,8 @@ export interface StatWidget {
   read: (s: AppSnapshot) => StatReading;
   /** A spark chart under the value, drawn from the snapshot; null shows none. */
   spark?: (s: AppSnapshot) => SparkData | null;
+  /** A heart rate zone beside the value, with Rust's under/in/over; null shows none. */
+  zone?: (s: AppSnapshot) => ZoneBand | null;
 }
 
 /**
@@ -101,6 +103,8 @@ export const STAT_WIDGETS: StatWidget[] = [
     read: (s) => ({ value: s.heart_rate.bpm === null ? "--" : s.heart_rate.bpm.toString(), unit: "BPM" }),
     // Rust sends no history while no sensor is picked: no chart.
     spark: (s) => (s.heart_rate.history.length > 0 ? { points: s.heart_rate.history, zone: s.heart_rate.zone } : null),
+    // Rust sends a zone only while a zone step runs with a sensor picked.
+    zone: (s) => s.heart_rate.zone,
   },
 ];
 

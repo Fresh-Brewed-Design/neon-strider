@@ -100,7 +100,8 @@ export function LabsSection() {
       <div>
         <Toggle
           label="WRIST_LINK: Let the watch's data field read the belt"
-          description="Serves a second Bluetooth service next to the foot pod for a Connect IQ data field on the watch. It only reads the belt for now; nothing the watch sends moves it."
+          description="Serves a Connect IQ data field on the watch through a second Bluetooth service beside the foot pod."
+          hint="WRIST_LINK only reads the belt and can't change the speed."
           checked={wrist.enabled}
           onChange={(on) => void wristChange.run(() => dispatch({ type: "wrist_link_set", on }))}
         />

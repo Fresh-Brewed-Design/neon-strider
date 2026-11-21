@@ -7,7 +7,7 @@ an always-on-top HUD overlay, saved programs, session history, and Strava export
 
 - **Tauri 2** (Rust backend) + **React 19** + **TypeScript** + **Vite 7**
 - **Tailwind CSS 4**, **framer-motion**, **lucide-react**, **sonner**; Orbitron bundled via `@fontsource/orbitron`
-- **ts-rs** generates TypeScript types for the IPC layer into `src/ipc/bindings/` (run `cargo test`).
+- **ts-rs** generates TypeScript types for the IPC layer into `src/ipc/bindings/` (run `cargo test`); the same test run writes `SETTING_LIMITS.ts` there from `limits.rs`, the one source for the ranges dashboard fields offer.
   They are marked generated in `.gitattributes`. Regenerate, don't hand-merge: on a conflict there,
   take either side and run `cargo test` in `src-tauri/`. CI exports them afresh and fails if the
   committed files differ (changed, missing or stale).
@@ -58,11 +58,16 @@ scenario there for any change to how the app drives the belt. In dev builds (`np
 the Bluetooth scan lists `SIM_DECK // simulated treadmill`: `sim_link.rs` puts the same deck behind
 `bluetooth::DeckLink` (the seam the worker and status listener use for the real BLE deck), so the
 whole app runs with no hardware; `connection.simulated` shows a SIM tag on the HUD and dashboard.
-Its walks stay in memory (no History, odometer or Strava) and it is never saved as the treadmill
-to reconnect to, since dev and release builds share the database. Both modules are behind
+Its walks stay in memory (no History, odometer or Strava); connecting it saves it as the treadmill
+to reconnect to, in the dev database. Both modules are behind
 `cfg(debug_assertions)`, so release builds never list it and `simulated` is always false.
+Dev builds run under their own identifier (`lib.rs` `DEV_IDENTIFIER`,
+`com.freshbreweddesign.neonstrider.dev`, swapped into the Tauri context by `app_context`), so they
+get their own data folder (database, backups), logs, WebView data, Credential Manager entries and
+single-instance lock, and never open the release app's. Release builds use `tauri.conf.json`
+unchanged. Dev builds never launch at login (the autostart entry is named after the product).
 Guided tasks (`guided_task.rs`): a window asks Rust to hold the dashboard open and on top while a task runs (`guided_task_start`/`_end`, UNPIN is `guided_task_cancel`); `dashboard.rs` keeps it through blurs, it ends by itself after 30 min and never survives a restart. The GROUND_TRUTH run pins it while a run or sweep is open (`useGuidedTask`).
-GROUND_TRUTH (`calibration.rs`, always on in System, Calibration): RUN (a press) sets the belt to a target speed, then the user taps as the belt mark passes (`calibration_tap`, Space in the dashboard, or Alt+Space through `hooks.rs` while a run listens, `calibration::tap_listening`). Rust timestamps each tap; `calibration/tap.rs` is the pure maths (median gap, outliers dropped against it, done once enough gaps agree). After a run is measured, GAIT_SYNC (`calibration/steps.rs`) times footsteps with the same inputs: stride is the measured belt speed over the cadence, saved by itself with the factor kept, through the same save and UNDO as a belt run. A point counts its footstep runs apart from its belt runs (`stride_runs`, 0 for a stride never measured), so the first measured stride replaces a borrowed one. The guided walk (`calibration/guide.rs`) asks the top speed, times the deck's slowest speed and that one, then checks midpoints and splits a span only when the measured error there is over 2 %; every speed waits for RUN, and a point saved mid-run keeps the deck at the run's speed. The target list and RUN ALL are the advanced way in, and the old panel sits under ADVANCED // POINT_EDITOR until #92. A treadmill that connects with no belt length and no points gets "Calibrate this treadmill" (`calibration.offer`); SKIP is kept per treadmill (`calibrationOfferSkipped:<id>`). Tapping only reads the deck. The belt loop length is a setting per treadmill (`beltLoop:<id>`, switched with DECK_PROFILE).
+GROUND_TRUTH (`calibration.rs`, always on in System, Calibration): RUN (a press) sets the belt to a target speed, then the user taps as the belt mark passes (`calibration_tap`, Space in the dashboard, or Alt+Space through `hooks.rs` while a run listens, `calibration::tap_listening`). Rust timestamps each tap; `calibration/tap.rs` is the pure maths (median gap, outliers dropped against it, done once enough gaps agree). After a run is measured, GAIT_SYNC (`calibration/steps.rs`) times footsteps with the same inputs: stride is the measured belt speed over the cadence, saved by itself with the factor kept, through the same save and UNDO as a belt run. A point counts its footstep runs apart from its belt runs (`stride_runs`, 0 for a stride never measured), so the first measured stride replaces a borrowed one. The guided walk (`calibration/guide.rs`) asks the top speed, times the deck's slowest speed and that one, then checks midpoints (the nearest speed the deck runs when DECK_PROFILE says it skips halfway) and splits a span only when the measured error there is over 2 %; every speed waits for RUN, and a point saved mid-run keeps the deck at the run's speed. The target list and RUN ALL are the advanced way in, and the old panel sits under ADVANCED // POINT_EDITOR until #92. A treadmill that connects with no belt length and no points gets "Calibrate this treadmill" (`calibration.offer`); SKIP is kept per treadmill (`calibrationOfferSkipped:<id>`). Tapping only reads the deck. The belt loop length is a setting per treadmill (`beltLoop:<id>`, switched with DECK_PROFILE).
 Neural flow (typing-aware pace) is pure logic in `neural.rs`; key-press counting is switched by Rust (`neural_monitor_wanted`, 1 Hz tick), not by a window.
 Status is visible, not silent. `link.rs` (treadmill link state, plain-English BLE errors) and
 `strava_status.rs` (Strava activity/steps, `describe()` turns Strava's JSON errors into one
@@ -73,7 +78,7 @@ the upload page). In the UI, every button that can fail or take time uses `useAc
 itself; `send()` toasts rejections as a backstop, the HUD uses `useHudSend` + `<HudNote>`.
 GHOST_POD (`ghost_pod.rs`: pure RSC foot-pod encoding, Labs switch off by default; `ghost_pod/worker.rs`) advertises the belt's speed and cadence to a watch as a Running Speed and Cadence sensor. Its power switch (`ghost_pod_power`, off by default) also serves the Cycling Power service with watts from METABOLIC_BURN's estimate (`engine::walking_kcal_per_min`). It only reports the belt; nothing from the watch moves it. See docs/watch-pod.md.
 WRIST_LINK (`wrist_link.rs`, Labs switch off by default, served by the same worker) adds a second GATT service for the Connect IQ data field in `watch/`; phase 0 only sends the belt State, nothing from the watch is acted on. See docs/wrist-link.md.
-HEART_LINK (`heart_rate.rs`: pure Heart Rate Measurement decoding and snapshot types; `heart_rate/worker.rs`: the picked sensor, scan and link, apart from the treadmill's) reads a standard 0x180D sensor such as a watch with Broadcast Heart Rate, off until one is picked (`heart_rate_sensor_id`), and feeds `snapshot.heart_rate` and the `HEART_RATE` stat. It only reads; it never moves the belt. Its scans and the treadmill's share `bluetooth::SCAN_LOCK`, one at a time. Each second of a walk saves the fresh reading with its sample (`samples.heart_rate`, migration 6), and each session save works out `sessions.avg_heart_rate` and `max_heart_rate` from the samples; History shows both. Strava uploads (auto-sync and the manual-upload TCX) carry it as `HeartRateBpm` on each trackpoint with a reading, plus the lap's average and maximum; a walk without heart rate builds the same TCX as before. A program step may carry a `zone` (`programs.rs`: `HeartZone`, `trim_speed_to_zone`): while the belt runs, the speed is trimmed within 1 km/h of the step's speed to hold the pulse in it; it never starts, resumes or stops the belt, and the engine never auto-resumes a paused belt for a program target (max heart rate: `HeartRateMaxSet`). The max heart rate is set in System, Heart rate (`snapshot.heart_rate.max_bpm`), zones are edited per step in the program editor (% of max or bpm, saved as %), and the seeded VO2 max holds its climbs at 85 to 95 % (migration 7 adds the zones to an unedited one). Still to do: showing the zone on the HUD and dashboard (#125) and trimming incline (#126).
+HEART_LINK (`heart_rate.rs`: pure Heart Rate Measurement decoding and snapshot types; `heart_rate/worker.rs`: the picked sensor, scan and link, apart from the treadmill's) reads a standard 0x180D sensor such as a watch with Broadcast Heart Rate, off until one is picked (`heart_rate_sensor_id`), and feeds `snapshot.heart_rate` and the `HEART_RATE` stat. It only reads; it never moves the belt. Its scans and the treadmill's share `bluetooth::SCAN_LOCK`, one at a time. Each second of a walk saves the fresh reading with its sample (`samples.heart_rate`, migration 6), and each session save works out `sessions.avg_heart_rate` and `max_heart_rate` from the samples; History shows both. Strava uploads (auto-sync and the manual-upload TCX) carry it as `HeartRateBpm` on each trackpoint with a reading, plus the lap's average and maximum; a walk without heart rate builds the same TCX as before. A program step may carry a `zone` (`programs.rs`: `HeartZone`, `trim_speed_to_zone`): while the belt runs, the speed is trimmed within 1 km/h of the step's speed to hold the pulse in it; it never starts, resumes or stops the belt, and the engine never auto-resumes a paused belt for a program target (max heart rate: `HeartRateMaxSet`). The max heart rate is set in System, Heart rate (`snapshot.heart_rate.max_bpm`), zones are edited per step in the program editor (% of max or bpm, saved as %), and the seeded VO2 max holds its climbs at 85 to 95 % (migration 7 adds the zones to an unedited one). While a zone step runs with a sensor picked, `snapshot.heart_rate.zone` carries the zone in bpm and whether the reading is under, in or over it (`heart_rate::zone_band`, the trim's own bounds), with Rust's label and sentence; PULSE_RATE shows it on the HUD and the Live page. Still to do: trimming incline (#126).
 
 - **Windows**:
   - `main` → `index.html` → `src/main.tsx` → `src/dashboard/DashboardApp.tsx` (760×600 tray
@@ -86,7 +91,7 @@ HEART_LINK (`heart_rate.rs`: pure Heart Rate Measurement decoding and snapshot t
     status text in `status.ts`. While the belt is still, Rust may collapse the panel to a strip
     (`HudStrip.tsx`) or hide it (`hud.idle_mode`); minified by the user (`hud.minified`, the
     header's minify button or Alt+Insert) it shows the running strip instead of the whole panel
-    until expanded. Both are decided in `snapshot/stasis.rs` as `snapshot.hud_view`; cards and
+    until expanded (PULSE_RATE and its chart join the strip while a heart rate sensor is picked). Both are decided in `snapshot/stasis.rs` as `snapshot.hud_view`; cards and
     toasts always show
 - **Shared**: `src/widgets/registry.ts` defines every stat once for the HUD and dashboard.
 - **Live state**: Rust owns it. Every window reads one `AppSnapshot` via `src/state/useAppState.ts`
@@ -149,7 +154,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?blink=squeeze|open`: the guided blink step during an eye-break cooldown (CLOSE by default)
 - `?call`: on a call, the belt held at the quiet speed (the HUD preview also shows the toast)
 - `?caloffer`: a connected treadmill with no calibration, so the first-connect "Calibrate this treadmill" card shows (outside System)
-- `?calwizard`: GROUND_TRUTH with a 280 cm belt loop, two saved points and the top speed question; `=belt` the BELT_LOOP step, `=tapping|dropped` a tap run five passes in or with a dropped tap and a restart note, `=measured` the plain-words result with the point already saved (UNDO, TAP AGAIN), `=sweep|sweeprun` RUN ALL between speeds or tapping, `=oldpoint` a point stored below the factor limit, `=targets` an added 3.5 km/h and a stored 14.0 km/h outside the range, `=steps` GAIT_SYNC tapping footsteps after a measured run, `=stepsaved` the stride measured and saved by itself, with UNDO, `=guiderun` the guided walk from 0.6 to 5.0 km/h tapping at 5.0, `=guidecheck` both ends saved and the midpoint check up next, `=guidesplit` the check 3.2 % off and split, `=guidedone` the walk done with its summary
+- `?calwizard`: GROUND_TRUTH with a 280 cm belt loop, two saved points and the top speed question; `=belt` the BELT_LOOP step, `=tapping|dropped` a tap run five passes in or with a dropped tap and a restart note, `=measured` the plain-words result with the point already saved (UNDO, TAP AGAIN), `=sweep|sweeprun` RUN ALL between speeds or tapping, `=oldpoint` a point stored below the factor limit, `=targets` an added 3.5 km/h and a stored 14.0 km/h outside the range, `=steps` GAIT_SYNC tapping footsteps after a measured run, `=stepsaved` the stride measured and saved by itself, with UNDO, `=guiderun` the guided walk from 0.6 to 5.0 km/h tapping at 5.0, `=guidecheck` both ends saved and the midpoint check up next, `=guidesplit` the check 3.2 % off and split, `=guidedone` the walk done with its summary, `=guideskip` both ends saved on a deck that skips 2.8 km/h, so the check moved to 2.7, `=guideran` the 2.8 check the deck ran at 2.9 (chip, line and note show 2.9)
 - `?connect=fail`: connecting from the connect dialog fails
 - `?custom`: the HUD sits where it was dragged
 - `?daily=12.34`: today's km (DAILY_TOTAL)
@@ -157,6 +162,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?decknote=refused|adjusted`: the HUD note after the deck refuses or changes a target
 - `?deckprofile`: DECK_PROFILE learned (floor 0.6, ceiling 4.0, 1.5 skipped, top incline level 12, level 7 skipped; Diagnostics shows FORGET); `=sweep` with the LABS // DECK_SWEEP switch on and a speed sweep running, `=inclinesweep` an incline sweep running, `=sweepon` the switch on with no sweep running
 - `?desksync=open|new|few`: History's DESK_SYNC card
+- `?distance=12.34`: this walk's km (DIST)
 - `?due`: the belt reminder well past its interval
 - `?engage=timeout`: the deck's screen is off, so Engage waits and fails
 - `?eyebreak=upcoming|rest|break|still|resume`: the OCULAR_IMPLANT cards: heads-up, heads-up set for a program rest, cooldown with the belt paused or left alone, resume card
@@ -166,12 +172,14 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?heart=on|waiting`: System -> Heart rate with a watch picked and reading, or not broadcasting yet; in History every other walk has an average and maximum heart rate
 - `?hours`: the belt reminder counts belt hours
 - `?hrspark=steady|climb|gap`: PULSE_RATE's spark chart with a watch reading: a steady walk, a climb into a heart rate zone step (its band shows), or a minute with no reading
+- `?hrzone=under|in|over|wait`: a heart rate zone step (133 to 152 bpm) with a watch reading below, inside or above it, or not reading yet
 - `?idle`: the belt stopped
 - `?lightsout`: LIGHTS_OUT on; on the HUD preview its toast
 - `?link=scanning|connecting|reconnecting|nodata|bt-off|failed`: each treadmill link state
 - `?maxhr=178`: a max heart rate of 178 bpm set in System -> Heart rate (program heart zones use it)
-- `?minified`: the running strip; with `?program=resting|paused`, `?noprogram` or `?idle`
+- `?minified`: the running strip; with `?program=resting|paused`, `?noprogram` or `?idle`; with `?hrspark=...`, `?hrzone=...` or `?heart=on|waiting` it shows PULSE_RATE
 - `?neural=active`: Neural flow easing the belt off while typing
+- `?nohistory`: History empty: no walks, an empty week and DESK_SYNC
 - `?noprogram`: no program running
 - `?nostrava`: no Strava credentials or account
 - `?offline`: no treadmill saved yet
@@ -187,6 +195,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?stasis=strip|hidden`: "When the belt is still" set to that, with the belt stopped
 - `?status=9|countdown|stopping|standby`: an unknown status byte, the 3-2-1, the belt winding down, or the deck asleep
 - `?strava=authorizing|uploading|processing|checking|backoff|error|paused`: each Strava state
+- `?textscale=110|125`: the page zoomed to approximate the Windows text size setting (dev previews only; size the HUD preview window to 340 px wide)
 - `?toasts`: the HUD toasts; `=deck` for the deck-start GO toast
 - `?traffic=recording|saved`: the Diagnostics traffic recorder
 - `?update=available|downloading|failed|whatsnew`: auto-update states
@@ -250,11 +259,14 @@ sticker on the deck gives 200 km (125 miles), which is the default.
   sets the hold again until GO (or Engage, which is GO on a paused program). A start at the
   treadmill is a press too: on a paused or waiting program it is GO (`watch_for_deck_start`:
   the deck reported the belt still since the pause, then moving for `DECK_GO_DEBOUNCE`, with
-  no app start in flight), and during a rest it becomes a manual walk. SKIP is a press and
+  no app start in flight), and during a rest it becomes a manual walk. A pause at the treadmill on a
+  walking program pauses the program with it (`notice_deck_pause`), so GO resumes the step. SKIP is a press and
   may start the belt; a step between two moving speeds stays automatic. A program that ends
   (END, SKIP on its last step, or into a rest) while the belt isn't moving leaves it still: the
-  speed from before waits in `engage_speed` for the next Engage or RE-JACK. Tests in
-  `engine.rs` and `programs.rs` pin it.
+  speed from before waits in `engage_speed` for the next Engage or RE-JACK. New calibration
+  points (a settings sync, a point saved or deleted) never move a running belt: the deck keeps
+  its byte (`CurveHold`) until the next speed change or step. Tests in `engine.rs`,
+  `programs.rs` and `sim.rs` pin it.
 - After editing any Rust file, run `cargo check` in `src-tauri/`.
 - The Rust version is pinned in `rust-toolchain.toml`; bump it there and in the workflows together, and fix any new clippy lints in the same PR.
 - Packet decoding and speed/calibration scaling belong in **Rust**, not JS.

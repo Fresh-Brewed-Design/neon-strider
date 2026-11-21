@@ -29,8 +29,10 @@ use tauri::{AppHandle, Emitter, Manager};
 /// Event to the HUD page while dragging and once at the end.
 const EVENT_HUD_DRAG: &str = "hud-drag";
 
+/// One frame at 60 Hz, so the HUD follows the pointer smoothly.
 const FRAME: Duration = Duration::from_millis(16);
 /// A drag held longer than this is given up (the button state got lost).
+/// No real drag takes a minute; past that the button-up was missed.
 const MAX_DRAG: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone, Serialize)]

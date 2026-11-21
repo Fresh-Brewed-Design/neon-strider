@@ -3,6 +3,7 @@ import type { AppSnapshot, HudWidget } from "../ipc";
 import { describeActive } from "../dashboard/programs/format";
 import { startFailure } from "../state/linkStatus";
 import { statWidget } from "../widgets/registry";
+import { Sparkline } from "../widgets/Sparkline";
 import { HudNote } from "./HudNote";
 import { EngageButton } from "./HudPanel";
 import { useHudSend } from "./useHudSend";
@@ -63,13 +64,37 @@ const RUN_STATS: HudWidget[] = ["VELOCITY", "TIMER", "DISTANCE"];
 
 /**
  * The panel minified by the user (`hud_view` "minified"): speed, time and
- * distance, the program step when one runs, then expand, Engage/Stasis and
- * Dump. It stays until expanded again.
+ * distance, heart rate with a sensor picked, the program step when one runs,
+ * then expand, Engage/Stasis and Dump. It stays until expanded again.
  */
 /** The program line as whole segments; each keeps its trailing dot so a wrap
  *  never starts a line with one. */
 function programSegments(name: string, detail: string): string[] {
   return [name, ...detail.split(" · ")];
+}
+
+/**
+ * PULSE_RATE on the running strip, only while a heart rate sensor is picked:
+ * the bpm, then its spark chart in the rest of the row. Without a sensor the
+ * strip stays as it was.
+ */
+function PulseRow({ snapshot }: { snapshot: AppSnapshot }) {
+  const def = statWidget("HEART_RATE");
+  if (!def || snapshot.heart_rate.sensor === null) return null;
+  const { value, unit } = def.read(snapshot);
+  const spark = def.spark?.(snapshot);
+  return (
+    <div className={`hud-run-pulse accent-${def.accent}`} title={def.codename} data-testid="hud-run-pulse">
+      <div className="hud-strip-total">
+        <span className="hud-label">{def.label}</span>
+        <span className="hud-value hud-value-sm">
+          {value}
+          {unit && <span className="hud-unit">{unit}</span>}
+        </span>
+      </div>
+      {spark && <Sparkline data={spark} className="hud-spark hud-run-spark" />}
+    </div>
+  );
 }
 
 export function RunStripRow({ snapshot }: { snapshot: AppSnapshot }) {
@@ -95,6 +120,7 @@ export function RunStripRow({ snapshot }: { snapshot: AppSnapshot }) {
           );
         })}
       </div>
+      <PulseRow snapshot={snapshot} />
       {a && (
         <div className="hud-run-program accent-yellow">
           <span className="hud-label">{a.paused ? "PAUSED" : "PROGRAM"}</span>

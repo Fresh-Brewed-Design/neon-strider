@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { HeartPulse, Plus, X } from "lucide-react";
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
-import { dispatch } from "../../ipc";
+import { dispatch, SETTING_LIMITS } from "../../ipc";
 import { roundSpeed, snapToDeck, snapToLevel } from "../../state/deckSpeeds";
 import { useAppState } from "../../state/useAppState";
 import { GhostButton, Hint, Label, NeonButton, Panel } from "../ui";
@@ -10,8 +10,8 @@ import { ChoiceGroup } from "../system/fields";
 import { cx } from "../util";
 import { fromDraft, withZoneUnit, zoneSummary, type Draft, type StepDraft, type ZoneUnit } from "./draft";
 
-/** Until Rust's snapshot arrives: the same estimate Rust starts from (220 minus age at 30). */
-const FALLBACK_MAX_BPM = 190;
+/** Until Rust's snapshot arrives: the estimate Rust starts from (220 minus age at 30). */
+const FALLBACK_MAX_BPM = SETTING_LIMITS.default_max_heart_rate_bpm;
 
 const ZONE_UNITS: readonly { value: ZoneUnit; label: string }[] = [
   { value: "pct", label: "% max" },
@@ -92,7 +92,7 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
         <input
           className={input}
           value={d.name}
-          maxLength={40}
+          maxLength={SETTING_LIMITS.program_name_chars}
           placeholder="Post-meal"
           autoFocus
           onChange={(e) => {
@@ -162,7 +162,7 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
         ))}
         <GhostButton
           className="flex items-center gap-1.5 self-start"
-          disabled={d.steps.length >= 20}
+          disabled={d.steps.length >= SETTING_LIMITS.program_steps}
           onClick={() =>
             setD({
               ...d,
@@ -228,10 +228,9 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
       </div>
 
       <Hint>
-        When a program finishes or you end it, the treadmill goes back to what it was doing before: same speed if
-        you were walking, otherwise it pauses. Ending it while the belt is paused leaves it paused; Engage then
-        starts it at your earlier speed. A program never starts a still belt by itself: after a rest, or after a 0
-        km/h step, the next walk waits for you to press GO.
+        When a program ends, the treadmill goes back to the speed from before, or pauses if you weren&apos;t walking.
+        Ending a program on a paused belt leaves the belt paused, and Engage restarts the belt at the earlier speed.
+        A program never starts a still belt by itself: after a rest or a 0 km/h step, the next walk waits for GO.
       </Hint>
 
       <ActionStatus error={error ?? save.error} />

@@ -90,6 +90,8 @@ impl StravaIssue {
 }
 
 /// Collapse whitespace into one line and cut at `max` characters.
+/// Callers cut Strava's messages at 120 to 140 characters, about two lines
+/// under a button, and a field name at 60.
 pub fn one_line(text: &str, max: usize) -> String {
     let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if flat.chars().count() <= max {
@@ -191,7 +193,7 @@ fn http_issue(status: u16, retry: Option<u32>, body: &str) -> StravaIssue {
                 .any(|(r, f, c)| r == "Application" && f == "Status" && c == "inactive");
             if inactive {
                 return StravaIssue {
-                    message: "Strava turned off this API app: the account that owns it needs a Strava subscription. Subscribe, then reactivate it at strava.com/settings/api \u{2014} or use Save for Strava below.".to_string(),
+                    message: "Strava turned off the API app because its owner needs a Strava subscription. Subscribe and reactivate the app at strava.com/settings/api, or use Save for Strava.".to_string(),
                     hint: StravaHint::OpenApiSettings,
                     permanent: true,
                     retry_after_s: None,
@@ -229,7 +231,7 @@ fn http_issue(status: u16, retry: Option<u32>, body: &str) -> StravaIssue {
                     "Strava rate limit reached. Strava asks for {} before the next try.",
                     wait_text(s)
                 ),
-                None => "Strava rate limit reached. It will try again later.".to_string(),
+                None => "Strava rate limit reached. Neon Strider will try again later.".to_string(),
             },
             hint: StravaHint::Wait,
             permanent: false,
@@ -237,7 +239,7 @@ fn http_issue(status: u16, retry: Option<u32>, body: &str) -> StravaIssue {
         },
         500..=599 => StravaIssue::new(
             format!(
-                "Strava is having problems (error {}). It will try again.",
+                "Strava is having problems (error {}). Neon Strider will try again.",
                 status
             ),
             StravaHint::Wait,
@@ -278,6 +280,7 @@ fn http_issue(status: u16, retry: Option<u32>, body: &str) -> StravaIssue {
 }
 
 fn wait_text(secs: u32) -> String {
+    // From a minute and a half, minutes read better than a count of seconds.
     if secs >= 90 {
         format!("{} min", (secs + 30) / 60)
     } else {
@@ -333,14 +336,14 @@ pub fn describe(raw: &str) -> StravaIssue {
     }
     if has(&["still processing"]) {
         return StravaIssue::new(
-            "Strava is slow to process this walk. It will try again.",
+            "Strava is slow to process the walk. Neon Strider will try again.",
             StravaHint::Wait,
         );
     }
     let line = one_line(raw, 140);
     if line.starts_with(['{', '[']) {
         return StravaIssue::new(
-            "Strava returned a reply this app does not understand.",
+            "Strava returned a reply Neon Strider does not understand.",
             StravaHint::None,
         );
     }
@@ -431,7 +434,7 @@ mod tests {
     #[test]
     fn inactive_application_is_explained_and_permanent() {
         let i = describe(INACTIVE);
-        assert!(i.message.starts_with("Strava turned off this API app"));
+        assert!(i.message.starts_with("Strava turned off the API app"));
         assert!(i.message.contains("subscription"));
         assert!(i.message.contains("Save for Strava"));
         assert!(i.message.contains("strava.com/settings/api"));

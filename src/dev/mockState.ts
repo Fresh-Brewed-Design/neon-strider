@@ -233,7 +233,7 @@ export const snapshot: AppSnapshot = {
     enabled: false,
     status: "off",
     label: "OFFLINE",
-    message: "Switch it on to let a watch read the belt as a foot pod.",
+    message: "Switch GHOST_POD on to let a watch read the belt as a foot pod.",
     watches: 0,
     speed_kmh: 0,
     power_enabled: false,
@@ -243,7 +243,7 @@ export const snapshot: AppSnapshot = {
       enabled: false,
       serving: false,
       watches: 0,
-      message: "Switch it on to let the watch's data field read the belt.",
+      message: "Switch WRIST_LINK on to let the watch's data field read the belt.",
     },
   },
   heart_rate: {

@@ -1,6 +1,7 @@
 // History: a few weeks of fake walks and their samples. With ?heart=on, every
-// other walk was saved with a watch linked.
-import { params } from "../mockState";
+// other walk was saved with a watch linked. ?nohistory: nothing walked yet, so
+// History shows its empty state (no walks, an empty week and DESK_SYNC).
+import { params, snapshot } from "../mockState";
 import type { Scenario } from "./types";
 
 const heartWalks = params.get("heart") === "on";
@@ -39,10 +40,22 @@ function mockSamples(sessionId: number) {
   }));
 }
 
-export const sessions = mockSessions();
-export const lastId = sessions[sessions.length - 1].id;
+const noHistory = params.has("nohistory");
+
+export const sessions = noHistory ? [] : mockSessions();
+export const lastId = sessions[sessions.length - 1]?.id ?? 0;
+
+const EMPTY_WEEK = { distance_km: 0, duration_s: 0, active_days: 0, sessions: 0, calories: 0, longest_day_km: 0 };
 
 export const history: Scenario = {
+  apply() {
+    if (!noHistory) return;
+    Object.assign(snapshot.weekly, {
+      this_week: EMPTY_WEEK, last_week: EMPTY_WEEK, week_before: EMPTY_WEEK,
+      distance_change: { pct: null, is_new: false },
+    });
+    Object.assign(snapshot.desk_sync, { days: [], walked: 0, desk_days: 0, today_open: false });
+  },
   queries: {
     export_sessions_csv: () => "C:/Users/you/Downloads/neon-strider-sessions-preview.csv",
     get_sessions: () => sessions,
