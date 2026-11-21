@@ -25,6 +25,7 @@ import {
   settingSteps,
   type CalibrationRow,
 } from "./guided";
+import { PointsAside, StartFresh } from "./FreshStart";
 import { GuidePanel, TopSpeedQuestion } from "./GuidePanel";
 import { StepPanel } from "./StepPanel";
 
@@ -52,6 +53,9 @@ type Walk = "sweep" | "guide" | null;
  * above the walk and the rows, so the 760x600 window shows it without
  * scrolling, and each new phase scrolls it into view. A walk's RUN is the one
  * way on, so the rows' own RUN buttons hide while a walk is open.
+ * START FRESH sets the treadmill's points aside before a new walk, and while
+ * a set is aside (`snapshot.calibration.aside_count`) RESTORE and KEEP NEW
+ * settle it; Rust keeps both sets.
  */
 export function GuidedCalibration() {
   const snap = useAppSnapshot();
@@ -150,6 +154,10 @@ export function GuidedCalibration() {
       {beltSet && guide && <GuidePanel guide={guide} running={running} stop={<StopButton />} />}
       {beltSet && sweep && <SweepPanel sweep={sweep} running={running} />}
       {beltSet && !guide && !sweep && !run && <TopSpeedQuestion steps={topSteps} />}
+      {cal.aside_count !== null && !run && <PointsAside count={cal.aside_count} newPoints={points.length} />}
+      {beltSet && cal.belt_treadmill && cal.aside_count === null && points.length > 0 && !guide && !sweep && !run && (
+        <StartFresh />
+      )}
       <Label>POINTS</Label>
       <div className="space-y-2">
         {rows.map((row) => {

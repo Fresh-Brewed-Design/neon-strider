@@ -227,6 +227,7 @@ export const snapshot: AppSnapshot = {
     run: null,
     sweep: null,
     guide: null,
+    aside_count: null,
   },
   guided_task: { pinned: false, tasks: [], unpin_in_s: null },
   ghost_pod: {

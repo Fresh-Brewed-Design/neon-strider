@@ -38,6 +38,9 @@ mod guide;
 mod steps;
 mod tap;
 
+pub use fresh::{aside_key_for, persist as persist_fresh, FreshSave};
+pub(crate) use fresh::{keep_new, restore, start_fresh};
+
 pub use guide::{CalibrationGuideView, CheckVerdict};
 pub use steps::StepRunView;
 
@@ -750,6 +753,9 @@ pub struct CalibrationSnapshot {
     pub sweep: Option<CalibrationSweepView>,
     /// The guided walk from the top speed, if open.
     pub guide: Option<CalibrationGuideView>,
+    /// How many points START FRESH set aside for this treadmill; none when no
+    /// set is aside. While a set is aside, RESTORE and KEEP NEW are offered.
+    pub aside_count: Option<u32>,
 }
 
 /// One speed in the target list.
@@ -1069,11 +1075,13 @@ pub fn offer_skip_key_for(device_id: &str) -> String {
 
 /// The belt loop of the treadmill in use: its settings key and the length,
 /// and whether SKIP turned the first-connect offer off for it.
+/// Also the set of points START FRESH put aside for it (`fresh.rs`).
 struct Belt {
     key: Option<String>,
     cm: Option<f32>,
     device_id: Option<String>,
     offer_skipped: bool,
+    aside: Option<Vec<CalibrationPoint>>,
 }
 
 static BELT: Mutex<Belt> = Mutex::new(Belt {
@@ -1081,6 +1089,7 @@ static BELT: Mutex<Belt> = Mutex::new(Belt {
     cm: None,
     device_id: None,
     offer_skipped: false,
+    aside: None,
 });
 
 fn with_belt<T>(f: impl FnOnce(&mut Belt) -> T) -> T {
@@ -1109,8 +1118,8 @@ fn offer_skipped_for(store: &impl crate::persistence::SettingsStore, device_id: 
         .unwrap_or(false)
 }
 
-/// Make the belt length and the calibration points the ones stored for this
-/// treadmill. Called with DECK_PROFILE's switch
+/// Make the belt length, the calibration points and any set START FRESH put
+/// aside the ones stored for this treadmill. Called with DECK_PROFILE's switch
 /// (startup with the saved treadmill, each connection). Gives the treadmill's
 /// points when the treadmill in use changed, for the engine to take
 /// (`OrchestratorState::set_calibration_points`, which keeps a running belt
@@ -1123,11 +1132,13 @@ pub fn switch_belt(
     let skipped = offer_skipped_for(store, device_id);
     let changed = with_belt(|b| b.device_id.as_deref() != Some(device_id));
     let points = changed.then(|| fresh::points_for(store, device_id));
+    let aside = fresh::aside_for(store, device_id);
     with_belt(|b| {
         b.key = Some(key);
         b.cm = cm;
         b.device_id = Some(device_id.to_string());
         b.offer_skipped = skipped;
+        b.aside = aside;
     });
     if changed {
         // A run, sweep or walk belongs to the treadmill it started on.
@@ -1192,6 +1203,7 @@ pub(crate) fn set_belt_for_test(cm: Option<f32>) {
         b.cm = cm;
         b.device_id = Some("TEST".into());
         b.offer_skipped = false;
+        b.aside = None;
     });
 }
 
@@ -1523,6 +1535,7 @@ pub fn snapshot(state: &OrchestratorState) -> CalibrationSnapshot {
         run,
         sweep: with_sweep(|s| s.as_ref().map(Sweep::view)),
         guide: with_guide(|g| g.as_ref().map(guide::Guide::view)),
+        aside_count: fresh::aside_count(),
     }
 }
 
