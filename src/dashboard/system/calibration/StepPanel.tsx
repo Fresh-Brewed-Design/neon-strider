@@ -124,7 +124,7 @@ function StepResult({ steps, kmh }: { steps: StepRunView; kmh: number }) {
     <div className="space-y-2">
       <div className="font-digital text-sm text-white">
         {steps.undone
-          ? `UNDO put back the point at ${speed} km/h as the belt run left it.`
+          ? `UNDO restored the ${speed} km/h point to the belt run's result.`
           : `Stride ${r.point.stride_length_cm.toFixed(1)} cm at ${(r.cadence_spm ?? 0).toFixed(0)} steps a minute for ${speed} km/h; saved.`}
       </div>
       <div className="flex gap-2">

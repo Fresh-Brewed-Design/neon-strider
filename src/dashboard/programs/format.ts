@@ -3,7 +3,7 @@ import { formatClock } from "../../format";
 
 const num = (v: number) => (Number.isInteger(v) ? v.toString() : v.toFixed(1));
 
-/** Below this a speed holds the belt still (the same threshold Rust uses). */
+/** Below this a speed holds the belt still: Rust's `engine::STILL_KMH`, half the deck's 0.1 km/h step. */
 const MOVING_KMH = 0.05;
 
 /** One-line description, e.g. "5 min every 30 min · 3.0 km/h · 5%". */

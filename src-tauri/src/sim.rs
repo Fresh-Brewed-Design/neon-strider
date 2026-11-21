@@ -852,6 +852,27 @@ mod tests {
         }
     }
 
+    /// A top speed stored past the setting's range (40 km/h, which the dashboard
+    /// can't type) loads as 25 km/h, so a speed asked for by hand runs the belt
+    /// at 25, never 40, on a deck that would take either.
+    #[test]
+    fn a_stored_top_speed_past_its_range_holds_the_belt_to_the_range() {
+        let mut r = Rig::new();
+        let stored = |key: &str| match key {
+            "maxSpeed" => Some("40".to_string()),
+            _ => None,
+        };
+        let config = crate::persistence::config_from_settings(stored);
+        assert_eq!(config.max_speed, crate::persistence::MAX_SPEED_SETTING_KMH);
+        r.state.sync_config(&config);
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(6.0);
+        r.set_speed(40.0);
+        r.run(120.0);
+        assert!(r.deck.running_at(25.0), "{} km/h", r.deck.speed_kmh());
+    }
+
     /// Fixture: Post-meal run from a still deck, walking at 4.0 km/h.
     fn post_meal_walking() -> Rig {
         let mut r = Rig::new();
@@ -1203,6 +1224,55 @@ mod tests {
         assert!(r.deck.speed_kmh() > 4.0, "{} km/h", r.deck.speed_kmh());
     }
 
+    /// The seeded Interval walk against the deck: one press runs the warm-up
+    /// and all five brisk and easy rounds with the belt moving throughout, no
+    /// step waits for GO, and the end leaves a belt that was still before
+    /// the program still.
+    #[test]
+    fn the_seeded_interval_walk_runs_every_round_without_waiting_for_go() {
+        let seeded = crate::programs::seed_programs()
+            .into_iter()
+            .find(|p| p.name == "Interval walk")
+            .expect("seeded");
+        let mut r = Rig::new();
+        r.state.programs.push(seeded.clone());
+        r.run(1.0);
+        r.run_program(seeded.id);
+        r.run(60.0);
+        assert!(
+            r.deck.running_at(4.0),
+            "warm-up: {} km/h",
+            r.deck.speed_kmh()
+        );
+
+        // Each step, 60 s in: the belt runs at the step's speed, no wait.
+        r.run(240.0);
+        for (i, step) in seeded.steps.iter().enumerate().skip(1) {
+            r.run(60.0);
+            let a = r.program();
+            assert_eq!((a.step_index as usize, a.wait), (i, None), "step {}", i);
+            assert!(
+                r.deck.running_at(step.speed_kmh),
+                "step {}: {} km/h",
+                i,
+                r.deck.speed_kmh()
+            );
+            r.run(120.0);
+        }
+
+        // 35 minutes in, the program is over and the belt is still again.
+        r.run(30.0);
+        assert!(r.state.active_program().is_none());
+        let mark = r.mark();
+        r.run(30.0);
+        assert!(r.deck.belt_still(), "{} km/h", r.deck.speed_kmh());
+        assert!(
+            !moves_belt(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+    }
+
     #[test]
     fn a_start_at_the_treadmill_on_a_waiting_program_is_its_go() {
         let mut r = Rig::new();
@@ -1244,6 +1314,71 @@ mod tests {
         let a = r.program();
         assert_eq!((a.paused, a.wait), (false, None));
         assert!(r.toasts.contains(&ProgramToast::deck_go("Hold then walk")));
+    }
+
+    /// Post-meal walking at 4.0 km/h for a minute, then paused with the
+    /// treadmill's own button and left for 5 s.
+    fn post_meal_paused_at_the_treadmill() -> Rig {
+        let mut r = Rig::new();
+        r.run(1.0);
+        r.run_program(POST_MEAL);
+        r.run(60.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        let t = r.t;
+        r.deck.press_pause(t);
+        r.run(5.0);
+        assert_eq!(r.deck.status_code(), 10, "paused");
+        r
+    }
+
+    /// #158: a pause at the treadmill mid-step pauses the program with it.
+    /// Its step timer stops, and nothing restarts the belt by itself.
+    #[test]
+    fn a_pause_at_the_treadmill_mid_step_pauses_the_program() {
+        let mut r = post_meal_paused_at_the_treadmill();
+        let a = r.program();
+        assert_eq!((a.step_index, a.paused, a.wait), (0, true, None));
+        let left = a.seconds_remaining;
+        let mark = r.mark();
+        r.run(300.0);
+        assert_eq!(r.deck.status_code(), 10, "still paused");
+        let sent = r.commands_since(mark);
+        assert!(!moves_belt(&sent), "{sent:?}");
+        let a = r.program();
+        assert!(a.paused);
+        assert_eq!(a.seconds_remaining, left, "the step timer held");
+    }
+
+    /// #158: GO after a pause at the treadmill resumes the same step at its
+    /// speed, and its timer runs again.
+    #[test]
+    fn go_resumes_the_step_after_a_pause_at_the_treadmill() {
+        let mut r = post_meal_paused_at_the_treadmill();
+        let left = r.program().seconds_remaining.expect("timed step");
+        r.go();
+        r.run(15.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        let a = r.program();
+        assert_eq!((a.step_index, a.paused, a.wait), (0, false, None));
+        r.run(30.0);
+        let now_left = r.program().seconds_remaining.expect("timed step");
+        assert!(now_left < left, "the timer runs: {now_left} vs {left}");
+    }
+
+    /// #158: a start at the treadmill on a program paused there stays its GO.
+    #[test]
+    fn a_start_at_the_treadmill_after_its_pause_is_the_programs_go() {
+        let mut r = post_meal_paused_at_the_treadmill();
+        let mark = r.mark();
+        let t = r.t;
+        r.deck.press_start(t);
+        r.run(15.0);
+        let sent = r.commands_since(mark);
+        assert!(!app_starts(&sent), "the deck started it: {sent:?}");
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        let a = r.program();
+        assert_eq!((a.paused, a.wait), (false, None));
+        assert!(r.toasts.contains(&ProgramToast::deck_go("Post-meal")));
     }
 
     #[test]
@@ -3310,5 +3445,69 @@ mod tests {
         }
         assert_eq!(r.controls_since(0, Control::Start), 0);
         assert_eq!(r.controls_since(0, Control::Ready), 0);
+    }
+
+    /// One point at 4.0 hardware km/h reading 0.8 of it: 3.2 km/h runs as
+    /// byte 40, and without the point it would be byte 32.
+    fn one_point() -> crate::persistence::AppConfig {
+        crate::persistence::AppConfig {
+            calibration_points: vec![protocol::CalibrationPoint {
+                speed: 4.0,
+                stride_length_cm: 70.0,
+                distance_scale: 0.8,
+                runs: 1,
+                stride_runs: 0,
+            }],
+            ..Default::default()
+        }
+    }
+
+    /// Issue #167: a points change through the settings sync (a row deleted in
+    /// the old point panel) while the belt runs leaves the deck where it is.
+    /// The new curve applies at the next speed set by hand, and a press steps
+    /// from the byte the deck runs.
+    #[test]
+    fn a_calibration_sync_never_moves_a_running_belt() {
+        let mut r = Rig::new();
+        r.state.sync_config(&one_point());
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(6.0);
+        r.set_speed(r.state.to_physical_speed(4.0));
+        r.run(15.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+
+        let mark = r.mark();
+        r.state.set_test_now(r.t);
+        r.state
+            .sync_config(&crate::persistence::AppConfig::default());
+        r.run(20.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(target_bytes_since(&r, mark), Vec::<u8>::new());
+        assert!(!moves_belt(&r.commands_since(mark)));
+
+        // His press: one step up from the byte the deck runs.
+        r.press(DeckAction::SpeedUp);
+        r.run(3.0);
+        assert!(r.deck.running_at(4.1), "{} km/h", r.deck.speed_kmh());
+        // A speed set by hand goes through the new curve.
+        r.set_speed(3.0);
+        r.run(5.0);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+    }
+
+    /// The same for a program's belt: a new curve mid-step keeps the deck at
+    /// the step's byte until the next step.
+    #[test]
+    fn a_calibration_sync_never_moves_a_programs_belt() {
+        let mut r = post_meal_walking();
+        let mark = r.mark();
+        r.state.set_test_now(r.t);
+        r.state.sync_config(&one_point());
+        r.run(20.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(target_bytes_since(&r, mark), Vec::<u8>::new());
+        assert_eq!(r.controls_since(mark, Control::Pause), 0);
+        assert_eq!(r.controls_since(mark, Control::Stop), 0);
     }
 }

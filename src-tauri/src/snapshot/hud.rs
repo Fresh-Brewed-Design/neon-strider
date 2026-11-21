@@ -20,6 +20,7 @@ const KEY_HUD_IDLE_MODE: &str = "hud_idle_mode";
 /// `true` while the user has the HUD minified to the running strip.
 const KEY_HUD_MINIFIED: &str = "hud_minified";
 /// Longest display name accepted from a window.
+/// Display names are a few dozen characters; anything longer is not a name.
 const MAX_MONITOR_NAME: usize = 200;
 
 static HUD: Mutex<HudConfig> = Mutex::new(HudConfig {

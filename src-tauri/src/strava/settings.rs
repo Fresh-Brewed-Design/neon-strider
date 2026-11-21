@@ -169,8 +169,9 @@ pub fn set_credentials(
     if id.is_empty() || secret.is_empty() {
         return Err("Enter both the client ID and the client secret".to_string());
     }
+    // Strava client ids are a few digits and secrets 40 hex characters.
     if id.len() > 100 || secret.len() > 200 {
-        return Err("Those credentials look too long".to_string());
+        return Err("The client ID or secret looks too long".to_string());
     }
     let changed = load_credentials(app).is_none_or(|(i, s)| i != id || s != secret);
     write(app, KEY_CLIENT_ID, id)?;
@@ -228,7 +229,9 @@ pub fn set_mute(app: &AppHandle, mode: MuteMode, under_minutes: u32) -> Result<(
     write(
         app,
         KEY_MUTE_MINUTES,
-        &under_minutes.clamp(1, 240).to_string(),
+        &under_minutes
+            .clamp(plan::MIN_MUTE_MINUTES, plan::MAX_MUTE_MINUTES)
+            .to_string(),
     )?;
     live::reload(app);
     Ok(())

@@ -13,13 +13,21 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter as _, Manager};
 
 /// How often the snapshot is rebuilt and compared with the last one sent.
+/// A quarter second is quicker than the eye notices a lag after a press, and
+/// under half the 600 ms poll, so a new frame shows almost at once.
 const TICK: Duration = Duration::from_millis(250);
 /// Sent at least this often even when nothing changed.
+/// A window that missed an event catches up within 2 s; countdowns in the
+/// snapshot are whole seconds, which the windows tick on their own between beats.
 const HEARTBEAT: Duration = Duration::from_secs(2);
 /// The link state goes through btleplug, so it is polled less often.
+/// Link changes are shown within a second, which is quick enough.
 const CONNECTION_POLL: Duration = Duration::from_secs(1);
 /// Catches midnight for the daily total, and keeps the cached totals fresh.
+/// The daily total is shown to 0.01 km, which takes longer than a minute at a walk.
 const DAILY_REFRESH: Duration = Duration::from_secs(60);
+/// A plugged-in display shows up in the HUD settings within a few seconds;
+/// listing monitors is a system call, so not every tick.
 const MONITOR_REFRESH: Duration = Duration::from_secs(3);
 
 /// Locking rule: `bluetooth::connect_to` takes CONNECTED_DECK
@@ -96,7 +104,12 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     snapshot.calibration.offer &= snapshot.connection.connected;
     snapshot.ghost_pod = crate::ghost_pod::snapshot();
     snapshot.heart_rate = crate::heart_rate::snapshot();
-    snapshot.heart_rate.zone = state.zone_band();
+    // The zone shows on PULSE_RATE only with a sensor picked: without one
+    // there is no reading to place in it and the zone trims nothing.
+    snapshot.heart_rate.zone = match snapshot.heart_rate.sensor {
+        Some(_) => state.zone_band(snapshot.heart_rate.bpm),
+        None => None,
+    };
     snapshot.guided_task = crate::guided_task::snapshot();
     // Recomputed every tick, so the end of the grace after a stop reaches the
     // HUD with the next on-change emit (within a tick).

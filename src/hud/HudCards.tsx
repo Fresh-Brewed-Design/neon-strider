@@ -19,7 +19,7 @@ export function MaintenanceCard({ snapshot }: { snapshot: AppSnapshot }) {
   const [arming, setArming] = useState(false);
   useEffect(() => {
     if (!arming) return;
-    const t = setTimeout(() => setArming(false), 4000);
+    const t = setTimeout(() => setArming(false), 4000); // time for the second press, short enough that a stray one disarms
     return () => clearTimeout(t);
   }, [arming]);
 

@@ -38,32 +38,39 @@ describe("update helpers", () => {
     const idle = base();
     idle.deck.status = "Stopped";
     idle.active_program = null;
-    expect(installConfirmText(idle, "1.3.0")).toBe(
-      "Neon Strider closes, installs v1.3.0 and opens again by itself, usually in under a minute.",
-    );
+    expect(installConfirmText(idle, "1.3.0")).toEqual({
+      message: "Neon Strider closes, installs v1.3.0 and opens again, usually in under a minute.",
+    });
 
     const manual = base();
     manual.deck.status = "Running";
     manual.active_program = null;
     const manualText = installConfirmText(manual, "1.3.0");
-    expect(manualText).toMatch(/belt keeps going and the walk carries on as the same session\./);
-    expect(manualText).toMatch(/few seconds.*HUD and shortcuts don't work.*treadmill's own controls/);
-    expect(manualText).not.toMatch(/pause|RE-JACK/);
+    expect(manualText.message).toMatch(/installs v1\.3\.0/);
+    expect(manualText.hint).toMatch(/belt keeps going and the walk carries on as the same session\./);
+    expect(manualText.hint).toMatch(/HUD and shortcuts stop working for a few seconds.*treadmill's own controls/);
+    expect(manualText.hint).not.toMatch(/pause|RE-JACK/);
 
     const program = base();
     program.deck.status = "Running";
     expect(program.active_program).not.toBeNull();
     program.active_program = { ...program.active_program!, phase: "walking", name: "Workday" };
     const programText = installConfirmText(program, "1.3.0");
-    expect(programText).toMatch(/Workday carries on at the same step/);
-    expect(programText).toMatch(/treadmill's own controls/);
-    expect(programText).not.toMatch(/pause/);
+    expect(programText.hint).toMatch(/Workday carries on at the same step/);
+    expect(programText.hint).toMatch(/treadmill's own controls/);
+    expect(programText.hint).not.toMatch(/pause/);
 
     program.active_program = { ...program.active_program, phase: "resting" };
-    expect(installConfirmText(program, "1.3.0")).toMatch(/walk carries on as the same session, with Workday still resting/);
+    expect(installConfirmText(program, "1.3.0").hint).toMatch(/walk carries on as the same session, with Workday still resting/);
 
     program.deck.status = "Paused";
-    expect(installConfirmText(program, "1.3.0")).toMatch(/Workday keeps resting; its next step waits for GO/);
+    expect(installConfirmText(program, "1.3.0").hint).toBe("Workday keeps resting and the next step waits for GO on the HUD.");
+
+    // One sentence, no semicolons or dashes, in every state.
+    for (const text of [manualText, programText, installConfirmText(idle, "1.3.0")]) {
+      expect(text.message.match(/[.!?](s|$)/g)).toHaveLength(1);
+      expect(`${text.message} ${text.hint ?? ""}`).not.toMatch(/[;–—]| - /);
+    }
   });
 
   it("renders notes as elements, never as HTML", () => {

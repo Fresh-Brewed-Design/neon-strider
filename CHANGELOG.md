@@ -1,5 +1,63 @@
 # Changelog
 
+## 1.42.0 (2026-11-21)
+
+### New
+
+- PULSE_RATE shows a program step's heart rate zone on the HUD and the Live page: the range in bpm, and whether your pulse is under, in or over it.
+- The minified HUD strip shows PULSE_RATE and its spark chart while a heart rate sensor is picked.
+
+## 1.41.10 (2026-11-20)
+
+### Changed
+
+- GROUND_TRUTH's guided walk checks only speeds the treadmill runs. When the treadmill skips the halfway speed between two calibrated ones, the check moves to the nearest speed the treadmill runs and the walk says so.
+- A GROUND_TRUTH check the treadmill ran at another speed shows that speed on its chip and its line, matching the note.
+
+## 1.41.9 (2026-11-20)
+
+### Changed
+
+- The install confirmation is now one short sentence naming the update, with the details on a smaller line below.
+
+## 1.41.8 (2026-11-20)
+
+### Fixed
+
+- Fixed history showing the wrong "Yesterday" label for an hour after a daylight-saving clock change.
+
+## 1.41.7 (2026-11-20)
+
+### Fixed
+
+- A pause on the treadmill's own buttons now pauses the running program too, so GO picks the step up where it stopped.
+
+## 1.41.6 (2026-11-20)
+
+### Fixed
+
+- Changing calibration points while the belt runs no longer changes its speed. The new calibration applies at your next speed change or program step.
+
+## 1.41.5 (2026-11-20)
+
+### Fixed
+
+- The HUD and the eye-break cards now fit when Windows text size is larger.
+
+## 1.41.4 (2026-11-20)
+
+### Changed
+
+- Speed toasts on the HUD no longer fire when a steady treadmill wobbles by 0.1 km/h; at some speeds they used to, at others not.
+- Treadmill settings saved outside the ranges in System, Treadmill (speeds, top incline level, incline per level and offset) now load at the nearest end of the range, so the belt is never asked for more than 25 km/h.
+
+## 1.41.3 (2026-11-20)
+
+### Changed
+
+- Shorter, clearer text across the dashboard: each setting has a one-line description, with the details in a second line under it.
+- Messages from Strava, GHOST_POD, WRIST_LINK, heart rate and calibration now name what they talk about.
+
 ## 1.41.2 (2026-11-20)
 
 ### Fixed

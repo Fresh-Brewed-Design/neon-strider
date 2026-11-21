@@ -1,8 +1,10 @@
 // The command cycler's body template. Rust frames what is sent
 // (`protocol::raw_packet`); this mirrors it only to show the frame.
 
-/** Same limit as Rust's `RAW_BODY_MAX`: framed, it still fits one 20-byte BLE write. */
-export const RAW_BODY_MAX = 17;
+import { SETTING_LIMITS } from "../../ipc";
+
+/** Rust's `RAW_BODY_MAX`: framed, it still fits one 20-byte BLE write. */
+export const RAW_BODY_MAX = SETTING_LIMITS.raw_body_bytes;
 export const DEFAULT_TEMPLATE = "53 XX 00 00 00 00 00 00 00 00 00 00";
 
 /** A body with one cycling slot (`null`). */

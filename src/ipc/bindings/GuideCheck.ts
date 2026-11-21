@@ -4,7 +4,20 @@ import type { CheckVerdict } from "./CheckVerdict";
 /**
  * One midpoint check, as the windows see it.
  */
-export type GuideCheck = { lo_kmh: number, hi_kmh: number, mid_kmh: number, verdict: CheckVerdict, 
+export type GuideCheck = { lo_kmh: number, hi_kmh: number, 
+/**
+ * The speed the check's RUN sets: halfway, or the nearest speed the deck
+ * runs when it skips halfway.
+ */
+mid_kmh: number, 
+/**
+ * The halfway speed, when the deck skips it and the check moved off it.
+ */
+halfway_kmh: number | null, 
+/**
+ * The speed the deck ran, when the run measured another than `mid_kmh`.
+ */
+ran_kmh: number | null, verdict: CheckVerdict, 
 /**
  * The measured distance error at the midpoint, %, once run.
  */
