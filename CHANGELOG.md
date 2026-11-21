@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.42.0 (2026-11-21)
+
+### New
+
+- PULSE_RATE shows a program step's heart rate zone on the HUD and the Live page: the range in bpm, and whether your pulse is under, in or over it.
+- The minified HUD strip shows PULSE_RATE and its spark chart while a heart rate sensor is picked.
+
 ## 1.41.10 (2026-11-20)
 
 ### Changed
