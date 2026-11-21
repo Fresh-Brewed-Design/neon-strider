@@ -862,7 +862,7 @@ mod tests {
             "maxSpeed" => Some("40".to_string()),
             _ => None,
         };
-        let config = crate::persistence::config_from_settings(stored);
+        let config = crate::persistence::config_from_settings(stored, None);
         assert_eq!(config.max_speed, crate::persistence::MAX_SPEED_SETTING_KMH);
         r.state.sync_config(&config);
         r.run(1.0);

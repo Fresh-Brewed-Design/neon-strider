@@ -665,6 +665,61 @@ fn seeded_programs_v8(
     Some((serde_json::to_string(&list).ok()?, next))
 }
 
+/// Migration 9: calibration points per treadmill (#165). The points were one
+/// app-wide `calibrationPoints` value; they now live under
+/// `calibrationPoints:<id>`, like DECK_PROFILE and the belt loop, so a second
+/// treadmill reads as never calibrated and gets the first-connect offer.
+///
+/// Why a migration and not lazy adoption (DECK_PROFILE's way, where the first
+/// treadmill to connect takes the old value): the points were measured on the
+/// treadmill saved now, and another treadmill may be the first to connect
+/// after the update. Moving them here ties them to the saved one, once, after
+/// the pre-migration backup. With no saved treadmill there is no one to give
+/// them to: they stay under the old key, and the first treadmill to connect
+/// adopts them (`calibration::switch_belt`), as DECK_PROFILE does, since
+/// points typed in before any connection were meant for that treadmill.
+///
+/// Frozen: the id is normalized here the way `bluetooth::profile_device_id`
+/// did when this shipped, not by calling it. A key already there for the
+/// treadmill is kept, and the old value is then left alone.
+fn migration_9_points_per_treadmill(tx: &Transaction) -> rusqlite::Result<()> {
+    let (Some(device), Some(points)) = (
+        get_setting_str(tx, "lastDeviceId"),
+        get_setting_str(tx, "calibrationPoints"),
+    ) else {
+        return Ok(());
+    };
+    let Some(id) = treadmill_id_v9(&device) else {
+        return Ok(());
+    };
+    let key = format!("calibrationPoints:{id}");
+    if get_setting_str(tx, &key).is_some() {
+        return Ok(());
+    }
+    tx.execute(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2)",
+        params![key, points],
+    )?;
+    tx.execute("DELETE FROM settings WHERE key = 'calibrationPoints'", [])?;
+    Ok(())
+}
+
+/// Migration 9's copy of `bluetooth::profile_device_id`: the saved id (maybe
+/// JSON-quoted) without separators, upper case, its last 12 characters (a
+/// Bluetooth address is 6 bytes, 12 hex digits). None for a blank id.
+fn treadmill_id_v9(saved: &str) -> Option<String> {
+    let id = saved
+        .trim()
+        .trim_matches('"')
+        .replace([':', '-'], "")
+        .to_uppercase();
+    if id.is_empty() {
+        return None;
+    }
+    let skip = id.chars().count().saturating_sub(12);
+    Some(id.chars().skip(skip).collect())
+}
+
 type Migration = fn(&Transaction) -> rusqlite::Result<()>;
 
 /// Append new migrations at the end; never reorder or edit a shipped one.
@@ -678,6 +733,7 @@ const MIGRATIONS: &[Migration] = &[
     migration_6_heart_rate,
     migration_7_vo2_max_zones,
     migration_8_seeded_programs,
+    migration_9_points_per_treadmill,
 ];
 
 fn schema_version(conn: &Connection) -> rusqlite::Result<u32> {
@@ -817,7 +873,16 @@ pub const MAX_INCLINE_OFFSET_PCT: f32 = 10.0;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppConfig {
     pub last_device_id: Option<String>,
+    /// The points of the treadmill named by `calibration_treadmill`.
     pub calibration_points: Vec<CalibrationPoint>,
+    /// Whose points `calibration_points` are: the treadmill in use when the
+    /// config was loaded (its id as DECK_PROFILE normalizes it), or none
+    /// before any treadmill is known. Saved points go to this treadmill's key,
+    /// and a settings sync carrying another treadmill's points is refused
+    /// (`bluetooth::sync_orchestrator_config`), so a window that loaded before
+    /// a switch can't write one treadmill's points over another's.
+    #[serde(default)]
+    pub calibration_treadmill: Option<String>,
     pub belt_length: f32,
     pub min_speed: f32,
     pub max_speed: f32,
@@ -843,6 +908,7 @@ impl Default for AppConfig {
         Self {
             last_device_id: None,
             calibration_points: Vec::new(),
+            calibration_treadmill: None,
             // The old app-wide belt length; GuidedCalibration reads 120 as never set.
             belt_length: 120.0,
             // The slowest speed of the FitShow decks the app was built on, and a
@@ -921,15 +987,36 @@ const SCALAR_FIELDS: [(&str, ScalarField); 8] = [
 ];
 
 const KEY_LAST_DEVICE_ID: &str = "lastDeviceId";
-const KEY_CALIBRATION_POINTS: &str = "calibrationPoints";
+/// The settings key the calibration points were kept under while they were
+/// app-wide. It still holds points saved before any treadmill was known,
+/// which the first treadmill to connect adopts.
+pub const KEY_CALIBRATION_POINTS: &str = "calibrationPoints";
+
+/// The settings key of the calibration points of the treadmill with this id
+/// (as DECK_PROFILE normalizes it), or the old app-wide key with none.
+///
+/// A settings key per treadmill, not a new table (#165): like DECK_PROFILE
+/// and the belt loop, a treadmill's points are one small JSON array, read
+/// when the connection switches to it and written whole.
+pub fn points_key(treadmill: Option<&str>) -> String {
+    match treadmill {
+        Some(id) => format!("{KEY_CALIBRATION_POINTS}:{id}"),
+        None => KEY_CALIBRATION_POINTS.to_string(),
+    }
+}
 
 /// `AppConfig` from stored settings; `read` returns the raw value of a key.
-pub(crate) fn config_from_settings(read: impl Fn(&str) -> Option<String>) -> AppConfig {
+/// The calibration points are `treadmill`'s (none: the old app-wide key).
+pub(crate) fn config_from_settings(
+    read: impl Fn(&str) -> Option<String>,
+    treadmill: Option<&str>,
+) -> AppConfig {
     let mut config = AppConfig {
         last_device_id: read(KEY_LAST_DEVICE_ID).map(|s| s.trim_matches('"').to_string()),
+        calibration_treadmill: treadmill.map(str::to_string),
         ..AppConfig::default()
     };
-    if let Some(raw) = read(KEY_CALIBRATION_POINTS) {
+    if let Some(raw) = read(&points_key(treadmill)) {
         match serde_json::from_str(&raw) {
             Ok(points) => config.calibration_points = points,
             Err(e) => log::warn!("could not parse saved calibrationPoints: {}", e),
@@ -1007,35 +1094,45 @@ fn neural_from_settings(read: &impl Fn(&str) -> Option<String>) -> (f32, NeuralS
     )
 }
 
-/// The `(key, value)` rows `save_config` writes for `config`.
-fn config_to_settings(config: &AppConfig) -> Result<Vec<(&'static str, String)>, String> {
+/// The `(key, value)` rows `save_config` writes for `config`. The points go
+/// to the key of the treadmill they were loaded for.
+fn config_to_settings(config: &AppConfig) -> Result<Vec<(String, String)>, String> {
     let mut rows = Vec::with_capacity(SCALAR_FIELDS.len() + 4);
     if let Some(id) = &config.last_device_id {
-        rows.push((KEY_LAST_DEVICE_ID, id.clone()));
+        rows.push((KEY_LAST_DEVICE_ID.to_string(), id.clone()));
     }
     let calibration =
         serde_json::to_string(&config.calibration_points).map_err(|e| e.to_string())?;
-    rows.push((KEY_CALIBRATION_POINTS, calibration));
+    rows.push((
+        points_key(config.calibration_treadmill.as_deref()),
+        calibration,
+    ));
     // The accessors hand out `&mut`, so read the values from a copy.
     let mut copy = config.clone();
     for (key, field) in SCALAR_FIELDS {
-        rows.push((key, field(&mut copy).store()));
+        rows.push((key.to_string(), field(&mut copy).store()));
     }
     rows.push((
-        neural::KEY_FLOOR_PCT,
+        neural::KEY_FLOOR_PCT.to_string(),
         neural::clamp_floor_pct(config.neural_floor_pct).to_string(),
     ));
     rows.push((
-        neural::KEY_SENSITIVITY,
+        neural::KEY_SENSITIVITY.to_string(),
         config.neural_sensitivity.as_str().to_string(),
     ));
     Ok(rows)
 }
 
-/// The saved config, with defaults for anything missing or unreadable.
+/// The saved config, with defaults for anything missing or unreadable. The
+/// calibration points are those of the treadmill in use
+/// (`calibration::treadmill_id`).
 pub fn load_config(app: &AppHandle) -> AppConfig {
+    let treadmill = crate::calibration::treadmill_id();
     let result = with_conn(app, |conn| {
-        Ok(config_from_settings(|key| get_setting_str(conn, key)))
+        Ok(config_from_settings(
+            |key| get_setting_str(conn, key),
+            treadmill.as_deref(),
+        ))
     });
     match result {
         Ok(config) => {
@@ -2413,11 +2510,109 @@ mod db_tests {
         migrate(conn).unwrap();
     }
 
+    /// The settings table as migration 8 left it, with these rows.
+    fn at_v8(rows: &[(&str, &str)]) -> Connection {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate_through(&mut conn, 8);
+        for (k, v) in rows {
+            set(&conn, k, v);
+        }
+        conn
+    }
+
+    const ONE_POINT: &str = r#"[{"speed":3.0,"stride_length_cm":70.0,"distance_scale":0.9}]"#;
+
+    #[test]
+    fn migration_9_on_a_fresh_database_writes_no_points() {
+        let conn = memory_db();
+        assert_eq!(version(&conn), latest());
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM settings WHERE key LIKE 'calibrationPoints%'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn migration_9_gives_the_points_to_the_saved_treadmill() {
+        let mut conn = at_v8(&[
+            (
+                "lastDeviceId",
+                "BluetoothLE#BluetoothLE11:22:33:44:55:66-aa:bb:cc:dd:ee:ff",
+            ),
+            ("calibrationPoints", ONE_POINT),
+        ]);
+        migrate(&mut conn).unwrap();
+        assert_eq!(version(&conn), 9);
+        assert_eq!(get_setting_str(&conn, "calibrationPoints"), None);
+        assert_eq!(
+            get_setting_str(&conn, "calibrationPoints:AABBCCDDEEFF").as_deref(),
+            Some(ONE_POINT)
+        );
+        // The same key the running app uses for that treadmill.
+        assert_eq!(
+            treadmill_id_v9("\"aa:bb:cc:dd:ee:ff\"").as_deref(),
+            Some("AABBCCDDEEFF")
+        );
+        let c = config_from_settings(|k| get_setting_str(&conn, k), Some("AABBCCDDEEFF"));
+        assert_eq!(c.calibration_points.len(), 1);
+    }
+
+    #[test]
+    fn migration_9_with_no_saved_treadmill_leaves_the_points_for_the_first_one() {
+        let mut conn = at_v8(&[("calibrationPoints", ONE_POINT)]);
+        migrate(&mut conn).unwrap();
+        assert_eq!(
+            get_setting_str(&conn, "calibrationPoints").as_deref(),
+            Some(ONE_POINT)
+        );
+        // A blank saved id is no treadmill either.
+        let mut conn = at_v8(&[("lastDeviceId", "\"\""), ("calibrationPoints", ONE_POINT)]);
+        migrate(&mut conn).unwrap();
+        assert_eq!(
+            get_setting_str(&conn, "calibrationPoints").as_deref(),
+            Some(ONE_POINT)
+        );
+    }
+
+    #[test]
+    fn migration_9_leaves_a_second_treadmill_never_calibrated() {
+        let mut conn = at_v8(&[
+            ("lastDeviceId", "AA:BB:CC:DD:EE:FF"),
+            ("calibrationPoints", ONE_POINT),
+        ]);
+        migrate(&mut conn).unwrap();
+        let second = config_from_settings(|k| get_setting_str(&conn, k), Some("112233445566"));
+        assert!(second.calibration_points.is_empty());
+    }
+
+    #[test]
+    fn migration_9_keeps_points_a_treadmill_already_has() {
+        let theirs = r#"[{"speed":4.0,"stride_length_cm":70.0,"distance_scale":1.1}]"#;
+        let mut conn = at_v8(&[
+            ("lastDeviceId", "AA:BB:CC:DD:EE:FF"),
+            ("calibrationPoints", ONE_POINT),
+            ("calibrationPoints:AABBCCDDEEFF", theirs),
+        ]);
+        migrate(&mut conn).unwrap();
+        assert_eq!(
+            get_setting_str(&conn, "calibrationPoints:AABBCCDDEEFF").as_deref(),
+            Some(theirs)
+        );
+        assert_eq!(
+            get_setting_str(&conn, "calibrationPoints").as_deref(),
+            Some(ONE_POINT)
+        );
+    }
+
     #[test]
     fn migration_8_on_a_fresh_database_writes_nothing() {
         let mut conn = Connection::open_in_memory().unwrap();
         migrate(&mut conn).unwrap();
-        assert_eq!(version(&conn), 8);
+        assert_eq!(version(&conn), latest());
         assert_eq!(get_setting_str(&conn, "programs"), None);
     }
 
@@ -2886,7 +3081,7 @@ mod settings_tests {
     }
 
     fn load(map: &HashMap<String, String>) -> AppConfig {
-        config_from_settings(|key| map.get(key).cloned())
+        config_from_settings(|key| map.get(key).cloned(), None)
     }
 
     #[test]
@@ -3009,14 +3204,15 @@ mod settings_tests {
             body_mass_kg: 90.0,
             neural_floor_pct: 80.0,
             neural_sensitivity: NeuralSensitivity::Low,
+            calibration_treadmill: Some("DEV1".to_string()),
         };
         let rows = config_to_settings(&config).unwrap();
-        let keys: Vec<&str> = rows.iter().map(|(k, _)| *k).collect();
+        let keys: Vec<&str> = rows.iter().map(|(k, _)| k.as_str()).collect();
         assert_eq!(
             keys,
             [
                 "lastDeviceId",
-                "calibrationPoints",
+                "calibrationPoints:DEV1",
                 "beltLength",
                 "maxSpeed",
                 "minSpeed",
@@ -3033,17 +3229,34 @@ mod settings_tests {
             rows.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
         assert_eq!(map["maxIncline"], "9");
         assert_eq!(map["focusStabilityEnabled"], "true");
-        let back = load(&map);
+        let back = config_from_settings(|key| map.get(key).cloned(), Some("DEV1"));
         assert_eq!(
             serde_json::to_value(&back).unwrap(),
             serde_json::to_value(&config).unwrap()
         );
+        // Another treadmill reads no points from the same rows.
+        let other = config_from_settings(|key| map.get(key).cloned(), Some("DEV2"));
+        assert!(other.calibration_points.is_empty());
+        assert_eq!(other.calibration_treadmill.as_deref(), Some("DEV2"));
+    }
+
+    #[test]
+    fn points_with_no_treadmill_use_the_old_app_wide_key() {
+        let rows = config_to_settings(&AppConfig::default()).unwrap();
+        assert!(rows.iter().any(|(k, _)| k == "calibrationPoints"));
+        assert_eq!(points_key(Some("AABB")), "calibrationPoints:AABB");
+        let c = load(&stored(&[(
+            "calibrationPoints",
+            r#"[{"speed":3.0,"stride_length_cm":70.0,"distance_scale":0.9}]"#,
+        )]));
+        assert_eq!(c.calibration_points.len(), 1);
+        assert_eq!(c.calibration_treadmill, None);
     }
 
     #[test]
     fn no_device_id_writes_no_device_row() {
         let rows = config_to_settings(&AppConfig::default()).unwrap();
-        assert!(rows.iter().all(|(k, _)| *k != "lastDeviceId"));
+        assert!(rows.iter().all(|(k, _)| k != "lastDeviceId"));
         assert_eq!(rows.len(), SCALAR_FIELDS.len() + 3);
     }
 
@@ -3081,7 +3294,10 @@ mod settings_tests {
             ..AppConfig::default()
         })
         .unwrap();
-        assert!(rows.contains(&("neuralFloorPct", neural::MAX_FLOOR_PCT.to_string())));
+        assert!(rows.contains(&(
+            "neuralFloorPct".to_string(),
+            neural::MAX_FLOOR_PCT.to_string()
+        )));
     }
 
     #[test]

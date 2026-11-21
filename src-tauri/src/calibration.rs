@@ -33,6 +33,7 @@
 //! It is the advanced way in. The guided walk (`guide.rs`) picks the speeds
 //! from one answer, the fastest the user walks, and checks the midpoints.
 
+mod fresh;
 mod guide;
 mod steps;
 mod tap;
@@ -1108,17 +1109,38 @@ fn offer_skipped_for(store: &impl crate::persistence::SettingsStore, device_id: 
         .unwrap_or(false)
 }
 
-/// Make the belt length the one stored for this treadmill. Called with
-/// DECK_PROFILE's switch (startup with the saved treadmill, each connection).
-pub fn switch_belt(store: &impl crate::persistence::SettingsStore, device_id: &str) {
+/// Make the belt length and the calibration points the ones stored for this
+/// treadmill. Called with DECK_PROFILE's switch
+/// (startup with the saved treadmill, each connection). Gives the treadmill's
+/// points when the treadmill in use changed, for the engine to take
+/// (`OrchestratorState::set_calibration_points`, which keeps a running belt
+/// at its byte); none when it is the same one.
+pub fn switch_belt(
+    store: &impl crate::persistence::SettingsStore,
+    device_id: &str,
+) -> Option<Vec<CalibrationPoint>> {
     let (key, cm) = belt_for(store, device_id);
     let skipped = offer_skipped_for(store, device_id);
+    let changed = with_belt(|b| b.device_id.as_deref() != Some(device_id));
+    let points = changed.then(|| fresh::points_for(store, device_id));
     with_belt(|b| {
         b.key = Some(key);
         b.cm = cm;
         b.device_id = Some(device_id.to_string());
         b.offer_skipped = skipped;
     });
+    if changed {
+        // A run, sweep or walk belongs to the treadmill it started on.
+        close_all();
+        points_changed();
+    }
+    points
+}
+
+/// The treadmill in use (its id as DECK_PROFILE normalizes it): the one the
+/// calibration points are loaded and saved for. None before any is known.
+pub fn treadmill_id() -> Option<String> {
+    with_belt(|b| b.device_id.clone())
 }
 
 /// SKIP on "Calibrate this treadmill": the offer stays off for this
@@ -1423,7 +1445,7 @@ pub(crate) fn retap(
     }))
 }
 
-fn points_changed() {
+pub(crate) fn points_changed() {
     POINTS_REV.fetch_add(1, Ordering::Relaxed);
 }
 

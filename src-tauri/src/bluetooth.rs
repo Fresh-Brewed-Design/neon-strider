@@ -730,13 +730,8 @@ async fn connect_to(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
 async fn connect_sim(app: &tauri::AppHandle) {
     begin_new_link().await;
     log::info!("Linking the simulated treadmill (dev build).");
-    // Its own belt length, under an id no real Bluetooth address can have.
-    let app_b = app.clone();
-    let _ = crate::util::blocking(move || {
-        crate::calibration::switch_belt(&app_b, "SIMDECK");
-        Ok::<_, String>(())
-    })
-    .await;
+    // Its own belt length and points, under an id no real Bluetooth address can have.
+    switch_calibration(app, "SIMDECK").await;
     let link = crate::sim_link::SimLink::connect();
     tokio::spawn(listen_for_status(app.clone(), link.notifications(), true));
     let deck = DeckLink::Sim(link);
@@ -900,18 +895,33 @@ fn swap_profile(
     load_profile_for(store, key)
 }
 
+/// Make GROUND_TRUTH's belt length and calibration points the ones of the
+/// treadmill with this (normalized) id. When the treadmill changed, the engine
+/// takes its points; a running belt keeps its byte (`CurveHold`).
+async fn switch_calibration(app: &tauri::AppHandle, device_id: &str) {
+    let (app_b, id_b) = (app.clone(), device_id.to_string());
+    let points = crate::util::blocking(move || {
+        Ok::<_, String>(crate::calibration::switch_belt(&app_b, &id_b))
+    })
+    .await
+    .ok()
+    .flatten();
+    if let Some(points) = points {
+        log::info!(
+            "Calibration points loaded: {} for this treadmill",
+            points.len()
+        );
+        ORCHESTRATOR.lock().await.set_calibration_points(points);
+    }
+}
+
 /// Make DECK_PROFILE the one of the treadmill with this device id: what the
 /// previous treadmill taught it is saved first. Does nothing when it already
 /// is. Called at startup with the saved treadmill and on every connection.
 pub async fn switch_deck_profile(app: &tauri::AppHandle, raw_id: &str) {
     let device_id = profile_device_id(raw_id);
-    // GROUND_TRUTH's belt length is kept per treadmill by the same identity.
-    let (app_b, id_b) = (app.clone(), device_id.clone());
-    let _ = crate::util::blocking(move || {
-        crate::calibration::switch_belt(&app_b, &id_b);
-        Ok::<_, String>(())
-    })
-    .await;
+    // GROUND_TRUTH's belt length and points are kept per treadmill by the same identity.
+    switch_calibration(app, &device_id).await;
     let key = crate::deck_profile::key_for(&device_id);
     let pending = {
         let mut state = ORCHESTRATOR.lock().await;
@@ -939,8 +949,18 @@ pub async fn sync_orchestrator_config(
     config: crate::persistence::AppConfig,
 ) -> Result<(), String> {
     let saved_id = config.last_device_id.clone();
-    let stored = crate::persistence::load_config(&app).calibration_points;
-    crate::calibration::check_point_scales(&config.calibration_points, &stored)?;
+    let stored = crate::persistence::load_config(&app);
+    let mut config = config;
+    // Points loaded for another treadmill (a window that loaded them before
+    // the connection switched) never land on this one: the treadmill in use
+    // keeps its own, and the window reloads them.
+    if config.calibration_treadmill != stored.calibration_treadmill {
+        log::info!("Settings sync carried another treadmill's calibration points; kept this one's");
+        config.calibration_points = stored.calibration_points.clone();
+        config.calibration_treadmill = stored.calibration_treadmill.clone();
+        crate::calibration::points_changed();
+    }
+    crate::calibration::check_point_scales(&config.calibration_points, &stored.calibration_points)?;
     {
         let mut state = ORCHESTRATOR.lock().await;
         state.sync_config(&config);

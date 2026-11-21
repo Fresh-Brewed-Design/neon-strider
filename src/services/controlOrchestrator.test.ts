@@ -7,6 +7,7 @@ import { configFromSettings, settingsFromConfig, startSettingsSync, type RustCon
 const CONFIG: RustConfig = {
   last_device_id: "deck-1",
   calibration_points: [{ speed: 3, stride_length_cm: 70, distance_scale: 1.1 }],
+  calibration_treadmill: "DECK1",
   belt_length: 120,
   min_speed: 0.8,
   max_speed: 10,
@@ -21,7 +22,7 @@ const CONFIG: RustConfig = {
 
 describe("settingsFromConfig", () => {
   it("round-trips every field", () => {
-    expect(configFromSettings(settingsFromConfig(CONFIG, DEFAULT_SETTINGS))).toEqual(CONFIG);
+    expect(configFromSettings(settingsFromConfig(CONFIG, DEFAULT_SETTINGS), "DECK1")).toEqual(CONFIG);
   });
 
   it("keeps the current values for missing, empty or zero fields", () => {
