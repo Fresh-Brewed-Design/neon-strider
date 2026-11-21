@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.47.0 (2026-11-21)
+
+### New
+
+- Right-click the tray icon to run the treadmill without the HUD. The menu shows the belt's state and the walk's time, ENGAGE or STASIS, DUMP, speed and incline steps, the running program's GO or HOLD, SKIP and END, your saved programs under RUN PROGRAM, and Open dashboard, Show HUD or Hide HUD, and Quit. Items that can't do anything right now are greyed out. A left click still opens the dashboard.
+
+### Fixed
+
+- The speed slider on the Live page no longer pauses a moving belt. Its lowest setting is the slowest speed, and only Pause or Stop take the belt to 0.
+- Speed down presses on a belt at its slowest speed keep it there instead of pausing it.
+- The first speed up press on a still belt goes straight to the slowest speed, and the next press one step above it.
+
 ## 1.46.0 (2026-11-21)
 
 ### Changed
