@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { HeartPulse, Plus, X } from "lucide-react";
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
-import { dispatch, SETTING_LIMITS } from "../../ipc";
+import { dispatch, SETTING_LIMITS, type ZoneTrim } from "../../ipc";
 import { roundSpeed, snapToDeck, snapToLevel } from "../../state/deckSpeeds";
 import { useAppState } from "../../state/useAppState";
 import { GhostButton, Hint, Label, NeonButton, Panel } from "../ui";
@@ -16,6 +16,13 @@ const FALLBACK_MAX_BPM = SETTING_LIMITS.default_max_heart_rate_bpm;
 const ZONE_UNITS: readonly { value: ZoneUnit; label: string }[] = [
   { value: "pct", label: "% max" },
   { value: "bpm", label: "bpm" },
+];
+
+/** What a zone step trims, offered while System -> Labs ZONE_TILT is on. */
+const ZONE_TRIMS: readonly { value: ZoneTrim; label: string }[] = [
+  { value: "speed", label: "Speed" },
+  { value: "incline", label: "Incline" },
+  { value: "both", label: "Both" },
 ];
 
 const field =
@@ -39,6 +46,7 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
   const save = useAction();
   const deck = useAppState((snap) => snap.deck);
   const maxBpm = useAppState((snap) => snap.heart_rate.max_bpm) || FALLBACK_MAX_BPM;
+  const inclineTrim = useAppState((snap) => snap.heart_rate.incline_trim) ?? false;
   const anyZone = d.steps.some((s) => s.zone);
   // A typed speed moves to one the deck runs (DECK_PROFILE) when the field is left.
   const snapSpeedText = (text: string) => {
@@ -157,7 +165,16 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
               <X size={14} />
             </GhostButton>
           </div>
-          {s.zone && <ZoneRow step={s} n={i + 1} unit={d.zoneUnit} maxBpm={maxBpm} onChange={(patch) => patchStep(i, patch)} />}
+          {s.zone && (
+            <ZoneRow
+              step={s}
+              n={i + 1}
+              unit={d.zoneUnit}
+              maxBpm={maxBpm}
+              inclineTrim={inclineTrim}
+              onChange={(patch) => patchStep(i, patch)}
+            />
+          )}
           </div>
         ))}
         <GhostButton
@@ -192,6 +209,7 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
             waits 2 minutes for the pulse to settle before trimming. Zones are a share of the {maxBpm} bpm max heart
             rate in System, Heart rate.
           </Hint>
+          {inclineTrim && <Hint>Incline trims move at most one deck level a minute, up to 2 % from the step&apos;s incline.</Hint>}
         </div>
       )}
 
@@ -252,12 +270,15 @@ function ZoneRow({
   n,
   unit,
   maxBpm,
+  inclineTrim,
   onChange,
 }: {
   step: StepDraft;
   n: number;
   unit: ZoneUnit;
   maxBpm: number;
+  /** ZONE_TILT is on: offer what the zone trims. Off, it trims speed whatever was saved. */
+  inclineTrim: boolean;
   onChange: (patch: Partial<StepDraft>) => void;
 }) {
   const summary = zoneSummary(step, unit, maxBpm);
@@ -286,6 +307,18 @@ function ZoneRow({
         />
         <span>{unitText}</span>
         {other && <span className="text-white/40">{other}</span>}
+        {inclineTrim && (
+          <span className="flex items-center gap-2">
+            <span>trims</span>
+            <ChoiceGroup
+              label={`Step ${n} heart zone trims`}
+              tone="magenta"
+              options={ZONE_TRIMS}
+              value={step.zoneTrim}
+              onChange={(zoneTrim) => onChange({ zoneTrim })}
+            />
+          </span>
+        )}
       </div>
     </div>
   );

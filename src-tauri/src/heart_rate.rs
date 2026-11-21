@@ -23,7 +23,8 @@ mod worker;
 
 pub use worker::{
     current_bpm, forget_sensor, init, max_heart_rate, pick_sensor, scan, set_max_heart_rate,
-    snapshot, spawn, DEFAULT_MAX_BPM, MAX_MAX_BPM, MIN_MAX_BPM,
+    set_zone_incline_trim, snapshot, spawn, zone_incline_trim, DEFAULT_MAX_BPM, MAX_MAX_BPM,
+    MIN_MAX_BPM,
 };
 
 use serde::{Deserialize, Serialize};
@@ -113,6 +114,9 @@ pub struct HeartRateSnapshot {
     pub max_bpm: u32,
     /// False while `max_bpm` is still the default estimate.
     pub max_bpm_set: bool,
+    /// Labs, ZONE_TILT (off by default): program zones may trim incline as
+    /// each step asks, not just speed.
+    pub incline_trim: bool,
 }
 
 /// A heart rate zone in beats per minute, and where the pulse sits in it.

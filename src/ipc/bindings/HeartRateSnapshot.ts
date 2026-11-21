@@ -49,4 +49,9 @@ max_bpm: number,
 /**
  * False while `max_bpm` is still the default estimate.
  */
-max_bpm_set: boolean, };
+max_bpm_set: boolean, 
+/**
+ * Labs, ZONE_TILT (off by default): program zones may trim incline as
+ * each step asks, not just speed.
+ */
+incline_trim: boolean, };

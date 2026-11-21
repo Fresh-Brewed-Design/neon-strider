@@ -1,6 +1,6 @@
 // The program editor's form state. Numbers stay as typed text until saved.
 
-import type { Program, ProgramStep } from "../../ipc";
+import type { Program, ProgramStep, ZoneTrim } from "../../ipc";
 
 /** How the editor shows heart rate zones: % of maximum heart rate (what Rust stores) or bpm. */
 export type ZoneUnit = "pct" | "bpm";
@@ -17,6 +17,8 @@ export interface StepDraft {
   zoneHigh: string;
   /** The zone as saved (% of max), so a bpm round trip that changes nothing saves it unchanged. */
   savedZone?: { low_pct: number; high_pct: number };
+  /** What the zone trims with System -> Labs ZONE_TILT on; speed is the default Rust stores as none. */
+  zoneTrim: ZoneTrim;
 }
 
 export interface Draft {
@@ -29,7 +31,7 @@ export interface Draft {
 }
 
 /** A zone switched on for a step starts at 60 to 70 % of max, a steady aerobic walk. */
-const ZONE_DEFAULT = { zoneLow: "60", zoneHigh: "70" };
+const ZONE_DEFAULT: Pick<StepDraft, "zoneLow" | "zoneHigh" | "zoneTrim"> = { zoneLow: "60", zoneHigh: "70", zoneTrim: "speed" };
 
 export const NEW_PROGRAM: Draft = {
   id: 0,
@@ -61,7 +63,12 @@ export function toDraft(p: Program): Draft {
       incline: String(s.incline_pct),
       zone: s.zone != null,
       ...(s.zone
-        ? { zoneLow: String(s.zone.low_pct), zoneHigh: String(s.zone.high_pct), savedZone: { ...s.zone } }
+        ? {
+            zoneLow: String(s.zone.low_pct),
+            zoneHigh: String(s.zone.high_pct),
+            savedZone: { low_pct: s.zone.low_pct, high_pct: s.zone.high_pct },
+            zoneTrim: s.zone.trim ?? "speed",
+          }
         : ZONE_DEFAULT),
     })),
     repeat: p.repeat_every_minutes != null,
@@ -122,6 +129,8 @@ export function fromDraft(d: Draft, maxBpm: number): Program | string {
         d.zoneUnit === "bpm"
           ? { low_pct: pctFromBpm(low, s.savedZone?.low_pct, maxBpm), high_pct: pctFromBpm(high, s.savedZone?.high_pct, maxBpm) }
           : { low_pct: low, high_pct: high };
+      // Speed is the default: left out, as Rust stores it.
+      if (s.zoneTrim !== "speed") step.zone.trim = s.zoneTrim;
     }
     steps.push(step);
   }

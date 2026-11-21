@@ -2343,6 +2343,7 @@ mod db_tests {
             let want = (s.incline_pct > 0.0).then_some(crate::programs::HeartZone {
                 low_pct: 85.0,
                 high_pct: 95.0,
+                trim: None,
             });
             assert_eq!(s.zone, want, "{:?}", s);
         }

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppSnapshot } from "../../ipc";
@@ -48,6 +48,32 @@ describe("ProgramEditor heart zones", () => {
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save" })));
     const [cmd] = saved();
     expect((cmd.program as typeof p).steps[0].zone).toEqual({ low_pct: 70, high_pct: 80 });
+  });
+
+  it("offers no trim choice while ZONE_TILT is off, and keeps a saved one", async () => {
+    const p = structuredClone(vo2Max());
+    p.steps[1].zone = { ...p.steps[1].zone!, trim: "incline" };
+    render(<ProgramEditor initial={toDraft(p)} onDone={() => {}} />);
+    expect(screen.queryByRole("radiogroup", { name: "Step 2 heart zone trims" })).toBeNull();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save" })));
+    const [cmd] = saved();
+    expect((cmd.program as typeof p).steps[1].zone?.trim).toBe("incline");
+  });
+
+  it("saves incline or both with ZONE_TILT on, and leaves speed out", async () => {
+    current!.heart_rate = { ...current!.heart_rate, incline_trim: true };
+    const p = vo2Max();
+    render(<ProgramEditor initial={toDraft(p)} onDone={() => {}} />);
+    const trims = (n: number) => screen.getByRole("radiogroup", { name: `Step ${n} heart zone trims` });
+    expect(within(trims(2)).getByRole("radio", { name: "Speed" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(within(trims(2)).getByRole("radio", { name: "Incline" }));
+    fireEvent.click(within(trims(4)).getByRole("radio", { name: "Both" }));
+    expect(screen.getByText("Incline trims move at most one deck level a minute, up to 2 % from the step's incline.")).toBeTruthy();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save" })));
+    const steps = (saved()[0].program as typeof p).steps;
+    expect(steps[1].zone).toEqual({ low_pct: 85, high_pct: 95, trim: "incline" });
+    expect(steps[3].zone).toEqual({ low_pct: 85, high_pct: 95, trim: "both" });
+    expect(steps[5].zone).toEqual({ low_pct: 85, high_pct: 95 });
   });
 
   it("shows no zone row or unit switch for a plain program", () => {

@@ -1062,6 +1062,7 @@ mod tests {
                 zone: Some(HeartZone {
                     low_pct: 85.0,
                     high_pct: 95.0,
+                    trim: None,
                 }),
             }],
             repeat_every_minutes: None,
@@ -1204,6 +1205,96 @@ mod tests {
         r.state.heart_bpm = Some(120);
         r.run(120.0);
         assert_eq!(r.deck.status_code(), 10, "still paused");
+        assert!(
+            !moves_belt(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+    }
+
+    /// ZONE_TILT on, a 60 minute walk at 4.0 km/h and 5 % (level 5) holding
+    /// 85 to 95 % of 200 bpm by incline alone, on a deck that tops out at
+    /// level 6 and runs 5 when asked for 4 (both already in DECK_PROFILE).
+    const TILT: u32 = 10;
+    fn incline_zone_rig() -> Rig {
+        use crate::deck_profile::Outcome;
+        let mut r = Rig::new();
+        r.deck.set_incline_ceiling(6);
+        r.deck.set_incline_skip(4, 5);
+        r.state.deck_profile.learn_level(4, Outcome::Took(5));
+        r.state.deck_profile.learn_level(9, Outcome::Took(6));
+        r.state.max_heart_rate = 200;
+        r.state.zone_incline_trim = true;
+        r.state.programs.push(Program {
+            id: TILT,
+            name: "Tilt".into(),
+            steps: vec![ProgramStep {
+                duration_minutes: Some(60.0),
+                speed_kmh: 4.0,
+                incline_pct: 5.0,
+                zone: Some(HeartZone {
+                    low_pct: 85.0,
+                    high_pct: 95.0,
+                    trim: Some(crate::programs::ZoneTrim::Incline),
+                }),
+            }],
+            repeat_every_minutes: None,
+            note: None,
+        });
+        r.run(1.0);
+        r
+    }
+
+    /// The incline holds while the pulse settles, then moves one level at a
+    /// time, only to levels the deck runs within 2 % of the step's 5 %, by
+    /// targets alone; the speed stays at 4.0 km/h throughout.
+    #[test]
+    fn an_incline_zone_trims_only_to_levels_the_deck_runs_and_keeps_the_speed() {
+        let mut r = incline_zone_rig();
+        r.state.heart_bpm = Some(150);
+        r.run_program(TILT);
+        r.run(20.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(r.deck.incline, 5);
+        r.run(SETTLE - 30.0);
+        assert_eq!(r.deck.incline, 5, "held while the pulse settles");
+        let mark = r.mark();
+        let mut seen = vec![r.deck.incline];
+        for _ in 0..300 {
+            r.run(1.0);
+            seen.push(r.deck.incline);
+            assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        }
+        r.state.heart_bpm = Some(195);
+        for _ in 0..300 {
+            r.run(1.0);
+            seen.push(r.deck.incline);
+            assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        }
+        seen.dedup();
+        assert_eq!(
+            seen,
+            vec![5, 6, 5, 3],
+            "never 4 (skipped) or 7 (past the top)"
+        );
+        assert_eq!(controls(&r.commands_since(mark)), vec![]);
+    }
+
+    /// Paused with a pulse below the zone, an incline zone sends nothing that
+    /// moves the belt and leaves the incline where it was.
+    #[test]
+    fn an_incline_zone_never_starts_a_still_belt() {
+        let mut r = incline_zone_rig();
+        r.run_program(TILT);
+        r.run(20.0 + SETTLE);
+        r.press(DeckAction::Pause);
+        r.run(10.0);
+        assert_eq!(r.deck.status_code(), 10, "paused");
+        let mark = r.mark();
+        r.state.heart_bpm = Some(150);
+        r.run(300.0);
+        assert_eq!(r.deck.status_code(), 10, "still paused");
+        assert_eq!(r.deck.incline, 5);
         assert!(
             !moves_belt(&r.commands_since(mark)),
             "{:?}",

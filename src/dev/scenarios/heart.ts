@@ -48,6 +48,8 @@ export const heartRate: Scenario = {
     const max = Number(params.get("maxhr"));
     if (params.has("maxhr") && Number.isFinite(max)) Object.assign(snapshot.heart_rate, { max_bpm: max, max_bpm_set: true });
     if (params.get("heart") === "on" || params.get("heart") === "waiting") pickHeartSensor(PREVIEW_WATCH);
+    // ?zonetilt: System -> Labs ZONE_TILT on, so the editor offers incline trims.
+    if (params.has("zonetilt")) snapshot.heart_rate.incline_trim = true;
   },
   commands: {
     heart_rate_scan: async () => {
@@ -62,6 +64,9 @@ export const heartRate: Scenario = {
     heart_rate_max_set: (c) => {
       if (c.bpm < 120 || c.bpm > 230) throw new Error("Maximum heart rate must be between 120 and 230 bpm.");
       Object.assign(snapshot.heart_rate, { max_bpm: c.bpm, max_bpm_set: true });
+    },
+    heart_rate_incline_trim_set: (c) => {
+      snapshot.heart_rate.incline_trim = c.on;
     },
   },
 };

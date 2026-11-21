@@ -150,6 +150,14 @@ intensity the 4x4 studies prescribe.
   constants cover about 86 % of the change and leave half of each 4 minute climb to trim in;
   waiting three (about 3 minutes) would leave one. Without the wait the trim pushed the speed up
   early in each climb, then pulled it back once the pulse caught up.
+- With the Labs switch ZONE_TILT on, a zone step can trim its incline instead of (or as well as)
+  its speed (#126), for a walk where the speed should stay put. Incline moves one deck level at
+  a time, at most every 60 s, within 2 % of the step's incline and only to levels the deck runs
+  (DECK_PROFILE). By the ACSM walking equation, 1 km/h at 3 to 4 km/h costs about the same as
+  1.5 to 2 % of grade, so 2 % matches the speed trim's 1 km/h. One level (about 1 % on most
+  decks) is a bigger step than 0.1 km/h, so it waits about one heart rate time constant to show
+  before the next. Trimming both moves the incline first and the speed once the incline is at
+  its limit, and goes back the same way.
 - Existing installs get the zones only on a VO2 max that was never edited; an edited one keeps
   what you set.
 

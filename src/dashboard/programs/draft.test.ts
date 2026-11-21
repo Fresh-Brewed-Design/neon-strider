@@ -40,6 +40,11 @@ describe("program drafts", () => {
       steps: [PROGRAM.steps[0], { ...PROGRAM.steps[1], zone: { low_pct: 85, high_pct: 95 } }],
     };
     expect(fromDraft(toDraft(zoned), 190)).toEqual(zoned);
+    // A zone that trims incline keeps it through the editor, in either unit.
+    const tilted: Program = { ...zoned, steps: [zoned.steps[0], { ...zoned.steps[1], zone: { low_pct: 85, high_pct: 95, trim: "incline" } }] };
+    expect(toDraft(tilted).steps[1].zoneTrim).toBe("incline");
+    expect(fromDraft(toDraft(tilted), 190)).toEqual(tilted);
+    expect(fromDraft(withZoneUnit(toDraft(tilted), "bpm", 190), 190)).toEqual(tilted);
     // Switched off in the editor, the zone is gone; a plain step gains none.
     const d = toDraft(zoned);
     d.steps[1].zone = false;

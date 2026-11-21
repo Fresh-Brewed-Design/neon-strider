@@ -18,13 +18,18 @@ import {
  * the PC a Bluetooth foot pod for a watch (`snapshot.ghost_pod`, Rust's
  * `ghost_pod.rs`). Its power switch, shown while GHOST_POD is on, adds running
  * power for the watch. It only reports the belt; nothing from the watch moves it.
+ * ZONE_TILT lets program heart zones trim incline (`heart_rate.incline_trim`,
+ * Rust's `programs::ZoneTrim`); off, every zone trims speed only.
  */
 export function LabsSection() {
-  const pod = useAppSnapshot()?.ghost_pod;
+  const snap = useAppSnapshot();
+  const pod = snap?.ghost_pod;
+  const heart = snap?.heart_rate;
   const change = useAction();
   const power = useAction();
   const wristChange = useAction();
-  if (!pod) return null;
+  const tiltChange = useAction();
+  if (!pod || !heart) return null;
 
   const tone = ghostPodTone(pod);
   const reading = ghostPodReading(pod);
@@ -123,6 +128,22 @@ export function LabsSection() {
           )
         )}
         <Hint className="mt-0.5">Needs GHOST_POD on: the watch keeps its foot pod link and adds this one.</Hint>
+      </div>
+      <div>
+        <Toggle
+          label="ZONE_TILT: Let heart zones trim the incline"
+          description="Zone steps in the program editor can trim speed, incline or both."
+          hint="Switched off, every heart zone trims the speed only."
+          checked={heart.incline_trim}
+          onChange={(on) => void tiltChange.run(() => dispatch({ type: "heart_rate_incline_trim_set", on }))}
+        />
+        {(tiltChange.pending || tiltChange.error) && (
+          <ActionStatus
+            pending={tiltChange.pending}
+            error={tiltChange.error && `Could not switch ZONE_TILT ${heart.incline_trim ? "off" : "on"}: ${tiltChange.error}`}
+            className="mt-1"
+          />
+        )}
       </div>
     </Section>
   );
