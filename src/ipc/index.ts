@@ -8,11 +8,13 @@ import type { Command } from "./bindings/Command";
 
 // One line per generated type, sorted by name: add a new one in its place.
 export type { ActiveProgram } from "./bindings/ActiveProgram";
+export type { AppConfig } from "./bindings/AppConfig";
 export type { AppSnapshot } from "./bindings/AppSnapshot";
 export type { BlinkStep } from "./bindings/BlinkStep";
 export type { CalibrationGuideView } from "./bindings/CalibrationGuideView";
 export type { CalibrationLimits } from "./bindings/CalibrationLimits";
 export type { CalibrationPhase } from "./bindings/CalibrationPhase";
+export type { CalibrationPoint } from "./bindings/CalibrationPoint";
 export type { CalibrationResult } from "./bindings/CalibrationResult";
 export type { CalibrationRunView } from "./bindings/CalibrationRunView";
 export type { CalibrationSnapshot } from "./bindings/CalibrationSnapshot";
@@ -37,6 +39,8 @@ export type { HudAnchor } from "./bindings/HudAnchor";
 export type { HudConfig } from "./bindings/HudConfig";
 export type { HudCustom } from "./bindings/HudCustom";
 export type { HudIdleMode } from "./bindings/HudIdleMode";
+export type { HudMinifyHotkey } from "./bindings/HudMinifyHotkey";
+export type { HudMinifyKey } from "./bindings/HudMinifyKey";
 export type { HudMonitor } from "./bindings/HudMonitor";
 export type { HudView } from "./bindings/HudView";
 export type { HudWidget } from "./bindings/HudWidget";
@@ -87,6 +91,8 @@ export type { UnlistenFn };
 
 /** Every settings range and cap, written from Rust's constants by `cargo test`. */
 export { SETTING_LIMITS } from "./bindings/SETTING_LIMITS";
+/** `AppConfig::default()`, written by `cargo test`: the settings shown until Rust's saved ones load. */
+export { DEFAULT_APP_CONFIG } from "./bindings/DEFAULT_APP_CONFIG";
 
 export function getSnapshot(): Promise<AppSnapshot> {
   return invoke<AppSnapshot>("get_snapshot");

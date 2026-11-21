@@ -14,6 +14,8 @@ import type { CalibrationPoint, Settings } from "../store/types";
 export interface RustConfig {
   last_device_id: string | null;
   calibration_points: CalibrationPoint[];
+  /** Whose points `calibration_points` are; Rust refuses a push carrying another treadmill's. */
+  calibration_treadmill?: string | null;
   belt_length: number;
   min_speed: number;
   max_speed: number;
@@ -46,10 +48,12 @@ export function settingsFromConfig(config: Partial<RustConfig>, current: Setting
   };
 }
 
-export function configFromSettings(s: Settings): RustConfig {
+/** The config to push for `s`; `treadmill` is the one its points were loaded for. */
+export function configFromSettings(s: Settings, treadmill: string | null = null): RustConfig {
   return {
     last_device_id: s.lastDeviceId,
     calibration_points: s.calibrationPoints,
+    calibration_treadmill: treadmill,
     belt_length: s.beltLength,
     min_speed: s.minSpeed,
     max_speed: s.maxSpeed,
@@ -68,38 +72,47 @@ let started = false;
 export function startSettingsSync(): void {
   if (started) return;
   started = true;
+  // The treadmill the store's points were loaded for (points are kept per treadmill).
+  let pointsTreadmill: string | null = null;
 
   useTreadmillStore.subscribe((state, prev) => {
     // Loading from Rust is not a change to send back.
     if (!state.isHydrated || !prev.isHydrated) return;
     if (!SETTINGS_KEYS.some((k) => state[k] !== prev[k])) return;
-    invoke("sync_orchestrator_config", { config: configFromSettings(state) }).catch((e) =>
+    invoke("sync_orchestrator_config", { config: configFromSettings(state, pointsTreadmill) }).catch((e) =>
       console.error("[settings] sync to Rust failed", e),
     );
   });
 
-  // Rust saves a measured point by itself, and UNDO puts it back: when it says
-  // it changed the points, load them, so the next settings push carries them.
-  let seenRev: number | null = null;
-  subscribeAppSnapshot((snap) => {
-    const rev = snap.calibration.points_rev;
-    const first = seenRev === null;
-    if (rev === seenRev) return;
-    seenRev = rev;
-    if (first) return;
-    invoke<Partial<RustConfig>>("get_rust_config")
-      .then((config) => {
-        if (config.calibration_points) {
-          useTreadmillStore.getState().updateSettings({ calibrationPoints: config.calibration_points });
-        }
-      })
-      .catch((e) => console.error("[settings] reload of calibration points failed", e));
-  });
-
-  invoke<Partial<RustConfig>>("get_rust_config")
+  // Loads run one after another, so a later load is never overwritten by an earlier one.
+  let loading = invoke<Partial<RustConfig>>("get_rust_config")
     .then((config) => {
+      pointsTreadmill = config.calibration_treadmill ?? null;
       const store = useTreadmillStore.getState();
       store.hydrateSettings(settingsFromConfig(config, store));
     })
     .catch((e) => console.error("[settings] load from Rust failed", e));
+
+  // Rust changes the points by itself (a run's save, UNDO, START FRESH, another
+  // treadmill connecting): when it says so, load them, so the next push carries
+  // them. The first snapshot reloads too, in case the treadmill switched after the
+  // first load.
+  let seenRev: number | null = null;
+  subscribeAppSnapshot((snap) => {
+    const rev = snap.calibration.points_rev;
+    if (rev === seenRev) return;
+    seenRev = rev;
+    loading = loading
+      .then(() => invoke<Partial<RustConfig>>("get_rust_config"))
+      .then((config) => {
+        if (!config.calibration_points) return;
+        const owner = config.calibration_treadmill ?? null;
+        const store = useTreadmillStore.getState();
+        const same =
+          owner === pointsTreadmill && JSON.stringify(config.calibration_points) === JSON.stringify(store.calibrationPoints);
+        pointsTreadmill = owner;
+        if (!same) store.updateSettings({ calibrationPoints: config.calibration_points });
+      })
+      .catch((e) => console.error("[settings] reload of calibration points failed", e));
+  });
 }

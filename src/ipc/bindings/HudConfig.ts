@@ -2,6 +2,7 @@
 import type { HudAnchor } from "./HudAnchor";
 import type { HudCustom } from "./HudCustom";
 import type { HudIdleMode } from "./HudIdleMode";
+import type { HudMinifyHotkey } from "./HudMinifyHotkey";
 import type { HudWidget } from "./HudWidget";
 
 export type HudConfig = { widgets: Array<HudWidget>, anchor: HudAnchor, 
@@ -20,7 +21,11 @@ custom: HudCustom | null,
  */
 idle_mode: HudIdleMode, 
 /**
- * Minified by the user (the HUD's minify button or Alt+Insert): the
+ * Minified by the user (the HUD's minify button or its Alt hotkey): the
  * running strip instead of the whole panel, until expanded again.
  */
-minified: boolean, };
+minified: boolean, 
+/**
+ * The Alt hotkey that minifies or expands the HUD.
+ */
+minify_hotkey: HudMinifyHotkey, };

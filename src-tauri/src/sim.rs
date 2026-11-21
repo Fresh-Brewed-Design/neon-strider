@@ -874,7 +874,7 @@ mod tests {
             "maxSpeed" => Some("40".to_string()),
             _ => None,
         };
-        let config = crate::persistence::config_from_settings(stored);
+        let config = crate::persistence::config_from_settings(stored, None);
         assert_eq!(config.max_speed, crate::persistence::MAX_SPEED_SETTING_KMH);
         r.state.sync_config(&config);
         r.run(1.0);
@@ -3741,5 +3741,43 @@ mod tests {
         assert_eq!(target_bytes_since(&r, mark), Vec::<u8>::new());
         assert_eq!(r.controls_since(mark, Control::Pause), 0);
         assert_eq!(r.controls_since(mark, Control::Stop), 0);
+    }
+
+    /// #164: START FRESH empties the points and RESTORE brings them back,
+    /// both on a running belt; neither moves the deck off its byte, and
+    /// RESTORE ending a walk leaves the belt going.
+    #[test]
+    fn start_fresh_and_restore_never_move_a_running_belt() {
+        let _globals = crate::calibration::TEST_GLOBALS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        crate::calibration::close_all();
+        crate::calibration::set_belt_for_test(Some(300.0));
+        let mut r = Rig::new();
+        r.state.sync_config(&one_point());
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(6.0);
+        r.set_speed(r.state.to_physical_speed(4.0));
+        r.run(15.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+
+        let mark = r.mark();
+        r.state.set_test_now(r.t);
+        crate::calibration::start_fresh(&mut r.state).unwrap();
+        assert!(r.state.calibration_points.is_empty());
+        r.run(20.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+
+        crate::calibration::guide_start(&r.state, 5.0).unwrap();
+        r.state.set_test_now(r.t);
+        crate::calibration::restore(&mut r.state).unwrap();
+        assert_eq!(r.state.calibration_points, one_point().calibration_points);
+        r.run(20.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(target_bytes_since(&r, mark), Vec::<u8>::new());
+        assert!(!moves_belt(&r.commands_since(mark)));
+        assert_eq!(r.controls_since(mark, Control::Stop), 0);
+        assert_eq!(r.controls_since(mark, Control::Pause), 0);
     }
 }

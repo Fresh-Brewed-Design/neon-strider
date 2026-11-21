@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { describe, expect, it, vi } from "vitest";
+import { DEFAULT_APP_CONFIG } from "../ipc";
 import { DEFAULT_SETTINGS } from "../store/slices/settingsSlice";
 import { useTreadmillStore } from "../store/treadmillStore";
 import { configFromSettings, settingsFromConfig, startSettingsSync, type RustConfig } from "./controlOrchestrator";
@@ -7,6 +8,7 @@ import { configFromSettings, settingsFromConfig, startSettingsSync, type RustCon
 const CONFIG: RustConfig = {
   last_device_id: "deck-1",
   calibration_points: [{ speed: 3, stride_length_cm: 70, distance_scale: 1.1 }],
+  calibration_treadmill: "DECK1",
   belt_length: 120,
   min_speed: 0.8,
   max_speed: 10,
@@ -19,9 +21,16 @@ const CONFIG: RustConfig = {
   neural_sensitivity: "high",
 };
 
+describe("DEFAULT_SETTINGS", () => {
+  it("is Rust's AppConfig::default(), field for field", () => {
+    expect(configFromSettings(DEFAULT_SETTINGS)).toEqual(DEFAULT_APP_CONFIG);
+    expect(DEFAULT_SETTINGS.beltLength).toBe(120);
+  });
+});
+
 describe("settingsFromConfig", () => {
   it("round-trips every field", () => {
-    expect(configFromSettings(settingsFromConfig(CONFIG, DEFAULT_SETTINGS))).toEqual(CONFIG);
+    expect(configFromSettings(settingsFromConfig(CONFIG, DEFAULT_SETTINGS), "DECK1")).toEqual(CONFIG);
   });
 
   it("keeps the current values for missing, empty or zero fields", () => {

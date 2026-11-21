@@ -115,6 +115,7 @@ export const snapshot: AppSnapshot = {
     custom: null,
     idle_mode: "full",
     minified: false,
+    minify_hotkey: { enabled: true, key: "insert" },
   },
   hud_view: "full",
   hud_monitors: [
@@ -227,6 +228,7 @@ export const snapshot: AppSnapshot = {
     run: null,
     sweep: null,
     guide: null,
+    aside_count: null,
   },
   guided_task: { pinned: false, tasks: [], unpin_in_s: null },
   ghost_pod: {

@@ -125,7 +125,7 @@ app's database.
 | Alt + Page Down | Incline down |
 | Alt + Home | Start / pause (GO on a paused program) |
 | Alt + End | End the running program, or rerun the last one |
-| Alt + Insert | Shrink the HUD to a strip, or show the whole HUD again |
+| Alt + Insert | Shrink the HUD to a strip, or show the whole HUD again (the HUD page can switch it off or use Alt + Pause or Alt + Scroll Lock) |
 
 ## Your data
 
