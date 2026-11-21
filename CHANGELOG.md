@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.43.1 (2026-11-21)
+
+### Fixed
+
+- Neon Strider is now built with a different linker, which removes a build warning. The app itself works the same.
+
 ## 1.43.0 (2026-11-21)
 
 ### New
