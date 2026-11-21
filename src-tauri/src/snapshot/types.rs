@@ -868,6 +868,14 @@ pub enum Command {
     CalibrationGuideSkip,
     /// End the guided walk and any run. The belt keeps going.
     CalibrationGuideEnd,
+    /// START FRESH: set this treadmill's points aside so the guided walk
+    /// starts from none. Kept, not lost. Never moves the belt.
+    CalibrationStartFresh,
+    /// RESTORE: bring back the set aside and drop the points measured since;
+    /// any open run or walk ends. Never moves the belt.
+    CalibrationRestore,
+    /// KEEP NEW: delete the set aside and keep the new points.
+    CalibrationKeepNew,
 
     // ---- GHOST_POD and WRIST_LINK (Labs) ----
     /// Labs: GHOST_POD on (`on`) or off. On, the PC advertises as a Bluetooth

@@ -13,11 +13,15 @@
 // deck ran 1.2 (a start at the treadmill), and the walk's slowest moved there;
 // =guideskip both ends saved on a deck that skips 2.8, so the check moved to 2.7;
 // =guideran the 2.8 check the deck ran at 2.9, split there.
+// ?calwizard=aside: START FRESH set the two points aside and the walk starts
+// from none (POINTS_ASIDE with RESTORE and KEEP NEW); =asidedone the new walk
+// done with the old set still aside.
 // ?caloffer: a connected treadmill
 // with no calibration, so the first-connect card shows. The math is a rough
 // stand-in for Rust's (calibration.rs and calibration/tap.rs, unit-tested there).
 import type { CalibrationGuideView, CalibrationRunView, Command, GuideCheck, GuideSpeed, StepRunView } from "../../ipc";
 import { PREVIEW_CONFIG, params, publish, snapshot } from "../mockState";
+import { useTreadmillStore } from "../../store/treadmillStore";
 import type { Scenario } from "./types";
 
 const calFlag = params.get("calwizard");
@@ -353,15 +357,35 @@ function runBelt(kmh: number) {
 /** ?calwizard: two saved points; the old app-wide belt length, 300 cm, prefills ?calwizard=belt. */
 // ?calwizard=oldpoint adds a point stored at 0.15, below the limit.
 // ?calwizard=measured starts with the 3.0 km/h run already averaged in (3 runs).
+const SAVED_POINTS: CalPoint[] = [
+  calFlag === "measured"
+    ? { speed: 3, stride_length_cm: 68.4, distance_scale: (0.912 * 2 + 3 / 2.82) / 3, runs: 3, stride_runs: 1 }
+    : { speed: 3, stride_length_cm: 68.4, distance_scale: 0.912, runs: 2, stride_runs: 1 },
+  { speed: 4.5, stride_length_cm: 74.1, distance_scale: calFlag === "oldpoint" ? 0.15 : 0.887 },
+];
+/** ?calwizard=asidedone: the points the new walk saved (=guidedone's speeds). */
+const NEW_WALK_POINTS: CalPoint[] = (
+  [
+    [0.6, 0.86],
+    [1.7, 0.925],
+    [2.8, 0.98],
+    [3.9, 1.015],
+    [5, 1.04],
+  ] as const
+).map(([speed, distance_scale]) => ({ speed, stride_length_cm: 66, distance_scale, runs: 1, stride_runs: 0 }));
+/** START FRESH's set aside (Rust keeps it per treadmill); null when none is aside. */
+let aside: CalPoint[] | null = calFlag === "aside" || calFlag === "asidedone" ? SAVED_POINTS : null;
 const CAL_CONFIG: { belt_length: number; calibration_points: CalPoint[] } = {
   belt_length: 300,
-  calibration_points: [
-    calFlag === "measured"
-      ? { speed: 3, stride_length_cm: 68.4, distance_scale: (0.912 * 2 + 3 / 2.82) / 3, runs: 3, stride_runs: 1 }
-      : { speed: 3, stride_length_cm: 68.4, distance_scale: 0.912, runs: 2, stride_runs: 1 },
-    { speed: 4.5, stride_length_cm: 74.1, distance_scale: calFlag === "oldpoint" ? 0.15 : 0.887 },
-  ],
+  calibration_points: calFlag === "aside" ? [] : calFlag === "asidedone" ? NEW_WALK_POINTS : SAVED_POINTS,
 };
+/** The preview runs no settings sync, so a points change from Rust is copied into the store here. */
+function pointsToStore() {
+  useTreadmillStore.getState().updateSettings({ calibrationPoints: CAL_CONFIG.calibration_points });
+}
+function publishAside() {
+  snapshot.calibration.aside_count = aside === null ? null : aside.length;
+}
 /** The preview runs no settings sync: the store settings ?calwizard starts with. */
 export function previewSettings() {
   return calFlag === null ? null : { beltLength: CAL_CONFIG.belt_length, calibrationPoints: CAL_CONFIG.calibration_points };
@@ -401,6 +425,33 @@ const CAL_COMMANDS: Partial<Record<Command["type"], (c: Command) => void>> = {
     guideEnds = null;
     closeCal();
     guidePublish();
+  },
+  calibration_start_fresh: () => {
+    if (snapshot.calibration.run || snapshot.calibration.sweep || snapshot.calibration.guide) {
+      throw "End the open run or walk first.";
+    }
+    if (aside !== null) throw "Old points are already set aside.";
+    if (CAL_CONFIG.calibration_points.length === 0) throw "There are no points to set aside.";
+    aside = CAL_CONFIG.calibration_points;
+    setPoints([]);
+    pointsToStore();
+    publishAside();
+  },
+  calibration_restore: () => {
+    if (aside === null) throw "No old points are set aside.";
+    snapshot.calibration.sweep = null;
+    guideEnds = null;
+    closeCal();
+    guidePublish();
+    setPoints([...aside]);
+    aside = null;
+    pointsToStore();
+    publishAside();
+  },
+  calibration_keep_new: () => {
+    if (aside === null) throw "No old points are set aside.";
+    aside = null;
+    publishAside();
   },
   calibration_offer_skip: () => {
     snapshot.calibration.offer = false;
@@ -565,6 +616,8 @@ export const calibration: Scenario = {
     }
     if (calFlag === null) return;
     snapshot.calibration.belt_treadmill = true;
+    publishAside();
+    if (calFlag === "asidedone") guideLoad([[0.6, 0.86], [5, 1.04], [2.8, 0.98], [1.7, 0.925], [3.9, 1.015]]);
     snapshot.calibration.belt_cm = calFlag === "belt" ? null : BELT_CM;
     const live = ["tapping", "dropped", "measured", "steps", "stepsaved"].includes(calFlag);
     if (live) Object.assign(snapshot.deck, { status: "Running", raw_speed_kmh: 3, speed_kmh: 3.3 });

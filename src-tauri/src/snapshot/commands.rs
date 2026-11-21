@@ -416,6 +416,18 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             calibration::close_all();
             Ok(())
         }
+        Command::CalibrationStartFresh => {
+            let save = calibration::start_fresh(&mut *ORCHESTRATOR.lock().await)?;
+            blocking(move || calibration::persist_fresh(&app, &save)).await
+        }
+        Command::CalibrationRestore => {
+            let save = calibration::restore(&mut *ORCHESTRATOR.lock().await)?;
+            blocking(move || calibration::persist_fresh(&app, &save)).await
+        }
+        Command::CalibrationKeepNew => {
+            let save = calibration::keep_new()?;
+            blocking(move || calibration::persist_fresh(&app, &save)).await
+        }
         Command::CalibrationStepsUndo => {
             let points = calibration::steps_undo(&mut *ORCHESTRATOR.lock().await)?;
             blocking(move || {

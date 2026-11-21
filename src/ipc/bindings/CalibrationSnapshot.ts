@@ -40,4 +40,9 @@ sweep: CalibrationSweepView | null,
 /**
  * The guided walk from the top speed, if open.
  */
-guide: CalibrationGuideView | null, };
+guide: CalibrationGuideView | null, 
+/**
+ * How many points START FRESH set aside for this treadmill; none when no
+ * set is aside. While a set is aside, RESTORE and KEEP NEW are offered.
+ */
+aside_count: number | null, };

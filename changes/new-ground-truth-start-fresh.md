@@ -1,0 +1,1 @@
+- GROUND_TRUTH has START FRESH: the saved points go aside and the guided walk starts from none. RESTORE brings them back if you give up on the new walk, and KEEP NEW deletes the old set once the new walk is done.
