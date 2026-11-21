@@ -1,1 +1,0 @@
-- Calibration points are kept per treadmill. Your current points stay with the treadmill saved in the app, and a second treadmill starts uncalibrated, so it gets the "Calibrate this treadmill" offer.

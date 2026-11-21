@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.45.0 (2026-11-21)
+
+### New
+
+- GROUND_TRUTH has START FRESH: the saved points go aside and the guided walk starts from none. RESTORE brings them back if you give up on the new walk, and KEEP NEW deletes the old set once the new walk is done.
+
+### Changed
+
+- Calibration points are kept per treadmill. Your current points stay with the treadmill saved in the app, and a second treadmill starts uncalibrated, so it gets the "Calibrate this treadmill" offer.
+
 ## 1.44.0 (2026-11-21)
 
 ### New
