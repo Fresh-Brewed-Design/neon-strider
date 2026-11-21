@@ -516,14 +516,18 @@ mod tests {
     }
 
     #[test]
-    fn a_session_started_at_midnight_counts_toward_today() {
-        let midnight = 1_700_000_000_000;
+    fn saved_toast_total_counts_the_live_walk_only_if_it_started_today() {
         assert_eq!(total_with_live(4400.0, true, 1800.0), 6200.0);
         assert_eq!(
             total_with_live(4400.0, false, 1800.0),
             4400.0,
             "a walk started yesterday is not today's"
         );
+    }
+
+    #[test]
+    fn a_session_started_at_midnight_counts_toward_today() {
+        let midnight = 1_700_000_000_000;
         assert!(started_today(Some(midnight), midnight));
         assert!(started_today(Some(midnight + 1), midnight));
         assert!(!started_today(Some(midnight - 1), midnight));

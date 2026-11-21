@@ -104,7 +104,6 @@ const DEFAULT_STRIDE_CM: f32 = 74.0;
 /// has ended the workout anyway.
 const RESUME_SLACK_MS: i64 = 2 * 60 * 60 * 1000;
 
-/// `now` minus `ago`, or `now` itself if the clock doesn't reach back that far.
 /// HUD toast text for a saved walk: duration, distance, average speed (left
 /// out for a zero-length walk) and today's total including this walk. A
 /// no-break space joins each number to its unit, so a wrap never splits them.
@@ -124,6 +123,7 @@ fn session_saved_message(duration_s: i64, distance_m: f64, today_m: f64) -> Stri
     msg
 }
 
+/// `now` minus `ago`, or `now` itself if the clock doesn't reach back that far.
 fn before(now: Instant, ago: Duration) -> Instant {
     now.checked_sub(ago).unwrap_or(now)
 }
@@ -1218,7 +1218,7 @@ impl OrchestratorState {
         let duration = crate::util::format_duration(self.session.duration_seconds);
         let km = self.session.distance_meters / 1000.0;
         log::info!(
-            "Finalizing Session {} ({}) — {} · {:.2}\u{a0}km",
+            "Finalizing Session {} ({}) — {} · {:.2} km",
             session_id,
             reason,
             duration,
