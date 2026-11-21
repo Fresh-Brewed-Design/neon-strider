@@ -57,7 +57,20 @@ export function hudToasts() {
       const block = ls.slice(i, i + 16);
       const type = block.map((b) => /"type":\s*"(\w+)"/.exec(b)).find(Boolean)?.[1] ?? "?";
       const raw = block.map((b) => /"message":\s*(.*?),?\s*$/.exec(b)).find(Boolean)?.[1] ?? "";
-      const msg = raw.replace(/,\s*"\w+":.*$/, "").replace(/\s*\}\)\s*,?$/, "");
+      let msg = raw.replace(/,\s*"\w+":.*$/, "").replace(/\s*\}\)\s*,?$/, "");
+      // A message built by a helper in the same file (`session_saved_message(`):
+      // show the helper's string literals too, so the toast's text is searchable.
+      const helper = /^(\w+)\($/.exec(msg.trim()) ?? /^(\w+)\(/.exec(msg.trim());
+      if (helper) {
+        const at = ls.findIndex((x) => x.includes(`fn ${helper[1]}(`));
+        if (at >= 0) {
+          const text = ls
+            .slice(at, at + 20)
+            .flatMap((x) => x.match(/"(?:[^"\\]|\\.)*"/g) ?? [])
+            .join(" ");
+          if (text) msg = `${msg.replace(/\($/, "(…)")} -> ${text}`;
+        }
+      }
       emitted.add(type);
       out.push(entry(path, i + 1, type, msg));
     });
