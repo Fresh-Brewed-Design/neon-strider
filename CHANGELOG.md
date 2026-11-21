@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.46.0 (2026-11-21)
+
+### Changed
+
+- Heart rate zone steps now wait 2 minutes of walking for your pulse to settle before they trim the speed, and wait again after a pause and GO. PULSE_RATE shows `ZONE // SETTLING` meanwhile.
+- ZONE_TILT in System, Labs (off by default) lets a heart zone step trim the incline instead of the speed, or both, chosen per step in the program editor. Incline moves one deck level at a time, within 2 % of the step's incline.
+
 ## 1.45.0 (2026-11-21)
 
 ### New
