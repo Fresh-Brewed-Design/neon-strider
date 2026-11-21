@@ -1,1 +1,1 @@
-- New WALL_CLOCK card on the History page shows which hours of the day you usually walk. Each hour lights up by how many of your last 14 desk days had a walk in it, so days away from the PC never dim it.
+- New WALL_CLOCK card on the History page shows which hours of the day you usually walk. Each hour lights up by how many of your last 14 desk days had a walk in that hour, so days away from the PC never dim the card.
