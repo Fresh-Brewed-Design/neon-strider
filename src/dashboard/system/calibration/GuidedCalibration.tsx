@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronRight, Plus, Trash2, X } from "lucide-react";
 import {
+  DEFAULT_APP_CONFIG,
   dispatch,
   type CalibrationLimits,
   type CalibrationRunView,
@@ -282,7 +283,7 @@ export function GuidedCalibration() {
 }
 
 /** The old app-wide belt length's default: a stored value other than it was typed in, so it can prefill the form. */
-const OLD_DEFAULT_BELT_CM = 120; // `AppConfig::default().belt_length` in persistence.rs
+const OLD_DEFAULT_BELT_CM = DEFAULT_APP_CONFIG.belt_length;
 
 /** BELT_LOOP: asked once per treadmill, with a short guide. Rust checks and keeps it. */
 function BeltLoopStep({

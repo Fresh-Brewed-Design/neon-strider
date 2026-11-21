@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { describe, expect, it, vi } from "vitest";
+import { DEFAULT_APP_CONFIG } from "../ipc";
 import { DEFAULT_SETTINGS } from "../store/slices/settingsSlice";
 import { useTreadmillStore } from "../store/treadmillStore";
 import { configFromSettings, settingsFromConfig, startSettingsSync, type RustConfig } from "./controlOrchestrator";
@@ -19,6 +20,13 @@ const CONFIG: RustConfig = {
   neural_floor_pct: 70,
   neural_sensitivity: "high",
 };
+
+describe("DEFAULT_SETTINGS", () => {
+  it("is Rust's AppConfig::default(), field for field", () => {
+    expect(configFromSettings(DEFAULT_SETTINGS)).toEqual(DEFAULT_APP_CONFIG);
+    expect(DEFAULT_SETTINGS.beltLength).toBe(120);
+  });
+});
 
 describe("settingsFromConfig", () => {
   it("round-trips every field", () => {

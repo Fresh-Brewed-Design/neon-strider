@@ -5,6 +5,8 @@
 //!   the last input and a count of typing key presses (`crate::hooks`), fire the
 //!   Alt shortcuts, and switch the HUD's click-through as the pointer crosses
 //!   its content (`crate::hud`).
+//! - Other instances: whether another build of the app is running (a dev build
+//!   leaves the Alt shortcuts to the release app).
 //! - Session lock: whether the user's session is locked (walk-away).
 //! - Display power: whether the PC's display is off (lights out).
 //! - Microphone: which other apps are using the microphone (slow down on calls).
@@ -31,6 +33,15 @@ mod imp;
 /// of the app. Call once, before the event loop starts.
 pub fn install_input_hooks() {
     imp::install_input_hooks();
+}
+
+/// Another instance of a Tauri app with this bundle identifier is running in
+/// this user session: its single-instance lock exists. `tauri-plugin-single-instance`
+/// names that lock after the identifier (on Windows a mutex,
+/// `{identifier}-sim`). Fast enough for the hook thread, but not free: call it
+/// per shortcut, not per key press.
+pub fn app_instance_running(identifier: &str) -> bool {
+    imp::app_instance_running(identifier)
 }
 
 /// Remember the HUD window, so the mouse hook can read its real click-through

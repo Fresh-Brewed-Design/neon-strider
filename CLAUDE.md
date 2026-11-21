@@ -7,7 +7,7 @@ an always-on-top HUD overlay, saved programs, session history, and Strava export
 
 - **Tauri 2** (Rust backend) + **React 19** + **TypeScript** + **Vite 7**
 - **Tailwind CSS 4**, **framer-motion**, **lucide-react**, **sonner**; Orbitron bundled via `@fontsource/orbitron`
-- **ts-rs** generates TypeScript types for the IPC layer into `src/ipc/bindings/` (run `cargo test`); the same test run writes `SETTING_LIMITS.ts` there from `limits.rs`, the one source for the ranges dashboard fields offer.
+- **ts-rs** generates TypeScript types for the IPC layer into `src/ipc/bindings/` (run `cargo test`); the same test run writes `SETTING_LIMITS.ts` there from `limits.rs`, the one source for the ranges dashboard fields offer, and `DEFAULT_APP_CONFIG.ts` from `AppConfig::default()` (`defaults.rs`), the one source for the settings the dashboard shows before Rust's saved ones load.
   They are marked generated in `.gitattributes`. Regenerate, don't hand-merge: on a conflict there,
   take either side and run `cargo test` in `src-tauri/`. CI exports them afresh and fails if the
   committed files differ (changed, missing or stale).
@@ -64,7 +64,10 @@ to reconnect to, in the dev database. Both modules are behind
 Dev builds run under their own identifier (`lib.rs` `DEV_IDENTIFIER`,
 `com.freshbreweddesign.neonstrider.dev`, swapped into the Tauri context by `app_context`), so they
 get their own data folder (database, backups), logs, WebView data, Credential Manager entries and
-single-instance lock, and never open the release app's. Release builds use `tauri.conf.json`
+single-instance lock, and never open the release app's. While the release app runs, a dev build
+passes every Alt shortcut on to it (`hooks::shortcuts_left_to_release`, checked per press through
+`platform::app_instance_running`, which looks for the release app's single-instance mutex); its
+hooks stay installed for the idle time and the HUD's click-through. Release builds use `tauri.conf.json`
 unchanged. Dev builds never launch at login (the autostart entry is named after the product).
 Guided tasks (`guided_task.rs`): a window asks Rust to hold the dashboard open and on top while a task runs (`guided_task_start`/`_end`, UNPIN is `guided_task_cancel`); `dashboard.rs` keeps it through blurs, it ends by itself after 30 min and never survives a restart. The GROUND_TRUTH run pins it while a run or sweep is open (`useGuidedTask`).
 GROUND_TRUTH (`calibration.rs`, always on in System, Calibration): RUN (a press) sets the belt to a target speed, then the user taps as the belt mark passes (`calibration_tap`, Space in the dashboard, or Alt+Space through `hooks.rs` while a run listens, `calibration::tap_listening`). Rust timestamps each tap; `calibration/tap.rs` is the pure maths (median gap, outliers dropped against it, done once enough gaps agree). After a run is measured, GAIT_SYNC (`calibration/steps.rs`) times footsteps with the same inputs: stride is the measured belt speed over the cadence, saved by itself with the factor kept, through the same save and UNDO as a belt run. A point counts its footstep runs apart from its belt runs (`stride_runs`, 0 for a stride never measured), so the first measured stride replaces a borrowed one. The guided walk (`calibration/guide.rs`) asks the top speed, times the deck's slowest speed and that one, then checks midpoints (the nearest speed the deck runs when DECK_PROFILE says it skips halfway) and splits a span only when the measured error there is over 2 %; every speed waits for RUN, and a point saved mid-run keeps the deck at the run's speed. The target list and RUN ALL are the advanced way in, and the old panel sits under ADVANCED // POINT_EDITOR until #92. A treadmill that connects with no belt length and no points gets "Calibrate this treadmill" (`calibration.offer`); SKIP is kept per treadmill (`calibrationOfferSkipped:<id>`). Tapping only reads the deck. The belt loop length is a setting per treadmill (`beltLoop:<id>`, switched with DECK_PROFILE), and so are the points (`calibrationPoints:<id>`, `calibration/fresh.rs`; migration 9 gave the old app-wide points to the treadmill saved then, and points saved with none known go to the first one to connect). `AppConfig.calibration_treadmill` says whose points a config carries, and `sync_orchestrator_config` refuses another treadmill's. START FRESH (`calibration_start_fresh`) sets the treadmill's points aside (`calibrationPointsAside:<id>`) so the walk starts from none; while a set is aside (`calibration.aside_count`) RESTORE brings it back (ending any walk) and KEEP NEW deletes it.
@@ -90,7 +93,8 @@ HEART_LINK (`heart_rate.rs`: pure Heart Rate Measurement decoding and snapshot t
     `HudPanel.tsx`, the cards `HudCards.tsx`, toasts `ToastCard.tsx`, notes `HudNote.tsx`, and
     status text in `status.ts`. While the belt is still, Rust may collapse the panel to a strip
     (`HudStrip.tsx`) or hide it (`hud.idle_mode`); minified by the user (`hud.minified`, the
-    header's minify button or Alt+Insert) it shows the running strip instead of the whole panel
+    header's minify button or its Alt hotkey, `hud.minify_hotkey`: on or off and Insert, Pause or
+    Scroll Lock, set on the HUD page, mirrored to `hooks::minify_key` for the hook thread) it shows the running strip instead of the whole panel
     until expanded (PULSE_RATE and its chart join the strip while a heart rate sensor is picked). Both are decided in `snapshot/stasis.rs` as `snapshot.hud_view`; cards and
     toasts always show
 - **Shared**: `src/widgets/registry.ts` defines every stat once for the HUD and dashboard.
@@ -123,7 +127,7 @@ HEART_LINK (`heart_rate.rs`: pure Heart Rate Measurement decoding and snapshot t
 
 OS-specific code goes only in `src-tauri/src/platform/` (`mod.rs` is the interface, `windows.rs`
 the Windows implementation, `other.rs` the stand-in for every other OS). It covers the input
-hooks, session lock, display power (`display_off`, for `LIGHTS_OUT` in `snapshot/lights_out.rs`),
+hooks, whether another instance of the app runs (its single-instance mutex), session lock, display power (`display_off`, for `LIGHTS_OUT` in `snapshot/lights_out.rs`),
 which apps use the microphone, the cursor and mouse button, the PC's idle time, and the BLE peripheral (the GHOST_POD running pod,
 WinRT `GattServiceProvider`, one per service). The rest of
 the code calls `platform::...` and never the OS directly. macOS and Linux are on the roadmap, so
@@ -178,6 +182,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?link=scanning|connecting|reconnecting|nodata|bt-off|failed`: each treadmill link state
 - `?maxhr=178`: a max heart rate of 178 bpm set in System -> Heart rate (program heart zones use it)
 - `?minified`: the running strip; with `?program=resting|paused`, `?noprogram` or `?idle`; with `?hrspark=...`, `?hrzone=...` or `?heart=on|waiting` it shows PULSE_RATE
+- `?minifykey=off|pause|scroll_lock`: the minify hotkey switched off, or set to Alt+Pause or Alt+Scroll Lock
 - `?neural=active`: Neural flow easing the belt off while typing
 - `?nohistory`: History empty: no walks, an empty week and DESK_SYNC
 - `?noprogram`: no program running

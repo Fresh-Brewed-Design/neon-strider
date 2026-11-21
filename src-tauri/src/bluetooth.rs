@@ -375,10 +375,14 @@ impl ToastTracker {
     /// change is its own (shown quietly on the HUD panel, not as a toast).
     fn on_frame(&mut self, t: &Telemetry, neural_easing: bool) -> FrameToasts {
         let mut out = FrameToasts::default();
-        if t.status != self.status {
-            out.status = Some(t.status);
+        // An unknown byte reads as Stopped in `t.status` but changes nothing
+        // (`OrchestratorState::take_status`), so it gets no status toast.
+        if t.status_known {
+            if t.status != self.status {
+                out.status = Some(t.status);
+            }
+            self.status = t.status;
         }
-        self.status = t.status;
 
         match self.speed {
             Some(last) if (t.speed_kmh - last).abs() > SPEED_TOAST_MIN_KMH => {
@@ -402,9 +406,7 @@ impl ToastTracker {
 
 /// Take a decoded frame into the orchestrator.
 pub(crate) fn apply_telemetry(state: &mut OrchestratorState, t: &Telemetry) {
-    state.last_status = t.status;
-    state.unknown_status_code = (!t.status_known).then_some(t.status_code);
-    state.deck_standby = t.status_code == protocol::STATUS_STANDBY;
+    state.take_status(t);
     state.hardware_speed = t.speed_kmh;
     state.hardware_incline = t.incline;
     state.hardware_time = t.time_sec;

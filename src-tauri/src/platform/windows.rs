@@ -8,6 +8,7 @@
 #![warn(unsafe_op_in_unsafe_fn)]
 
 use crate::hooks::Shortcut;
+use crate::snapshot::HudMinifyKey;
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -70,6 +71,26 @@ fn pump_messages() {
     }
 }
 
+pub fn app_instance_running(identifier: &str) -> bool {
+    use windows::core::HSTRING;
+    use windows::Win32::Foundation::{CloseHandle, ERROR_ACCESS_DENIED};
+    use windows::Win32::System::Threading::{OpenMutexW, SYNCHRONIZATION_SYNCHRONIZE};
+    // The name tauri-plugin-single-instance gives its mutex (no `semver`
+    // feature), in this session's namespace like the plugin's own.
+    let name = HSTRING::from(format!("{identifier}-sim"));
+    // SAFETY: `name` is a valid, NUL-terminated wide string for the call; the
+    // handle is only closed, never waited on.
+    match unsafe { OpenMutexW(SYNCHRONIZATION_SYNCHRONIZE, false, &name) } {
+        Ok(handle) => {
+            // SAFETY: a handle this call just opened, closed once.
+            let _ = unsafe { CloseHandle(handle) };
+            true
+        }
+        // It exists, but this process may not open it: still running.
+        Err(e) => e.code() == ERROR_ACCESS_DENIED.to_hresult(),
+    }
+}
+
 pub fn remember_hud_window(window: &tauri::WebviewWindow) {
     if let Ok(hwnd) = window.hwnd() {
         HUD_HWND.store(hwnd.0 as isize, Ordering::SeqCst);
@@ -83,18 +104,38 @@ const VK_NEXT: u16 = 0x22;
 const VK_END: u16 = 0x23;
 const VK_HOME: u16 = 0x24;
 const VK_INSERT: u16 = 0x2D;
+const VK_PAUSE: u16 = 0x13;
+const VK_SCROLL: u16 = 0x91;
 const VK_SPACE: u16 = 0x20;
 const VK_OEM_PLUS: u16 = 0xBB;
 const VK_OEM_MINUS: u16 = 0xBD;
 
+/// The key code for a minify hotkey choice.
+fn minify_vk(key: HudMinifyKey) -> u16 {
+    match key {
+        HudMinifyKey::Insert => VK_INSERT,
+        HudMinifyKey::Pause => VK_PAUSE,
+        HudMinifyKey::ScrollLock => VK_SCROLL,
+    }
+}
+
 /// The Alt shortcut a key press is, if any: Alt with volume up or down (or
 /// `=` and `-`) for speed, Page Up and Page Down for incline, Home to start or
-/// pause, End to run or end the last program, Insert to minify or expand the HUD,
-/// and Space for a GROUND_TRUTH tap while a tap run listens (`tapping`); at any
+/// pause, End to run or end the last program, the minify key (`minify`, the
+/// HUD setting; `None` while it is off) to minify or expand the HUD, and
+/// Space for a GROUND_TRUTH tap while a tap run listens (`tapping`); at any
 /// other time Alt+Space is left to Windows (the window menu).
-fn shortcut_for_key(vk: u16, alt_down: bool, tapping: bool) -> Option<Shortcut> {
+fn shortcut_for_key(
+    vk: u16,
+    alt_down: bool,
+    tapping: bool,
+    minify: Option<HudMinifyKey>,
+) -> Option<Shortcut> {
     if !alt_down {
         return None;
+    }
+    if minify.map(minify_vk) == Some(vk) {
+        return Some(Shortcut::ToggleMinified);
     }
     match vk {
         VK_VOLUME_UP | VK_OEM_PLUS => Some(Shortcut::SpeedUp),
@@ -103,7 +144,6 @@ fn shortcut_for_key(vk: u16, alt_down: bool, tapping: bool) -> Option<Shortcut> 
         VK_NEXT => Some(Shortcut::InclineDown),
         VK_HOME => Some(Shortcut::ToggleStart),
         VK_END => Some(Shortcut::ToggleProgram),
-        VK_INSERT => Some(Shortcut::ToggleMinified),
         VK_SPACE if tapping => Some(Shortcut::CalibrationTap),
         _ => None,
     }
@@ -149,7 +189,14 @@ unsafe extern "system" fn keyboard_proc(ncode: i32, wparam: WPARAM, lparam: LPAR
         // The hook flag alone misses Alt in some apps; the key state catches it.
         let alt_down =
             (key.flags.0 & LLKHF_ALTDOWN.0) != 0 || key_held(VK_LMENU) || key_held(VK_RMENU);
-        let shortcut = shortcut_for_key(key.vkCode as u16, alt_down, crate::hooks::tap_listening());
+        let shortcut = shortcut_for_key(
+            key.vkCode as u16,
+            alt_down,
+            crate::hooks::tap_listening(),
+            crate::hooks::minify_key(),
+        )
+        // A dev build passes it on while the release app runs (see `hooks`).
+        .filter(|_| !crate::hooks::shortcuts_left_to_release());
 
         if let Some(s) = shortcut {
             crate::hooks::shortcut_pressed(s);
@@ -1397,9 +1444,15 @@ mod tests {
         assert!(!display_state_is_off(2), "dimmed");
     }
 
+    const MINIFY_KEYS: [HudMinifyKey; 3] = [
+        HudMinifyKey::Insert,
+        HudMinifyKey::Pause,
+        HudMinifyKey::ScrollLock,
+    ];
+
     #[test]
     fn alt_shortcuts_map_to_their_actions() {
-        let alt = |vk| shortcut_for_key(vk, true, false);
+        let alt = |vk| shortcut_for_key(vk, true, false, Some(HudMinifyKey::Insert));
         assert_eq!(alt(0xAF), Some(Shortcut::SpeedUp));
         assert_eq!(alt(0xBB), Some(Shortcut::SpeedUp));
         assert_eq!(alt(0xAE), Some(Shortcut::SpeedDown));
@@ -1413,17 +1466,77 @@ mod tests {
         // Space never is (the dashboard takes it itself when focused).
         assert_eq!(alt(0x20), None);
         assert_eq!(
-            shortcut_for_key(0x20, true, true),
+            shortcut_for_key(0x20, true, true, None),
             Some(Shortcut::CalibrationTap)
         );
-        assert_eq!(shortcut_for_key(0x20, false, true), None);
+        assert_eq!(shortcut_for_key(0x20, false, true, None), None);
         // Other keys with Alt, and the same keys without it, are not shortcuts.
         for vk in [0x41u16, 0x25, 0x09, 0x0D, 0x70] {
             assert_eq!(alt(vk), None, "{vk:#x}");
         }
         for vk in [0xAFu16, 0xAE, 0x21, 0x22, 0x23, 0x24, 0x2D, 0xBB, 0xBD] {
-            assert_eq!(shortcut_for_key(vk, false, true), None, "{vk:#x}");
+            assert_eq!(
+                shortcut_for_key(vk, false, true, Some(HudMinifyKey::Insert)),
+                None,
+                "{vk:#x}"
+            );
         }
+    }
+
+    #[test]
+    fn the_minify_hotkey_uses_the_chosen_key_or_none() {
+        for key in MINIFY_KEYS {
+            let vk = minify_vk(key);
+            assert_eq!(
+                shortcut_for_key(vk, true, false, Some(key)),
+                Some(Shortcut::ToggleMinified),
+                "{key:?}"
+            );
+            // Without Alt it is just the key.
+            assert_eq!(shortcut_for_key(vk, false, false, Some(key)), None);
+            // Off, or another key chosen: the press goes to the app in front.
+            assert_eq!(shortcut_for_key(vk, true, false, None), None, "{key:?}");
+            for other in MINIFY_KEYS.into_iter().filter(|k| *k != key) {
+                assert_eq!(shortcut_for_key(vk, true, false, Some(other)), None);
+            }
+        }
+        assert_eq!(minify_vk(HudMinifyKey::Insert), 0x2D);
+        assert_eq!(minify_vk(HudMinifyKey::Pause), 0x13);
+        assert_eq!(minify_vk(HudMinifyKey::ScrollLock), 0x91);
+    }
+
+    #[test]
+    fn no_minify_key_is_another_shortcut() {
+        // With the hotkey off, none of its keys does anything with Alt, even
+        // while a tap run listens: so no choice can take another shortcut's key.
+        for key in MINIFY_KEYS {
+            assert_eq!(
+                shortcut_for_key(minify_vk(key), true, true, None),
+                None,
+                "{key:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn another_instance_is_seen_by_its_single_instance_mutex() {
+        use windows::core::HSTRING;
+        use windows::Win32::Foundation::CloseHandle;
+        use windows::Win32::System::Threading::CreateMutexW;
+        // An identifier no app uses, unique to this run.
+        let id = format!(
+            "com.freshbreweddesign.neonstrider.test-{}",
+            std::process::id()
+        );
+        assert!(!app_instance_running(&id));
+        let name = HSTRING::from(format!("{id}-sim"));
+        // SAFETY: a valid wide name; the handle is closed below.
+        let handle = unsafe { CreateMutexW(None, true, &name) }.expect("create mutex");
+        assert!(app_instance_running(&id));
+        assert!(!app_instance_running(&format!("{id}.dev")));
+        // SAFETY: the handle created above, closed once.
+        unsafe { CloseHandle(handle) }.expect("close mutex");
+        assert!(!app_instance_running(&id));
     }
 
     #[test]

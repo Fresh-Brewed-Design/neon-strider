@@ -19,6 +19,7 @@ pub mod bluetooth;
 pub mod calibration;
 mod dashboard;
 pub mod deck_profile;
+pub mod defaults;
 mod display;
 pub mod engine;
 pub mod export;

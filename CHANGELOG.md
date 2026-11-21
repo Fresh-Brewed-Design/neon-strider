@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.43.3 (2026-11-21)
+
+### Fixed
+
+- Security updates to the network and database libraries.
+
+## 1.43.2 (2026-11-21)
+
+### Fixed
+
+- Engage pressed just after a status poll no longer sends the treadmill a second start.
+- A status code the app doesn't know no longer ends the walk mid-session or counts the same belt time twice. While the treadmill shows one, the app sends it no automatic start, resume or speed change.
+
 ## 1.43.1 (2026-11-21)
 
 ### Fixed

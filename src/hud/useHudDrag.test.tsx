@@ -7,7 +7,7 @@ import { usePlacement } from "./useHudDrag";
 type Payload = { custom: { dx: number; top: number } | null; anchor: HudConfig["anchor"]; done: boolean };
 
 function hud(patch: Partial<HudConfig> = {}): HudConfig {
-  return { widgets: [], anchor: "bottom_right", monitor: null, dashboard_pinned: false, custom: null, idle_mode: "full", minified: false, ...patch };
+  return { widgets: [], anchor: "bottom_right", monitor: null, dashboard_pinned: false, custom: null, idle_mode: "full", minified: false, minify_hotkey: { enabled: true, key: "insert" }, ...patch };
 }
 
 /** Capture the `hud-drag` listener the hook registers. */
