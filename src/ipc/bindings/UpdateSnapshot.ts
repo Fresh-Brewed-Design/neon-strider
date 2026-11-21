@@ -10,7 +10,7 @@ export type UpdateSnapshot = {
  */
 current_version: string, status: UpdateStatus, offer: UpdateOffer | null, 
 /**
- * The offered version was put off with "Not now" (until the next daily check).
+ * The offered version was put off with "Not now" (for a day).
  */
 dismissed: boolean, 
 /**

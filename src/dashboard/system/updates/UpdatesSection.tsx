@@ -51,7 +51,7 @@ export function UpdatesSection() {
     <Section
       id="sys-updates"
       title="Updates"
-      description="Neon Strider checks GitHub for a signed new version at start and once a day."
+      description="Neon Strider checks GitHub for a signed new version at start and every hour."
       status={
         <span className="shrink-0 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-white/50">
           {offer && u.status.state !== "up_to_date" ? (
@@ -110,7 +110,7 @@ export function UpdatesSection() {
                 Not now
               </GhostButton>
             )}
-            {u.dismissed && <Hint>Update put off until tomorrow&apos;s check.</Hint>}
+            {u.dismissed && <Hint>Update put off for a day.</Hint>}
             {!u.dismissed && u.auto_install && !busy && (
               <span className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-neon-cyan/80">
                 Installs when idle

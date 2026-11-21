@@ -38,7 +38,7 @@ windows dispatch `strava_*` commands and read `snapshot.strava`; tokens never re
 tokens live in Windows Credential Manager (`secrets.rs`; plaintext DB values migrate at startup).
 Auto-update is Rust-owned too (`update.rs`, `tauri-plugin-updater`; no window has updater
 permissions and the CSP stays closed): it checks `latest.json` on the newest GitHub release 30 s
-after startup and daily (hourly after a failure) or on `update_check`, joins the notes of every
+after startup and hourly or on `update_check`, joins the notes of every
 release since the installed one from GitHub's public releases list (falling back to
 `latest.json`'s notes), and feeds `snapshot.update`. `update_install` downloads and verifies,
 saves the notes for "What's new" and the running program, then runs the installer in passive

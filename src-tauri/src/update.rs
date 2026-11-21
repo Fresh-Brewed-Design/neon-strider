@@ -10,7 +10,7 @@
 //!   by itself only when the belt has been still, with no program, for 10
 //!   minutes and the PC has had no input for 5, checked again right before the
 //!   installer runs;
-//! - the runtime: checks (30 s after startup, then daily, or on demand), the
+//! - the runtime: checks (30 s after startup, then hourly, or on demand), the
 //!   install (download and verify through `tauri-plugin-updater`, save the
 //!   running program, run the NSIS installer in passive mode, which restarts
 //!   the app). The belt is left alone: the treadmill keeps going by itself
@@ -43,6 +43,10 @@ const INSTALLER_NOTE_MARKER: &str = "<!-- installer-note -->";
 
 const MINUTE_MS: u64 = 60_000;
 const DAY_MS: u64 = 24 * 60 * MINUTE_MS;
+/// A successful background check is repeated this often: releases land several
+/// times a day, and one check is a couple of small GitHub requests, far under the
+/// unauthenticated API limit.
+const CHECK_EVERY_MS: u64 = 60 * MINUTE_MS;
 /// The first check waits this long after startup, so it doesn't compete with the connect.
 /// A treadmill connect takes up to about 15 s (scan, settle, retries); 30 s is after it.
 const STARTUP_DELAY_MS: u64 = 30_000;
@@ -139,7 +143,7 @@ pub struct UpdateSnapshot {
     pub current_version: String,
     pub status: UpdateStatus,
     pub offer: Option<UpdateOffer>,
-    /// The offered version was put off with "Not now" (until the next daily check).
+    /// The offered version was put off with "Not now" (for a day).
     pub dismissed: bool,
     /// The pink "update waiting" dot on the System nav, the Updates tab and the
     /// tray icon (`show_update_dot`).
@@ -257,12 +261,12 @@ pub struct LastCheck {
     pub ok: bool,
 }
 
-/// A background check is due: 30 s after startup, then a day after the last
-/// check (an hour after a failed one).
+/// A background check is due: 30 s after startup, then an hour after the last
+/// check, whether it worked or failed.
 pub fn check_due(now_ms: u64, started_ms: u64, last: Option<LastCheck>) -> bool {
     match last {
         None => now_ms >= started_ms + STARTUP_DELAY_MS,
-        Some(LastCheck { at_ms, ok: true }) => now_ms >= at_ms + DAY_MS,
+        Some(LastCheck { at_ms, ok: true }) => now_ms >= at_ms + CHECK_EVERY_MS,
         Some(LastCheck { at_ms, ok: false }) => now_ms >= at_ms + RETRY_AFTER_FAILURE_MS,
     }
 }
@@ -393,7 +397,7 @@ pub struct Dismissal {
 }
 
 /// "Not now" still holds for `version`: same version, and not yet a day old
-/// (the next daily check offers it again).
+/// (the first check after that offers it again).
 pub fn dismissal_active(d: Option<&Dismissal>, version: &str, now_ms: u64) -> bool {
     d.is_some_and(|d| d.version == version && now_ms < d.at_ms + DAY_MS)
 }
@@ -578,7 +582,7 @@ pub fn init(app: &AppHandle) {
     }
 }
 
-/// The background schedule: a check 30 s after startup, then daily; and on
+/// The background schedule: a check 30 s after startup, then hourly; and on
 /// every tick, whether an offered update may install by itself.
 pub fn spawn(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
@@ -959,8 +963,7 @@ fn start_install(app: &AppHandle, auto: bool) -> Result<(), String> {
     Ok(())
 }
 
-/// "Not now": hide the offer (badge and HUD card) for this version until the
-/// next daily check. The Updates section still shows it.
+/// "Not now": hide the offer (badge and HUD card) for this version for a day. The Updates section still shows it.
 pub fn dismiss(app: &AppHandle) -> Result<(), String> {
     let version = with(|rt| rt.offer.as_ref().map(|o| o.version.clone()))
         .ok_or_else(|| "No update to put off.".to_string())?;
@@ -1125,7 +1128,7 @@ mod tests {
     }
 
     #[test]
-    fn checks_run_after_startup_then_daily_and_retry_failures_hourly() {
+    fn checks_run_after_startup_then_hourly_and_retry_failures_hourly() {
         let start = 1_000_000;
         assert!(!check_due(start, start, None));
         assert!(!check_due(start + STARTUP_DELAY_MS - 1, start, None));
@@ -1135,8 +1138,8 @@ mod tests {
             at_ms: start + 40_000,
             ok: true,
         });
-        assert!(!check_due(start + 40_000 + DAY_MS - 1, start, ok));
-        assert!(check_due(start + 40_000 + DAY_MS, start, ok));
+        assert!(!check_due(start + 40_000 + CHECK_EVERY_MS - 1, start, ok));
+        assert!(check_due(start + 40_000 + CHECK_EVERY_MS, start, ok));
 
         let failed = Some(LastCheck {
             at_ms: start + 40_000,
@@ -1152,6 +1155,34 @@ mod tests {
             start,
             failed
         ));
+    }
+
+    #[test]
+    fn a_release_hours_after_startup_is_checked_for_without_a_manual_check() {
+        let start = 1_000_000;
+        let checked = start + STARTUP_DELAY_MS;
+        let ok = Some(LastCheck {
+            at_ms: checked,
+            ok: true,
+        });
+        assert!(!check_due(checked + 59 * MINUTE_MS, start, ok));
+        assert!(check_due(checked + 60 * MINUTE_MS, start, ok));
+        // Each hourly check that finds nothing schedules the next one an hour on,
+        // so a release published 3 hours in is picked up within an hour of it.
+        let mut at = checked;
+        let mut checks = 0;
+        for minute in 1..=4 * 60 {
+            let now = checked + minute * MINUTE_MS;
+            let last = Some(LastCheck {
+                at_ms: at,
+                ok: true,
+            });
+            if check_due(now, start, last) {
+                at = now;
+                checks += 1;
+            }
+        }
+        assert_eq!(checks, 4);
     }
 
     fn belt(connected: bool, status: MachineStatus) -> BeltNow {
@@ -1294,7 +1325,7 @@ mod tests {
     }
 
     #[test]
-    fn not_now_lasts_until_the_next_daily_check_for_that_version_only() {
+    fn not_now_lasts_a_day_for_that_version_only() {
         let d = Dismissal {
             version: "1.3.0".to_string(),
             at_ms: 5_000,
