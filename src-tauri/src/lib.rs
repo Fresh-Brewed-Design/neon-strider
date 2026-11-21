@@ -9,7 +9,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
 use tauri::{
-    menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager,
 };
@@ -91,7 +90,6 @@ fn app_context() -> tauri::Context {
 
 /// Argument the autostart entry passes, so a login launch can be told apart.
 const AUTOSTART_ARG: &str = "--autostart";
-const TRAY_MENU_QUIT: &str = "quit";
 /// A tray click this soon after the dashboard closed on blur is the click that
 /// took its focus away: opening it again would make the click a no-op toggle.
 /// The blur from the same click lands within a few frames; 300 ms is shorter
@@ -219,21 +217,23 @@ fn on_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
     }
 }
 
-/// The tray icon: left click opens the dashboard; the menu has Quit. The
-/// snapshot emitter keeps its tooltip and icon live (`snapshot::tray`).
+/// The tray icon: left click opens the dashboard; right click opens the
+/// menu (`snapshot::tray_menu`: status, controls, programs, windows, Quit).
+/// The snapshot emitter keeps its tooltip, icon and menu live.
 fn build_tray(app: &tauri::App) -> tauri::Result<()> {
-    let quit = MenuItem::with_id(app, TRAY_MENU_QUIT, "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&quit])?;
+    let menu = snapshot::tray_menu::initial_menu(app)?;
 
     let mut tray = TrayIconBuilder::with_id(snapshot::tray::TRAY_ID)
         .tooltip("Neon Strider")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| {
-            if event.id.as_ref() == TRAY_MENU_QUIT {
+            if event.id.as_ref() == snapshot::tray_menu::QUIT_ID {
                 log::info!("quitting...");
                 QUITTING.store(true, Ordering::SeqCst);
                 app.exit(0);
+            } else {
+                snapshot::tray_menu::on_menu_event(app, event.id.as_ref());
             }
         })
         .on_tray_icon_event(|tray, event| {

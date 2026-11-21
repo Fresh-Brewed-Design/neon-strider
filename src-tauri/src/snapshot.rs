@@ -12,7 +12,7 @@
 //!
 //! The feature modules that contribute a part of the snapshot or act on it
 //! (calls, desk, desk_sync, eyebreak, hud_drag, lights_out, maintenance, odometer, seated,
-//! tray,
+//! tray, tray_menu,
 //! walkaway, weekly) are declared here rather than in `lib.rs`, so this module owns
 //! their wiring.
 
@@ -36,6 +36,8 @@ pub mod odometer;
 pub mod seated;
 #[path = "tray.rs"]
 pub mod tray;
+#[path = "tray_menu.rs"]
+pub mod tray_menu;
 #[path = "walkaway.rs"]
 pub mod walkaway;
 #[path = "weekly.rs"]
