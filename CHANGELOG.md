@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.48.1 (2026-11-21)
+
+- Remove the unused ERGO HUD toast type; Add a feature lookup script and check it before building
+
 ## 1.48.0 (2026-11-21)
 
 ### Changed
