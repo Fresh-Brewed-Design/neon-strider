@@ -10,6 +10,11 @@ pub fn install_input_hooks() {
     log::info!("Global input hooks are not supported on this OS");
 }
 
+/// No single-instance lock to look for here, so no other instance is seen.
+pub fn app_instance_running(_identifier: &str) -> bool {
+    false
+}
+
 pub fn remember_hud_window(_window: &tauri::WebviewWindow) {}
 
 pub fn spawn_session_lock_watcher() {

@@ -71,6 +71,26 @@ fn pump_messages() {
     }
 }
 
+pub fn app_instance_running(identifier: &str) -> bool {
+    use windows::core::HSTRING;
+    use windows::Win32::Foundation::{CloseHandle, ERROR_ACCESS_DENIED};
+    use windows::Win32::System::Threading::{OpenMutexW, SYNCHRONIZATION_SYNCHRONIZE};
+    // The name tauri-plugin-single-instance gives its mutex (no `semver`
+    // feature), in this session's namespace like the plugin's own.
+    let name = HSTRING::from(format!("{identifier}-sim"));
+    // SAFETY: `name` is a valid, NUL-terminated wide string for the call; the
+    // handle is only closed, never waited on.
+    match unsafe { OpenMutexW(SYNCHRONIZATION_SYNCHRONIZE, false, &name) } {
+        Ok(handle) => {
+            // SAFETY: a handle this call just opened, closed once.
+            let _ = unsafe { CloseHandle(handle) };
+            true
+        }
+        // It exists, but this process may not open it: still running.
+        Err(e) => e.code() == ERROR_ACCESS_DENIED.to_hresult(),
+    }
+}
+
 pub fn remember_hud_window(window: &tauri::WebviewWindow) {
     if let Ok(hwnd) = window.hwnd() {
         HUD_HWND.store(hwnd.0 as isize, Ordering::SeqCst);
@@ -174,7 +194,9 @@ unsafe extern "system" fn keyboard_proc(ncode: i32, wparam: WPARAM, lparam: LPAR
             alt_down,
             crate::hooks::tap_listening(),
             crate::hooks::minify_key(),
-        );
+        )
+        // A dev build passes it on while the release app runs (see `hooks`).
+        .filter(|_| !crate::hooks::shortcuts_left_to_release());
 
         if let Some(s) = shortcut {
             crate::hooks::shortcut_pressed(s);
@@ -1494,6 +1516,27 @@ mod tests {
                 "{key:?}"
             );
         }
+    }
+
+    #[test]
+    fn another_instance_is_seen_by_its_single_instance_mutex() {
+        use windows::core::HSTRING;
+        use windows::Win32::Foundation::CloseHandle;
+        use windows::Win32::System::Threading::CreateMutexW;
+        // An identifier no app uses, unique to this run.
+        let id = format!(
+            "com.freshbreweddesign.neonstrider.test-{}",
+            std::process::id()
+        );
+        assert!(!app_instance_running(&id));
+        let name = HSTRING::from(format!("{id}-sim"));
+        // SAFETY: a valid wide name; the handle is closed below.
+        let handle = unsafe { CreateMutexW(None, true, &name) }.expect("create mutex");
+        assert!(app_instance_running(&id));
+        assert!(!app_instance_running(&format!("{id}.dev")));
+        // SAFETY: the handle created above, closed once.
+        unsafe { CloseHandle(handle) }.expect("close mutex");
+        assert!(!app_instance_running(&id));
     }
 
     #[test]

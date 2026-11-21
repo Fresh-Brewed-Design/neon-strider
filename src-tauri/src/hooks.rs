@@ -56,6 +56,17 @@ pub(crate) fn minify_key() -> Option<HudMinifyKey> {
     minify_key_from(MINIFY_KEY.load(Ordering::Relaxed))
 }
 
+/// A dev build leaves every Alt shortcut to the release app while it runs.
+/// Both builds install the same system-wide hooks, and the one installed last
+/// sees a key first and swallows it, so without this a dev build would take
+/// the shortcuts meant for the release app. The hooks stay installed (they
+/// also keep the last-input time and the HUD's click-through), and the check
+/// is made per press, so it follows the release app starting or quitting.
+/// Release builds never yield. Only called once a key press is a shortcut.
+pub(crate) fn shortcuts_left_to_release() -> bool {
+    cfg!(debug_assertions) && crate::platform::app_instance_running(crate::RELEASE_IDENTIFIER)
+}
+
 fn epoch_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
