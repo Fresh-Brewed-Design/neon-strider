@@ -204,7 +204,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?stasis=strip|hidden`: "When the belt is still" set to that, with the belt stopped
 - `?status=9|countdown|stopping|standby`: an unknown status byte, the 3-2-1, the belt winding down, or the deck asleep
 - `?strava=authorizing|uploading|processing|checking|backoff|error|paused`: each Strava state
-- `?textscale=110|125`: the page zoomed to approximate the Windows text size setting (dev previews only; size the HUD preview window to 340 px wide)
+- `?textscale=121`: the Windows text size setting, any whole percent from 100 to 225, as the page zoom WebView2 applies for it (dev previews only; size the HUD preview window to 340 px wide)
 - `?toasts`: the HUD toasts; `=deck` for the deck-start GO toast
 - `?traffic=recording|saved`: the Diagnostics traffic recorder
 - `?update=available|downloading|failed|whatsnew`: auto-update states
