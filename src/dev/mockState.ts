@@ -2,7 +2,7 @@
 // URL flags, and `publish` (Rust's `app-state` event). The URL-flag scenarios
 // that change it live in `scenarios/`, one file per feature.
 import { emit } from "@tauri-apps/api/event";
-import type { AppSnapshot, DeskSync } from "../ipc";
+import type { AppSnapshot, DeskSync, WallClock } from "../ipc";
 import type { RustConfig } from "../services/controlOrchestrator";
 
 // Same defaults as src-tauri/src/strava_template.rs.
@@ -26,6 +26,16 @@ function mockDeskSync(): DeskSync {
     d.setDate(d.getDate() - 1);
   }
   return { walked: days.filter((x) => x.walked).length, desk_days: days.length, window: 14, days, today_open: false };
+}
+
+/**
+ * WALL_CLOCK over the same 14 desk days: most mornings walked around 09:00 to
+ * 11:00, some early afternoons, a few late ones.
+ */
+function mockWallClock(): WallClock {
+  const hours = Array<number>(24).fill(0);
+  Object.assign(hours, { 8: 2, 9: 10, 10: 12, 11: 6, 13: 3, 14: 8, 15: 4, 17: 1 });
+  return { hours, desk_days: 14, window: 14, first_hour: 7, last_hour: 19 };
 }
 
 export const snapshot: AppSnapshot = {
@@ -170,6 +180,7 @@ export const snapshot: AppSnapshot = {
     show_card: false,
   },
   desk_sync: mockDeskSync(),
+  wall_clock: mockWallClock(),
   seated: {
     enabled: true,
     minutes: 30,
