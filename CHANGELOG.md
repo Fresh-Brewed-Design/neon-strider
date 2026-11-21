@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.48.0 (2026-11-21)
+
+### Changed
+
+- The "session saved" HUD toast now also shows the walk's average speed and today's total distance.
+
 ## 1.47.0 (2026-11-21)
 
 ### New

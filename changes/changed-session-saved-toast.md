@@ -1,1 +1,0 @@
-- The "session saved" HUD toast now also shows the walk's average speed and today's total distance.
