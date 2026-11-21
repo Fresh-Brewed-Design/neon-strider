@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.48.2 (2026-11-21)
+
+### Fixed
+
+- The HUD fits its readouts at larger Windows text sizes: a long distance (up to 123.45 km) keeps every digit, with the unit moving under it when space is tight, and the running strip, program buttons, speed and tilt steppers and the neural flow line wrap instead of running off the panel.
+- Neon Strider now checks for updates every hour, so new versions show up and install by themselves without pressing check.
+
 ## 1.48.1 (2026-11-21)
 
 - Remove the unused ERGO HUD toast type; Add a feature lookup script and check it before building
