@@ -343,7 +343,8 @@ body,
   min-width: 0;
 }
 .hud-run-program .hud-label { flex-shrink: 0; color: var(--accent); }
-.hud-run-program .hud-sub { min-width: 0; line-height: 1.35; }
+/* Beside the label while its widest segment fits there, else under it. */
+.hud-run-program .hud-sub { flex: 1 1 12ch; line-height: 1.35; }
 /* Whole segments wrap, never mid-text; each carries its own trailing dot. */
 .hud-run-segments { display: flex; flex-wrap: wrap; column-gap: 0.35em; }
 .hud-run-seg { white-space: nowrap; }
