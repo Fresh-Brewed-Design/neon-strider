@@ -814,7 +814,11 @@ pub const MAX_TILT_MULTIPLIER: f32 = 5.0;
 pub const MIN_INCLINE_OFFSET_PCT: f32 = -5.0;
 pub const MAX_INCLINE_OFFSET_PCT: f32 = 10.0;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+/// The settings Rust keeps for the dashboard. `AppConfig::default()` is also
+/// the dashboard's starting values: `cargo test` writes it to
+/// `src/ipc/bindings/DEFAULT_APP_CONFIG.ts` (see defaults.rs).
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ts_rs::TS)]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
 pub struct AppConfig {
     pub last_device_id: Option<String>,
     pub calibration_points: Vec<CalibrationPoint>,

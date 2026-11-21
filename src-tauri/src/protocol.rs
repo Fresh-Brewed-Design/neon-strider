@@ -9,7 +9,8 @@ use serde::{Deserialize, Serialize};
 /// One point of the user's calibration. Near hardware `speed`, the real belt
 /// speed is the deck's speed divided by `distance_scale`, and one step is
 /// `stride_length_cm` long.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ts_rs::TS)]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
 pub struct CalibrationPoint {
     pub speed: f32,
     #[serde(alias = "strideLengthCm")]
@@ -117,8 +118,9 @@ pub const STATUS_STANDBY: u8 = 6;
 /// the deck's own raw values, before calibration.
 #[derive(Debug, Clone)]
 pub struct Telemetry {
-    /// What the engine acts on. An unknown status byte maps to Stopped here (so
-    /// nothing starts or ends a session on a guess); `status_known` says so.
+    /// What the engine acts on. An unknown status byte maps to Stopped here,
+    /// with `status_known` false, and the engine then keeps the last known
+    /// status instead (`OrchestratorState::take_status`).
     pub status: MachineStatus,
     /// The raw status byte (index 2 of the 0x51 frame).
     pub status_code: u8,

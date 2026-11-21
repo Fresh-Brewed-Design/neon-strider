@@ -49,6 +49,10 @@ const HANDSHAKE_PRIME_GAP: Duration = Duration::from_millis(150);
 /// Between the handshake's two packets: under one 600 ms poll, and long enough
 /// for the deck to have handled the first before the second arrives.
 const HANDSHAKE_ACT_GAP: Duration = Duration::from_millis(400);
+/// After a Start goes out, a still deck is not started again for this long:
+/// the frame that says it took the start (the countdown) comes with the next
+/// poll, so the frames before it still say stopped or paused.
+const START_ANSWER_WAIT: Duration = Duration::from_secs(2);
 /// A nack or echo this soon after a target packet is the deck's answer to it.
 /// Three polls of 600 ms: the deck answers a target packet in the next frame or
 /// two, and a later nack belongs to something else.
@@ -335,6 +339,8 @@ pub struct OrchestratorState {
     pub start_sent_at: Option<Instant>,
     /// The raw 0x51 status byte when it is not one we know; None when known.
     pub unknown_status_code: Option<u8>,
+    /// Unknown status bytes already logged, so each is logged once.
+    pub unknown_status_logged: Vec<u8>,
     /// The deck reports standby (`protocol::STATUS_STANDBY`): off or asleep.
     /// It refuses every start, so none is sent (see `start_refusal`).
     pub deck_standby: bool,
@@ -435,6 +441,7 @@ impl Default for OrchestratorState {
             start_blocked: false,
             start_sent_at: None,
             unknown_status_code: None,
+            unknown_status_logged: Vec::new(),
             target_pending: None,
             target_note: None,
             target_speed_changed: false,
@@ -863,6 +870,29 @@ impl OrchestratorState {
 
     pub fn should_stop_session(&self) -> bool {
         self.session.active_session_id.is_some() && self.last_status == MachineStatus::Stopped
+    }
+
+    /// Take the status of a decoded frame. A byte we don't know (5, error, and
+    /// 7, study, are documented but never seen) changes nothing: the last
+    /// known status stands, so a session neither ends nor begins on it, and
+    /// `control_packet` sends nothing automatic while it lasts. Each new
+    /// unknown byte is logged once.
+    pub(crate) fn take_status(&mut self, t: &protocol::Telemetry) {
+        if t.status_known {
+            self.last_status = t.status;
+            self.unknown_status_code = None;
+            self.deck_standby = t.status_code == protocol::STATUS_STANDBY;
+            return;
+        }
+        self.unknown_status_code = Some(t.status_code);
+        if !self.unknown_status_logged.contains(&t.status_code) {
+            self.unknown_status_logged.push(t.status_code);
+            log::warn!(
+                "Unknown deck status byte {}: keeping {:?} until a known one",
+                t.status_code,
+                self.last_status
+            );
+        }
     }
 
     /// Whether a sample is due (at most one per `SAMPLE_EVERY`); marks it taken.
@@ -2328,12 +2358,22 @@ impl ProtocolEngine {
     /// paused one or pause a running one at target zero; otherwise send the
     /// target when its bytes change.
     fn control_packet(&mut self, state: &mut OrchestratorState, now: Instant) -> Option<Packet> {
-        if !state.may_drive() {
+        // An unknown status byte (an error, say): the deck may not be where
+        // the last known status says, so nothing automatic goes out, no start,
+        // resume, pause or target, until it reports a known one. A Pause or
+        // Stop the user asks for still goes (`pending_control`).
+        if !state.may_drive() || state.unknown_status_code.is_some() {
             return None;
         }
         state.release_stale_curve_hold();
         let (target_speed, target_incline, source) = state.resolve_target();
         let has_target = source != TargetSource::Unset;
+        // A Start just went out and the deck hasn't answered it yet: the
+        // frames until the next poll's still say stopped or paused, and
+        // priming again would send a second READY and Start.
+        let start_unanswered = state
+            .start_sent_at
+            .is_some_and(|t| now.saturating_duration_since(t) < START_ANSWER_WAIT);
 
         match state.last_status {
             // Not after an unanswered Engage (`start_blocked`): the deck is
@@ -2347,6 +2387,7 @@ impl ProtocolEngine {
                     && target_speed > AUTO_START_MIN_KMH
                     && !state.start_blocked
                     && !state.hold_auto_start
+                    && !start_unanswered
                     && state.profile_sweep.is_none() =>
             {
                 // A speed set by hand on a deck in standby: it would only
@@ -2368,6 +2409,7 @@ impl ProtocolEngine {
                     && source != TargetSource::Program
                     && !state.start_blocked
                     && !state.hold_auto_start
+                    && !start_unanswered
                     && state.profile_sweep.is_none() =>
             {
                 state.handshake_step = HandshakeStep::Priming;
