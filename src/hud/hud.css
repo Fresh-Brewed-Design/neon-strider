@@ -519,12 +519,22 @@ body,
 
 .hud-steppers {
   display: grid;
-  /* Side by side while both fit (- 12.0 + needs about 104px), else stacked. */
-  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  /* Side by side while both fit (- 12.0 + needs about 104px), else stacked.
+     min() lets a track shrink to the column when even one 104px stepper is
+     wider than it, as at 225 % text size (the 340 px window lays out about
+     93px there). */
+  grid-template-columns: repeat(auto-fit, minmax(min(104px, 100%), 1fr));
   gap: 8px;
 }
 
-.hud-stepper { display: flex; flex-direction: column; gap: 4px; }
+.hud-stepper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* The row's size reference for its value (cqi below). */
+  container-type: inline-size;
+  min-width: 0;
+}
 
 .hud-stepper-row {
   display: flex;
@@ -538,7 +548,9 @@ body,
   align-items: center;
   justify-content: center;
   font-family: var(--hud-font-display);
-  font-size: 15px;
+  /* Under 15px only when the column is narrower than about 94px; never under 11px. */
+  font-size: clamp(11px, 16cqi, 15px);
+  min-width: 0;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--accent);
@@ -643,7 +655,10 @@ body,
 .hud-btn-sm   { height: 28px; padding: 0 12px; }
 
 .hud-btn-step {
-  width: 32px;
+  /* 32px while the column has room; the 24px floor keeps a tap target when
+     "- 12.0 +" has to fit about 93px (225 % text size). */
+  flex: 0 1 32px;
+  min-width: 24px;
   height: 30px;
   border: none;
   font-size: 18px;

@@ -58,6 +58,16 @@ describe("HUD distance readouts at larger text sizes", () => {
     expect(rule(".hud-steppers")).toMatch(/repeat\(auto-fit/);
   });
 
+  it("lets the steppers shrink to a column narrower than one of them, as at 225 % text size", () => {
+    expect(rule(".hud-steppers")).toMatch(/minmax\(min\(104px,\s*100%\),\s*1fr\)/);
+    expect(rule(".hud-stepper")).toMatch(/min-width:\s*0/);
+    const button = rule(".hud-btn-step");
+    expect(button).toMatch(/flex:\s*0 1 32px/);
+    expect(button).toMatch(/min-width:\s*24px/);
+    expect(button).not.toMatch(/(^|[\s;])width:/);
+    expect(rule(".hud-stepper-value")).toMatch(/clamp\(11px,\s*16cqi,\s*15px\)/);
+  });
+
   it("wraps the neural flow label instead of hiding its percentage", () => {
     const label = rule(".hud-neural .hud-label");
     expect(label).not.toBe("");
