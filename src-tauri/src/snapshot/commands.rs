@@ -447,6 +447,16 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             })
             .await
         }
+        Command::StrideFitSet { kmh } => {
+            let (min, max) = {
+                let state = ORCHESTRATOR.lock().await;
+                (
+                    state.min_physical_speed(),
+                    state.to_physical_speed(state.top_hw_speed()),
+                )
+            };
+            blocking(move || calibration::stride_fit::set(&app, kmh, min, max).map(|_| ())).await
+        }
 
         // ---- GHOST_POD and WRIST_LINK (Labs) ----
         Command::GhostPodSet { on } => {

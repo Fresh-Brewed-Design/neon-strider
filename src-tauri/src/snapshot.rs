@@ -143,6 +143,10 @@ fn deck_snapshot(state: &OrchestratorState, max_incline_level: u8) -> DeckSnapsh
             .collect(),
         incline_steps: state.deck_incline_levels(),
         profile: profile_snapshot(state),
+        stride_fit_kmh: crate::calibration::stride_fit::kmh(
+            state.min_physical_speed(),
+            state.to_physical_speed(state.top_hw_speed()),
+        ),
     }
 }
 
@@ -470,6 +474,22 @@ mod tests {
         assert_eq!(s.deck.max_speed_kmh, 6.0);
         // Both limits are calibrated: min_speed 0.6 (hardware) is 0.3 km/h.
         assert!((s.deck.min_speed_kmh - 0.3).abs() < 1e-5);
+    }
+
+    #[test]
+    fn stride_fit_is_in_the_deck_snapshot_held_to_the_range() {
+        let _g = crate::calibration::TEST_GLOBALS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let state = OrchestratorState::default();
+        crate::calibration::stride_fit::set_for_test("TEST", None);
+        assert_eq!(snap(&state, 0.0, 15).deck.stride_fit_kmh, None, "unset");
+        crate::calibration::stride_fit::set_for_test("TEST", Some(2.5));
+        assert_eq!(snap(&state, 0.0, 15).deck.stride_fit_kmh, Some(2.5));
+        let top = snap(&state, 0.0, 15).deck.max_speed_kmh;
+        crate::calibration::stride_fit::set_for_test("TEST", Some(top + 5.0));
+        assert_eq!(snap(&state, 0.0, 15).deck.stride_fit_kmh, Some(top));
+        crate::calibration::stride_fit::set_for_test("TEST", None);
     }
 
     #[test]

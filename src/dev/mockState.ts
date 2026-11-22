@@ -61,6 +61,7 @@ export const snapshot: AppSnapshot = {
     max_incline_pct: 18.75,
     speed_steps: [],
     incline_steps: [],
+    stride_fit_kmh: null,
     profile: {
       learned: 0,
       floor_kmh: null,

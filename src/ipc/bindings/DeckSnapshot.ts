@@ -59,4 +59,10 @@ speed_steps: Array<DeckSpeedStep>,
  * the top level, without those DECK_PROFILE knows the deck skips. Empty
  * until the deck has answered an incline.
  */
-incline_steps: Array<number>, profile: DeckProfileSnapshot, };
+incline_steps: Array<number>, profile: DeckProfileSnapshot, 
+/**
+ * STRIDE_FIT: the fastest speed (calibrated km/h) the user's stride
+ * still fits this treadmill's deck, set by feel and held to the speed
+ * range. None while unset. The program editor flags steps above it.
+ */
+stride_fit_kmh: number | null, };

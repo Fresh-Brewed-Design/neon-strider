@@ -235,6 +235,10 @@ pub struct DeckSnapshot {
     /// until the deck has answered an incline.
     pub incline_steps: Vec<u8>,
     pub profile: DeckProfileSnapshot,
+    /// STRIDE_FIT: the fastest speed (calibrated km/h) the user's stride
+    /// still fits this treadmill's deck, set by feel and held to the speed
+    /// range. None while unset. The program editor flags steps above it.
+    pub stride_fit_kmh: Option<f32>,
 }
 
 /// One speed the deck runs, or has not been asked yet.
@@ -876,6 +880,12 @@ pub enum Command {
     CalibrationRestore,
     /// KEEP NEW: delete the set aside and keep the new points.
     CalibrationKeepNew,
+    /// STRIDE_FIT: the fastest speed (calibrated km/h) the user's stride
+    /// still fits the deck, kept for this treadmill; None clears it. Held to
+    /// the deck's speed range. Never moves the belt.
+    StrideFitSet {
+        kmh: Option<f32>,
+    },
 
     // ---- GHOST_POD and WRIST_LINK (Labs) ----
     /// Labs: GHOST_POD on (`on`) or off. On, the PC advertises as a Bluetooth
