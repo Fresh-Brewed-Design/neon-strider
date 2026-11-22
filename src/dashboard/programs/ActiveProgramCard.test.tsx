@@ -16,7 +16,7 @@ beforeEach(() => {
 });
 
 describe("ActiveProgramCard step line", () => {
-  it("stays on one line: the step text truncates and the speed keeps its km/h", () => {
+  it("shows the speed beside the label so the step line keeps its time left", () => {
     current!.active_program = {
       ...current!.active_program!,
       phase: "walking",
@@ -26,10 +26,9 @@ describe("ActiveProgramCard step line", () => {
       incline_pct: 5,
     };
     render(<ActiveProgramCard />);
-    const line = screen.getByTestId("program-step-line");
-    const [step, trailing] = Array.from(line.children);
-    expect(step).toHaveClass("truncate");
-    expect(trailing).toHaveClass("shrink-0", "whitespace-nowrap");
-    expect(trailing).toHaveTextContent("6.0 km/h · 5.0%");
+    const label = screen.getByTestId("program-label-line");
+    expect(label).toHaveTextContent("6.0 km/h · 5.0%");
+    expect(label.lastElementChild).toHaveClass("whitespace-nowrap");
+    expect(screen.getByText(/left/)).not.toHaveTextContent("km/h");
   });
 });
