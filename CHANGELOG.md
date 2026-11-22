@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.53.0 (2026-11-22)
+
+### New
+
+- STEP_MAP on the Live page lists every step of the running program, with the current step marked and finished steps dimmed, and charts speed and incline across the whole program with a yellow line at the current point of the program.
+- STEP_MAP shows each step's kind, minutes, speed, incline and heart zone. A repeating program shows its cycle and the rest between cycles. A step with no end runs until END.
+- STEP_MAP takes the place of the stats while a program runs. MAP on the program card switches between the two.
+- The HUD shows the next step under the current one, e.g. `NEXT // REST 3/5 · 3 min · 3.5 km/h`.
+
+## 1.52.0 (2026-11-22)
+
+### New
+
+- Program steps can have a kind: WARM_UP, WALK, INTERVAL, REST or COOL_DOWN. Pick one per step in the program editor.
+- The HUD, the Live page and the tray menu show the running step's kind, counted within that kind, before the step number: `INTERVAL 3/5 · step 6/11`. Steps without a kind show as before.
+- The example programs get kinds, so VO2 max and Interval walk show WARM_UP, INTERVAL, REST and COOL_DOWN as they run. A program you edited keeps its steps as they are.
+- Changing only a step's kind keeps an example program's note, as a rename does.
+
 ## 1.51.0 (2026-11-22)
 
 ### New
