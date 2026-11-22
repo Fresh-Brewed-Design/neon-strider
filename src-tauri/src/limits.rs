@@ -56,6 +56,10 @@ pub struct SettingLimits {
     // ---- Programs (programs.rs) ----
     pub program_name_chars: u32,
     pub program_steps: u32,
+    /// A cool-down step's heart rate end, in % of maximum heart rate (#233).
+    pub cool_down_pulse_pct: SettingRange,
+    /// The heart rate end a cool-down step starts with in the editor.
+    pub default_cool_down_pulse_pct: f32,
     // ---- Diagnostics (protocol.rs) ----
     /// The longest body the command cycler may send (`protocol::RAW_BODY_MAX`).
     pub raw_body_bytes: u32,
@@ -104,6 +108,11 @@ impl Default for SettingLimits {
             title_chars: crate::strava_template::MAX_TITLE_CHARS as u32,
             program_name_chars: crate::programs::MAX_NAME_CHARS as u32,
             program_steps: crate::programs::MAX_STEPS as u32,
+            cool_down_pulse_pct: range(
+                crate::programs::PULSE_END_MIN_PCT,
+                crate::programs::PULSE_END_MAX_PCT,
+            ),
+            default_cool_down_pulse_pct: crate::programs::PULSE_END_DEFAULT_PCT,
             raw_body_bytes: crate::protocol::RAW_BODY_MAX as u32,
         }
     }

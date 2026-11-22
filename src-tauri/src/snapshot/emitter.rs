@@ -111,6 +111,12 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
         Some(_) => state.zone_band(snapshot.heart_rate.bpm),
         None => None,
     };
+    // A cool-down's pulse target the same way: with no sensor the step ends
+    // on its minutes, and there is nothing to show against it.
+    snapshot.heart_rate.cool_down = match snapshot.heart_rate.sensor {
+        Some(_) => state.pulse_target(snapshot.heart_rate.bpm),
+        None => None,
+    };
     snapshot.guided_task = crate::guided_task::snapshot();
     // Recomputed every tick, so the end of the grace after a stop reaches the
     // HUD with the next on-change emit (within a tick).

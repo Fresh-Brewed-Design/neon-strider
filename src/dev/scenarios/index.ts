@@ -17,6 +17,7 @@ import { ghostPod } from "./ghostpod";
 import { guided } from "./guided";
 import { heartRate } from "./heart";
 import { history } from "./history";
+import { hrCool } from "./hrcool";
 import { hrSpark } from "./hrspark";
 import { hrZone } from "./hrzone";
 import { hud } from "./hud";
@@ -66,4 +67,5 @@ export const SCENARIOS: Scenario[] = [
   echo,
   strideFit,
   wallClock,
+  hrCool,
 ];

@@ -144,6 +144,9 @@ pub struct ProgramView {
     /// (`StepKindSpot::label`); None for a step with no kind.
     pub kind_label: Option<String>,
     pub seconds_remaining: Option<u32>,
+    /// A cool-down past its minutes walks on until the pulse is down to this
+    /// (`ActiveProgram::pulse_to_bpm`), shown in place of the time.
+    pub pulse_to_bpm: Option<u32>,
 }
 
 /// What the menu is built from: the snapshot, plus whether the HUD shows.
@@ -195,6 +198,7 @@ impl MenuInput {
                 steps: a.step_count,
                 kind_label: a.kind.as_ref().map(|k| k.label.clone()),
                 seconds_remaining: a.seconds_remaining,
+                pulse_to_bpm: a.pulse_to_bpm,
             }),
             programs: s.programs.iter().map(|p| (p.id, p.name.clone())).collect(),
             hud_shown,
@@ -307,6 +311,9 @@ pub fn program_line(v: &MenuInput) -> String {
     if let Some(s) = p.seconds_remaining {
         text.push_str(SEP);
         text.push_str(&crate::util::format_duration(s as i64));
+    }
+    if let Some(bpm) = p.pulse_to_bpm {
+        text.push_str(&format!("{SEP}PULSE TO {bpm}"));
     }
     text
 }
@@ -762,6 +769,7 @@ mod tests {
                 steps: 4,
                 kind_label: None,
                 seconds_remaining: Some(190),
+                pulse_to_bpm: None,
             }),
             ..walking()
         }
@@ -956,6 +964,18 @@ mod tests {
         );
         assert_eq!(find(&nodes, "engage").label, "GO");
         assert_eq!(program_line(&waiting), "READY Workday \u{b7} STEP 2/4");
+
+        // A cool-down the pulse keeps going names the pulse in place of the time.
+        let mut cooling = program();
+        if let Some(p) = cooling.program.as_mut() {
+            p.kind_label = Some("COOL_DOWN".to_string());
+            p.seconds_remaining = None;
+            p.pulse_to_bpm = Some(114);
+        }
+        assert_eq!(
+            program_line(&cooling),
+            "PROGRAM Workday \u{b7} COOL_DOWN \u{b7} STEP 2/4 \u{b7} PULSE TO 114"
+        );
 
         // END works with the link down; GO and SKIP wait for it.
         let mut offline = program();

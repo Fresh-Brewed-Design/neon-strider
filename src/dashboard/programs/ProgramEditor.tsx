@@ -10,6 +10,8 @@ import { ChoiceGroup } from "../system/fields";
 import { cx } from "../util";
 import {
   fromDraft,
+  kindPatch,
+  pulseSummary,
   strideFitFlag,
   withZoneUnit,
   zoneSummary,
@@ -59,6 +61,7 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
   // STRIDE_FIT (System, Calibration): steps above it get a one-line flag, nothing more.
   const strideFit = useAppState((snap) => snap.deck.stride_fit_kmh) ?? null;
   const anyZone = d.steps.some((s) => s.zone);
+  const anyPulse = d.steps.some((s) => s.pulse && s.kind === "cool_down");
   // A typed speed moves to one the deck runs (DECK_PROFILE) when the field is left.
   const snapSpeedText = (text: string) => {
     const v = Number(text);
@@ -139,7 +142,7 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
               className={cx(input, "px-1")}
               aria-label={`Step ${i + 1} kind`}
               value={s.kind ?? ""}
-              onChange={(e) => patchStep(i, { kind: e.target.value === "" ? null : (e.target.value as StepKind) })}
+              onChange={(e) => patchStep(i, kindPatch(s, e.target.value === "" ? null : (e.target.value as StepKind), d.zoneUnit, maxBpm))}
             >
               <option value="">None</option>
               {STEP_KINDS.map((k) => (
@@ -190,6 +193,18 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
               <X size={14} />
             </GhostButton>
           </div>
+          {s.kind === "cool_down" && (
+            <PulseRow
+              step={s}
+              n={i + 1}
+              unit={d.zoneUnit}
+              maxBpm={maxBpm}
+              onChange={(patch) => {
+                setError(null);
+                patchStep(i, patch);
+              }}
+            />
+          )}
           <StrideFitFlag text={strideFitFlag(s.speed, strideFit)} />
           {s.zone && (
             <ZoneRow
@@ -220,10 +235,10 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
 
       <Hint>A step&apos;s kind names the step on the HUD, the Live page and the tray menu.</Hint>
 
-      {anyZone && (
+      {(anyZone || anyPulse) && (
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-3">
-            <Label>Heart zones in</Label>
+            <Label>{anyZone ? "Heart zones in" : "Pulse target in"}</Label>
             <ChoiceGroup
               label="Heart zone unit"
               tone="magenta"
@@ -232,11 +247,19 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
               onChange={(unit) => setD(withZoneUnit(d, unit, maxBpm))}
             />
           </div>
-          <Hint>
-            A heart zone trims a moving step&apos;s speed by up to 1 km/h and never starts the belt. Each zone step
-            waits 2 minutes for the pulse to settle before trimming. Zones are a share of the {maxBpm} bpm max heart
-            rate in System, Heart rate.
-          </Hint>
+          {anyZone && (
+            <Hint>
+              A heart zone trims a moving step&apos;s speed by up to 1 km/h and never starts the belt. Each zone step
+              waits 2 minutes for the pulse to settle before trimming. Zones are a share of the {maxBpm} bpm max heart
+              rate in System, Heart rate.
+            </Hint>
+          )}
+          {anyPulse && (
+            <>
+              <Hint>A pulse target keeps a cool-down step walking past its minutes until heart rate holds at the target for 30 s.</Hint>
+              <Hint>With no heart rate reading, the cool-down step ends on its minutes.</Hint>
+            </>
+          )}
           {inclineTrim && <Hint>Incline trims move at most one deck level a minute, up to 2 % from the step&apos;s incline.</Hint>}
         </div>
       )}
@@ -289,6 +312,51 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
         </NeonButton>
       </div>
     </Panel>
+  );
+}
+
+/** A COOL_DOWN step's pulse target: off, or the heart rate the step walks on until, with the other unit beside it. */
+function PulseRow({
+  step,
+  n,
+  unit,
+  maxBpm,
+  onChange,
+}: {
+  step: StepDraft;
+  n: number;
+  unit: ZoneUnit;
+  maxBpm: number;
+  onChange: (patch: Partial<StepDraft>) => void;
+}) {
+  const summary = pulseSummary(step, unit, maxBpm);
+  const other = summary && (unit === "pct" ? `${summary.bpm} bpm` : `${summary.pct} % of max`);
+  return (
+    <div className="grid grid-cols-[2rem_1fr] items-center gap-2">
+      <span />
+      <div className="flex flex-wrap items-center gap-2 font-mono text-xs text-white/70">
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={step.pulse}
+            aria-label={`Step ${n} ends on heart rate`}
+            onChange={(e) => onChange({ pulse: e.target.checked })}
+          />
+          <span className="font-bold uppercase tracking-[0.12em] text-neon-magenta">Pulse target</span>
+        </label>
+        <span className={cx(!step.pulse && "opacity-40")}>down to</span>
+        <input
+          className={cx(field, "w-16")}
+          inputMode="decimal"
+          aria-label={`Step ${n} pulse target`}
+          disabled={!step.pulse}
+          value={step.pulseTarget}
+          onChange={(e) => onChange({ pulseTarget: e.target.value })}
+        />
+        <span className={cx(!step.pulse && "opacity-40")}>{unit === "pct" ? "% of max" : "bpm"}</span>
+        {step.pulse && other && <span className="text-white/40">{other}</span>}
+      </div>
+    </div>
   );
 }
 

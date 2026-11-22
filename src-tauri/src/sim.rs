@@ -755,7 +755,8 @@ mod tests {
     use super::*;
     use crate::engine::DeckAction;
     use crate::programs::{
-        HeartZone, Program, ProgramPhase, ProgramStep, ProgramToast, ProgramWait,
+        HeartZone, Program, ProgramPhase, ProgramStep, ProgramToast, ProgramWait, PulseEnd,
+        StepKind,
     };
 
     const POST_MEAL: u32 = 1; // 10 min at 4.0 km/h, 10 %
@@ -1066,6 +1067,7 @@ mod tests {
                     trim: None,
                 }),
                 kind: None,
+                pulse_end: None,
             }],
             repeat_every_minutes: None,
             note: None,
@@ -1274,6 +1276,139 @@ mod tests {
         );
     }
 
+    // ---- Cool-down ending on heart rate (#233) ----
+
+    /// A 1 minute walk at 4.0 km/h, then a 1 minute COOL_DOWN at 3.0 km/h
+    /// that ends at or under 60 % of 200 bpm (120).
+    const COOL: u32 = 10;
+    fn cool_down_rig() -> Rig {
+        let mut r = Rig::new();
+        r.state.max_heart_rate = 200;
+        let step = |speed_kmh, kind, pulse_end| ProgramStep {
+            duration_minutes: Some(1.0),
+            speed_kmh,
+            incline_pct: 0.0,
+            zone: None,
+            kind: Some(kind),
+            pulse_end,
+        };
+        r.state.programs.push(Program {
+            id: COOL,
+            name: "Cool".into(),
+            steps: vec![
+                step(4.0, StepKind::Walk, None),
+                step(3.0, StepKind::CoolDown, Some(PulseEnd { below_pct: 60.0 })),
+            ],
+            repeat_every_minutes: None,
+            note: None,
+        });
+        r.run(1.0);
+        r
+    }
+
+    /// A faked heart rate source, as `bluetooth::tick_each_second` reads the
+    /// sensor: `pulse(s)` is the reading `s` seconds from now (None: no
+    /// fresh reading), set once a second for `secs` seconds.
+    fn run_with_pulse(r: &mut Rig, secs: u32, pulse: impl Fn(f64) -> Option<u32>) {
+        for s in 0..secs {
+            r.state.heart_bpm = pulse(s as f64);
+            r.run(1.0);
+        }
+    }
+
+    /// A walk falling from 150 bpm toward 100 with the 58 s time constant
+    /// of `docs/research.md` (Hunt et al. 2015), from the cool-down's start.
+    fn falling(s: f64) -> Option<u32> {
+        Some((100.0 + 50.0 * (-s / 58.0).exp()).round() as u32)
+    }
+
+    /// Run the program from a still belt and walk it into the cool-down.
+    fn into_the_cool_down(r: &mut Rig) {
+        r.run_program(COOL);
+        // The countdown, then the 60 s walk (its timer runs once the belt runs).
+        while r.state.active_program().map(|a| a.step_index) == Some(0) {
+            r.state.heart_bpm = Some(150);
+            r.run(1.0);
+        }
+        assert!(r.program().kind.unwrap().label == "COOL_DOWN");
+    }
+
+    /// The pulse reaches 120 about 53 s into the cool-down: the 60 s minimum
+    /// runs first, the step walks on until 30 s at or under 120, then the
+    /// program ends as any program does, by targets alone: the belt walked
+    /// nothing before the program, so it pauses. Nothing starts the belt.
+    #[test]
+    fn a_cool_down_walks_until_the_pulse_has_dropped_then_the_program_ends() {
+        let mut r = cool_down_rig();
+        into_the_cool_down(&mut r);
+        let mark = r.mark();
+        // 70 s in: past the minimum, the pulse is down but not for 30 s yet.
+        run_with_pulse(&mut r, 70, falling);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+        let a = r.program();
+        assert_eq!((a.pulse_to_bpm, a.seconds_remaining), (Some(120), None));
+        // Down from about 54 s, so 30 s later (84 s) it ends.
+        run_with_pulse(&mut r, 20, |s| falling(s + 70.0));
+        assert!(r.state.program.is_none(), "ended once the pulse held down");
+        run_with_pulse(&mut r, 15, |_| Some(110));
+        assert!(r.deck.belt_still(), "{} km/h", r.deck.speed_kmh());
+        assert!(
+            !app_starts(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+        // Still afterwards, whatever the pulse does.
+        run_with_pulse(&mut r, 60, |_| Some(150));
+        assert!(r.deck.belt_still());
+    }
+
+    /// The watch stops broadcasting mid cool-down, past its minutes: the
+    /// step ends at once on its minutes. With no sensor at all, the step's
+    /// minutes are the whole story.
+    #[test]
+    fn a_cool_down_without_a_reading_ends_on_its_minutes() {
+        let mut r = cool_down_rig();
+        into_the_cool_down(&mut r);
+        run_with_pulse(&mut r, 75, |_| Some(140));
+        assert_eq!(r.program().pulse_to_bpm, Some(120), "held past 60 s");
+        run_with_pulse(&mut r, 2, |_| None);
+        assert!(r.state.program.is_none());
+
+        let mut r = cool_down_rig();
+        into_the_cool_down(&mut r);
+        run_with_pulse(&mut r, 55, |_| None);
+        assert!(r.state.program.is_some());
+        run_with_pulse(&mut r, 10, |_| None);
+        assert!(r.state.program.is_none(), "ended on its 60 s");
+    }
+
+    /// A paused cool-down with a falling pulse stays paused: heart rate never
+    /// resumes the belt, and GO walks the step on with a fresh 30 s hold.
+    #[test]
+    fn a_falling_pulse_never_resumes_a_paused_cool_down() {
+        let mut r = cool_down_rig();
+        into_the_cool_down(&mut r);
+        run_with_pulse(&mut r, 70, |_| Some(140));
+        r.press(DeckAction::Pause);
+        r.run(10.0);
+        assert_eq!(r.deck.status_code(), 10, "paused");
+        let mark = r.mark();
+        run_with_pulse(&mut r, 120, |_| Some(100));
+        assert_eq!(r.deck.status_code(), 10, "still paused");
+        assert!(r.state.program.is_some());
+        assert!(
+            !moves_belt(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+        r.go();
+        run_with_pulse(&mut r, 15, |_| Some(100));
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+        assert!(r.state.program.is_some());
+        run_with_pulse(&mut r, 35, |_| Some(100));
+        assert!(r.state.program.is_none());
+    }
+
     /// ZONE_TILT on, a 60 minute walk at 4.0 km/h and 5 % (level 5) holding
     /// 85 to 95 % of 200 bpm by incline alone, on a deck that tops out at
     /// level 6 and runs 5 when asked for 4 (both already in DECK_PROFILE).
@@ -1300,6 +1435,7 @@ mod tests {
                     trim: Some(crate::programs::ZoneTrim::Incline),
                 }),
                 kind: None,
+                pulse_end: None,
             }],
             repeat_every_minutes: None,
             note: None,
@@ -1504,6 +1640,7 @@ mod tests {
                     incline_pct: 0.0,
                     zone: None,
                     kind: None,
+                    pulse_end: None,
                 },
                 ProgramStep {
                     duration_minutes: Some(2.0),
@@ -1511,6 +1648,7 @@ mod tests {
                     incline_pct: 0.0,
                     zone: None,
                     kind: None,
+                    pulse_end: None,
                 },
             ],
             repeat_every_minutes: None,

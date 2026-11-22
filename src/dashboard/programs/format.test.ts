@@ -86,4 +86,25 @@ describe("step kinds", () => {
     expect(plan[1]).toBe("1. WARM_UP 5 min at 4.0 km/h, 0% incline");
     expect(plan[2]).toBe("2. 3 min at 6.0 km/h, 5% incline");
   });
+
+  it("names the pulse in place of the time while a cool-down waits on it (#233)", () => {
+    const cooling: ActiveProgram = {
+      ...active,
+      cycle: 1,
+      step_index: 1,
+      step_count: 2,
+      seconds_remaining: null,
+      pulse_to_bpm: 114,
+      kind: { kind: "cool_down", nth: 1, of: 1, label: "COOL_DOWN" },
+    };
+    expect(describeActive(cooling)).toBe("COOL_DOWN · step\u00a02/2 · pulse\u00a0to\u00a0114");
+    expect(describeActive({ ...cooling, kind: undefined })).toBe("Walk 2/2 · pulse\u00a0to\u00a0114");
+    // During its minutes the countdown shows as for any step.
+    expect(describeActive({ ...cooling, pulse_to_bpm: undefined, seconds_remaining: 95 })).toBe("COOL_DOWN · step\u00a02/2 · 01:35 left");
+  });
+
+  it("names a cool-down's pulse target in the plan", () => {
+    const p: Program = { ...workday, repeat_every_minutes: null, steps: [{ duration_minutes: 5, speed_kmh: 3, incline_pct: 0, kind: "cool_down", pulse_end: { below_pct: 60 } }] };
+    expect(describePlan(p).split("\n")[1]).toBe("COOL_DOWN 5 min at 3.0 km/h, 0% incline, then on until heart rate is down to 60 % of max");
+  });
 });

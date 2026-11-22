@@ -1,5 +1,5 @@
 import { formatClock, km, lifetimeKm } from "../format";
-import type { AppSnapshot, HudWidget, ZoneBand } from "../ipc";
+import type { AppSnapshot, HudWidget, PulseTarget, ZoneBand } from "../ipc";
 import type { SparkData } from "./spark";
 
 export type Accent = "cyan" | "magenta" | "yellow" | "green";
@@ -21,6 +21,8 @@ export interface StatWidget {
   spark?: (s: AppSnapshot) => SparkData | null;
   /** A heart rate zone beside the value, with Rust's under/in/over; null shows none. */
   zone?: (s: AppSnapshot) => ZoneBand | null;
+  /** A cool-down step's pulse target beside the value, with Rust's word for where the pulse is; null shows none. */
+  target?: (s: AppSnapshot) => PulseTarget | null;
 }
 
 /**
@@ -102,9 +104,14 @@ export const STAT_WIDGETS: StatWidget[] = [
     // "--" until a sensor is picked and sending.
     read: (s) => ({ value: s.heart_rate.bpm === null ? "--" : s.heart_rate.bpm.toString(), unit: "BPM" }),
     // Rust sends no history while no sensor is picked: no chart.
-    spark: (s) => (s.heart_rate.history.length > 0 ? { points: s.heart_rate.history, zone: s.heart_rate.zone } : null),
+    spark: (s) =>
+      s.heart_rate.history.length > 0
+        ? { points: s.heart_rate.history, zone: s.heart_rate.zone, target: s.heart_rate.cool_down?.target_bpm ?? null }
+        : null,
     // Rust sends a zone only while a zone step runs with a sensor picked.
     zone: (s) => s.heart_rate.zone,
+    // And a pulse target only while a cool-down step that ends on heart rate runs.
+    target: (s) => s.heart_rate.cool_down,
   },
 ];
 

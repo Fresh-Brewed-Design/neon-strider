@@ -161,7 +161,9 @@ intensity the 4x4 studies prescribe.
 - Existing installs get the zones only on a VO2 max that was never edited; an edited one keeps
   what you set.
 
-**In the app:** "Four hard climbs of four minutes, split by easy walks, train VO2 max."
+**In the app:** "Four hard climbs train VO2 max, and the last walk ends on heart rate." The
+cool-down ends at or under 60 % of maximum heart rate once its 3 minutes are done (see
+Cool-down on heart rate).
 
 ## Interval walk (new)
 
@@ -208,6 +210,106 @@ for one person, and Neon Strider shows no blood pressure figures or claims.
   not be checked, so they are left out.
 
 **In the app:** "Five rounds alternate three brisk minutes with three easy ones."
+
+## Cool-down on heart rate (new)
+
+**New (#233):** a COOL_DOWN step can end on heart rate. It walks its minutes, then walks on
+until the pulse has stayed under a target for 30 s. The target is a share of the maximum heart
+rate in System, Heart rate (60 % unless changed), set per step in the editor as % of max or bpm.
+Without a reading the step ends on its minutes, as before.
+
+**Is heart rate a fair sign a cool-down is done?** In part. It is the one recovery measure the
+app can read, and it falls faster after an active cool-down than a passive one, but it is not
+the whole recovery.
+
+- What a cool-down does: in a review of the evidence, an active cool-down did little for
+  soreness, injury or next-day performance. Heart rate came down faster with one: by 3 minutes
+  into an active cool-down it was lower than after resting, and in one case it was back to rest
+  after an active cool-down while still raised 30 minutes after a passive one. Whether a
+  cool-down prevents fainting or heart events after exercise is not known (Van Hooren and Peake
+  2018). The ACSM's own advice is 5 to 10 minutes of easy walking so heart rate and blood
+  pressure come down gradually and blood does not pool in the legs (ACSM, undated handout).
+- Why keep walking at a desk: standing still after exercise lets blood pool in the legs, and
+  blood pressure can drop far enough for light-headedness. The calf muscle pump of easy walking
+  keeps blood returning to the heart and is one of the best ways to prevent it; heat makes it
+  worse (Romero, Minson and Halliwill 2017). Unloaded pedalling during recovery kept blood
+  pressure higher than sitting still (Lei et al. 2023), and standing recovery lowered it more
+  than seated (Lu et al. 2024). A desk program ends with you standing, so the walk is the point.
+- Heart rate runs ahead of the rest: the fast fall in the first minute is the vagal brake coming
+  back, the slower tail is sympathetic outflow easing off over up to 90 minutes, and the
+  widened blood vessels that lower blood pressure last hours (Romero et al. 2017). So a pulse
+  under the target says the heart has eased off, not that blood pressure and temperature have.
+- Heat and fluid keep it up: after 90 minutes of exercise in 40 °C heat without drinking, heart
+  rate and core temperature stayed higher than with fluids (Macartney et al. 2020). In a warm
+  room a pulse-only end may run long. There is no time cap: SKIP and END are always there.
+- Not cited: the issue's lead that core temperature recovers slower than heart rate is a
+  preprint (Research Square rs-10884677) whose text could not be read, so it is left out.
+
+**Minutes as a minimum: yes.** The muscle pump and the gradual fall in blood pressure need the
+walk itself, whatever the pulse says. After an easy walk the pulse may already be under the
+target, and a pulse-only end would finish at once. So the step's minutes always run, the 5 to
+10 minutes the ACSM advises being a good minimum, and the pulse only adds time to them.
+
+**The target: % of maximum heart rate.**
+
+- The ACSM bands by share of maximum heart rate are very light under 57 %, light 57 to 63 %,
+  moderate 64 to 76 % and vigorous 77 to 95 % (Garber et al. 2011; the CDC gives the same 64 to
+  76 % for moderate). A cool-down is done with the work when the pulse is back in the light band
+  or under it, so 60 % sits inside light with a few bpm of margin from moderate. At the default
+  190 bpm maximum that is 114 bpm.
+- % of max is what the heart zones already use, so one maximum (System, Heart rate) sets both,
+  and a measured maximum makes both right for you. The editor can show it in bpm.
+- Not resting heart rate: the app has no resting value, and walking keeps the pulse well above
+  rest. A target near resting would never be reached on the belt. Not relative to the step
+  before either: after an easy walk a drop of so many beats may never come, and after a hard one
+  it comes while the pulse is still high.
+- The editor allows 50 to 76 %. Over 76 % is vigorous, not a cool-down. Under 50 %, deep in the
+  very light band, an easy walk may never get there and the step would walk on until SKIP.
+
+**How long under it: 30 s.** After a step change in treadmill speed, heart rate follows with a
+time constant of about 58 s, the same going down as up (Hunt et al. 2015, see VO2 max). A pulse
+that is truly falling through the target keeps falling, so 30 s, about half a time constant,
+costs little. It keeps a short dip (a stray optical reading, a few seconds off the belt's pace)
+from ending the step. Wrist sensors were off by 1 to 8 % on average against a reference monitor at
+3.2 to 6.4 km/h, mostly reading 1 to 7 bpm high (Thiebaud et al. 2018), so a single reading a
+few beats under the target means little and half a minute of them means more.
+
+- A reading that stops (a watch that stops broadcasting) restarts the 30 s, and with no
+  reading at all once the minutes are done the step ends on its minutes. A pause also restarts
+  it, since standing still lowers the pulse for a reason that has nothing to do with recovery.
+- Heart rate only decides when the step ends. It never starts, resumes or stops the belt: the
+  next step or the program's end follows the same rules as a timed step.
+
+**On by default: one target, 60 %, for every cool-down.** A COOL_DOWN step gets the target
+when it is made (the editor ticks it when a step's kind is set to COOL_DOWN, and it can be
+unticked), and the seeded VO2 max ends on it. The question was whether the target should
+depend on what comes before: higher after hard climbs, lower after a light walk. The evidence
+says no.
+
+- What comes before changes how long the fall takes, not where it ends. After harder exercise
+  the heart's autonomic recovery is slower, though the dose response is not clear (Michael,
+  Graham and Davis 2017). That is the case a pulse end is for: the cool-down walks on for
+  longer after a hard program, at the same 60 %.
+- A higher target after hard work would end too soon. The 4x4 that VO2 max follows walks its
+  3 minute rests at about 70 % of maximum (Helgerud et al. 2007), so a cool-down that ended at
+  70 % would end at the pace of a rest between climbs, still moderate by the ACSM bands
+  (Garber et al. 2011). 60 % is under the rests and inside the light band.
+- A lower target after hard work could keep the step walking on for a long time. The slow,
+  sympathetic part of the fall lasts up to 90 minutes (Romero et al. 2017), and walking itself
+  holds the pulse above rest, so a target deep in the very light band may never come on the belt.
+- After a light walk the pulse is often already under 60 %. The step then ends on its minutes,
+  which is what a cool-down after easy walking needs (minutes as a minimum, above). A program of
+  light walks gains nothing from a target of its own.
+- Fixed bpm rules do not fit either: equipment manuals and fitness guides give "under 100" or
+  "under 110 bpm", which ignore age and fitness and are not ACSM advice. 60 % of the maximum in
+  System, Heart rate is 114 bpm at the 190 bpm default, near those numbers, and moves with your
+  own maximum.
+
+**Verdict:** keep one default, 60 % of maximum, for every COOL_DOWN step. The seeded VO2 max
+gets it (Interval walk ends on a rest, with no cool-down). An unedited VO2 max on an existing
+install gets it too (migration 11); an edited one and any program you made are left as they are.
+
+**In the app:** "The cool-down walks on until heart rate stays under the target."
 
 ## Idle nudge
 
@@ -287,6 +389,8 @@ exercise inside a screen break, so this follows the trial's dose, not a tested b
 - Ainsworth BE, Haskell WL, Herrmann SD, et al. (2011). 2011 Compendium of Physical Activities:
   a second update of codes and MET values. *Medicine & Science in Sports & Exercise* 43(8):
   1575–1581. https://doi.org/10.1249/MSS.0b013e31821ece12
+- American College of Sports Medicine (undated). *A road map to effective muscle recovery*
+  (consumer handout). https://www.acsm.org/docs/default-source/files-for-resource-library/a-road-map-to-effective-muscle-recovery.pdf
 - American College of Sports Medicine (2021). *ACSM's Guidelines for Exercise Testing and
   Prescription*, 11th ed. Wolters Kluwer. (Walking metabolic equation.)
 - Argilés M, Cardona G, Pérez-Cabré E, Rodríguez M (2015). Blink rate and incomplete blinks in
@@ -334,6 +438,15 @@ exercise inside a screen break, so this follows the trial's dose, not a tested b
   A systematic review with meta-analysis on the acute postprandial response to exercise before
   and after meal ingestion in healthy subjects and patients with impaired glucose tolerance.
   *Sports Medicine* 53(4): 849–869. https://doi.org/10.1007/s40279-022-01808-7
+- Garber CE, Blissmer B, Deschenes MR, et al. (2011). Quantity and quality of exercise for
+  developing and maintaining cardiorespiratory, musculoskeletal, and neuromotor fitness in
+  apparently healthy adults: guidance for prescribing exercise. *Medicine & Science in Sports &
+  Exercise* 43(7): 1334–1359. https://doi.org/10.1249/MSS.0b013e318213fefb (bands as reproduced
+  in Cochrane review CD012700, table 3, https://pmc.ncbi.nlm.nih.gov/articles/PMC6481524/table/CD012700-tbl-0003,
+  and by the CDC, https://www.cdc.gov/physicalactivity/basics/measuring/heartrate.htm)
+- Helgerud J, Høydal K, Wang E, et al. (2007). Aerobic high-intensity intervals improve VO2max
+  more than moderate training. *Medicine & Science in Sports & Exercise* 39(4): 665–671.
+  https://doi.org/10.1249/mss.0b013e3180304570
 - Hunt KJ, Fankhauser SE, Saengsuwan J (2015). Identification of heart rate dynamics during
   moderate-to-vigorous treadmill exercise. *BioMedical Engineering OnLine* 14: 117.
   https://doi.org/10.1186/s12938-015-0112-7
@@ -345,12 +458,24 @@ exercise inside a screen break, so this follows the trial's dose, not a tested b
 - Kim AD, Muntz A, Lee J, Wang MTM, Craig JP (2021). Therapeutic benefits of blinking exercises in
   dry eye disease. *Contact Lens and Anterior Eye* 44(3): 101329.
   https://doi.org/10.1016/j.clae.2020.04.014
+- Lei TH, Fujii N, Zhang X, et al. (2023). The effects of high-intensity exercise training and
+  detraining with and without active recovery on postexercise hypotension in young men.
+  *Physiological Reports* 11(24): e15862. https://doi.org/10.14814/phy2.15862
 - Lee LL, Mulvaney CA, Wong YKY, Chan ES, Watson MC, Lin HH (2021). Walking for hypertension.
   *Cochrane Database of Systematic Reviews* 2: CD008823.
   https://doi.org/10.1002/14651858.CD008823.pub2
 - Levine JA, Miller JM (2007). The energy expenditure of using a "walk-and-work" desk for office
   workers with obesity. *British Journal of Sports Medicine* 41(9): 558–561.
   https://pmc.ncbi.nlm.nih.gov/articles/PMC2465387/
+- Lu X, Goulding RP, Mündel T, et al. (2024). Interactive effects of exercise intensity and
+  recovery posture on postexercise hypotension. *American Journal of Physiology: Regulatory,
+  Integrative and Comparative Physiology* 326(6): R567–R577. https://doi.org/10.1152/ajpregu.00036.2024
+- Macartney MJ, Meade RD, Notley SR, Herry CL, Seely AJE, Kenny GP (2020). Fluid loss during
+  exercise-heat stress reduces cardiac vagal autonomic modulation. *Medicine & Science in Sports
+  & Exercise* 52(2): 362–369. https://doi.org/10.1249/MSS.0000000000002136
+- Michael S, Graham KS, Davis GM (2017). Cardiac autonomic responses during exercise and
+  post-exercise recovery using heart rate variability and systolic time intervals: a review.
+  *Frontiers in Physiology* 8: 301. https://doi.org/10.3389/fphys.2017.00301
 - Nemoto K, Gen-no H, Masuki S, Okazaki K, Nose H (2007). Effects of high-intensity interval
   walking training on physical fitness and blood pressure in middle-aged and older people.
   *Mayo Clinic Proceedings* 82(7): 803–811. https://doi.org/10.4065/82.7.803
@@ -366,12 +491,20 @@ exercise inside a screen break, so this follows the trial's dose, not a tested b
   for lowering postprandial glycaemia in type 2 diabetes mellitus than advice that does not
   specify timing: a randomised crossover study. *Diabetologia* 59(12): 2572–2578.
   https://doi.org/10.1007/s00125-016-4085-2
+- Romero SA, Minson CT, Halliwill JR (2017). The cardiovascular system after exercise. *Journal
+  of Applied Physiology* 122(4): 925–932. https://doi.org/10.1152/japplphysiol.00802.2016
 - Talens-Estarelles C, Cerviño A, García-Lázaro S, Fogelton A, Sheppard A, Wolffsohn JS (2023).
   The effects of breaks on digital eye strain, dry eye and binocular vision: testing the
   20-20-20 rule. *Contact Lens and Anterior Eye* 46(2): 101744.
+- Thiebaud RS, Funk MD, Patton JC, et al. (2018). Validity of wrist-worn consumer products to
+  measure heart rate and energy expenditure. *Digital Health* 4: 2055207618770322.
+  https://doi.org/10.1177/2055207618770322
 - Tudor-Locke C, Aguiar EJ, Han H, et al. (2019). Walking cadence (steps/min) and intensity in
   21–40 year olds: CADENCE-adults. *International Journal of Behavioral Nutrition and Physical
   Activity* 16: 8. https://doi.org/10.1186/s12966-019-0769-6
+- Van Hooren B, Peake JM (2018). Do we need a cool-down after exercise? A narrative review of
+  the psychophysiological effects and the effects on performance, injuries and the long-term
+  adaptive response. *Sports Medicine* 48(7): 1575–1595. https://doi.org/10.1007/s40279-018-0916-2
 - Weston KS, Wisløff U, Coombes JS (2014). High-intensity interval training in patients with
   lifestyle-induced cardiometabolic disease: a systematic review and meta-analysis. *British
   Journal of Sports Medicine* 48(16): 1227–1234. https://doi.org/10.1136/bjsports-2013-092576

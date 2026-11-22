@@ -856,6 +856,87 @@ fn step_kinds_v10(raw: &str) -> Option<String> {
     serde_json::to_string(&list).ok()
 }
 
+/// #233: the seeded VO2 max's COOL_DOWN ends on heart rate, at or under 60 %
+/// of max for 30 s once its minutes are done (docs/research.md, one target for
+/// every cool-down). Only a VO2 max exactly as migration 10 or `seed_programs`
+/// left it (name, note, repeat, every step's minutes, speed, incline, zone and
+/// kind, and no step with a pulse target yet) gets the target, and its note
+/// moves to the one that says so. An edited copy is left as it is.
+///
+/// Frozen: the values are written out here, not read from `seed_programs`.
+fn migration_11_cool_down_pulse(tx: &Transaction) -> rusqlite::Result<()> {
+    let Some(raw) = get_setting_str(tx, "programs") else {
+        return Ok(()); // Never seeded: the first start seeds the target.
+    };
+    if let Some(programs) = cool_down_pulse_v11(&raw) {
+        tx.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('programs', ?1)",
+            params![programs],
+        )?;
+    }
+    Ok(())
+}
+
+const VO2_MAX_NOTE_V10: &str =
+    "Four hard climbs of four minutes, split by easy walks, train VO2 max.";
+const VO2_MAX_NOTE_V11: &str =
+    "Four hard climbs train VO2 max, and the last walk ends on heart rate.";
+
+/// Migration 11's change to the stored programs JSON; `None` when there is
+/// nothing to change or the value can't be read.
+fn cool_down_pulse_v11(raw: &str) -> Option<String> {
+    use serde_json::{json, Value};
+    let mut list: Vec<Value> = serde_json::from_str(raw).ok()?;
+    // VO2 max's steps as migration 10 left them: minutes, km/h, incline %,
+    // whether the step holds the 85 to 95 % zone, and its kind.
+    let mut seed = vec![(5.0, 4.5, 0.0, false, "warm_up")];
+    for _ in 0..4 {
+        seed.push((4.0, 6.0, 10.0, true, "interval"));
+        seed.push((3.0, 4.0, 0.0, false, "rest"));
+    }
+    seed.push((3.0, 3.0, 0.0, false, "cool_down"));
+    let num = |v: &Value, x: f64| v.as_f64().is_some_and(|f| (f - x).abs() < 1e-3);
+    let zone_ok = |s: &Value, climb: bool| {
+        let z = &s["zone"];
+        if !climb {
+            return z.is_null();
+        }
+        z["low_pct"].as_f64() == Some(85.0)
+            && z["high_pct"].as_f64() == Some(95.0)
+            && z.get("trim").is_none_or(Value::is_null)
+    };
+    let mut changed = false;
+    for p in list.iter_mut() {
+        let untouched = p["name"] == "VO2 max"
+            && p["note"] == VO2_MAX_NOTE_V10
+            && p["repeat_every_minutes"].is_null()
+            && p["steps"].as_array().is_some_and(|s| {
+                s.len() == seed.len()
+                    && s.iter()
+                        .zip(&seed)
+                        .all(|(s, &(min, kmh, pct, climb, kind))| {
+                            num(&s["duration_minutes"], min)
+                                && num(&s["speed_kmh"], kmh)
+                                && num(&s["incline_pct"], pct)
+                                && zone_ok(s, climb)
+                                && s["kind"] == kind
+                                && s.get("pulse_end").is_none_or(Value::is_null)
+                        })
+            });
+        if !untouched {
+            continue;
+        }
+        let last = p["steps"].as_array_mut()?.last_mut()?;
+        last["pulse_end"] = json!({ "below_pct": 60.0 });
+        p["note"] = json!(VO2_MAX_NOTE_V11);
+        changed = true;
+    }
+    if !changed {
+        return None;
+    }
+    serde_json::to_string(&list).ok()
+}
+
 type Migration = fn(&Transaction) -> rusqlite::Result<()>;
 
 /// Append new migrations at the end; never reorder or edit a shipped one.
@@ -871,6 +952,7 @@ const MIGRATIONS: &[Migration] = &[
     migration_8_seeded_programs,
     migration_9_points_per_treadmill,
     migration_10_step_kinds,
+    migration_11_cool_down_pulse,
 ];
 
 fn schema_version(conn: &Connection) -> rusqlite::Result<u32> {
@@ -2770,6 +2852,89 @@ mod db_tests {
         assert_eq!(get_setting_str(&conn, "programs"), None);
     }
 
+    /// The seeded programs as migration 10 left them, with no pulse target.
+    fn seeds_at_v10() -> Connection {
+        let mut conn = seeds_at_v9();
+        migrate_through(&mut conn, 10);
+        conn
+    }
+
+    fn pulse_ends(p: &crate::programs::Program) -> Vec<Option<f32>> {
+        p.steps
+            .iter()
+            .map(|s| s.pulse_end.map(|e| e.below_pct))
+            .collect()
+    }
+
+    #[test]
+    fn migration_11_gives_an_unedited_vo2_max_its_cool_down_target() {
+        let mut conn = seeds_at_v10();
+        let before = stored_programs(&conn);
+        assert!(before
+            .iter()
+            .all(|p| p.steps.iter().all(|s| s.pulse_end.is_none())));
+        migrate(&mut conn).unwrap();
+        let list = stored_programs(&conn);
+        let vo2 = list.iter().find(|p| p.name == "VO2 max").unwrap();
+        let mut want = vec![None; 9];
+        want.push(Some(60.0));
+        assert_eq!(pulse_ends(vo2), want);
+        assert_eq!(vo2.note.as_deref(), Some(VO2_MAX_NOTE_V11));
+        assert_eq!(
+            vo2.note.as_deref(),
+            Some(crate::programs::NOTE_VO2_MAX),
+            "the frozen note is the seed's"
+        );
+        // Every other seed is as it was, and the list is a new install's.
+        for (b, a) in before.iter().zip(&list) {
+            if b.name != "VO2 max" {
+                assert_eq!(a, b, "{}", b.name);
+            }
+        }
+        assert_eq!(list, crate::programs::seed_programs());
+        // Forced to run again, nothing changes.
+        let raw = get_setting_str(&conn, "programs");
+        conn.execute_batch("PRAGMA user_version = 10").unwrap();
+        migrate(&mut conn).unwrap();
+        assert_eq!(get_setting_str(&conn, "programs"), raw);
+    }
+
+    #[test]
+    fn migration_11_leaves_an_edited_vo2_max_alone() {
+        use crate::programs::{PulseEnd, StepKind};
+        type Edit<'a> = (&'a str, &'a dyn Fn(&mut crate::programs::Program));
+        let edits: [Edit; 7] = [
+            ("renamed", &|p| p.name = "My 4x4".to_string()),
+            ("note dropped", &|p| p.note = None),
+            ("slower cool-down", &|p| p.steps[9].speed_kmh = 2.5),
+            ("longer cool-down", &|p| {
+                p.steps[9].duration_minutes = Some(5.0)
+            }),
+            ("kind changed", &|p| p.steps[9].kind = Some(StepKind::Walk)),
+            ("zone taken off", &|p| p.steps[1].zone = None),
+            ("own target", &|p| {
+                p.steps[9].pulse_end = Some(PulseEnd { below_pct: 55.0 })
+            }),
+        ];
+        for (what, edit) in edits {
+            let mut conn = seeds_at_v10();
+            let mut list = stored_programs(&conn);
+            edit(list.iter_mut().find(|p| p.steps.len() == 10).unwrap());
+            set(&conn, "programs", &serde_json::to_string(&list).unwrap());
+            migrate(&mut conn).unwrap();
+            assert_eq!(stored_programs(&conn), list, "{}", what);
+        }
+    }
+
+    #[test]
+    fn migration_11_leaves_an_empty_or_unreadable_list_alone() {
+        assert_eq!(cool_down_pulse_v11("[]"), None);
+        assert_eq!(cool_down_pulse_v11("not json"), None);
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&mut conn).unwrap();
+        assert_eq!(get_setting_str(&conn, "programs"), None);
+    }
+
     const ONE_POINT: &str = r#"[{"speed":3.0,"stride_length_cm":70.0,"distance_scale":0.9}]"#;
 
     #[test]
@@ -3052,7 +3217,9 @@ mod db_tests {
         let after = stored_programs(&conn);
         assert_eq!(note(&after, "Lunch walk"), old_post_meal);
         assert_eq!(note(&after, "Focus"), None);
-        assert_eq!(note(&after, "VO2 max").as_deref(), Some(NOTE_VO2_MAX));
+        // Without its zones migration 10 skips it, so migration 11 does too
+        // and the note stays as migration 8 wrote it.
+        assert_eq!(note(&after, "VO2 max").as_deref(), Some(VO2_MAX_NOTE_V10));
         assert_eq!(note(&after, "Brisk").as_deref(), Some(NOTE_BRISK));
     }
 

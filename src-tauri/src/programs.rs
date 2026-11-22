@@ -85,6 +85,33 @@ const ZONE_FIT_INCLINE_PCT: f32 = ZONE_INCLINE_RANGE_PCT;
 const ZONE_MIN_PCT: f32 = 30.0;
 /// The highest: a zone can't go above the maximum heart rate itself.
 const ZONE_MAX_PCT: f32 = 100.0;
+/// A cool-down step that ends on heart rate (#233) ends once its minutes are
+/// done and the pulse has stayed under the target this long. After a change
+/// in treadmill speed the pulse follows with a time constant of about 58 s
+/// (see `ZONE_SETTLE`), so a pulse truly falling through the target keeps
+/// falling and half a time constant costs little; a single low reading
+/// (wrist sensors read 1 to 7 bpm off on walks, Thiebaud et al. 2018,
+/// docs/research.md) can't end the step.
+pub(crate) const PULSE_END_HOLD: Duration = Duration::from_secs(30);
+/// At most this much of one tick counts toward `PULSE_END_HOLD`. Sensors send
+/// about one reading a second and the tick is 1 Hz, so a reading speaks for
+/// about the second before it; a longer gap (the app closed, then restored)
+/// says nothing about the pulse in between.
+const PULSE_TICK_MAX_S: f64 = 2.0;
+/// The lowest cool-down pulse target, in % of maximum heart rate: under 50 %,
+/// deep in the ACSM very light band (under 57 %), an easy walk may never get
+/// there and the step would walk on until SKIP.
+pub(crate) const PULSE_END_MIN_PCT: f32 = 50.0;
+/// The highest: 77 % and up is the ACSM vigorous band (Garber et al. 2011),
+/// so a target over 76 % would end a cool-down that never cooled down.
+pub(crate) const PULSE_END_MAX_PCT: f32 = 76.0;
+/// Every COOL_DOWN step's target unless the user changes it (the editor
+/// ticks it on a new cool-down, the seeded VO2 max carries it): inside the
+/// ACSM light band (57 to 63 %), a few bpm clear of moderate (64 %), and
+/// under the 4x4's 70 % rests. One value whatever comes before: a harder
+/// program makes the fall slower, not its end higher (docs/research.md).
+/// 114 bpm at the default 190 bpm max.
+pub(crate) const PULSE_END_DEFAULT_PCT: f32 = 60.0;
 /// A start at the treadmill counts once the deck has reported the belt moving
 /// (Starting or Running) for this long without a break, after reporting it
 /// still. The deck answers a status poll every 600 ms, so this spans at least
@@ -137,6 +164,39 @@ pub struct ProgramStep {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub kind: Option<StepKind>,
+    /// A COOL_DOWN step only (#233): once its minutes are done it walks on
+    /// until the pulse has stayed under this for `PULSE_END_HOLD`. With no
+    /// heart rate reading it ends on its minutes. None = a timed step.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub pulse_end: Option<PulseEnd>,
+}
+
+/// Where a cool-down step's pulse must get to before the step ends: under
+/// `below_pct` % of the maximum heart rate, the same maximum zones use.
+/// Stored as % (like `HeartZone`), so a new maximum moves the target with it.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
+pub struct PulseEnd {
+    pub below_pct: f32,
+}
+
+impl PulseEnd {
+    /// The target a COOL_DOWN step gets unless the user changes it:
+    /// `PULSE_END_DEFAULT_PCT`, the same for every cool-down whatever comes
+    /// before it (docs/research.md).
+    pub(crate) const fn default_target() -> Self {
+        PulseEnd {
+            below_pct: PULSE_END_DEFAULT_PCT,
+        }
+    }
+
+    /// The target in whole beats per minute for a maximum heart rate, rounded
+    /// as the editor shows it; a reading at or under it counts as down, so
+    /// the number on screen is the one to reach.
+    fn target_bpm(self, max_bpm: u32) -> u32 {
+        (self.below_pct / 100.0 * max_bpm as f32).round() as u32
+    }
 }
 
 /// What a program step is for (#235). Only a name: no kind changes how a
@@ -361,6 +421,12 @@ pub struct ActiveProgram {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub kind: Option<StepKindSpot>,
+    /// Set while a cool-down step's minutes are done and it walks on until
+    /// the pulse is under this many bpm (#233); `seconds_remaining` is none
+    /// then, since nothing but the pulse, SKIP or END ends it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub pulse_to_bpm: Option<u32>,
     /// The steps and repeat of the copy that runs, for STEP_MAP (#234). A
     /// save of the running program reaches its next run, not this one, so
     /// the saved program in `programs` can differ from what runs.
@@ -415,6 +481,13 @@ pub struct ProgramRun {
     /// took GO; a zone trims nothing until `ZONE_SETTLE` has passed. Not
     /// saved: a restored run waits again.
     pub zone_settle_s: f64,
+    /// Seconds of fresh heart rate readings in a row under the step's
+    /// `pulse_end` target while the belt runs; a missing reading, one at or
+    /// over the target, a pause or a new step starts it again. Not saved.
+    pub pulse_under_s: f64,
+    /// The step's minutes are done and the pulse is keeping it going: when it
+    /// ends, no time carries into the next step. Not saved.
+    pub pulse_held: bool,
 }
 
 /// What the deck has reported since the run began holding the belt still: a
@@ -581,6 +654,35 @@ pub(crate) fn validate_program(p: &Program, min_speed: f32, max_speed: f32) -> R
         if !ok(s.incline_pct) {
             return Err(format!("Step {}: incline must be zero or more", n));
         }
+        if let Some(pe) = s.pulse_end {
+            if s.kind != Some(StepKind::CoolDown) {
+                return Err(format!(
+                    "Step {}: only a COOL_DOWN step can end on heart rate",
+                    n
+                ));
+            }
+            if s.duration_minutes.is_none() {
+                return Err(format!("Step {}: a heart rate end needs minutes", n));
+            }
+            if s.speed_kmh == 0.0 {
+                return Err(format!(
+                    "Step {}: a heart rate end needs a walking speed",
+                    n
+                ));
+            }
+            if s.zone.is_some() {
+                return Err(format!("Step {}: pick a heart zone or a heart rate end", n));
+            }
+            if !pe.below_pct.is_finite()
+                || pe.below_pct < PULSE_END_MIN_PCT
+                || pe.below_pct > PULSE_END_MAX_PCT
+            {
+                return Err(format!(
+                    "Step {}: the heart rate end must be {} to {} % of maximum heart rate",
+                    n, PULSE_END_MIN_PCT, PULSE_END_MAX_PCT
+                ));
+            }
+        }
         if let Some(z) = s.zone {
             if s.speed_kmh == 0.0 {
                 return Err(format!("Step {}: a zone needs a walking speed", n));
@@ -618,7 +720,8 @@ pub(crate) fn validate_program(p: &Program, min_speed: f32, max_speed: f32) -> R
 /// docs/research.md. Existing installs were moved to these by
 /// `persistence::migration_3_research_programs` and
 /// `persistence::migration_8_seeded_programs`, which keep their own copies;
-/// `migration_10_step_kinds` gives unedited ones the step kinds.
+/// `migration_10_step_kinds` gives unedited ones the step kinds and
+/// `migration_11_cool_down_pulse` VO2 max's cool-down its pulse target.
 /// The ids match what a v1.6 install ends up with after every migration
 /// (id 4 was Micro-break, merged into Workday), so a migrated install and
 /// a new one hold the same list.
@@ -638,6 +741,7 @@ pub fn seed_programs() -> Vec<Program> {
         incline_pct,
         zone: None,
         kind: Some(StepKind::Walk),
+        pulse_end: None,
     };
     vec![
         program(
@@ -682,8 +786,9 @@ const WORKDAY_INCLINE_PCT: f32 = 5.0;
 /// 85 to 95 % of maximum heart rate, the intensity the 4x4 is prescribed at:
 /// with a heart rate reading the zone trims the climb's speed within 1 km/h,
 /// and without one the climb runs its set speed. Existing installs get the
-/// program from `persistence::migration_4_vo2_max_program` and the zones from
-/// `migration_7_vo2_max_zones`, which keep their own copies.
+/// program from `persistence::migration_4_vo2_max_program`, the zones from
+/// `migration_7_vo2_max_zones` and the cool-down's pulse target from
+/// `migration_11_cool_down_pulse`, which keep their own copies.
 fn vo2_max_program(id: u32) -> Program {
     let step = |minutes: f32, speed_kmh: f32, incline_pct: f32, zone, kind| ProgramStep {
         duration_minutes: Some(minutes),
@@ -691,6 +796,7 @@ fn vo2_max_program(id: u32) -> Program {
         incline_pct,
         zone,
         kind: Some(kind),
+        pulse_end: None,
     };
     let climb_zone = Some(HeartZone {
         low_pct: 85.0,
@@ -702,7 +808,12 @@ fn vo2_max_program(id: u32) -> Program {
         steps.push(step(4.0, 6.0, 10.0, climb_zone, StepKind::Interval));
         steps.push(step(3.0, 4.0, 0.0, None, StepKind::Rest));
     }
-    steps.push(step(3.0, 3.0, 0.0, None, StepKind::CoolDown));
+    // The cool-down walks on past its minutes until the pulse is down, at
+    // the one target every cool-down gets (docs/research.md).
+    steps.push(ProgramStep {
+        pulse_end: Some(PulseEnd::default_target()),
+        ..step(3.0, 3.0, 0.0, None, StepKind::CoolDown)
+    });
     Program {
         id,
         name: "VO2 max".to_string(),
@@ -725,6 +836,7 @@ fn interval_walk_program(id: u32) -> Program {
         incline_pct,
         zone: None,
         kind: Some(kind),
+        pulse_end: None,
     };
     let mut steps = vec![step(
         INTERVAL_WARMUP_MINUTES,
@@ -773,7 +885,7 @@ const INTERVAL_BRISK_INCLINE_PCT: f32 = 5.0;
 const INTERVAL_EASY_KMH: f32 = 3.5;
 
 pub const NOTE_VO2_MAX: &str =
-    "Four hard climbs of four minutes, split by easy walks, train VO2 max.";
+    "Four hard climbs train VO2 max, and the last walk ends on heart rate.";
 pub const NOTE_POST_MEAL: &str = "Walking soon after a meal blunts the rise in blood sugar.";
 pub const NOTE_WORKDAY: &str = "Five easy minutes every half hour keep the body online.";
 pub const NOTE_FOCUS: &str = "A slow, flat walk keeps typing and thinking steady.";
@@ -796,6 +908,7 @@ pub(crate) fn classic_programs() -> Vec<Program> {
             incline_pct,
             zone: None,
             kind: None,
+            pulse_end: None,
         }],
         repeat_every_minutes: repeat,
         note: None,
@@ -1217,6 +1330,8 @@ impl OrchestratorState {
             deck_moved: false,
             zone_next_trim: None,
             zone_settle_s: 0.0,
+            pulse_under_s: 0.0,
+            pulse_held: false,
         };
         self.set_program_intent_from(&run);
         self.program = Some(run);
@@ -1267,8 +1382,10 @@ impl OrchestratorState {
         run.last_tick = now;
         run.deck_start = DeckStartWatch::default();
         run.deck_moved = false;
-        // The pulse falls while the belt is still; a zone waits again.
+        // The pulse falls while the belt is still; a zone waits again, and a
+        // cool-down's pulse must stay down again once the belt walks.
         run.zone_settle_s = 0.0;
+        run.pulse_under_s = 0.0;
         let incline = run.target.incline;
         let run = run.clone();
         self.set_program_intent_from(&run);
@@ -1297,6 +1414,7 @@ impl OrchestratorState {
         // GO is a step up in effort from a still belt: a zone waits for the
         // pulse again, however short the pause was.
         run.zone_settle_s = 0.0;
+        run.pulse_under_s = 0.0;
         let run = run.clone();
         self.set_program_intent_from(&run);
         self.prioritize_program(now);
@@ -1336,8 +1454,11 @@ impl OrchestratorState {
         now: Instant,
     ) -> Option<ProgramRun> {
         let still = self.belt_still(now);
-        // Every new step is a new effort: its zone waits for the pulse.
+        // Every new step is a new effort: its zone waits for the pulse, and a
+        // cool-down counts its pulse from the step's start.
         run.zone_settle_s = 0.0;
+        run.pulse_under_s = 0.0;
+        run.pulse_held = false;
         match run.phase {
             ProgramPhase::Walking => {
                 if run.step_index + 1 < run.program.steps.len() {
@@ -1487,13 +1608,27 @@ impl OrchestratorState {
         {
             run.zone_settle_s += dt;
         }
+        self.count_pulse_under(&mut run, dt);
 
         for _ in 0..64 {
             let Some(len) = run.phase_len_s() else { break };
             if run.elapsed_s < len {
                 break;
             }
-            let leftover = run.elapsed_s - len;
+            if self.pulse_keeps_step(&run) {
+                if !run.pulse_held {
+                    log::info!("Cool-down minutes done: walking on until heart rate is down");
+                }
+                run.pulse_held = true;
+                break;
+            }
+            // A step the pulse kept going ends now, not at its minutes: none
+            // of the extra time belongs to the next step.
+            let leftover = if run.pulse_held {
+                0.0
+            } else {
+                run.elapsed_s - len
+            };
             run = self.advance(run, leftover, false, now)?;
         }
 
@@ -1519,6 +1654,61 @@ impl OrchestratorState {
         }
         self.program = Some(run);
         warning
+    }
+
+    /// The walking step's cool-down pulse target in whole bpm (#233), or None
+    /// for a step without one, and while resting.
+    fn pulse_end_bpm(&self, run: &ProgramRun) -> Option<u32> {
+        if run.phase != ProgramPhase::Walking {
+            return None;
+        }
+        let end = run.program.steps.get(run.step_index)?.pulse_end?;
+        Some(end.target_bpm(self.max_heart_rate))
+    }
+
+    /// Count the seconds in a row a cool-down step's pulse has been at or
+    /// under its target with the belt running. Anything else starts the
+    /// count again: no fresh reading, a reading over the target, a belt that
+    /// isn't running (paused, starting, waiting for GO). Heart rate only
+    /// decides when the step ends; it never moves the belt.
+    fn count_pulse_under(&self, run: &mut ProgramRun, dt: f64) {
+        let running =
+            !run.paused && run.wait.is_none() && self.last_status == MachineStatus::Running;
+        let down = match (self.pulse_end_bpm(run), self.heart_bpm) {
+            (Some(target), Some(bpm)) => running && bpm <= target,
+            _ => false,
+        };
+        if down {
+            run.pulse_under_s += dt.min(PULSE_TICK_MAX_S);
+        } else {
+            run.pulse_under_s = 0.0;
+        }
+    }
+
+    /// A cool-down step whose minutes are done keeps walking: while the user
+    /// has it paused (GO carries on with it), or while a fresh reading says
+    /// the pulse has not yet stayed down for `PULSE_END_HOLD`. With no reading
+    /// (no sensor, or one that dropped out) the minutes end it, as before.
+    /// No upper limit: SKIP and END end it at any time.
+    fn pulse_keeps_step(&self, run: &ProgramRun) -> bool {
+        if self.pulse_end_bpm(run).is_none() {
+            return false;
+        }
+        if run.paused && run.pulse_held {
+            return true;
+        }
+        self.heart_bpm.is_some() && run.pulse_under_s < PULSE_END_HOLD.as_secs_f64()
+    }
+
+    /// PULSE_RATE's cool-down target while a walking step has one (its
+    /// minimum included), with `bpm` placed against it: Rust's label and
+    /// sentence, and the seconds the pulse must still stay down.
+    pub fn pulse_target(&self, bpm: Option<u32>) -> Option<crate::heart_rate::PulseTarget> {
+        let run = self.program.as_ref()?;
+        let target = self.pulse_end_bpm(run)?;
+        let hold_left = PULSE_END_HOLD.as_secs_f64() - run.pulse_under_s;
+        let hold_s = (hold_left > 0.0).then(|| hold_left.ceil() as u32);
+        Some(crate::heart_rate::pulse_target(target, bpm, hold_s))
     }
 
     /// Hold the step's heart rate zone: above it ease the belt a notch, below
@@ -1764,8 +1954,11 @@ impl OrchestratorState {
 
     pub fn active_program(&self) -> Option<ActiveProgram> {
         let run = self.program.as_ref()?;
+        // A cool-down the pulse keeps going has no time left to count down.
+        let pulse_to_bpm = self.pulse_end_bpm(run).filter(|_| run.pulse_held);
         let seconds_remaining = run
             .phase_len_s()
+            .filter(|_| pulse_to_bpm.is_none())
             .map(|len| (len - run.elapsed_s).max(0.0).ceil() as u32);
         Some(ActiveProgram {
             program_id: run.program.id,
@@ -1787,6 +1980,7 @@ impl OrchestratorState {
                 ProgramPhase::Walking => StepKindSpot::of_step(&run.program.steps, run.step_index),
                 ProgramPhase::Resting => None,
             },
+            pulse_to_bpm,
             steps: run.program.steps.clone(),
             repeat_every_minutes: run.program.repeat_every_minutes,
         })
@@ -2070,6 +2264,8 @@ impl OrchestratorState {
             deck_moved: false,
             zone_next_trim: None,
             zone_settle_s: 0.0,
+            pulse_under_s: 0.0,
+            pulse_held: false,
         };
         self.set_program_intent_from(&run);
         self.program = Some(run);
@@ -2369,6 +2565,7 @@ mod tests {
             incline_pct: 0.0,
             zone: None,
             kind: None,
+            pulse_end: None,
         };
         let mut s = state();
         s.programs.push(Program {
@@ -2436,6 +2633,7 @@ mod tests {
                     incline_pct: 0.0,
                     zone: None,
                     kind: None,
+                    pulse_end: None,
                 },
                 ProgramStep {
                     duration_minutes: Some(2.0),
@@ -2443,6 +2641,7 @@ mod tests {
                     incline_pct: 2.0,
                     zone: None,
                     kind: None,
+                    pulse_end: None,
                 },
             ],
             repeat_every_minutes: Some(10.0),
@@ -2582,6 +2781,7 @@ mod tests {
                 incline_pct: 0.0,
                 zone: None,
                 kind: None,
+                pulse_end: None,
             }],
             repeat_every_minutes: None,
             note: None,
@@ -2715,6 +2915,7 @@ mod tests {
                 incline_pct: 2.0,
                 zone: None,
                 kind: None,
+                pulse_end: None,
             }],
             repeat_every_minutes: None,
             note: None,
@@ -2801,6 +3002,7 @@ mod tests {
                 incline_pct: 0.0,
                 zone: None,
                 kind: None,
+                pulse_end: None,
             },
         );
         assert!(err(&p).contains("Step 1"));
@@ -2852,6 +3054,7 @@ mod tests {
             incline_pct: 4.0,
             zone: None,
             kind: None,
+            pulse_end: None,
         });
         moving(&mut s, 3.0, 0);
         let t0 = Instant::now();
@@ -3119,6 +3322,7 @@ mod tests {
                     incline_pct: 0.0,
                     zone: None,
                     kind: None,
+                    pulse_end: None,
                 },
                 ProgramStep {
                     duration_minutes: Some(5.0),
@@ -3126,6 +3330,7 @@ mod tests {
                     incline_pct: 0.0,
                     zone: None,
                     kind: None,
+                    pulse_end: None,
                 },
             ],
             repeat_every_minutes: None,
@@ -3218,6 +3423,7 @@ mod tests {
                     incline_pct: 0.0,
                     zone: None,
                     kind: None,
+                    pulse_end: None,
                 },
                 ProgramStep {
                     duration_minutes: Some(2.0),
@@ -3225,6 +3431,7 @@ mod tests {
                     incline_pct: 0.0,
                     zone: None,
                     kind: None,
+                    pulse_end: None,
                 },
             ],
             repeat_every_minutes: None,
@@ -3307,6 +3514,7 @@ mod tests {
             incline_pct: 0.0,
             zone: None,
             kind: None,
+            pulse_end: None,
         });
         s.last_status = MachineStatus::Running;
         let t0 = Instant::now();
@@ -3561,6 +3769,7 @@ mod tests {
                     incline_pct: 0.0,
                     zone: None,
                     kind: None,
+                    pulse_end: None,
                 },
                 ProgramStep {
                     duration_minutes: Some(1.0),
@@ -3568,6 +3777,7 @@ mod tests {
                     incline_pct: 0.0,
                     zone: None,
                     kind: None,
+                    pulse_end: None,
                 },
             ],
             repeat_every_minutes: None,
@@ -4044,6 +4254,7 @@ mod tests {
                     trim: None,
                 }),
                 kind: None,
+                pulse_end: None,
             }],
             repeat_every_minutes: None,
             note: None,
@@ -4159,6 +4370,7 @@ mod tests {
                     trim: Some(trim),
                 }),
                 kind: None,
+                pulse_end: None,
             }],
             repeat_every_minutes: None,
             note: None,
@@ -4409,6 +4621,7 @@ mod tests {
                 trim,
             }),
             kind: None,
+            pulse_end: None,
         };
         let program = Program {
             id: 0,
@@ -4554,6 +4767,7 @@ mod tests {
                 trim: None,
             }),
             kind: None,
+            pulse_end: None,
         };
         let program = |s: ProgramStep| Program {
             id: 0,
@@ -4648,6 +4862,7 @@ mod tests {
             incline_pct: 0.0,
             zone: None,
             kind,
+            pulse_end: None,
         }
     }
 
@@ -4864,5 +5079,290 @@ mod tests {
         let sent = drive(&mut s, &mut engine, t0 + secs(1), 2);
         assert!(app_starts(&sent), "{sent:?}");
         assert!(!s.active_program().unwrap().paused);
+    }
+
+    // -----------------------------------------------------------------------
+    // Cool-down ending on heart rate (#233).
+    // -----------------------------------------------------------------------
+
+    /// 5 min at 5 km/h, then a 5 min COOL_DOWN at 3 km/h that ends at or
+    /// under 60 % of 200 bpm (120), then `after` if given. Running on a belt
+    /// that walked 3.0 km/h before.
+    fn cool_down_state(t0: Instant, after: Option<ProgramStep>) -> OrchestratorState {
+        let mut s = state();
+        s.max_heart_rate = 200;
+        let walk = ProgramStep {
+            duration_minutes: Some(5.0),
+            speed_kmh: 5.0,
+            incline_pct: 0.0,
+            zone: None,
+            kind: Some(StepKind::Walk),
+            pulse_end: None,
+        };
+        let cool = ProgramStep {
+            duration_minutes: Some(5.0),
+            speed_kmh: 3.0,
+            incline_pct: 0.0,
+            zone: None,
+            kind: Some(StepKind::CoolDown),
+            pulse_end: Some(PulseEnd { below_pct: 60.0 }),
+        };
+        let mut steps = vec![walk, cool];
+        steps.extend(after);
+        s.programs.push(Program {
+            id: 9,
+            name: "Cool".to_string(),
+            steps,
+            repeat_every_minutes: None,
+            note: None,
+        });
+        moving(&mut s, 3.0, 0);
+        s.run_program(9, t0).unwrap();
+        s
+    }
+
+    fn step_now(s: &OrchestratorState) -> Option<u32> {
+        s.active_program().map(|a| a.step_index)
+    }
+
+    #[test]
+    fn a_pulse_already_down_ends_the_cool_down_on_its_minutes() {
+        let t0 = Instant::now();
+        let mut s = cool_down_state(t0, None);
+        s.heart_bpm = Some(110);
+        run_ticks(&mut s, t0, 0, 599);
+        assert_eq!(step_now(&s), Some(1));
+        assert_eq!(s.active_program().unwrap().seconds_remaining, Some(1));
+        run_ticks(&mut s, t0, 599, 600);
+        // The last step ended the program the normal way: the belt goes back
+        // to its speed from before.
+        assert!(s.program.is_none());
+        assert_eq!(s.program_intent, None);
+        assert_eq!(manual(&s).speed, 3.0);
+    }
+
+    #[test]
+    fn a_high_pulse_keeps_the_cool_down_walking_until_it_stays_down() {
+        let t0 = Instant::now();
+        let mut s = cool_down_state(t0, None);
+        s.heart_bpm = Some(140);
+        // No upper cap: well past its minutes it still walks, at its speed.
+        run_ticks(&mut s, t0, 0, 1800);
+        let a = s.active_program().unwrap();
+        assert_eq!(a.step_index, 1);
+        assert_eq!((a.pulse_to_bpm, a.seconds_remaining), (Some(120), None));
+        assert_eq!(s.program_intent.map(|i| i.speed), Some(3.0));
+        let t = s.pulse_target(s.heart_bpm).unwrap();
+        assert_eq!((t.target_bpm, t.label.as_str()), (120, "PULSE // HIGH"));
+
+        // At the target counts as down; 30 s of it ends the step.
+        s.heart_bpm = Some(120);
+        run_ticks(&mut s, t0, 1800, 1829);
+        assert!(s.program.is_some());
+        assert_eq!(s.pulse_target(Some(120)).unwrap().hold_s, Some(1));
+        run_ticks(&mut s, t0, 1829, 1830);
+        assert!(s.program.is_none());
+        assert_eq!(manual(&s).speed, 3.0);
+    }
+
+    #[test]
+    fn a_short_dip_or_a_reading_over_the_target_starts_the_hold_again() {
+        let t0 = Instant::now();
+        let mut s = cool_down_state(t0, None);
+        s.heart_bpm = Some(140);
+        run_ticks(&mut s, t0, 0, 700);
+        s.heart_bpm = Some(115);
+        run_ticks(&mut s, t0, 700, 720);
+        s.heart_bpm = Some(121);
+        run_ticks(&mut s, t0, 720, 721);
+        s.heart_bpm = Some(115);
+        run_ticks(&mut s, t0, 721, 750);
+        assert!(s.program.is_some(), "the hold started over at 721");
+        run_ticks(&mut s, t0, 750, 751);
+        assert!(s.program.is_none());
+    }
+
+    #[test]
+    fn with_no_reading_the_cool_down_ends_on_its_minutes() {
+        let t0 = Instant::now();
+        let mut s = cool_down_state(t0, None);
+        s.heart_bpm = None;
+        run_ticks(&mut s, t0, 0, 599);
+        assert_eq!(step_now(&s), Some(1));
+        assert_eq!(s.pulse_target(None).unwrap().label, "PULSE // WAIT");
+        run_ticks(&mut s, t0, 599, 600);
+        assert!(s.program.is_none());
+    }
+
+    #[test]
+    fn a_sensor_that_drops_out_mid_step_hands_back_to_the_minutes() {
+        let t0 = Instant::now();
+        let mut s = cool_down_state(t0, None);
+        // Drops out during the minimum: the minutes still end the step.
+        s.heart_bpm = Some(140);
+        run_ticks(&mut s, t0, 0, 400);
+        s.heart_bpm = None;
+        run_ticks(&mut s, t0, 400, 600);
+        assert!(s.program.is_none());
+
+        // Drops out while the pulse holds the step past its minutes: the
+        // minutes are done, so the step ends at once.
+        let mut s = cool_down_state(t0, None);
+        s.heart_bpm = Some(140);
+        run_ticks(&mut s, t0, 0, 700);
+        assert_eq!(s.active_program().unwrap().pulse_to_bpm, Some(120));
+        s.heart_bpm = None;
+        run_ticks(&mut s, t0, 700, 701);
+        assert!(s.program.is_none());
+    }
+
+    #[test]
+    fn skip_and_end_still_end_a_cool_down_the_pulse_keeps_going() {
+        let t0 = Instant::now();
+        let mut s = cool_down_state(t0, None);
+        s.heart_bpm = Some(140);
+        run_ticks(&mut s, t0, 0, 700);
+        s.skip_program(t0 + secs(700)).unwrap();
+        assert!(s.program.is_none());
+        assert_eq!(manual(&s).speed, 3.0);
+
+        let mut s = cool_down_state(t0, None);
+        s.heart_bpm = Some(140);
+        run_ticks(&mut s, t0, 0, 700);
+        assert!(s.end_program(true, t0 + secs(700)));
+        assert_eq!(manual(&s).speed, 3.0);
+    }
+
+    #[test]
+    fn the_step_after_a_held_cool_down_gets_its_full_minutes() {
+        let t0 = Instant::now();
+        let after = ProgramStep {
+            duration_minutes: Some(2.0),
+            speed_kmh: 4.0,
+            incline_pct: 0.0,
+            zone: None,
+            kind: None,
+            pulse_end: None,
+        };
+        let mut s = cool_down_state(t0, Some(after));
+        s.heart_bpm = Some(140);
+        run_ticks(&mut s, t0, 0, 900);
+        s.heart_bpm = Some(100);
+        run_ticks(&mut s, t0, 900, 930);
+        let a = s.active_program().unwrap();
+        assert_eq!((a.step_index, a.seconds_remaining), (2, Some(120)));
+        assert_eq!(a.pulse_to_bpm, None);
+        // Between two moving speeds: automatic, like any timed step.
+        assert_eq!(s.program_intent.map(|i| i.speed), Some(4.0));
+    }
+
+    #[test]
+    fn a_pause_keeps_a_held_cool_down_and_its_hold_starts_again_after_go() {
+        let t0 = Instant::now();
+        let mut s = cool_down_state(t0, None);
+        s.heart_bpm = Some(140);
+        run_ticks(&mut s, t0, 0, 700);
+        s.heart_bpm = Some(110);
+        run_ticks(&mut s, t0, 700, 720);
+        s.pause_program(t0 + secs(720)).unwrap();
+        s.last_status = MachineStatus::Paused;
+        // Paused, with or without a reading, the step waits for GO.
+        run_ticks(&mut s, t0, 720, 800);
+        s.heart_bpm = None;
+        run_ticks(&mut s, t0, 800, 900);
+        let a = s.active_program().unwrap();
+        assert_eq!((a.step_index, a.paused), (1, true));
+        // Heart rate never resumes the belt.
+        assert_eq!(s.program_intent.map(|i| i.speed), Some(0.0));
+
+        s.heart_bpm = Some(110);
+        s.resume_program(t0 + secs(900)).unwrap();
+        s.last_status = MachineStatus::Running;
+        run_ticks(&mut s, t0, 900, 929);
+        assert!(s.program.is_some(), "a full 30 s again after GO");
+        run_ticks(&mut s, t0, 929, 930);
+        assert!(s.program.is_none());
+    }
+
+    #[test]
+    fn the_cool_down_target_shows_while_the_step_runs_and_follows_the_max() {
+        let t0 = Instant::now();
+        let mut s = cool_down_state(t0, None);
+        assert_eq!(s.pulse_target(Some(150)), None, "the walk step has none");
+        s.heart_bpm = Some(150);
+        run_ticks(&mut s, t0, 0, 310);
+        let t = s.pulse_target(Some(150)).unwrap();
+        assert_eq!((t.target_bpm, t.down), (120, Some(false)));
+        // During the minimum the countdown shows, not the pulse wait.
+        let a = s.active_program().unwrap();
+        assert_eq!((a.pulse_to_bpm, a.seconds_remaining), (None, Some(290)));
+        // 60 % of 190 is 114, as the editor shows it.
+        s.max_heart_rate = 190;
+        assert_eq!(s.pulse_target(None).unwrap().target_bpm, 114);
+    }
+
+    #[test]
+    fn a_heart_rate_end_is_only_for_a_timed_walking_cool_down() {
+        let ok = |step: ProgramStep| {
+            validate_program(
+                &Program {
+                    id: 0,
+                    name: "Cool".to_string(),
+                    steps: vec![step],
+                    repeat_every_minutes: None,
+                    note: None,
+                },
+                0.6,
+                12.0,
+            )
+        };
+        let cool = ProgramStep {
+            duration_minutes: Some(5.0),
+            speed_kmh: 3.0,
+            incline_pct: 0.0,
+            zone: None,
+            kind: Some(StepKind::CoolDown),
+            pulse_end: Some(PulseEnd {
+                below_pct: PULSE_END_DEFAULT_PCT,
+            }),
+        };
+        ok(cool.clone()).unwrap();
+        let with = |f: &dyn Fn(&mut ProgramStep)| {
+            let mut s = cool.clone();
+            f(&mut s);
+            ok(s).unwrap_err()
+        };
+        assert!(with(&|s| s.kind = Some(StepKind::Walk)).contains("COOL_DOWN"));
+        assert!(with(&|s| s.kind = None).contains("COOL_DOWN"));
+        assert!(with(&|s| s.duration_minutes = None).contains("minutes"));
+        assert!(with(&|s| s.speed_kmh = 0.0).contains("walking speed"));
+        assert!(with(&|s| {
+            s.zone = Some(HeartZone {
+                low_pct: 50.0,
+                high_pct: 60.0,
+                trim: None,
+            })
+        })
+        .contains("heart zone or"));
+        assert!(with(&|s| s.pulse_end = Some(PulseEnd { below_pct: 49.0 })).contains("50 to 76"));
+        assert!(with(&|s| s.pulse_end = Some(PulseEnd { below_pct: 77.0 })).contains("50 to 76"));
+        assert!(with(&|s| s.pulse_end = Some(PulseEnd {
+            below_pct: f32::NAN
+        }))
+        .contains("50 to 76"));
+    }
+
+    /// A step saved before #233 has no `pulse_end` and loads as none; a
+    /// step with none saves without the field, so old and new JSON match.
+    #[test]
+    fn a_step_without_a_heart_rate_end_loads_and_saves_as_before() {
+        let old =
+            r#"{"duration_minutes":3.0,"speed_kmh":3.0,"incline_pct":0.0,"kind":"cool_down"}"#;
+        let step: ProgramStep = serde_json::from_str(old).unwrap();
+        assert_eq!(step.pulse_end, None);
+        assert!(!serde_json::to_string(&step).unwrap().contains("pulse_end"));
+        let new = r#"{"duration_minutes":3.0,"speed_kmh":3.0,"incline_pct":0.0,"kind":"cool_down","pulse_end":{"below_pct":60.0}}"#;
+        let step: ProgramStep = serde_json::from_str(new).unwrap();
+        assert_eq!(step.pulse_end, Some(PulseEnd { below_pct: 60.0 }));
     }
 }

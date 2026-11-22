@@ -1,4 +1,4 @@
-import type { ZoneBand, ZonePosition } from "../ipc";
+import type { PulseTarget, ZoneBand, ZonePosition } from "../ipc";
 import type { Accent } from "./registry";
 
 /** A heart rate zone's range for display, e.g. "133 to 152". */
@@ -12,3 +12,14 @@ export const ZONE_ACCENT: Record<ZonePosition, Accent> = {
   in: "green",
   over: "yellow",
 };
+
+/** A cool-down's pulse target for display, e.g. "to 114". */
+export function targetRange(t: PulseTarget): string {
+  return `to ${t.target_bpm}`;
+}
+
+/** The colour of a pulse against a cool-down target: down green, still high warm, no reading none. */
+export function targetAccent(t: PulseTarget): Accent | null {
+  if (t.down === null) return null;
+  return t.down ? "green" : "yellow";
+}

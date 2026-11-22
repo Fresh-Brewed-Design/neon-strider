@@ -33,7 +33,8 @@ export function describeProgram(p: Program): string {
   const length = openEnded ? (p.steps.length === 1 ? "Continuous" : `${num(total)} min, then continuous`) : `${num(total)} min`;
   const repeat = p.repeat_every_minutes != null ? ` every ${num(p.repeat_every_minutes)} min` : "";
   const zone = p.steps.some((s) => s.zone) ? " · heart zone" : "";
-  return `${length}${repeat} · ${pace}${zone}`;
+  const pulse = p.steps.some((s) => s.pulse_end) ? " · pulse end" : "";
+  return `${length}${repeat} · ${pace}${zone}${pulse}`;
 }
 
 /** A walking step follows one that holds the belt still (0 km/h). */
@@ -51,8 +52,9 @@ export function describePlan(p: Program): string {
     const time = st.duration_minutes == null ? "until you end it" : `${num(st.duration_minutes)} min`;
     const prefix = p.steps.length > 1 ? `${i + 1}. ` : "";
     const zone = st.zone ? `, heart zone ${num(st.zone.low_pct)} to ${num(st.zone.high_pct)} % of max` : "";
+    const pulse = st.pulse_end ? `, then on until heart rate is down to ${num(st.pulse_end.below_pct)} % of max` : "";
     const kind = st.kind ? `${kindCode(st.kind)} ` : "";
-    lines.push(`${prefix}${kind}${time} at ${st.speed_kmh.toFixed(1)} km/h, ${num(st.incline_pct)}% incline${zone}`);
+    lines.push(`${prefix}${kind}${time} at ${st.speed_kmh.toFixed(1)} km/h, ${num(st.incline_pct)}% incline${zone}${pulse}`);
   });
   if (walksAfterAHold(p)) {
     lines.push("After a 0 km/h step, the belt waits for GO before it moves.");
@@ -93,20 +95,28 @@ export function waitReason(w: ProgramWait): string {
 /**
  * Status line for a running program, e.g. "Walk 2/3 · 04:12 left" or "Rest · next walk in 21:30".
  * A step with a kind leads with Rust's label, counted within the kind, and keeps the step
- * number after it: "INTERVAL 3/5 · step 6/11 · 02:08 left".
+ * number after it: "INTERVAL 3/5 · step 6/11 · 02:08 left". A cool-down past its minutes,
+ * waiting on the pulse, says so in place of the time: "COOL_DOWN · step 5/5 · pulse to 114".
  */
 export function describeActive(a: ActiveProgram): string {
-  const left = a.seconds_remaining != null ? formatClock(a.seconds_remaining) : null;
-  if (a.phase === "resting") return left ? `Rest · next walk in ${left}` : "Rest";
+  const left =
+    a.pulse_to_bpm != null
+      ? `pulse${NBSP}to${NBSP}${a.pulse_to_bpm}`
+      : a.seconds_remaining != null
+        ? `${formatClock(a.seconds_remaining)} left`
+        : null;
+  // The plain clock, for a rest and a wait for GO.
+  const clock = a.seconds_remaining != null ? formatClock(a.seconds_remaining) : null;
+  if (a.phase === "resting") return clock ? `Rest · next walk in ${clock}` : "Rest";
   const position = a.step_count > 1 ? `${a.step_index + 1}/${a.step_count}` : "";
   const cycle = a.cycle > 1 ? ` · cycle ${a.cycle}` : "";
   if (a.kind) {
     // No-break spaces keep "INTERVAL 3/5" and "step 6/11" whole when a narrow HUD wraps the line.
     const step = `${a.kind.label.replace(/ /g, NBSP)}${position ? ` · step${NBSP}${position}` : ""}`;
-    if (a.wait) return `Next: ${step}${left ? ` · ${left}` : ""}${cycle}`;
-    return `${step}${left ? ` · ${left} left` : ""}${cycle}`;
+    if (a.wait) return `Next: ${step}${clock ? ` · ${clock}` : ""}${cycle}`;
+    return `${step}${left ? ` · ${left}` : ""}${cycle}`;
   }
   const step = position ? ` ${position}` : "";
-  if (a.wait) return `Next: walk${step}${left ? ` · ${left}` : ""}${cycle}`;
-  return `Walk${step}${left ? ` · ${left} left` : ""}${cycle}`;
+  if (a.wait) return `Next: walk${step}${clock ? ` · ${clock}` : ""}${cycle}`;
+  return `Walk${step}${left ? ` · ${left}` : ""}${cycle}`;
 }

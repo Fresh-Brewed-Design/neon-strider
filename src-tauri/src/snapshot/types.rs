@@ -1037,6 +1037,7 @@ mod tests {
                         incline_pct: 5.0,
                         zone: None,
                         kind: None,
+                        pulse_end: None,
                     }],
                     repeat_every_minutes: None,
                     note: None

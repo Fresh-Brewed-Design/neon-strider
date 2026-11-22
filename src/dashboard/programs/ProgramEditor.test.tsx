@@ -110,6 +110,93 @@ describe("ProgramEditor step kinds", () => {
     render(<ProgramEditor initial={toDraft(current!.programs[0])} onDone={() => {}} />);
     expect(screen.getByText("A step's kind names the step on the HUD, the Live page and the tray menu.")).toBeTruthy();
   });
+
+describe("ProgramEditor cool-down pulse target (#233)", () => {
+  it("offers the pulse target on a cool-down step only, and saves it as % of max", async () => {
+    const p = structuredClone(vo2Max());
+    delete p.steps[9].pulse_end;
+    render(<ProgramEditor initial={toDraft(p)} onDone={() => {}} />);
+    expect(screen.queryByLabelText("Step 1 ends on heart rate")).toBeNull();
+    // A saved cool-down without a target loads as it was saved.
+    const box = screen.getByLabelText("Step 10 ends on heart rate");
+    expect(screen.getByLabelText<HTMLInputElement>("Step 10 pulse target").disabled).toBe(true);
+    fireEvent.click(box);
+    expect(screen.getByLabelText<HTMLInputElement>("Step 10 pulse target").value).toBe("60");
+    expect(screen.getByText("108 bpm")).toBeTruthy();
+    expect(screen.getByText("With no heart rate reading, the cool-down step ends on its minutes.")).toBeTruthy();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save" })));
+    const steps = (saved()[0].program as typeof p).steps;
+    expect(steps[9].pulse_end).toEqual({ below_pct: 60 });
+    expect(steps[0]).not.toHaveProperty("pulse_end");
+  });
+
+  it("loads the seeded VO2 max with its cool-down ending on heart rate, and saves it unticked", async () => {
+    const p = vo2Max();
+    render(<ProgramEditor initial={toDraft(p)} onDone={() => {}} />);
+    const box = screen.getByLabelText<HTMLInputElement>("Step 10 ends on heart rate");
+    expect(box.checked).toBe(true);
+    expect(screen.getByLabelText<HTMLInputElement>("Step 10 pulse target").value).toBe("60");
+    fireEvent.click(box);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save" })));
+    expect((saved()[0].program as typeof p).steps[9]).not.toHaveProperty("pulse_end");
+  });
+
+  it("ticks the target at 60 % when a walking timed step becomes COOL_DOWN", async () => {
+    const p = current!.programs.find((x) => x.name === "Interval walk")!;
+    render(<ProgramEditor initial={toDraft(p)} onDone={() => {}} />);
+    expect(p.steps[10]).not.toHaveProperty("pulse_end");
+    fireEvent.change(screen.getByLabelText("Step 11 kind"), { target: { value: "cool_down" } });
+    expect(screen.getByLabelText<HTMLInputElement>("Step 11 ends on heart rate").checked).toBe(true);
+    expect(screen.getByLabelText<HTMLInputElement>("Step 11 pulse target").value).toBe("60");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save" })));
+    const steps = (saved()[0].program as typeof p).steps;
+    expect(steps[10]).toMatchObject({ kind: "cool_down", pulse_end: { below_pct: 60 } });
+    expect(steps.filter((s) => s.pulse_end)).toHaveLength(1);
+  });
+
+  it("ticks it in bpm while the editor shows bpm", () => {
+    const p = structuredClone(vo2Max());
+    p.steps = [{ duration_minutes: 5, speed_kmh: 3, incline_pct: 0, kind: "walk" }];
+    p.steps[0].zone = { low_pct: 60, high_pct: 70 };
+    render(<ProgramEditor initial={toDraft(p)} onDone={() => {}} />);
+    // The zone brings up the unit switch; with it off, the step can end on heart rate.
+    fireEvent.click(screen.getByRole("radio", { name: "bpm" }));
+    fireEvent.click(screen.getByLabelText("Heart zone on step 1"));
+    fireEvent.change(screen.getByLabelText("Step 1 kind"), { target: { value: "cool_down" } });
+    expect(screen.getByLabelText<HTMLInputElement>("Step 1 pulse target").value).toBe("108");
+  });
+
+  it("leaves the target off on a step that can't end on heart rate, and drops it off COOL_DOWN", async () => {
+    const p = structuredClone(vo2Max());
+    p.steps = [
+      { duration_minutes: 5, speed_kmh: 3, incline_pct: 0, kind: "walk", zone: { low_pct: 60, high_pct: 70 } },
+      { duration_minutes: 2, speed_kmh: 0, incline_pct: 0, kind: "rest" },
+      { duration_minutes: 5, speed_kmh: 3, incline_pct: 0, kind: "walk" },
+      { duration_minutes: null, speed_kmh: 3, incline_pct: 0, kind: "walk" },
+    ];
+    render(<ProgramEditor initial={toDraft(p)} onDone={() => {}} />);
+    for (const n of [1, 2, 3, 4]) fireEvent.change(screen.getByLabelText(`Step ${n} kind`), { target: { value: "cool_down" } });
+    for (const n of [1, 2, 4]) expect(screen.getByLabelText<HTMLInputElement>(`Step ${n} ends on heart rate`).checked).toBe(false);
+    expect(screen.getByLabelText<HTMLInputElement>("Step 3 ends on heart rate").checked).toBe(true);
+    fireEvent.change(screen.getByLabelText("Step 3 kind"), { target: { value: "walk" } });
+    expect(screen.queryByLabelText("Step 3 ends on heart rate")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Step 1 kind"), { target: { value: "walk" } });
+    fireEvent.change(screen.getByLabelText("Step 2 kind"), { target: { value: "walk" } });
+    fireEvent.change(screen.getByLabelText("Step 4 kind"), { target: { value: "walk" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save" })));
+    expect((saved()[0].program as typeof p).steps.some((s) => s.pulse_end)).toBe(false);
+  });
+
+  it("shows the target in bpm with the unit switch", () => {
+    const p = structuredClone(vo2Max());
+    p.steps = [{ duration_minutes: 5, speed_kmh: 3, incline_pct: 0, kind: "cool_down", pulse_end: { below_pct: 60 } }];
+    render(<ProgramEditor initial={toDraft(p)} onDone={() => {}} />);
+    expect(screen.getByText("Pulse target in")).toBeTruthy();
+    fireEvent.click(screen.getByRole("radio", { name: "bpm" }));
+    expect(screen.getByLabelText<HTMLInputElement>("Step 1 pulse target").value).toBe("108");
+    expect(screen.getByText("60 % of max")).toBeTruthy();
+  });
+});
 });
 
 describe("ProgramEditor STRIDE_FIT flag", () => {

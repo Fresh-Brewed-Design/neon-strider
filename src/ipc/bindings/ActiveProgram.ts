@@ -34,6 +34,12 @@ speed_kmh: number, incline_pct: number,
  */
 kind?: StepKindSpot, 
 /**
+ * Set while a cool-down step's minutes are done and it walks on until
+ * the pulse is under this many bpm (#233); `seconds_remaining` is none
+ * then, since nothing but the pulse, SKIP or END ends it.
+ */
+pulse_to_bpm?: number, 
+/**
  * The steps and repeat of the copy that runs, for STEP_MAP (#234). A
  * save of the running program reaches its next run, not this one, so
  * the saved program in `programs` can differ from what runs.

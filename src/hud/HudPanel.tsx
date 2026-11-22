@@ -1,10 +1,10 @@
 import { Fragment } from "react";
-import type { AppSnapshot, Command, HudWidget, ZoneBand } from "../ipc";
+import type { AppSnapshot, Command, HudWidget, PulseTarget, ZoneBand } from "../ipc";
 import { describeActive, describePlan, waitHeadline, waitReason } from "../dashboard/programs/format";
 import { nextStepLine } from "../dashboard/programs/stepMap";
 import { statWidget } from "../widgets/registry";
 import { Sparkline } from "../widgets/Sparkline";
-import { ZONE_ACCENT, zoneRange } from "../widgets/zone";
+import { targetAccent, targetRange, ZONE_ACCENT, zoneRange } from "../widgets/zone";
 import { HudNote } from "./HudNote";
 import { isMoving, startFailure } from "../state/linkStatus";
 import { SmallButton } from "./SmallButton";
@@ -18,6 +18,7 @@ export function StatCell({ id, snapshot }: { id: HudWidget; snapshot: AppSnapsho
   const { value, unit } = def.read(snapshot);
   const spark = def.spark?.(snapshot);
   const zone = def.zone?.(snapshot);
+  const target = def.target?.(snapshot);
   return (
     <div className={`hud-stat accent-${def.accent}`}>
       <span className="hud-label">{def.label}</span>
@@ -27,6 +28,7 @@ export function StatCell({ id, snapshot }: { id: HudWidget; snapshot: AppSnapsho
       </span>
       {spark && <Sparkline data={spark} className="hud-spark" />}
       {zone && <ZoneLine zone={zone} />}
+      {target && <TargetLine target={target} />}
     </div>
   );
 }
@@ -40,6 +42,21 @@ function ZoneLine({ zone }: { zone: ZoneBand }) {
       <span className={accent ? `hud-zone-label is-placed accent-${accent}` : "hud-zone-label"}>{zone.label}</span>
       <span className="hud-sub">
         {zoneRange(zone)}
+        <span className="hud-unit"> BPM</span>
+      </span>
+    </div>
+  );
+}
+
+/** A cool-down's pulse target under PULSE_RATE: Rust's word for where the
+ *  pulse is, then the target. Rust's sentence is the tooltip. */
+function TargetLine({ target }: { target: PulseTarget }) {
+  const accent = targetAccent(target);
+  return (
+    <div className="hud-zone" title={target.message} data-testid="hud-pulse-target">
+      <span className={accent ? `hud-zone-label is-placed accent-${accent}` : "hud-zone-label"}>{target.label}</span>
+      <span className="hud-sub">
+        {targetRange(target)}
         <span className="hud-unit"> BPM</span>
       </span>
     </div>

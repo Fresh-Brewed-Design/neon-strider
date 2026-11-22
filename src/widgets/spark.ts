@@ -5,12 +5,14 @@ export interface SparkData {
   points: (number | null)[];
   /** A heart rate zone shown as a band behind the line. */
   zone: ZoneBand | null;
+  /** A cool-down's pulse target (bpm), shown as a band from the target down. */
+  target?: number | null;
 }
 
 export interface SparkGeometry {
   /** SVG path data; one subpath per run of readings, so a gap stays a gap. */
   line: string;
-  /** The zone's band, top edge and height, in the same units. */
+  /** The zone's band (or the band under a cool-down target), top edge and height, in the same units. */
   band: { y: number; height: number } | null;
 }
 
@@ -31,9 +33,10 @@ const fmt = (n: number) => String(Math.round(n * 100) / 100);
  */
 export function sparkGeometry(data: SparkData, width: number, height: number): SparkGeometry | null {
   const { points, zone } = data;
+  const target = data.target ?? null;
   if (points.length === 0) return null;
   const values = points.filter((p): p is number => p !== null);
-  const bounds = zone ? [...values, zone.low_bpm, zone.high_bpm] : values;
+  const bounds = zone ? [...values, zone.low_bpm, zone.high_bpm] : target !== null ? [...values, target] : values;
   let lo = Math.min(...bounds);
   let hi = Math.max(...bounds);
   if (bounds.length === 0) {
@@ -64,6 +67,10 @@ export function sparkGeometry(data: SparkData, width: number, height: number): S
     inRun = true;
   });
 
-  const band = zone ? { y: y(zone.high_bpm), height: y(zone.low_bpm) - y(zone.high_bpm) } : null;
+  const band = zone
+    ? { y: y(zone.high_bpm), height: y(zone.low_bpm) - y(zone.high_bpm) }
+    : target !== null
+      ? { y: y(target), height: height - y(target) }
+      : null;
   return { line: parts.join(" "), band };
 }
