@@ -1,0 +1,3 @@
+- ECHO on a walk in History saves the walk as a new program named `ECHO // <date>`. Each steady stretch of speed and incline becomes one step, up to 12 steps, with the speeds in calibrated km/h.
+- The new program is only saved. Edit it or run it from Programs like any other, and Open in Programs under the ECHO button goes straight to the editor.
+- A walk under 3 minutes, or one with no steady minute at one speed, gets a short message instead of a program.

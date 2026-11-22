@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ComponentType } from "react";
 import { Activity, History, LayoutDashboard, ListChecks, Pin, PinOff, Settings2 } from "lucide-react";
 import { toast, Toaster } from "sonner";
 import { subscribeAppSnapshot, useAppState } from "../state/useAppState";
+import { useTreadmillStore } from "../store/treadmillStore";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { GuidedPinMarker } from "./guided/GuidedPinMarker";
 import { LinkControl } from "./link/LinkControl";
@@ -72,6 +73,17 @@ export function DashboardApp() {
     writePref(PAGE_KEY, id);
   };
 
+  // ECHO's "Open in Programs" on a History row: show the Programs page, where the editor opens it.
+  useEffect(
+    () =>
+      useTreadmillStore.subscribe((st, prev) => {
+        if (st.programRequest === null || st.programRequest === prev.programRequest) return;
+        writePref(PAGE_KEY, "programs");
+        setPage("programs");
+      }),
+    [],
+  );
+
   // INSTALL on the HUD's update card: open System -> Updates on the notes, once per request.
   useEffect(
     () =>
@@ -108,7 +120,10 @@ export function DashboardApp() {
                 <button
                   type="button"
                   aria-current={active ? "page" : undefined}
-                  onClick={() => openPage(id)}
+                  onClick={() => {
+                    useTreadmillStore.getState().clearProgramRequest();
+                    openPage(id);
+                  }}
                   className={cx(
                     "relative flex w-full items-center gap-3 rounded px-3 py-2.5 text-left transition-colors",
                     active ? "bg-neon-cyan/10 text-neon-cyan" : "text-white/55 hover:bg-white/5 hover:text-white",

@@ -1794,6 +1794,22 @@ const AVERAGES_BACKFILL_KEY: &str = "session_averages_backfill_v1";
 /// a percent (the engine switched on 2026-11-13, around 16:05 Pacific).
 const INCLINE_PCT_SINCE_MS: i64 = 1_794_614_700_000;
 
+/// A stored sample's incline as a calibrated percent: samples recorded before
+/// `INCLINE_PCT_SINCE_MS` hold a hardware level, converted with the current
+/// calibration.
+pub(crate) fn sample_incline_pct(
+    value: f32,
+    timestamp_ms: i64,
+    tilt_multiplier: f32,
+    incline_offset: f32,
+) -> f32 {
+    if timestamp_ms < INCLINE_PCT_SINCE_MS {
+        value * tilt_multiplier + incline_offset
+    } else {
+        value
+    }
+}
+
 /// Averages for one stored session: (avg speed, raw avg speed, avg incline %).
 /// Speeds are distance over session time (the engine's rule); incline is the
 /// mean of the samples, converting pre-switch levels with the current
@@ -1804,13 +1820,8 @@ fn backfill_averages(
     tilt_multiplier: f32,
     incline_offset: f32,
 ) -> (f32, f32, f32) {
-    let to_pct = |value: f32, ts: i64| {
-        if ts < INCLINE_PCT_SINCE_MS {
-            value * tilt_multiplier + incline_offset
-        } else {
-            value
-        }
-    };
+    let to_pct =
+        |value: f32, ts: i64| sample_incline_pct(value, ts, tilt_multiplier, incline_offset);
     let secs = session.duration_seconds.max(0) as f64;
     let per_hour = |m: f64| {
         if secs > 0.0 {

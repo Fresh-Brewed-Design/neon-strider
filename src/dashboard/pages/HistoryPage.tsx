@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ActionStatus } from "../../components/ActionStatus";
 import { errorText, useAction } from "../../components/useAction";
-import { dispatch, type SavedFile } from "../../ipc";
+import { dispatch, type EchoProgram, type SavedFile } from "../../ipc";
 import { SessionRepository } from "../../services/db/repositories/sessionRepository";
 import type { Session } from "../../services/db/schema";
 import { mergeSessions, type MergedSession } from "../../services/sessionMerge";
@@ -25,6 +25,7 @@ export function HistoryPage() {
   const refreshTrigger = useTreadmillStore((s) => s.historyRefreshTrigger);
   const thresholdMinutes = useTreadmillStore((s) => s.sessionMergeThresholdMinutes);
   const confirm = useTreadmillStore((s) => s.confirm);
+  const openProgram = useTreadmillStore((s) => s.openProgram);
   const activeSessionId = useAppState((s) => s.session.active_id);
   const weekly = useAppState((s) => s.weekly);
   const deskSync = useAppState((s) => s.desk_sync);
@@ -204,6 +205,8 @@ export function HistoryPage() {
                     }}
                     onInspect={() => void inspect(s, row)}
                     onDelete={() => remove(s, row)}
+                    onEcho={() => invoke<EchoProgram>("program_from_session", { sessionIds: s.mergedIds })}
+                    onOpenProgram={openProgram}
                   />
                 );
               })}

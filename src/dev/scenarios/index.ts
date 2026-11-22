@@ -10,6 +10,7 @@ import { calibration } from "./calibration";
 import { calls } from "./calls";
 import { deckProfile } from "./deckprofile";
 import { deskSync } from "./desksync";
+import { echo } from "./echo";
 import { engage } from "./engage";
 import { eyeBreak } from "./eyebreak";
 import { ghostPod } from "./ghostpod";
@@ -60,4 +61,5 @@ export const SCENARIOS: Scenario[] = [
   guided,
   hrSpark,
   hrZone,
+  echo,
 ];
