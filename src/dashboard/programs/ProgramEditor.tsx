@@ -331,7 +331,7 @@ function PulseRow({
           />
           <span className="font-bold uppercase tracking-[0.12em] text-neon-magenta">Pulse target</span>
         </label>
-        <span className={cx(!step.pulse && "opacity-40")}>walk on until heart rate is down to</span>
+        <span className={cx(!step.pulse && "opacity-40")}>down to</span>
         <input
           className={cx(field, "w-16")}
           inputMode="decimal"
