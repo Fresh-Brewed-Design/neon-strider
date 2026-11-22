@@ -1,0 +1,1 @@
+- The HUD header no longer spills past its edge at a narrow width or a larger text size.

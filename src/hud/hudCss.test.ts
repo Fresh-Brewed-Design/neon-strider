@@ -71,3 +71,22 @@ describe("HUD distance readouts at larger text sizes", () => {
     }
   });
 });
+
+// The header's right-hand group (SIM tag, link status, minify) was wider than its own box (the minify
+// button's negative margin stuck out 6 px) and, with the SIM tag at 340 px and 175 % text size, wider
+// than the header (#231).
+describe("HUD header end group at 340 px", () => {
+  it("shrinks to the header and wraps instead of overflowing", () => {
+    const end = rule(".hud-header-end");
+    expect(end).not.toBe("");
+    expect(end).toMatch(/flex-wrap:\s*wrap/);
+    expect(end).toMatch(/min-width:\s*0/);
+    expect(end).toMatch(/max-width:\s*100%/);
+  });
+
+  it("keeps negative margins off the children, so they stay inside the group's box", () => {
+    expect(rule(".hud-relink")).not.toMatch(/margin:[^;]*-\d+px\s+-\d+px/);
+    expect(rule(".hud-btn.hud-btn-minify")).toMatch(/margin:\s*-2px 0;/);
+    expect(css).toMatch(/\.hud-header-end:has\(\.hud-btn-minify\)\s*\{\s*margin-right:\s*-6px/);
+  });
+});
