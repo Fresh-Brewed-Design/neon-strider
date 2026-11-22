@@ -82,6 +82,23 @@ describe("HUD distance readouts at larger text sizes", () => {
   });
 });
 
+// The STASIS and DUMP buttons sit in the same column as the VEL and TILT steppers. At a larger text
+// size STASIS can't shrink below its label, so a fixed-width DUMP beside it pushed the row about
+// 6 CSS px past the steppers' right edge.
+describe("HUD controls share one right edge", () => {
+  it("wraps DUMP under STASIS when the two don't fit side by side", () => {
+    expect(rule(".hud-transport")).toMatch(/flex-wrap:\s*wrap/);
+    const main = css.match(/\.hud-transport \.hud-btn-main\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(main).toMatch(/min-width:\s*max-content/);
+    expect(main).toMatch(/flex:\s*\d+ 1 auto/);
+  });
+
+  it("lets DUMP grow into the row instead of holding a fixed width", () => {
+    const stop = css.match(/\.hud-transport \.hud-btn-stop\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(stop).toMatch(/flex:\s*1 0 72px/);
+  });
+});
+
 // The header's right-hand group (SIM tag, link status, minify) was wider than its own box (the minify
 // button's negative margin stuck out 6 px) and, with the SIM tag at 340 px and 175 % text size, wider
 // than the header (#231).

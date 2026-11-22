@@ -1,0 +1,1 @@
+- The HUD's STASIS and DUMP buttons no longer stick out past the VEL and TILT controls at larger Windows text sizes.
