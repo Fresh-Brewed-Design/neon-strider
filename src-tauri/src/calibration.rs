@@ -22,7 +22,8 @@
 //! measured belt speed over the cadence from those taps.
 //!
 //! The belt loop's length is asked once and kept per treadmill, by the same
-//! Bluetooth identity as DECK_PROFILE (`belt_key_for`).
+//! Bluetooth identity as DECK_PROFILE (`belt_key_for`), and so is STRIDE_FIT
+//! (`stride_fit.rs`), the fastest speed the user's stride still fits the deck.
 //!
 //! RUN ALL walks the whole list as a sweep: Rust keeps which speeds are saved,
 //! skipped or still to do. Saving or skipping one never touches the belt; the
@@ -36,6 +37,7 @@
 mod fresh;
 mod guide;
 mod steps;
+pub mod stride_fit;
 mod tap;
 
 pub use fresh::{aside_key_for, persist as persist_fresh, FreshSave};
@@ -1133,6 +1135,7 @@ pub fn switch_belt(
     let changed = with_belt(|b| b.device_id.as_deref() != Some(device_id));
     let points = changed.then(|| fresh::points_for(store, device_id));
     let aside = fresh::aside_for(store, device_id);
+    stride_fit::switch(store, device_id);
     with_belt(|b| {
         b.key = Some(key);
         b.cm = cm;

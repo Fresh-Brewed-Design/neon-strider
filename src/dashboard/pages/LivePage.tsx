@@ -76,6 +76,17 @@ function headerActions(s: AppSnapshot): ReactNode {
   );
 }
 
+/** STRIDE_FIT's mark on the speed slider, or none while it is unset. Only a mark: the slider still goes to the top. */
+function strideFitMark(deck: DeckSnapshot) {
+  const fit = deck.stride_fit_kmh;
+  if (fit === null || fit === undefined) return null;
+  return {
+    value: fit,
+    label: `FIT ${fit.toFixed(1)}`,
+    title: `STRIDE_FIT ${fit.toFixed(1)} km/h is the fastest speed your stride fits the deck.`,
+  };
+}
+
 /** The Live page control a target came from. */
 type NoteFrom = "speed" | "tilt";
 
@@ -126,6 +137,7 @@ export function LivePage() {
             }}
             note={noteFor("speed")}
             snap={(kmh) => snapToDeck(kmh, deck)}
+            mark={strideFitMark(deck)}
             pin={{ widget: "VELOCITY", pinned: pinned.has("VELOCITY") }}
           />
           <Axis
