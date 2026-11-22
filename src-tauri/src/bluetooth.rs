@@ -9,6 +9,11 @@
 //!
 //! Both share `ORCHESTRATOR`, a tokio mutex; neither holds it across BLE I/O.
 //!
+//! Every BLE call has a time limit (the `*_TIMEOUT`s): after the PC sleeps,
+//! Windows can leave a call pending for good, and a call that never returns
+//! would hold up the connect, the worker or the windows with it. A call past
+//! its limit fails like any other error.
+//!
 //! Both talk to the deck through [`DeckLink`]: the real treadmill over BLE,
 //! or, in dev builds only, the simulated one (`sim_link.rs`).
 
@@ -22,6 +27,7 @@ use btleplug::platform::{Adapter, Manager as BtleManager, Peripheral};
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::error::Error;
+use std::future::Future;
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
@@ -33,7 +39,8 @@ static ADAPTER: Mutex<Option<Adapter>> = Mutex::const_new(None);
 /// link and HEART_LINK take this around every scan.
 pub(crate) static SCAN_LOCK: Mutex<()> = Mutex::const_new(());
 /// The treadmill of the current (or last) connection. Lock order: this before
-/// `ORCHESTRATOR`.
+/// `ORCHESTRATOR`. Never held across BLE I/O: the snapshot emitter reads it
+/// every second, so a BLE call under it would freeze every window.
 pub(crate) static CONNECTED_DECK: Mutex<Option<DeckLink>> = Mutex::const_new(None);
 /// The one shared engine state.
 pub(crate) static ORCHESTRATOR: LazyLock<Mutex<OrchestratorState>> =
@@ -60,30 +67,44 @@ const DISCONNECT_SETTLE: Duration = Duration::from_millis(1500);
 /// discovery, and after discovery before subscribing; both are one-off costs.
 const CONNECT_SETTLE: Duration = Duration::from_millis(500);
 const DISCOVER_SETTLE: Duration = Duration::from_millis(500);
-/// How long one connect may take before the try counts as failed.
-/// Windows fails a connect on its own; CoreBluetooth on macOS waits forever
-/// when the deck doesn't answer (it is linked to another device, asleep or out
-/// of range), which would hold the connection lock until the app quits. A
-/// deck that is advertising connects in a second or two, so 10 s is headroom.
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-/// How long a disconnect may wait for the stack to confirm it.
-/// btleplug's macOS disconnect waits for CoreBluetooth's disconnect callback,
-/// which only comes for a link that was up or pending: on a deck that never
-/// connected it would wait forever, before the first connect is even tried.
-/// A real link drops within a few hundred ms, so 2 s.
-const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(2);
-/// How long a write to the deck may wait for its acknowledgement.
-/// btleplug's macOS write-with-response only returns once CoreBluetooth reports
-/// success: a write the deck rejects, or one the characteristic doesn't take
-/// with a response, would never return and stall the worker before its first
-/// status poll. An acknowledged write takes a connection interval or two
-/// (tens of ms); 1 s is well inside the 600 ms poll's second beat.
-const WRITE_TIMEOUT: Duration = Duration::from_secs(1);
 /// Tries per characteristic to subscribe to status frames, and the wait between.
 /// A subscribe that fails right after discovery usually works on the next try;
 /// three tries 200 ms apart give up within a second, then the link reconnects.
 const SUBSCRIBE_TRIES: u32 = 3;
 const SUBSCRIBE_RETRY: Duration = Duration::from_millis(200);
+/// Time limits for each BLE call; a call past its limit counts as failed.
+/// Connecting to an awake deck in range takes a second or two on Windows, a
+/// few more when the stack opens a fresh GATT session; 15 s is well past
+/// that, and short enough that three hung connects end within a minute.
+/// CoreBluetooth (macOS) never fails a connect the deck doesn't answer (linked
+/// to another device, asleep, out of range): only this limit ends the try.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+/// Service discovery reads the services and their characteristics, a few
+/// round trips over the air (uncached on a first connect): 5 s, since it runs
+/// once per connect and a slow first read must not fail the try.
+const DISCOVER_TIMEOUT: Duration = Duration::from_secs(5);
+/// Closing a link is local plus one exchange with the deck. One that hangs
+/// leaves a link that is gone anyway, so after 3 s the app carries on. On
+/// macOS btleplug waits for a disconnect callback that never comes for a deck
+/// that never connected, so the disconnect before each connect try needs it.
+const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+/// Subscribing writes the status characteristic's descriptor and waits for
+/// the deck's answer: one round trip, so 3 s, like a disconnect.
+const SUBSCRIBE_TIMEOUT: Duration = Duration::from_secs(3);
+/// A write with response is one round trip of a few connection intervals
+/// (tens of ms). 2 s is far past that on a live link and keeps the worker
+/// from stalling long on a dead one, or on macOS, where an acknowledged write
+/// the characteristic doesn't take never returns (`control_write_type`).
+const WRITE_TIMEOUT: Duration = Duration::from_secs(2);
+/// Asking whether the link is up is a local query with no radio traffic, so
+/// it only hangs when the Bluetooth stack is stuck; after 2 s the link counts
+/// as down and the watchdog reconnects.
+const IS_CONNECTED_TIMEOUT: Duration = Duration::from_secs(2);
+/// A whole connect attempt (the scan and every try). Longer than the three
+/// tries can take with each call at its limit (`worst_connect_time`, about
+/// two minutes), so it only ends a call with no limit of its own (adapter
+/// queries, starting a scan) and `is_connecting` always clears.
+const CONNECT_LIMIT: Duration = Duration::from_secs(150);
 /// The protocol worker's tick, and its slower tick while the deck is stopped.
 /// A third of the engine's 150 ms command gap, so a queued command goes out
 /// within 50 ms of being allowed. Stopped, nothing is time critical, so 200 ms.
@@ -136,33 +157,75 @@ impl DeckLink {
         }
     }
 
+    /// Whether the link is up. A check past `IS_CONNECTED_TIMEOUT` reads as
+    /// down.
     pub(crate) async fn is_connected(&self) -> bool {
-        match self {
-            DeckLink::Ble(p) => p.is_connected().await.unwrap_or(false),
-            #[cfg(debug_assertions)]
-            DeckLink::Sim(s) => s.is_connected(),
-        }
-    }
-
-    pub(crate) async fn disconnect(&self) {
-        match self {
-            DeckLink::Ble(p) => drop_link(p).await,
-            #[cfg(debug_assertions)]
-            DeckLink::Sim(s) => s.disconnect(),
-        }
-    }
-
-    pub(crate) async fn write(&self, bytes: &[u8]) -> Result<(), String> {
-        match self {
-            DeckLink::Ble(p) => {
-                let characteristic = find_control_characteristic(p)?;
-                let kind = control_write_type(characteristic.properties);
-                within(WRITE_TIMEOUT, p.write(&characteristic, bytes, kind)).await
+        let call = async {
+            Ok(match self {
+                DeckLink::Ble(p) => p.is_connected().await.unwrap_or(false),
+                #[cfg(debug_assertions)]
+                DeckLink::Sim(s) => s.is_connected(),
+            })
+        };
+        match limited("Link check", IS_CONNECTED_TIMEOUT, call).await {
+            Ok(up) => up,
+            Err(e) => {
+                log::warn!("{e}; the link counts as down");
+                false
             }
-            #[cfg(debug_assertions)]
-            DeckLink::Sim(s) => s.write(bytes),
         }
     }
+
+    /// Close the link, waiting at most `DISCONNECT_TIMEOUT`.
+    pub(crate) async fn disconnect(&self) {
+        let call = async {
+            match self {
+                DeckLink::Ble(p) => ConnectSteps::disconnect(p).await,
+                #[cfg(debug_assertions)]
+                DeckLink::Sim(s) => {
+                    #[cfg(test)]
+                    if s.hangs_on_disconnect() {
+                        std::future::pending::<()>().await;
+                    }
+                    s.disconnect();
+                    Ok(())
+                }
+            }
+        };
+        if let Err(e) = limited("Disconnect", DISCONNECT_TIMEOUT, call).await {
+            log::warn!("{e}; carrying on without it");
+        }
+    }
+
+    /// Write a packet, waiting at most `WRITE_TIMEOUT` for the deck's answer.
+    pub(crate) async fn write(&self, bytes: &[u8]) -> Result<(), String> {
+        let call = async {
+            match self {
+                DeckLink::Ble(p) => {
+                    let characteristic = find_control_characteristic(p)?;
+                    let kind = control_write_type(characteristic.properties);
+                    p.write(&characteristic, bytes, kind)
+                        .await
+                        .map_err(|e| e.to_string())
+                }
+                #[cfg(debug_assertions)]
+                DeckLink::Sim(s) => s.write(bytes),
+            }
+        };
+        limited("Write", WRITE_TIMEOUT, call).await
+    }
+}
+
+/// Run one BLE call within `limit`. Past it, the call is dropped and fails
+/// with `link::timed_out`'s words, which `link::describe` reads as a timeout.
+async fn limited<T>(
+    what: &str,
+    limit: Duration,
+    call: impl Future<Output = Result<T, String>>,
+) -> Result<T, String> {
+    tokio::time::timeout(limit, call)
+        .await
+        .unwrap_or_else(|_| Err(crate::link::timed_out(what, limit)))
 }
 
 /// The snapshot's `connection.simulated`: the linked deck is the dev builds'
@@ -246,7 +309,6 @@ fn tick_each_second(
     let now_ms = crate::util::now_ms_u64();
     let quiet = crate::snapshot::calls::quiet_active();
     state.update_neural_flow(keys, quiet, now, now_ms);
-    crate::link::log_frame_flow();
     state.heart_bpm = crate::heart_rate::snapshot().bpm;
     state.max_heart_rate = u32::from(crate::heart_rate::max_heart_rate());
     state.zone_incline_trim = crate::heart_rate::zone_incline_trim();
@@ -306,9 +368,17 @@ pub(crate) async fn spawn_protocol_worker(app: tauri::AppHandle, deck: DeckLink)
         }
 
         let now = Instant::now();
+        let second = now.duration_since(last_second) >= SECOND_TICK;
+        if second {
+            if let Some(quiet) = crate::link::log_frame_flow() {
+                drop_silent_link(&deck, worker_id, quiet).await;
+                crate::hooks::set_key_counting(false);
+                return;
+            }
+        }
         let (packet, program_toasts) = {
             let mut state = ORCHESTRATOR.lock().await;
-            let warning = if now.duration_since(last_second) >= SECOND_TICK {
+            let warning = if second {
                 last_second = now;
                 tick_each_second(&mut state, now)
             } else {
@@ -351,6 +421,31 @@ pub(crate) async fn spawn_protocol_worker(app: tauri::AppHandle, deck: DeckLink)
         })
         .await;
     }
+}
+
+/// A link that reads as up but has sent no status frame for `quiet` (a stale
+/// subscription after a deck power cycle or the PC sleeping): take it out of
+/// the slot, so the watchdog sees no link even if the disconnect hangs, and
+/// close it. The watchdog's reconnect subscribes again; it sends the deck
+/// nothing, and the new connection holds the automatic start
+/// (`reset_connection`), so a still belt stays still and a moving one is
+/// adopted.
+async fn drop_silent_link(deck: &DeckLink, worker_id: u64, quiet: Duration) {
+    log::warn!(
+        "No status frames for {} s on a link that reads as up; dropping it to reconnect.",
+        quiet.as_secs()
+    );
+    {
+        let mut slot = CONNECTED_DECK.lock().await;
+        // Only while this worker is the current one: a newer connection's
+        // deck stays.
+        let current = ORCHESTRATOR.lock().await.worker_id == worker_id;
+        if current && slot.as_ref().is_some_and(|d| d.id() == deck.id()) {
+            slot.take();
+        }
+    }
+    deck.disconnect().await;
+    crate::link::retry_soon();
 }
 
 /// Open the session a moving belt calls for. A simulated deck's walks stay in
@@ -620,21 +715,17 @@ pub async fn connect_bluetooth_device(
     app_handle: tauri::AppHandle,
     id: String,
 ) -> Result<(), crate::link::LinkError> {
-    {
-        let mut state = ORCHESTRATOR.lock().await;
-        if state.is_connecting {
-            log::info!(
-                "Connection attempt already in progress. Ignoring request for {}",
-                id
-            );
-            return Ok(());
-        }
-        state.is_connecting = true;
-    }
-
-    crate::link::begin_connect();
-    let result = connect_to(&app_handle, &id).await;
-    ORCHESTRATOR.lock().await.is_connecting = false;
+    let attempt = async {
+        crate::link::begin_connect();
+        connect_to(&app_handle, &id).await
+    };
+    let Some(result) = while_connecting(attempt).await else {
+        log::info!(
+            "Connection attempt already in progress. Ignoring request for {}",
+            id
+        );
+        return Ok(());
+    };
 
     match result {
         Ok(()) => {
@@ -647,6 +738,24 @@ pub async fn connect_bluetooth_device(
             Err(err)
         }
     }
+}
+
+/// Run one connect attempt with `is_connecting` set, within `CONNECT_LIMIT`,
+/// and clear it after, however the attempt ended (a timeout included). None
+/// when an attempt is already running.
+async fn while_connecting(
+    attempt: impl Future<Output = Result<(), String>>,
+) -> Option<Result<(), String>> {
+    {
+        let mut state = ORCHESTRATOR.lock().await;
+        if state.is_connecting {
+            return None;
+        }
+        state.is_connecting = true;
+    }
+    let result = limited("Connecting", CONNECT_LIMIT, attempt).await;
+    ORCHESTRATOR.lock().await.is_connecting = false;
+    Some(result)
 }
 
 /// Whether the treadmill link is up, asked of the peripheral itself (the slot
@@ -690,13 +799,20 @@ pub(crate) fn ids_match(a: &str, b: &str) -> bool {
 /// Drop any old link and reset the engine for a new connection (which sets
 /// `hold_auto_start`: connecting never starts the belt).
 async fn begin_new_link() {
-    let mut connected = CONNECTED_DECK.lock().await;
-    if let Some(existing) = connected.take() {
+    drop_old_link(&CONNECTED_DECK).await;
+    ORCHESTRATOR.lock().await.reset_connection();
+    log::debug!("Readiness reset for new node entry.");
+}
+
+/// Take the old link out of `slot` and close it. The guard is dropped before
+/// the disconnect, so the snapshot emitter's read of the slot never waits on
+/// a disconnect (one that hangs would freeze every window).
+async fn drop_old_link(slot: &Mutex<Option<DeckLink>>) {
+    let existing = slot.lock().await.take();
+    if let Some(existing) = existing {
         log::debug!("Disconnecting existing active link before new connection...");
         existing.disconnect().await;
     }
-    ORCHESTRATOR.lock().await.reset_connection();
-    log::debug!("Readiness reset for new node entry.");
 }
 
 async fn connect_to(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
@@ -751,7 +867,10 @@ async fn connect_to(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
                 "Target peripheral found: {}. Starting connection sequence...",
                 p_id
             );
-            return connect_with_retries(app, &peripheral, &raw_id, id).await;
+            return connect_with_retries(&peripheral, id, || {
+                subscribe_and_start(app, &peripheral, &raw_id)
+            })
+            .await;
         }
     }
     Err("Device not found".to_string())
@@ -785,32 +904,61 @@ async fn connect_sim(app: &tauri::AppHandle) {
     }
 }
 
-/// `op`'s result, or a "timed out" error once `limit` passes.
-async fn within<T, E: std::fmt::Display>(
-    limit: Duration,
-    op: impl std::future::Future<Output = Result<T, E>>,
-) -> Result<T, String> {
-    match tokio::time::timeout(limit, op).await {
-        Ok(result) => result.map_err(|e| e.to_string()),
-        Err(_) => Err(format!("timed out after {} s", limit.as_secs())),
+/// The calls of one connect try, apart from the peripheral so a test can
+/// stand in a link that hangs. `connect_with_retries` gives each its limit.
+trait ConnectSteps {
+    fn connect(&self) -> impl Future<Output = Result<(), String>> + Send;
+    fn discover(&self) -> impl Future<Output = Result<(), String>> + Send;
+    fn disconnect(&self) -> impl Future<Output = Result<(), String>> + Send;
+}
+
+impl ConnectSteps for Peripheral {
+    async fn connect(&self) -> Result<(), String> {
+        btleplug::api::Peripheral::connect(self)
+            .await
+            .map_err(|e| e.to_string())
+    }
+    async fn discover(&self) -> Result<(), String> {
+        self.discover_services().await.map_err(|e| e.to_string())
+    }
+    async fn disconnect(&self) -> Result<(), String> {
+        btleplug::api::Peripheral::disconnect(self)
+            .await
+            .map_err(|e| e.to_string())
     }
 }
 
-/// Drop the BLE link, if any, without waiting past `DISCONNECT_TIMEOUT`.
-async fn drop_link(peripheral: &Peripheral) {
-    if let Err(e) = within(DISCONNECT_TIMEOUT, peripheral.disconnect()).await {
-        log::debug!("Disconnect not confirmed ({}); going on.", e);
+/// Close `link` within `DISCONNECT_TIMEOUT`; a failure only goes to the log.
+async fn close<S: ConnectSteps>(link: &S) {
+    if let Err(e) = limited("Disconnect", DISCONNECT_TIMEOUT, link.disconnect()).await {
+        log::debug!("{e}");
     }
+}
+
+/// The longest `connect_with_retries` can take with every call at its limit
+/// (one status characteristic). `CONNECT_LIMIT` must outlast it.
+#[cfg(test)]
+fn worst_connect_time() -> Duration {
+    let subscribe = (SUBSCRIBE_TIMEOUT + SUBSCRIBE_RETRY) * SUBSCRIBE_TRIES + SUBSCRIBE_TIMEOUT;
+    let one_try = DISCONNECT_TIMEOUT
+        + DISCONNECT_SETTLE
+        + CONNECT_TIMEOUT
+        + CONNECT_SETTLE
+        + DISCOVER_TIMEOUT
+        + DISCOVER_SETTLE
+        + subscribe
+        + DISCONNECT_TIMEOUT;
+    SCAN_TIME + one_try * crate::link::CONNECT_TRIES
 }
 
 /// Up to `link::CONNECT_TRIES` full cycles of disconnect, connect, discover
-/// and subscribe.
-async fn connect_with_retries(
-    app: &tauri::AppHandle,
-    peripheral: &Peripheral,
-    raw_id: &str,
-    id: &str,
-) -> Result<(), String> {
+/// and `subscribe`. A step past its time limit fails that try.
+async fn connect_with_retries<S, F, Fut>(link: &S, id: &str, mut subscribe: F) -> Result<(), String>
+where
+    S: ConnectSteps,
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<bool, String>>,
+{
     for attempt in 1..=crate::link::CONNECT_TRIES {
         crate::link::set_attempt(attempt);
         log::info!(
@@ -818,26 +966,26 @@ async fn connect_with_retries(
             attempt,
             crate::link::CONNECT_TRIES
         );
-        drop_link(peripheral).await;
+        close(link).await;
         tokio::time::sleep(DISCONNECT_SETTLE).await;
 
-        // The next try's drop_link() cancels a connect that timed out.
-        if let Err(e) = within(CONNECT_TIMEOUT, peripheral.connect()).await {
+        if let Err(e) = limited("Connect", CONNECT_TIMEOUT, link.connect()).await {
             log::warn!("Connection failed: {}. Retrying...", e);
             continue;
         }
         tokio::time::sleep(CONNECT_SETTLE).await;
 
-        if peripheral.discover_services().await.is_err() {
-            drop_link(peripheral).await;
+        if let Err(e) = limited("Service discovery", DISCOVER_TIMEOUT, link.discover()).await {
+            log::warn!("Service discovery failed: {}. Retrying...", e);
+            close(link).await;
             continue;
         }
         tokio::time::sleep(DISCOVER_SETTLE).await;
 
-        if subscribe_and_start(app, peripheral, raw_id).await? {
+        if subscribe().await? {
             return Ok(());
         }
-        drop_link(peripheral).await;
+        close(link).await;
     }
     Err(format!(
         "Failed to connect to {} after {} full cycles.",
@@ -869,14 +1017,20 @@ async fn subscribe_and_start(
 
     for characteristic in &status_characteristics {
         for _ in 0..SUBSCRIBE_TRIES {
-            if peripheral.subscribe(characteristic).await.is_err() {
+            let subscribe = async {
+                peripheral
+                    .subscribe(characteristic)
+                    .await
+                    .map_err(|e| e.to_string())
+            };
+            if let Err(e) = limited("Subscribe", SUBSCRIBE_TIMEOUT, subscribe).await {
+                log::debug!("Subscribe failed: {e}");
                 tokio::time::sleep(SUBSCRIBE_RETRY).await;
                 continue;
             }
-            let stream = peripheral
-                .notifications()
-                .await
-                .map_err(|e| e.to_string())?;
+            let notifications =
+                async { peripheral.notifications().await.map_err(|e| e.to_string()) };
+            let stream = limited("Notifications", SUBSCRIBE_TIMEOUT, notifications).await?;
             switch_deck_profile(app, raw_id).await;
             tokio::spawn(listen_for_status(app.clone(), stream, false));
             let deck = DeckLink::Ble(peripheral.clone());
@@ -1081,17 +1235,6 @@ pub(crate) fn apply_manual_intent(
 mod tests {
     use super::*;
 
-    #[tokio::test(start_paused = true)]
-    async fn a_connect_that_never_answers_times_out() {
-        let never = std::future::pending::<Result<(), String>>();
-        let err = within(CONNECT_TIMEOUT, never).await.unwrap_err();
-        assert_eq!(err, "timed out after 10 s");
-        assert_eq!(
-            crate::link::describe(&err).kind,
-            crate::link::LinkErrorKind::Timeout
-        );
-    }
-
     #[test]
     fn a_window_sync_keeps_the_saved_treadmill() {
         let id = |s: &str| Some(s.to_string());
@@ -1118,16 +1261,6 @@ mod tests {
         );
         // Properties unknown: as before.
         assert_eq!(control_write_type(P::empty()), WriteType::WithResponse);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn a_connect_that_answers_keeps_its_result() {
-        assert_eq!(
-            within(CONNECT_TIMEOUT, async { Ok::<_, String>(7) }).await,
-            Ok(7)
-        );
-        let failed = within(CONNECT_TIMEOUT, async { Err::<(), _>("refused") }).await;
-        assert_eq!(failed, Err("refused".to_string()));
     }
 
     fn frame(status: MachineStatus, speed_kmh: f32, incline: u8) -> Telemetry {
@@ -1345,6 +1478,188 @@ mod tests {
         );
         assert_eq!(profile_device_id("aa:bb:cc:dd:ee:ff"), "AABBCCDDEEFF");
         assert_eq!(profile_device_id("dev-1"), "DEV1");
+    }
+
+    /// Run `f` on a test clock that jumps ahead whenever every task waits.
+    fn paused<F: Future>(f: F) -> F::Output {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .start_paused(true)
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
+    /// A stand-in for the peripheral: the first `hung_connects` connects
+    /// never return, and disconnect or discovery can hang too.
+    #[derive(Default)]
+    struct FakeLink {
+        hung_connects: u32,
+        hang_disconnect: bool,
+        hang_discover: bool,
+        connects: std::sync::atomic::AtomicU32,
+    }
+
+    impl FakeLink {
+        fn connects(&self) -> u32 {
+            self.connects.load(std::sync::atomic::Ordering::SeqCst)
+        }
+    }
+
+    async fn hang_if(hang: bool) {
+        if hang {
+            std::future::pending::<()>().await;
+        }
+    }
+
+    impl ConnectSteps for FakeLink {
+        async fn connect(&self) -> Result<(), String> {
+            let n = self
+                .connects
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            hang_if(n < self.hung_connects).await;
+            Ok(())
+        }
+        async fn discover(&self) -> Result<(), String> {
+            hang_if(self.hang_discover).await;
+            Ok(())
+        }
+        async fn disconnect(&self) -> Result<(), String> {
+            hang_if(self.hang_disconnect).await;
+            Ok(())
+        }
+    }
+
+    /// Connect `link` as `connect_to` does; how it ended, how long it took
+    /// on the test clock, and how many times it subscribed.
+    async fn try_link(link: &FakeLink) -> (Result<(), String>, Duration, u32) {
+        let start = tokio::time::Instant::now();
+        let mut subscribed = 0;
+        let result = connect_with_retries(link, "deck", || {
+            subscribed += 1;
+            async { Ok(true) }
+        })
+        .await;
+        (result, start.elapsed(), subscribed)
+    }
+
+    #[test]
+    fn a_connect_that_never_returns_fails_each_try_then_gives_up() {
+        paused(async {
+            let link = FakeLink {
+                hung_connects: u32::MAX,
+                ..Default::default()
+            };
+            let (result, took, subscribed) = try_link(&link).await;
+            let err = result.unwrap_err();
+            assert_eq!(
+                crate::link::describe(&err).kind,
+                crate::link::LinkErrorKind::Timeout,
+                "{err}"
+            );
+            assert_eq!(link.connects(), crate::link::CONNECT_TRIES);
+            assert_eq!(subscribed, 0);
+            assert_eq!(
+                took,
+                (DISCONNECT_SETTLE + CONNECT_TIMEOUT) * crate::link::CONNECT_TRIES
+            );
+        });
+    }
+
+    #[test]
+    fn a_connect_that_hangs_once_links_on_the_next_try() {
+        paused(async {
+            let link = FakeLink {
+                hung_connects: 1,
+                ..Default::default()
+            };
+            let (result, took, subscribed) = try_link(&link).await;
+            assert_eq!(result, Ok(()));
+            assert_eq!((link.connects(), subscribed), (2, 1));
+            assert!(took < CONNECT_TIMEOUT * 2, "{took:?}");
+        });
+    }
+
+    #[test]
+    fn a_hanging_disconnect_and_discovery_only_cost_their_limits() {
+        paused(async {
+            let link = FakeLink {
+                hang_disconnect: true,
+                hang_discover: true,
+                ..Default::default()
+            };
+            let (result, took, subscribed) = try_link(&link).await;
+            assert!(result.is_err());
+            assert_eq!((link.connects(), subscribed), (3, 0));
+            let one_try = DISCONNECT_TIMEOUT
+                + DISCONNECT_SETTLE
+                + CONNECT_SETTLE
+                + DISCOVER_TIMEOUT
+                + DISCONNECT_TIMEOUT;
+            assert_eq!(took, one_try * crate::link::CONNECT_TRIES);
+        });
+    }
+
+    #[test]
+    fn a_hung_connect_attempt_still_clears_is_connecting() {
+        paused(async {
+            let start = tokio::time::Instant::now();
+            let hung = while_connecting(std::future::pending());
+            // A second request while the first hangs is turned away.
+            let second = async {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                let refused = while_connecting(async { Ok(()) }).await.is_none();
+                (refused, ORCHESTRATOR.lock().await.is_connecting)
+            };
+            let (first, (refused, connecting_meanwhile)) = tokio::join!(hung, second);
+            assert!(refused && connecting_meanwhile);
+            let err = first.expect("it ran").unwrap_err();
+            assert_eq!(
+                crate::link::describe(&err).kind,
+                crate::link::LinkErrorKind::Timeout,
+                "{err}"
+            );
+            assert_eq!(start.elapsed(), CONNECT_LIMIT);
+            assert!(!ORCHESTRATOR.lock().await.is_connecting);
+            // The next attempt runs.
+            assert_eq!(while_connecting(async { Ok(()) }).await, Some(Ok(())));
+        });
+    }
+
+    #[test]
+    fn the_connect_limit_outlasts_every_try_at_its_limits() {
+        assert!(
+            worst_connect_time() < CONNECT_LIMIT,
+            "{:?}",
+            worst_connect_time()
+        );
+    }
+
+    /// The snapshot emitter reads the slot every second; a disconnect that
+    /// never returns must not hold it, and ends at its limit.
+    #[cfg(debug_assertions)]
+    #[test]
+    fn a_hanging_disconnect_never_holds_the_slot_the_emitter_reads() {
+        paused(async {
+            let sim = std::sync::Arc::new(std::sync::Mutex::new(crate::sim::SimDeck::new(
+                Instant::now(),
+            )));
+            let link = crate::sim_link::SimLink::connect_to(sim).hanging_disconnect();
+            let slot = Mutex::new(Some(DeckLink::Sim(link)));
+            let start = tokio::time::Instant::now();
+            let emitter = async {
+                for _ in 0..2 {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    let read = tokio::time::timeout(Duration::from_millis(10), async {
+                        slot.lock().await.is_some()
+                    })
+                    .await;
+                    assert_eq!(read.ok(), Some(false), "the emitter waited on the slot");
+                }
+            };
+            tokio::join!(drop_old_link(&slot), emitter);
+            assert_eq!(start.elapsed(), DISCONNECT_TIMEOUT);
+        });
     }
 
     #[test]

@@ -32,7 +32,7 @@ pub const WORDS: super::Words = super::Words {
     computer: "PC",
     settings: "Windows settings",
     bluetooth_blocked: "Windows blocked Bluetooth access. Check Settings, Privacy, Bluetooth.",
-    credential_store: "Windows Credential Manager",
+    login_not_saved: "The Strava login could not be saved securely in Windows Credential Manager.",
     release_download: "Windows installer",
 };
 

@@ -35,7 +35,7 @@ pub const WORDS: super::Words = super::Words {
     computer: "Mac",
     settings: "System Settings",
     bluetooth_blocked: "macOS blocked Bluetooth access. Allow it in Privacy & Security, Bluetooth.",
-    credential_store: "the Keychain",
+    login_not_saved: "The Strava login could not be saved securely in the Keychain.",
     release_download: "Mac download",
 };
 

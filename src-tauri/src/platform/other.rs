@@ -16,7 +16,7 @@ pub const WORDS: super::Words = super::Words {
     computer: "computer",
     settings: "the system settings",
     bluetooth_blocked: "The system blocked Bluetooth access. Allow it in the system settings.",
-    credential_store: "the system keyring",
+    login_not_saved: "The Strava login could not be saved securely in the system keyring.",
     release_download: "download for this system",
 };
 

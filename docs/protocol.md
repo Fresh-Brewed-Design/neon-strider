@@ -85,7 +85,9 @@ Another deck may use a different byte. To check what yours sends:
    - `deck status byte N (...)`: logged whenever the byte changes, including
      `(UNKNOWN)` values, with the previous value.
    - `no status frames for N s` / `status frames arriving again`: whether
-     frames stop while the screen is off.
+     frames stop while the screen is off. After 10 s of silence the app also
+     drops the link and reconnects (`No status frames for N s on a link that
+     reads as up`), which sends the deck nothing.
    - `Engage: no answer from the deck in 8 s`: the status, unknown code and
      time since the last frame when Engage gave up.
 

@@ -21,6 +21,7 @@ export function Transport({ s }: { s: AppSnapshot }) {
   const waiting = engage.pending || (connection.start_pending && !moving);
   // On a paused program this button is its GO (Rust resumes the program).
   const programGo = !moving && s.active_program?.phase === "walking" && s.active_program.paused;
+  const paused = deck.status === "Paused";
 
   if (!connection.connected) {
     const linking = state === "connecting" || state === "scanning";
@@ -57,21 +58,27 @@ export function Transport({ s }: { s: AppSnapshot }) {
       <div className="flex gap-3">
         <NeonButton
           tone={moving ? "magenta" : "cyan"}
-          className="flex h-10 flex-1 items-center justify-center gap-2 text-sm"
+          className="flex h-12 flex-1 flex-col items-center justify-center text-sm"
           disabled={control.pending || waiting}
           onClick={() => void engage.run(() => dispatch({ type: "toggle_start" }))}
         >
-          {waiting && <Loader2 size={14} className="animate-spin" />}
-          {moving ? "Stasis" : programGo ? "GO" : deck.status === "Paused" ? "Re-jack" : "Engage"}
+          <span className="flex items-center gap-2">
+            {waiting && <Loader2 size={14} className="animate-spin" />}
+            {moving ? "Stasis" : programGo ? "GO" : paused ? "Re-jack" : "Engage"}
+          </span>{" "}
+          <span className="font-mono text-[11px] font-normal normal-case leading-tight tracking-normal opacity-70">
+            {moving ? "pause" : programGo || paused ? "resume" : "start"}
+          </span>
         </NeonButton>
         <NeonButton
           tone="magenta"
-          className="h-10 w-32"
+          className="flex h-12 w-32 flex-col items-center justify-center"
           disabled={deck.status === "Stopped" || deck.status === "Stopping" || control.pending}
           onClick={() => void control.run(() => dispatch({ type: "stop" }))}
           title="Stop the belt and end the session"
         >
-          Dump
+          Dump{" "}
+          <span className="font-mono text-[11px] font-normal normal-case leading-tight tracking-normal opacity-70">end walk</span>
         </NeonButton>
       </div>
       <ActionStatus

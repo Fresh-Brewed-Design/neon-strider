@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Neon Strider",
-  "version": "1.54.1",
+  "version": "1.55.0",
   "identifier": "com.freshbreweddesign.neonstrider",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -19,7 +19,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZCNDc4MDM1ODkxOUU4NEIKUldSTDZCbUpOWUJIYTRxUmgxQ1JLRytlZjdPRFZjVFB3NmJjQ2NlWHNjcjJGc2E4bFN3OFArSWcK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ5NDZDM0MwRjBDMjg2RUQKUldUdGhzTHd3TU5HU1hnTm9OcDdWdlRuWnRsMmIzQ29NMFJzcExPTm1JTCt6bXk4SUNKMlB4STcK",
       "endpoints": [
         "https://github.com/Fresh-Brewed-Design/neon-strider/releases/latest/download/latest.json"
       ],

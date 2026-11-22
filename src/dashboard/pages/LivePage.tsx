@@ -22,6 +22,21 @@ const SPEED_PRESETS = [1.5, 2.5, 3, 4, 5, 6];
 
 const LIVE_STATS = STAT_WIDGETS.filter((w) => w.id !== "VELOCITY" && w.id !== "INCLINE");
 
+/** Stat tiles the Live page fits under the controls: three rows of three. */
+const LIVE_STAT_CELLS = 9;
+
+/**
+ * The Live page's stats. PULSE_RATE takes two tiles while it has a chart.
+ * PC TIME WALKED joins only when a tile is free, so the page stays three rows
+ * high (760x600 with a program card open has no room for a fourth); the HUD
+ * page still offers it.
+ */
+function liveStats(s: AppSnapshot) {
+  const shown = LIVE_STATS.filter((w) => w.id !== "NEURAL" || s.neural.enabled);
+  const cells = shown.reduce((n, w) => n + (w.spark?.(s) ? 2 : 1), 0);
+  return cells > LIVE_STAT_CELLS ? shown.filter((w) => w.id !== "PC_WALK_SHARE") : shown;
+}
+
 /**
  * Tilt presets from this treadmill's own range: its lowest step, a third,
  * two thirds and the top, so none falls outside what it can do.
@@ -116,7 +131,7 @@ export function LivePage() {
   if (!s) return <Waiting />;
   const { deck } = s;
   const offline = !s.connection.connected;
-  const stats = LIVE_STATS.filter((w) => w.id !== "NEURAL" || s.neural.enabled);
+  const stats = liveStats(s);
   const pinned = new Set(s.hud.widgets);
 
   return (
@@ -190,6 +205,7 @@ export function LivePage() {
               const spark = w.spark?.(s);
               const zone = w.zone?.(s);
               const target = w.target?.(s);
+              const detail = w.detail?.(s);
               // PULSE_RATE with a sensor takes two tiles, so its chart sits
               // beside the bpm and the zone beside the name, and the page keeps
               // the height it has without one. It is the last stat, so its row
@@ -208,6 +224,7 @@ export function LivePage() {
                       {unit && <span className="ml-1 font-mono text-[11px] text-white/40">{unit}</span>}
                     </span>
                     {spark && <Sparkline data={spark} className={cx("block h-5 min-w-0 flex-1", TONE_TEXT[w.accent])} />}
+                    {detail && <span className="min-w-0 font-mono text-[11px] leading-none text-white/50">{detail}</span>}
                   </div>
                 </Panel>
               );

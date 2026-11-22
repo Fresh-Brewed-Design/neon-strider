@@ -40,3 +40,33 @@ describe("HEART_RATE widget", () => {
     expect(w?.read(live)).toEqual({ value: "112", unit: "BPM" });
   });
 });
+
+describe("PC_WALK_SHARE widget", () => {
+  const withShare = (active_s: number, walked_s: number, share_pct: number | null) => ({
+    ...snapshot,
+    pc_walk_share: { active_s, walked_s, share_pct },
+  });
+
+  it("is a stat widget called PC TIME WALKED, shown as WALKED", () => {
+    expect(statWidget("PC_WALK_SHARE")?.label).toBe("WALKED");
+    expect(widgetName("PC_WALK_SHARE")).toBe("PC TIME WALKED");
+  });
+
+  it("shows Rust's whole percent, or dashes while there is too little PC time", () => {
+    const w = statWidget("PC_WALK_SHARE");
+    expect(w?.read(withShare(20_400, 7_800, 38))).toEqual({ value: "38", unit: "%" });
+    expect(w?.read(withShare(360, 240, null))).toEqual({ value: "--", unit: "%" });
+    expect(w?.read(withShare(3_600, 0, 0))).toEqual({ value: "0", unit: "%" });
+  });
+
+  it("says how much of the PC time was walked, and nothing before the PC is used", () => {
+    const w = statWidget("PC_WALK_SHARE");
+    expect(w?.detail?.(withShare(20_400, 7_800, 38))).toBe("2h 10m of 5h 40m");
+    expect(w?.detail?.(withShare(360, 0, null))).toBe("0s of 6m");
+    expect(w?.detail?.(withShare(0, 0, null))).toBeNull();
+  });
+
+  it("is not on the HUD until picked", () => {
+    expect(snapshot.hud.widgets).not.toContain("PC_WALK_SHARE");
+  });
+});

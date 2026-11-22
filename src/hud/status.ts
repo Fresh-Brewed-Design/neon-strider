@@ -81,3 +81,22 @@ export function engageLabel(snapshot: AppSnapshot): string {
   if (a?.phase === "walking" && a.paused) return "GO";
   return deck.status === "Paused" ? "RE-JACK" : "ENGAGE";
 }
+
+/** What the main button does, in plain words: the small line under its codename. */
+export function engageSub(snapshot: AppSnapshot): string {
+  const { deck, connection } = snapshot;
+  if (isMoving(deck)) return "pause";
+  if (connection.start_pending) return "starting";
+  const a = snapshot.active_program;
+  return deck.status === "Paused" || (a?.phase === "walking" && a.paused) ? "resume" : "start";
+}
+
+/** The main button's tooltip, the same words as `engageSub` in a sentence. */
+export function engageTitle(snapshot: AppSnapshot): string {
+  const { deck, connection } = snapshot;
+  if (isMoving(deck)) return "Pause the belt.";
+  if (connection.start_pending) return "Waiting for the treadmill to start.";
+  const a = snapshot.active_program;
+  if (a?.phase === "walking" && a.paused) return "Resume the program.";
+  return deck.status === "Paused" ? "Resume the belt." : "Start the belt.";
+}

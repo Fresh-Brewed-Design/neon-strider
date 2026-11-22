@@ -12,7 +12,9 @@ use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-/// Connected but no telemetry frame for this long: the deck is asleep or out of range.
+/// Connected but no telemetry frame for this long: the deck is out of range or
+/// the subscription went stale, and the protocol worker drops the link so the
+/// watchdog reconnects (`log_frame_flow`).
 /// About 16 missed polls of 600 ms: no BLE hiccup lasts that long on a live link.
 const NO_DATA_AFTER: Duration = Duration::from_secs(10);
 /// The watchdog's fast retry interval.
@@ -204,6 +206,13 @@ fn classify(raw: &str) -> LinkErrorKind {
 /// The raw error for a scan that saw no device at all (lower case: `classify`
 /// matches on it).
 pub const NO_DEVICES_SEEN: &str = "no bluetooth devices seen";
+
+/// The raw error for a BLE call (`step`, such as "Connect") that passed its
+/// time limit. `classify` reads it as a timeout, so the windows show the
+/// timeout sentence.
+pub fn timed_out(step: &str, limit: Duration) -> String {
+    format!("{step} timed out after {} s", limit.as_secs_f32())
+}
 
 /// The short human message for a raw error. Pure.
 /// Each in the OS's own words (`platform::WORDS`: "Windows settings", "this Mac").
@@ -523,16 +532,26 @@ pub fn note_status_byte(code: u8, known: Option<crate::protocol::MachineStatus>)
     }
 }
 
+/// How long a link has gone without a status frame, when that is past
+/// `NO_DATA_AFTER`. `since` is the later of the link coming up and its last
+/// frame. Pure.
+pub(crate) fn silent_for(since: Option<Instant>, now: Instant) -> Option<Duration> {
+    let quiet = now.saturating_duration_since(since?);
+    (quiet > NO_DATA_AFTER).then_some(quiet)
+}
+
 /// Once a second from the protocol worker: log when status frames stop
-/// arriving on a live link, and when they come back.
-pub fn log_frame_flow() {
+/// arriving on a live link, and when they come back. Returns how long the
+/// link has been silent once that is past `NO_DATA_AFTER`: the deck answers
+/// every poll (in standby too), so a link that reads as up but stays silent
+/// that long has a stale subscription, and the worker drops it to reconnect.
+pub fn log_frame_flow() -> Option<Duration> {
     let mut l = live();
     let now = Instant::now();
-    let Some(since) = l.linked_at.max(l.last_frame) else {
-        return;
-    };
+    let since = l.linked_at.max(l.last_frame)?;
+    let silent = silent_for(Some(since), now);
     let quiet = now.saturating_duration_since(since);
-    if quiet > NO_DATA_AFTER && !l.frames_quiet_logged {
+    if silent.is_some() && !l.frames_quiet_logged {
         l.frames_quiet_logged = true;
         log::info!(
             "no status frames for {} s (last status byte {})",
@@ -545,6 +564,7 @@ pub fn log_frame_flow() {
         l.frames_quiet_logged = false;
         log::info!("status frames arriving again");
     }
+    silent
 }
 
 /// An Engage was sent.
@@ -687,6 +707,12 @@ pub fn connect_now(app: &tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Wake the watchdog for a try now: the protocol worker dropped a link that
+/// went silent.
+pub fn retry_soon() {
+    RETRY_NOW.notify_one();
+}
+
 /// The next "open the connect dialog" request time: now, and always later
 /// than `prev`, so the dashboard sees every click as new.
 fn next_request_ms(prev: Option<i64>, now_ms: i64) -> i64 {
@@ -824,6 +850,22 @@ mod tests {
     }
 
     #[test]
+    fn a_ble_call_past_its_limit_reads_as_a_timeout() {
+        let raw = timed_out("Connect", Duration::from_secs(15));
+        assert_eq!(raw, "Connect timed out after 15 s");
+        let e = describe(&raw);
+        assert_eq!(e.kind, LinkErrorKind::Timeout);
+        assert_eq!(
+            e.message,
+            "The treadmill did not answer. Move closer and try again."
+        );
+        assert_eq!(
+            timed_out("Write", Duration::from_millis(2_500)),
+            "Write timed out after 2.5 s"
+        );
+    }
+
+    #[test]
     fn messages_are_short_and_human() {
         let none = describe(NO_DEVICES_SEEN);
         assert_eq!(none.kind, LinkErrorKind::NoDevices);
@@ -869,6 +911,17 @@ mod tests {
             ..base()
         };
         assert_eq!(derive(&i), LinkState::Connected);
+    }
+
+    #[test]
+    fn a_link_counts_as_silent_after_ten_seconds_without_a_frame() {
+        let t = Instant::now();
+        let s = Duration::from_secs;
+        assert_eq!(silent_for(None, t + s(60)), None, "never linked");
+        assert_eq!(silent_for(Some(t), t + s(10)), None);
+        assert_eq!(silent_for(Some(t), t + s(11)), Some(s(11)));
+        // A frame resets it.
+        assert_eq!(silent_for(Some(t + s(5)), t + s(11)), None);
     }
 
     #[test]

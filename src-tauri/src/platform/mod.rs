@@ -67,8 +67,8 @@ pub struct Words {
     pub settings: &'static str,
     /// The sentence for an OS that refused the app Bluetooth, saying where to allow it.
     pub bluetooth_blocked: &'static str,
-    /// Where secrets are kept: "Windows Credential Manager", "the Keychain".
-    pub credential_store: &'static str,
+    /// The sentence for a Strava login the credential store refused.
+    pub login_not_saved: &'static str,
     /// What a release carries for this OS: "Windows installer", "Mac download".
     pub release_download: &'static str,
 }

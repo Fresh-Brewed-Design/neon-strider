@@ -69,7 +69,39 @@ fn tray_variants() {
     }
 }
 
+/// Every app `#[tauri::command]` (the `generate_handler!` list in `src/lib.rs`). Declaring them
+/// makes each one need an `allow-<command>` permission, so a window may call only the commands
+/// its capability file lists (`capabilities/default.json` for the dashboard, `hud.json` for the
+/// HUD). `src/ipc/capabilities.test.ts` checks this list, the handler and both files agree.
+const APP_COMMANDS: &[&str] = &[
+    "scan_bluetooth_devices",
+    "connect_bluetooth_device",
+    "send_bluetooth_command",
+    "strava_tcx_preview",
+    "strava_template_preview",
+    "strava_save_for_strava",
+    "get_launch_at_login",
+    "set_launch_at_login",
+    "sync_orchestrator_config",
+    "get_rust_config",
+    "get_sessions",
+    "get_samples",
+    "delete_session",
+    "get_db_setting",
+    "set_db_setting",
+    "get_snapshot",
+    "dispatch",
+    "set_hud_hit_region",
+    "open_log_folder",
+    "export_sessions_csv",
+    "program_from_session",
+];
+
 fn main() {
     tray_variants();
-    tauri_build::build()
+    tauri_build::try_build(
+        tauri_build::Attributes::new()
+            .app_manifest(tauri_build::AppManifest::new().commands(APP_COMMANDS)),
+    )
+    .expect("tauri build step");
 }

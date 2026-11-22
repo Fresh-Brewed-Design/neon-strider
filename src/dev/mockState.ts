@@ -152,6 +152,7 @@ export const snapshot: AppSnapshot = {
     saved_session_ids: [],
     last_result: { ok: true, message: "Uploaded 1.72 km to Strava (activity 123)", at_ms: Date.now() - 3600_000, hint: "none" },
     needs_reconnect: false,
+    login_storage: null,
     gear: [
       { id: "g1001", name: "Hoka Clifton 9", distance_km: 312.4, primary: true, retired: false },
       { id: "g1002", name: "Brooks Ghost 15 (long name to test the select width)", distance_km: 88.1, primary: false, retired: false },
@@ -248,6 +249,8 @@ export const snapshot: AppSnapshot = {
     aside_count: null,
   },
   guided_task: { pinned: false, tasks: [], unpin_in_s: null },
+  // 2h 10m walked of 5h 40m at the PC today.
+  pc_walk_share: { active_s: 20_400, walked_s: 7_800, share_pct: 38 },
   ghost_pod: {
     enabled: false,
     status: "off",

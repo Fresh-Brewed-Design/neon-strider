@@ -15,7 +15,7 @@ use crate::bluetooth::{self, ORCHESTRATOR};
 use crate::engine::{DeckAction, OrchestratorState};
 use crate::programs::{self, ProgramPhase};
 use crate::protocol::MachineStatus;
-use crate::snapshot::{calls, desk_sync, eyebreak, lights_out, seated, walkaway};
+use crate::snapshot::{calls, desk_sync, eyebreak, lights_out, pc_walk_share, seated, walkaway};
 use crate::util::{blocking, now_ms_u64 as now_ms};
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
@@ -230,6 +230,8 @@ struct Outcome {
     started_program: Option<u32>,
     /// The toast's type and message.
     toast: Option<(&'static str, &'static str)>,
+    /// The connected belt is Running, for the PC walk share.
+    belt_running: bool,
 }
 
 async fn step(
@@ -245,6 +247,7 @@ async fn step(
 
     // Eye breaks. First, so a break's pause is in before walk-away looks.
     let ready = treadmill_ready(connected, state);
+    out.belt_running = ready && belt_running(state);
     let display_off = crate::platform::display_off();
     eyebreak::with(|rt| eye_break_tick(state, rt, ready, now, idle_ms, locked, display_off));
 
@@ -373,6 +376,9 @@ pub fn spawn(app: AppHandle) {
                 crate::platform::input_idle_for().or_else(|| idle_ms.map(Duration::from_millis));
             desk_sync::note_input(&app, idle);
             let out = step(connected, now, idle_ms, &mut machine).await;
+            // Read before the desk features acted, so a walk-away pause this
+            // second still counts the second it ends.
+            pc_walk_share::tick(&app, idle, out.belt_running);
             if let Some(id) = out.started_program {
                 let app_c = app.clone();
                 let saved = blocking(move || programs::persist_last_run(&app_c, Some(id))).await;

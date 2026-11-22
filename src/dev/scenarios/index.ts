@@ -25,6 +25,7 @@ import { lightsOut } from "./lightsout";
 import { link } from "./link";
 import { maintenance } from "./maintenance";
 import { neural } from "./neural";
+import { pcWalkShare } from "./pcwalk";
 import { platform } from "./platform";
 import { programs } from "./programs";
 import { seated } from "./seated";
@@ -69,5 +70,6 @@ export const SCENARIOS: Scenario[] = [
   strideFit,
   wallClock,
   hrCool,
+  pcWalkShare,
   platform,
 ];

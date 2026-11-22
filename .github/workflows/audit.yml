@@ -1,0 +1,38 @@
+name: Dependency audit
+
+# Weekly check of Cargo.lock (RustSec advisories) and the npm production
+# dependencies. Not run on pushes or PRs, to keep Actions minutes down. Ignored
+# advisories, with the reason for each, are in src-tauri/.cargo/audit.toml.
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    # Linux runner: Windows minutes bill at twice the rate and neither audit
+    # needs Windows.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Prebuilt cargo-audit binary; compiling it with `cargo install` takes minutes.
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+        with:
+          tool: cargo-audit
+
+      - name: cargo audit
+        working-directory: src-tauri
+        run: cargo audit
+
+      - name: npm audit
+        run: npm audit --omit=dev --audit-level=high

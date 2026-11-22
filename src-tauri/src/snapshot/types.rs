@@ -4,7 +4,7 @@
 
 use super::{
     CallsSnapshot, DeskSync, LightsOutSnapshot, MaintenanceBasis, MaintenanceSnapshot,
-    OdometerSnapshot, SeatedSnapshot, WalkAwaySnapshot, WallClock, WeeklySummary,
+    OdometerSnapshot, PcWalkShare, SeatedSnapshot, WalkAwaySnapshot, WallClock, WeeklySummary,
 };
 use crate::link::{LastError, LinkState};
 use crate::placement;
@@ -92,6 +92,11 @@ pub struct AppSnapshot {
     /// The dashboard held open and on top during a guided task (GROUND_TRUTH).
     pub guided_task: crate::guided_task::GuidedTaskSnapshot,
 
+    // ---- PC time walked ----
+    /// Today's active PC seconds (keyboard or mouse input within the last
+    /// minute), how many of them the belt was running, and that share.
+    pub pc_walk_share: PcWalkShare,
+
     // ---- Platform ----
     /// The OS, its OS-only features and how it writes the shortcuts, so the
     /// windows word things the OS's way and hide what it lacks.
@@ -128,6 +133,9 @@ pub struct StravaSnapshot {
     pub last_result: Option<StravaResult>,
     /// The linked login predates a permission the app now asks for (shoes, duplicate check).
     pub needs_reconnect: bool,
+    /// Set while the client secret or login sits in the database because Windows
+    /// Credential Manager could not take it: one sentence to show under the account.
+    pub login_storage: Option<String>,
     /// Cached shoes from the athlete's profile.
     pub gear: Vec<StravaGear>,
     /// Shoe applied to every upload; None = none.
@@ -475,6 +483,7 @@ pub enum HudWidget {
     Controls,
     Odometer,
     HeartRate,
+    PcWalkShare,
 }
 
 #[derive(Deserialize)]
@@ -493,6 +502,7 @@ enum HudWidgetRepr {
     Controls,
     Odometer,
     HeartRate,
+    PcWalkShare,
 }
 
 impl<'de> Deserialize<'de> for HudWidget {
@@ -516,6 +526,7 @@ impl From<HudWidgetRepr> for HudWidget {
             HudWidgetRepr::Controls => Self::Controls,
             HudWidgetRepr::Odometer => Self::Odometer,
             HudWidgetRepr::HeartRate => Self::HeartRate,
+            HudWidgetRepr::PcWalkShare => Self::PcWalkShare,
         }
     }
 }
