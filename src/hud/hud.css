@@ -512,6 +512,10 @@ body,
   color: var(--hud-dim);
 }
 
+/* STEP_MAP's next step under the running one: whole parts wrap, never mid-part. */
+.hud-next { display: flex; flex-wrap: wrap; column-gap: 0.35em; line-height: 1.35; color: color-mix(in srgb, var(--hud-yellow) 70%, var(--hud-dim)); }
+.hud-next-part { white-space: nowrap; }
+
 .hud-programs {
   display: grid;
   grid-template-columns: 1fr 1fr;
