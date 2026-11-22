@@ -472,7 +472,12 @@ body,
 
 .hud-module:last-child { border-bottom: none; padding-bottom: 14px; }
 
-.hud-transport { display: flex; gap: 8px; }
+/* The two buttons share the controls' column. When STASIS (never narrower than its label) and DUMP
+   don't fit side by side, as at the larger Windows text sizes, DUMP wraps below it at full width
+   instead of pushing the row past the steppers' right edge. */
+.hud-transport { display: flex; flex-wrap: wrap; gap: 8px; }
+.hud-transport .hud-btn-main { flex: 100 1 auto; min-width: max-content; }
+.hud-transport .hud-btn-stop { flex: 1 0 72px; }
 
 .hud-steppers {
   display: grid;
