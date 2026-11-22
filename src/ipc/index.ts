@@ -35,6 +35,7 @@ export type { GuideMark } from "./bindings/GuideMark";
 export type { GuideSpeed } from "./bindings/GuideSpeed";
 export type { GuidedTask } from "./bindings/GuidedTask";
 export type { GuidedTaskSnapshot } from "./bindings/GuidedTaskSnapshot";
+export type { HeartZone } from "./bindings/HeartZone";
 export type { HudAnchor } from "./bindings/HudAnchor";
 export type { HudConfig } from "./bindings/HudConfig";
 export type { HudCustom } from "./bindings/HudCustom";

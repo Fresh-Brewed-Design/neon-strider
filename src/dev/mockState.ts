@@ -97,6 +97,8 @@ export const snapshot: AppSnapshot = {
     speed_kmh: 3,
     incline_pct: 5,
     kind: { kind: "walk", nth: 1, of: 1, label: "WALK" },
+    steps: [{ duration_minutes: 5, speed_kmh: 3, incline_pct: 5, kind: "walk" }],
+    repeat_every_minutes: 30,
   },
   neural: {
     enabled: true,
