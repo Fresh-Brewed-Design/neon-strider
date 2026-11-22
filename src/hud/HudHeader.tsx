@@ -39,46 +39,48 @@ export function HudHeader({
       >
         NEON STRIDER
       </span>
-      {/* Status and minify wrap to a line of their own together. */}
+      {/* The status and minify stay together; the SIM tag wraps above them. */}
       <span className="hud-header-end">
         {simulated && (
           <span className="hud-sim-tag" title="Simulated treadmill (dev build)">
             SIM
           </span>
         )}
-        {relink?.clickable ? (
-          <button
-            type="button"
-            className={`hud-status hud-relink tone-${link.tone}`}
-            title={relink.title ?? undefined}
-            onClick={onRelink}
-          >
-            {link.text}
-          </button>
-        ) : (
-          <span className={`hud-status tone-${link.tone}`} title={relink?.title ?? undefined}>
-            {link.text}
-          </span>
-        )}
-        {onMinify && (
-          <button
-            type="button"
-            className="hud-btn hud-btn-minify"
-            aria-label="Minify the HUD"
-            title={minifyKey ? `Shrink the HUD to a strip (${minifyKey})` : "Shrink the HUD to a strip"}
-            onClick={onMinify}
-          >
-            <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
-              <path
-                d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="square"
-              />
-            </svg>
-          </button>
-        )}
+        <span className="hud-header-live">
+          {relink?.clickable ? (
+            <button
+              type="button"
+              className={`hud-status hud-relink tone-${link.tone}`}
+              title={relink.title ?? undefined}
+              onClick={onRelink}
+            >
+              {link.text}
+            </button>
+          ) : (
+            <span className={`hud-status tone-${link.tone}`} title={relink?.title ?? undefined}>
+              {link.text}
+            </span>
+          )}
+          {onMinify && (
+            <button
+              type="button"
+              className="hud-btn hud-btn-minify"
+              aria-label="Minify the HUD"
+              title={minifyKey ? `Shrink the HUD to a strip (${minifyKey})` : "Shrink the HUD to a strip"}
+              onClick={onMinify}
+            >
+              <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+                <path
+                  d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="square"
+                />
+              </svg>
+            </button>
+          )}
+        </span>
       </span>
     </header>
   );
