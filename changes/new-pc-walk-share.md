@@ -1,0 +1,2 @@
+- New WALKED stat (PC TIME WALKED): how much of today's PC time you spent walking, as a percent and as time (for example 38 %, 2h 10m of 5h 40m). Pick it on the HUD page; it also shows on the Live page when a tile is free.
+- Only time with keyboard or mouse use counts, so a day away from the PC has no figure, and the count carries on through restarts and updates.
