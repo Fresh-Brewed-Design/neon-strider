@@ -34,7 +34,7 @@ pub const MINIFY_KEY_CHOICE: bool = false;
 pub const WORDS: super::Words = super::Words {
     computer: "Mac",
     settings: "System Settings",
-    bluetooth_blocked: "macOS blocked Bluetooth access. Allow Neon Strider in System Settings, Privacy & Security, Bluetooth.",
+    bluetooth_blocked: "macOS blocked Bluetooth access. Allow it in Privacy & Security, Bluetooth.",
     credential_store: "the Keychain",
     release_download: "Mac download",
 };
