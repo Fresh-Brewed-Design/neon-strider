@@ -83,7 +83,7 @@ beforeEach(() => {
   s.calibration.belt_cm = 280;
   s.calibration.belt_treadmill = true;
   current = s;
-  useTreadmillStore.setState({ calibrationPoints: [saved], beltLength: 300 });
+  useTreadmillStore.setState({ calibrationPoints: [saved] });
 });
 
 describe("GAIT_SYNC", () => {

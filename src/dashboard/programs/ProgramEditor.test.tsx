@@ -82,3 +82,38 @@ describe("ProgramEditor heart zones", () => {
     expect(screen.queryByRole("radiogroup", { name: "Heart zone unit" })).toBeNull();
   });
 });
+
+describe("ProgramEditor STRIDE_FIT flag", () => {
+  const brisk = () => current!.programs.find((p) => p.name === "Brisk")!;
+  const flag = () => screen.queryByText(/^Above STRIDE_FIT/);
+
+  it("flags a step above STRIDE_FIT and leaves its speed alone", async () => {
+    current!.deck.stride_fit_kmh = 4.5;
+    const p = brisk();
+    render(<ProgramEditor initial={toDraft(p)} onDone={() => {}} />);
+    expect(flag()?.textContent).toBe("Above STRIDE_FIT 4.5 km/h");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save" })));
+    const [cmd] = saved();
+    expect((cmd.program as typeof p).steps[0].speed_kmh).toBe(5);
+  });
+
+  it("shows no flag at or below STRIDE_FIT", () => {
+    current!.deck.stride_fit_kmh = 5;
+    render(<ProgramEditor initial={toDraft(brisk())} onDone={() => {}} />);
+    expect(flag()).toBeNull();
+  });
+
+  it("shows no flag while STRIDE_FIT is unset", () => {
+    current!.deck.stride_fit_kmh = null;
+    render(<ProgramEditor initial={toDraft(brisk())} onDone={() => {}} />);
+    expect(flag()).toBeNull();
+  });
+
+  it("follows a speed typed into the step", () => {
+    current!.deck.stride_fit_kmh = 5.5;
+    render(<ProgramEditor initial={toDraft(brisk())} onDone={() => {}} />);
+    expect(flag()).toBeNull();
+    fireEvent.change(screen.getByDisplayValue("5.0"), { target: { value: "5.6" } });
+    expect(flag()).toBeTruthy();
+  });
+});

@@ -6,6 +6,7 @@ import { Label, Panel } from "../ui";
 import { cx, TONE_TEXT } from "../util";
 import { PinToggle } from "./PinToggle";
 import { SegmentedDisplay } from "./SegmentedDisplay";
+import type { SliderMark } from "./sliderValue";
 import { StylizedSlider } from "./StylizedSlider";
 
 /**
@@ -56,6 +57,7 @@ export function Axis({
   snap = (v) => v,
   note,
   pin,
+  mark = null,
 }: {
   pin: { widget: HudWidget; pinned: boolean };
   title: string;
@@ -75,6 +77,8 @@ export function Axis({
   snap?: (v: number) => number;
   /** What the deck said about the target this control sent (DECK_ADJUSTED / DECK_REFUSED). */
   note?: string | null;
+  /** A labelled mark on the slider (STRIDE_FIT on speed). */
+  mark?: SliderMark | null;
 }) {
   const [value, setDraft] = useDraft(target);
   const hex = tone === "cyan" ? "#00f3ff" : "#ff00ff";
@@ -109,7 +113,7 @@ export function Axis({
       </div>
 
       <div className={cx(disabled && "pointer-events-none opacity-30")}>
-        <StylizedSlider min={min} max={max} step={step} value={value} onChange={set} color={tone} />
+        <StylizedSlider min={min} max={max} step={step} value={value} onChange={set} color={tone} mark={mark} />
       </div>
 
       <div className="flex gap-1">
