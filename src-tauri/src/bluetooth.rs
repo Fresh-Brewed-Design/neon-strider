@@ -60,6 +60,12 @@ const DISCONNECT_SETTLE: Duration = Duration::from_millis(1500);
 /// discovery, and after discovery before subscribing; both are one-off costs.
 const CONNECT_SETTLE: Duration = Duration::from_millis(500);
 const DISCOVER_SETTLE: Duration = Duration::from_millis(500);
+/// How long one connect may take before the try counts as failed.
+/// Windows fails a connect on its own; CoreBluetooth on macOS waits forever
+/// when the deck doesn't answer (it is linked to another device, asleep or out
+/// of range), which would hold the connection lock until the app quits. A
+/// deck that is advertising connects in a second or two, so 10 s is headroom.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// Tries per characteristic to subscribe to status frames, and the wait between.
 /// A subscribe that fails right after discovery usually works on the next try;
 /// three tries 200 ms apart give up within a second, then the link reconnects.
@@ -757,6 +763,17 @@ async fn connect_sim(app: &tauri::AppHandle) {
     }
 }
 
+/// `op`'s result, or a "timed out" error once `limit` passes.
+async fn within<T, E: std::fmt::Display>(
+    limit: Duration,
+    op: impl std::future::Future<Output = Result<T, E>>,
+) -> Result<T, String> {
+    match tokio::time::timeout(limit, op).await {
+        Ok(result) => result.map_err(|e| e.to_string()),
+        Err(_) => Err(format!("timed out after {} s", limit.as_secs())),
+    }
+}
+
 /// Up to `link::CONNECT_TRIES` full cycles of disconnect, connect, discover
 /// and subscribe.
 async fn connect_with_retries(
@@ -775,7 +792,8 @@ async fn connect_with_retries(
         let _ = peripheral.disconnect().await;
         tokio::time::sleep(DISCONNECT_SETTLE).await;
 
-        if let Err(e) = peripheral.connect().await {
+        // The next try's disconnect() cancels a connect that timed out.
+        if let Err(e) = within(CONNECT_TIMEOUT, peripheral.connect()).await {
             log::warn!("Connection failed: {}. Retrying...", e);
             continue;
         }
@@ -1016,6 +1034,27 @@ pub(crate) fn apply_manual_intent(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn a_connect_that_never_answers_times_out() {
+        let never = std::future::pending::<Result<(), String>>();
+        let err = within(CONNECT_TIMEOUT, never).await.unwrap_err();
+        assert_eq!(err, "timed out after 10 s");
+        assert_eq!(
+            crate::link::describe(&err).kind,
+            crate::link::LinkErrorKind::Timeout
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_connect_that_answers_keeps_its_result() {
+        assert_eq!(
+            within(CONNECT_TIMEOUT, async { Ok::<_, String>(7) }).await,
+            Ok(7)
+        );
+        let failed = within(CONNECT_TIMEOUT, async { Err::<(), _>("refused") }).await;
+        assert_eq!(failed, Err("refused".to_string()));
+    }
 
     fn frame(status: MachineStatus, speed_kmh: f32, incline: u8) -> Telemetry {
         Telemetry {
