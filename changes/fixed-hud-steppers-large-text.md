@@ -1,1 +1,0 @@
-- The VEL and TILT steppers in the HUD now fit the panel at the largest Windows text sizes.

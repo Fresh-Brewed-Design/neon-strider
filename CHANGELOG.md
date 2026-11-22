@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.50.3 (2026-11-22)
+
+### Fixed
+
+- The VEL and TILT steppers in the HUD now fit the panel at the largest Windows text sizes.
+
 ## 1.50.2 (2026-11-22)
 
 ### Fixed
