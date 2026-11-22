@@ -1,5 +1,54 @@
 # Changelog
 
+## 1.50.4 (2026-11-22)
+
+### Fixed
+
+- The belt service reminder now sits in the Live page header, so the page no longer scrolls when the reminder shows.
+
+## 1.50.3 (2026-11-22)
+
+### Fixed
+
+- The VEL and TILT steppers in the HUD now fit the panel at the largest Windows text sizes.
+
+## 1.50.2 (2026-11-22)
+
+### Fixed
+
+- The HUD's STASIS and DUMP buttons no longer stick out past the VEL and TILT controls at larger Windows text sizes.
+
+## 1.50.1 (2026-11-22)
+
+### Fixed
+
+- The HUD header no longer spills past its edge at a narrow width or a larger text size.
+
+## 1.50.0 (2026-11-22)
+
+### New
+
+- STRIDE_FIT in System, Calibration: set the fastest speed your walking stride still fits the deck, by feel. Each treadmill keeps its own, and it stays off until you save one. USE CURRENT fills in the belt's speed.
+- The program editor flags any step faster than STRIDE_FIT with one line under the step. The step's speed stays as you set it.
+- The Live page speed slider marks STRIDE_FIT with a FIT tick. The slider still goes to the deck's top speed.
+- The HUD shows an ABOVE STRIDE_FIT line while the belt runs faster than STRIDE_FIT. The line stays until the belt slows, with no toast.
+- Heart rate zones respect STRIDE_FIT. When a zone needs more effort at STRIDE_FIT, the incline goes up instead of the speed, up to 2 % more and never past the deck's top level. Easing off, the speed comes down to STRIDE_FIT first, then the extra incline.
+- FIT_TO_DECK on the Programs page: a seeded program you haven't edited, with steps faster than STRIDE_FIT, can run those steps at STRIDE_FIT with more incline. The new incline keeps about the same effort by the ACSM walking equation. The confirm dialog shows every change first and says when the deck's top incline costs effort. FIT_TO_DECK never starts the program.
+
+## 1.49.1 (2026-11-22)
+
+### Changed
+
+- The old calibration panel under ADVANCED // POINT_EDITOR is gone, with its belt logo count and hand point editor. GROUND_TRUTH in System, Calibration is now the only way to calibrate.
+- A point's row in GROUND_TRUTH shows the factor the app really uses when a stored one is outside the limits.
+- The belt loop field starts empty for a treadmill with no measured loop, instead of filling in an old app-wide length.
+
+## 1.49.0 (2026-11-22)
+
+### New
+
+- New WALL_CLOCK card on the History page shows which hours of the day you usually walk. Each hour lights up by how many of your last 14 desk days had a walk in that hour, so days away from the PC never dim the card.
+
 ## 1.48.2 (2026-11-21)
 
 ### Fixed

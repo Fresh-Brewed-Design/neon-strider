@@ -61,7 +61,7 @@ async fn press(action: &str) -> Result<(), String> {
 }
 
 /// Save the program list after `change` edits it.
-async fn change_programs(
+pub(crate) async fn change_programs(
     app: &AppHandle,
     change: impl FnOnce(&mut OrchestratorState) -> Result<(), String>,
 ) -> Result<(), String> {
@@ -134,6 +134,16 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         Command::ProgramEnd => {
             ORCHESTRATOR.lock().await.end_program(true, Instant::now());
             Ok(())
+        }
+        Command::ProgramFitToDeck { id } => {
+            change_programs(&app, |state| {
+                let fit = crate::calibration::stride_fit::kmh(
+                    state.min_physical_speed(),
+                    state.to_physical_speed(state.top_hw_speed()),
+                );
+                state.fit_program_to_deck(id, fit)
+            })
+            .await
         }
 
         // ---- HUD and dashboard windows ----
@@ -446,6 +456,16 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
                 Ok(())
             })
             .await
+        }
+        Command::StrideFitSet { kmh } => {
+            let (min, max) = {
+                let state = ORCHESTRATOR.lock().await;
+                (
+                    state.min_physical_speed(),
+                    state.to_physical_speed(state.top_hw_speed()),
+                )
+            };
+            blocking(move || calibration::stride_fit::set(&app, kmh, min, max).map(|_| ())).await
         }
 
         // ---- GHOST_POD and WRIST_LINK (Labs) ----

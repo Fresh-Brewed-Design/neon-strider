@@ -4,7 +4,7 @@
 
 use super::{
     CallsSnapshot, DeskSync, LightsOutSnapshot, MaintenanceBasis, MaintenanceSnapshot,
-    OdometerSnapshot, SeatedSnapshot, WalkAwaySnapshot, WeeklySummary,
+    OdometerSnapshot, SeatedSnapshot, WalkAwaySnapshot, WallClock, WeeklySummary,
 };
 use crate::link::{LastError, LinkState};
 use crate::placement;
@@ -26,6 +26,10 @@ pub struct AppSnapshot {
     // ---- Programs ----
     pub programs: Vec<Program>,
     pub active_program: Option<ActiveProgram>,
+    /// FIT_TO_DECK (#225): the seeded programs that may trade speed above
+    /// STRIDE_FIT for incline, with Rust's words for the card and the
+    /// confirm dialog. Empty while STRIDE_FIT is unset.
+    pub fit_to_deck: Vec<crate::programs::fit_to_deck::FitToDeckOffer>,
 
     // ---- Neural flow ----
     pub neural: NeuralSnapshot,
@@ -48,6 +52,9 @@ pub struct AppSnapshot {
     /// DESK_SYNC: how many of the recent desk days (days the PC was used)
     /// were walked on.
     pub desk_sync: DeskSync,
+    /// WALL_CLOCK: for each local hour, how many of DESK_SYNC's desk days had
+    /// walking in it.
+    pub wall_clock: WallClock,
     /// Distance and belt hours over every saved session plus the live one.
     pub odometer: OdometerSnapshot,
 
@@ -235,6 +242,14 @@ pub struct DeckSnapshot {
     /// until the deck has answered an incline.
     pub incline_steps: Vec<u8>,
     pub profile: DeckProfileSnapshot,
+    /// STRIDE_FIT: the fastest speed (calibrated km/h) the user's stride
+    /// still fits this treadmill's deck, set by feel and held to the speed
+    /// range. None while unset. The program editor flags steps above it.
+    pub stride_fit_kmh: Option<f32>,
+    /// STRIDE_FIT's HUD line: the belt runs faster than STRIDE_FIT, by hand
+    /// or from a program (`stride_fit::above`). False while it is unset. A
+    /// hint only; nothing changes the speed.
+    pub above_stride_fit: bool,
 }
 
 /// One speed the deck runs, or has not been asked yet.
@@ -558,6 +573,12 @@ pub enum Command {
     ProgramResume,
     ProgramSkip,
     ProgramEnd,
+    /// FIT_TO_DECK, after the user confirmed it: the seeded program's steps
+    /// above STRIDE_FIT set to it with more incline. Refused unless the
+    /// program is still offered. Never starts the program or moves the belt.
+    ProgramFitToDeck {
+        id: u32,
+    },
 
     // ---- HUD and dashboard windows ----
     HudToggleWidget {
@@ -876,6 +897,12 @@ pub enum Command {
     CalibrationRestore,
     /// KEEP NEW: delete the set aside and keep the new points.
     CalibrationKeepNew,
+    /// STRIDE_FIT: the fastest speed (calibrated km/h) the user's stride
+    /// still fits the deck, kept for this treadmill; None clears it. Held to
+    /// the deck's speed range. Never moves the belt.
+    StrideFitSet {
+        kmh: Option<f32>,
+    },
 
     // ---- GHOST_POD and WRIST_LINK (Labs) ----
     /// Labs: GHOST_POD on (`on`) or off. On, the PC advertises as a Bluetooth

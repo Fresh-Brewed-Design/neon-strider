@@ -143,3 +143,18 @@ export function fromDraft(d: Draft, maxBpm: number): Program | string {
   if (every !== null && Number.isNaN(every)) return "Enter how often the program repeats.";
   return { id: d.id, name: d.name.trim(), steps, repeat_every_minutes: every };
 }
+
+/**
+ * STRIDE_FIT's flag on a step: the step's typed speed is above the fastest
+ * speed the stride still fits the deck (`snapshot.deck.stride_fit_kmh`).
+ * Compared in tenths, the step the deck runs and the editor shows, so a step
+ * at the fit speed is not flagged. None while STRIDE_FIT is unset or the
+ * speed isn't a number yet. Only a flag: nothing changes the step.
+ */
+export function strideFitFlag(speedText: string, fitKmh: number | null): string | null {
+  if (fitKmh === null || speedText.trim() === "") return null;
+  const v = Number(speedText);
+  if (!Number.isFinite(v)) return null;
+  const tenths = (x: number) => Math.round(x * 10);
+  return tenths(v) > tenths(fitKmh) ? `Above STRIDE_FIT ${fitKmh.toFixed(1)} km/h` : null;
+}
