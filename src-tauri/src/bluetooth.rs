@@ -1003,14 +1003,25 @@ pub async fn switch_deck_profile(app: &tauri::AppHandle, raw_id: &str) {
     state.deck_profile_key = Some(key);
 }
 
+/// The saved treadmill after a window's settings sync: the one already saved,
+/// or the window's when none is.
+fn kept_device_id(stored: Option<String>, from_window: Option<String>) -> Option<String> {
+    stored.or(from_window)
+}
+
 #[tauri::command]
 pub async fn sync_orchestrator_config(
     app: tauri::AppHandle,
     config: crate::persistence::AppConfig,
 ) -> Result<(), String> {
-    let saved_id = config.last_device_id.clone();
     let stored = crate::persistence::load_config(&app);
     let mut config = config;
+    // Connecting picks the treadmill, not a window: a window that loaded the
+    // config before the connection switched would put the old one back (a
+    // speed change after leaving SIM_DECK made the next start link SIM_DECK).
+    // Only with none saved, as after restoring settings, does the window's count.
+    config.last_device_id = kept_device_id(stored.last_device_id.clone(), config.last_device_id);
+    let saved_id = config.last_device_id.clone();
     // Points loaded for another treadmill (a window that loaded them before
     // the connection switched) never land on this one: the treadmill in use
     // keeps its own, and the window reloads them.
@@ -1079,6 +1090,17 @@ mod tests {
             crate::link::describe(&err).kind,
             crate::link::LinkErrorKind::Timeout
         );
+    }
+
+    #[test]
+    fn a_window_sync_keeps_the_saved_treadmill() {
+        let id = |s: &str| Some(s.to_string());
+        // A dashboard still holding SIM_DECK doesn't take the real deck's place.
+        assert_eq!(kept_device_id(id("deck"), id("SIM_DECK")), id("deck"));
+        assert_eq!(kept_device_id(id("deck"), None), id("deck"));
+        // Nothing saved (settings just restored): the window's treadmill.
+        assert_eq!(kept_device_id(None, id("deck")), id("deck"));
+        assert_eq!(kept_device_id(None, None), None);
     }
 
     #[test]
