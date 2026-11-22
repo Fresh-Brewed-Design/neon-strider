@@ -18,8 +18,6 @@ export interface CalibrationPoint {
 export interface Settings {
   lastDeviceId: string | null;
   calibrationPoints: CalibrationPoint[];
-  /** Belt circumference in cm, for the logo-count calibration. */
-  beltLength: number;
   minSpeed: number;
   maxSpeed: number;
   maxIncline: number;

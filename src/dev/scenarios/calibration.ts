@@ -354,7 +354,7 @@ function runBelt(kmh: number) {
   taps = [];
   calRun(kmh);
 }
-/** ?calwizard: two saved points; the old app-wide belt length, 300 cm, prefills ?calwizard=belt. */
+/** ?calwizard: two saved points. */
 // ?calwizard=oldpoint adds a point stored at 0.15, below the limit (GROUND_TRUTH shows "Applied as 0.20.").
 // ?calwizard=measured starts with the 3.0 km/h run already averaged in (3 runs).
 const SAVED_POINTS: CalPoint[] = [
@@ -375,8 +375,7 @@ const NEW_WALK_POINTS: CalPoint[] = (
 ).map(([speed, distance_scale]) => ({ speed, stride_length_cm: 66, distance_scale, runs: 1, stride_runs: 0 }));
 /** START FRESH's set aside (Rust keeps it per treadmill); null when none is aside. */
 let aside: CalPoint[] | null = calFlag === "aside" || calFlag === "asidedone" ? SAVED_POINTS : null;
-const CAL_CONFIG: { belt_length: number; calibration_points: CalPoint[] } = {
-  belt_length: 300,
+const CAL_CONFIG: { calibration_points: CalPoint[] } = {
   calibration_points: calFlag === "aside" ? [] : calFlag === "asidedone" ? NEW_WALK_POINTS : SAVED_POINTS,
 };
 /** The preview runs no settings sync, so a points change from Rust is copied into the store here. */
@@ -388,7 +387,7 @@ function publishAside() {
 }
 /** The preview runs no settings sync: the store settings ?calwizard starts with. */
 export function previewSettings() {
-  return calFlag === null ? null : { beltLength: CAL_CONFIG.belt_length, calibrationPoints: CAL_CONFIG.calibration_points };
+  return calFlag === null ? null : { calibrationPoints: CAL_CONFIG.calibration_points };
 }
 const CAL_COMMANDS: Partial<Record<Command["type"], (c: Command) => void>> = {
   calibration_run_start: (c) => {

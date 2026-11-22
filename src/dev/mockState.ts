@@ -270,7 +270,6 @@ export const params = new URLSearchParams(location.search);
 export const PREVIEW_CONFIG: RustConfig = {
   last_device_id: null,
   calibration_points: [],
-  belt_length: 120,
   min_speed: 0.6,
   max_speed: 12,
   max_incline: 15,

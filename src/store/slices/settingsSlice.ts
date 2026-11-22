@@ -14,7 +14,6 @@ const D = DEFAULT_APP_CONFIG;
 export const DEFAULT_SETTINGS: Settings = {
   lastDeviceId: D.last_device_id,
   calibrationPoints: D.calibration_points,
-  beltLength: D.belt_length,
   minSpeed: D.min_speed,
   maxSpeed: D.max_speed,
   maxIncline: D.max_incline,

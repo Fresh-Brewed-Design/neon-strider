@@ -887,7 +887,6 @@ pub struct AppConfig {
     /// a switch can't write one treadmill's points over another's.
     #[serde(default)]
     pub calibration_treadmill: Option<String>,
-    pub belt_length: f32,
     pub min_speed: f32,
     pub max_speed: f32,
     pub max_incline: u8,
@@ -913,8 +912,6 @@ impl Default for AppConfig {
             last_device_id: None,
             calibration_points: Vec::new(),
             calibration_treadmill: None,
-            // The old app-wide belt length; GuidedCalibration reads 120 as never set.
-            belt_length: 120.0,
             // The slowest speed of the FitShow decks the app was built on, and a
             // mid-range deck's top speed and incline; the first walk's DECK_PROFILE
             // offers the deck's real ones. The engine starts from the same numbers.
@@ -979,8 +976,7 @@ type ScalarField = fn(&mut AppConfig) -> &mut dyn ScalarSetting;
 /// The scalar `AppConfig` fields and their settings keys. `last_device_id`,
 /// `calibration_points` and the Neural flow settings have their own formats
 /// and are handled separately.
-const SCALAR_FIELDS: [(&str, ScalarField); 8] = [
-    ("beltLength", |c| &mut c.belt_length),
+const SCALAR_FIELDS: [(&str, ScalarField); 7] = [
     ("maxSpeed", |c| &mut c.max_speed),
     ("minSpeed", |c| &mut c.min_speed),
     ("maxIncline", |c| &mut c.max_incline),
@@ -991,6 +987,10 @@ const SCALAR_FIELDS: [(&str, ScalarField); 8] = [
 ];
 
 const KEY_LAST_DEVICE_ID: &str = "lastDeviceId";
+/// Settings no longer read: the old app-wide belt length (`beltLength`, a
+/// default of 120 cm rather than a measurement; the belt loop is kept per
+/// treadmill as `beltLoop:<id>`). `save_config` deletes them.
+const RETIRED_KEYS: [&str; 1] = ["beltLength"];
 /// The settings key the calibration points were kept under while they were
 /// app-wide. It still holds points saved before any treadmill was known,
 /// which the first treadmill to connect adopts.
@@ -1169,7 +1169,7 @@ pub fn save_config(app: &AppHandle, config: &AppConfig) -> Result<(), String> {
             }
         }
         // The Neural flow keys replace the legacy glide settings.
-        for key in neural::LEGACY_KEYS {
+        for key in neural::LEGACY_KEYS.iter().chain(&RETIRED_KEYS) {
             tx.execute("DELETE FROM settings WHERE key = ?1", params![key])?;
         }
         tx.commit()
@@ -3149,8 +3149,8 @@ mod settings_tests {
         assert_eq!(c.last_device_id, None);
         assert!(c.calibration_points.is_empty());
         assert_eq!(
-            (c.belt_length, c.min_speed, c.max_speed, c.max_incline),
-            (d.belt_length, d.min_speed, d.max_speed, d.max_incline)
+            (c.min_speed, c.max_speed, c.max_incline),
+            (d.min_speed, d.max_speed, d.max_incline)
         );
         assert!(!c.focus_stability_enabled);
         assert_eq!(c.body_mass_kg, DEFAULT_BODY_MASS_KG);
@@ -3187,7 +3187,6 @@ mod settings_tests {
     fn stored_values_load_quoted_or_bare() {
         let c = load(&stored(&[
             ("lastDeviceId", "\"AA:BB\""),
-            ("beltLength", "\"130.5\""),
             ("maxSpeed", "8"),
             ("maxIncline", "\"12\""),
             ("focusStabilityEnabled", "\"true\""),
@@ -3199,7 +3198,6 @@ mod settings_tests {
             ),
         ]));
         assert_eq!(c.last_device_id.as_deref(), Some("AA:BB"));
-        assert_eq!(c.belt_length, 130.5);
         assert_eq!(c.max_speed, 8.0);
         assert_eq!(c.max_incline, 12);
         assert!(c.focus_stability_enabled);
@@ -3211,16 +3209,36 @@ mod settings_tests {
     #[test]
     fn unreadable_values_keep_the_defaults() {
         let c = load(&stored(&[
-            ("beltLength", "long"),
+            ("maxSpeed", "fast"),
             ("maxIncline", "-3"),
             ("focusStabilityEnabled", "yes"),
             ("calibrationPoints", "not json"),
         ]));
         let d = AppConfig::default();
-        assert_eq!(c.belt_length, d.belt_length);
+        assert_eq!(c.max_speed, d.max_speed);
         assert_eq!(c.max_incline, d.max_incline);
         assert!(!c.focus_stability_enabled);
         assert!(c.calibration_points.is_empty());
+    }
+
+    #[test]
+    fn the_retired_belt_length_is_ignored_and_never_written() {
+        // A database from before the belt loop was kept per treadmill.
+        let c = load(&stored(&[("beltLength", "130.5"), ("maxSpeed", "8")]));
+        assert_eq!(c.max_speed, 8.0);
+        let rows = config_to_settings(&c).unwrap();
+        assert!(rows.iter().all(|(k, _)| k != "beltLength"));
+        assert!(RETIRED_KEYS.contains(&"beltLength"));
+    }
+
+    #[test]
+    fn a_config_sent_with_the_old_belt_length_still_reads() {
+        // A window built before the field went still sends `belt_length`.
+        let mut json = serde_json::to_value(AppConfig::default()).unwrap();
+        assert!(json.get("belt_length").is_none());
+        json["belt_length"] = serde_json::json!(120.0);
+        let c: AppConfig = serde_json::from_value(json).unwrap();
+        assert_eq!(c, AppConfig::default());
     }
 
     #[test]
@@ -3252,7 +3270,6 @@ mod settings_tests {
                 runs: 1,
                 stride_runs: 0,
             }],
-            belt_length: 140.0,
             min_speed: 1.0,
             max_speed: 10.0,
             max_incline: 9,
@@ -3271,7 +3288,6 @@ mod settings_tests {
             [
                 "lastDeviceId",
                 "calibrationPoints:DEV1",
-                "beltLength",
                 "maxSpeed",
                 "minSpeed",
                 "maxIncline",
@@ -3360,10 +3376,7 @@ mod settings_tests {
 
     #[test]
     fn kv_tables_are_whitelisted_and_secrets_refused() {
-        assert_eq!(
-            kv_table_for("settings", "beltLength"),
-            Ok(KvTable::Settings)
-        );
+        assert_eq!(kv_table_for("settings", "maxSpeed"), Ok(KvTable::Settings));
         assert_eq!(
             kv_table_for("automation_state", "x"),
             Ok(KvTable::AutomationState)
