@@ -1,5 +1,5 @@
 import { useAppState } from "../../state/useAppState";
-import { CalibrationPanel } from "../system/calibration/CalibrationPanel";
+import { GuidedCalibration } from "../system/calibration/GuidedCalibration";
 import { DeskSection } from "../system/DeskSection";
 import { DiagnosticsSection } from "../system/DiagnosticsSection";
 import { HeartRateSection } from "../system/HeartRateSection";
@@ -65,7 +65,7 @@ export function SystemPage() {
           title="Calibration"
           description="Teach the app how far the belt really travels, so distance and speed match what you walk."
         >
-          <CalibrationPanel />
+          <GuidedCalibration />
         </Section>
         <StravaSection />
         <HeartRateSection />

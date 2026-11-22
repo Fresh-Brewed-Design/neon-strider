@@ -8,7 +8,15 @@ import { useAppState } from "../../state/useAppState";
 import { GhostButton, Hint, Label, NeonButton, Panel } from "../ui";
 import { ChoiceGroup } from "../system/fields";
 import { cx } from "../util";
-import { fromDraft, withZoneUnit, zoneSummary, type Draft, type StepDraft, type ZoneUnit } from "./draft";
+import {
+  fromDraft,
+  strideFitFlag,
+  withZoneUnit,
+  zoneSummary,
+  type Draft,
+  type StepDraft,
+  type ZoneUnit,
+} from "./draft";
 
 /** Until Rust's snapshot arrives: the estimate Rust starts from (220 minus age at 30). */
 const FALLBACK_MAX_BPM = SETTING_LIMITS.default_max_heart_rate_bpm;
@@ -47,6 +55,8 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
   const deck = useAppState((snap) => snap.deck);
   const maxBpm = useAppState((snap) => snap.heart_rate.max_bpm) || FALLBACK_MAX_BPM;
   const inclineTrim = useAppState((snap) => snap.heart_rate.incline_trim) ?? false;
+  // STRIDE_FIT (System, Calibration): steps above it get a one-line flag, nothing more.
+  const strideFit = useAppState((snap) => snap.deck.stride_fit_kmh) ?? null;
   const anyZone = d.steps.some((s) => s.zone);
   // A typed speed moves to one the deck runs (DECK_PROFILE) when the field is left.
   const snapSpeedText = (text: string) => {
@@ -165,6 +175,7 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
               <X size={14} />
             </GhostButton>
           </div>
+          <StrideFitFlag text={strideFitFlag(s.speed, strideFit)} />
           {s.zone && (
             <ZoneRow
               step={s}
@@ -261,6 +272,17 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
         </NeonButton>
       </div>
     </Panel>
+  );
+}
+
+/** STRIDE_FIT's one-line flag under a step, lined up with the step's fields. */
+function StrideFitFlag({ text }: { text: string | null }) {
+  if (text === null) return null;
+  return (
+    <div className="grid grid-cols-[2rem_1fr] items-center gap-2">
+      <span />
+      <span className="font-mono text-[11px] text-neon-yellow">{text}</span>
+    </div>
   );
 }
 

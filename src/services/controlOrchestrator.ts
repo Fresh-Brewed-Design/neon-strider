@@ -16,7 +16,6 @@ export interface RustConfig {
   calibration_points: CalibrationPoint[];
   /** Whose points `calibration_points` are; Rust refuses a push carrying another treadmill's. */
   calibration_treadmill?: string | null;
-  belt_length: number;
   min_speed: number;
   max_speed: number;
   max_incline: number;
@@ -35,7 +34,6 @@ export function settingsFromConfig(config: Partial<RustConfig>, current: Setting
   return {
     lastDeviceId: config.last_device_id || current.lastDeviceId,
     calibrationPoints: config.calibration_points?.length ? config.calibration_points : current.calibrationPoints,
-    beltLength: config.belt_length || current.beltLength,
     minSpeed: config.min_speed ?? current.minSpeed,
     maxSpeed: config.max_speed ?? current.maxSpeed,
     maxIncline: config.max_incline ?? current.maxIncline,
@@ -54,7 +52,6 @@ export function configFromSettings(s: Settings, treadmill: string | null = null)
     last_device_id: s.lastDeviceId,
     calibration_points: s.calibrationPoints,
     calibration_treadmill: treadmill,
-    belt_length: s.beltLength,
     min_speed: s.minSpeed,
     max_speed: s.maxSpeed,
     max_incline: s.maxIncline,
