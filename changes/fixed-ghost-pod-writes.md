@@ -1,1 +1,1 @@
-- GHOST_POD no longer lets a nearby Bluetooth device set an absurd distance or flood the log with its writes.
+- GHOST_POD no longer lets a nearby Bluetooth device set an impossible total distance on the pod or fill the log with its writes.
