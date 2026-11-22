@@ -3,7 +3,7 @@
 //! walk-away idle timer never fire), the session is never locked, the display
 //! is never off (so lights out never fires), and the microphone is always
 //! free. PC idle time is unknown, so updates never install by themselves. The
-//! HUD stays click-through. There is no Bluetooth peripheral, so GHOST_POD
+//! HUD stays click-through. There is no Bluetooth peripheral, so WRIST_LINK
 //! says it isn't supported.
 
 pub fn install_input_hooks() {
@@ -49,7 +49,7 @@ pub fn peripheral_add(
     _service: &super::PeripheralService,
     _events: super::PeripheralEvents,
 ) -> Result<(), String> {
-    Err("The watch pod only works on Windows for now.".to_string())
+    Err("WRIST_LINK only works on Windows for now.".to_string())
 }
 
 pub fn peripheral_notify(_uuid: u128, _value: &[u8]) -> Result<(), String> {

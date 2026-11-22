@@ -248,22 +248,12 @@ export const snapshot: AppSnapshot = {
     aside_count: null,
   },
   guided_task: { pinned: false, tasks: [], unpin_in_s: null },
-  ghost_pod: {
+  wrist_link: {
     enabled: false,
-    status: "off",
-    label: "OFFLINE",
-    message: "Switch GHOST_POD on to let a watch read the belt as a foot pod.",
+    serving: false,
     watches: 0,
-    speed_kmh: 0,
-    power_enabled: false,
-    power_watches: 0,
-    power_w: 0,
-    wrist_link: {
-      enabled: false,
-      serving: false,
-      watches: 0,
-      message: "Switch WRIST_LINK on to let the watch's data field read the belt.",
-    },
+    failed: false,
+    message: "Switch WRIST_LINK on to let the watch's data field read the belt.",
   },
   heart_rate: {
     sensor: null,

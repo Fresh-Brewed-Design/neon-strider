@@ -1,18 +1,22 @@
-//! WRIST_LINK: a second Bluetooth service the PC serves next to GHOST_POD's
-//! foot pod, for a Connect IQ data field on the watch (roadmap #55 and #56;
-//! the plan is in the roadmap issue #82).
+//! WRIST_LINK: a Bluetooth service the PC serves for a Connect IQ data field
+//! on the watch (roadmap #55 and #56; the plan is in the roadmap issue #82).
 //!
 //! Phase 0 only: the State characteristic (read and notify). The watch reads
 //! the belt from it; nothing the watch sends is acted on yet, so nothing here
 //! can move the belt. This file is the pure part: the UUIDs, the State byte
-//! layout, the status text. `ghost_pod/worker.rs` owns the switch and the tick
+//! layout, the status text. `wrist_link/worker.rs` owns the switch and the tick
 //! that sends State; the GATT server is in `platform/`.
+
+#[path = "wrist_link/worker.rs"]
+mod worker;
+
+pub use worker::{init, set_enabled, snapshot, spawn};
 
 use crate::engine::{OrchestratorState, STILL_KMH};
 use crate::protocol::MachineStatus;
 use serde::{Deserialize, Serialize};
 
-/// The WRIST_LINK service. Little-endian bytes, like the foot pod's.
+/// The WRIST_LINK service.
 pub const SERVICE: u128 = 0x00b165d6_40c2_4f94_8df9_0f69431f21af;
 /// State (read and notify, PC to watch). The other two UUIDs come with the
 /// phases that use them.
@@ -68,7 +72,7 @@ impl WristState {
 }
 
 /// The deck right now as the watch should see it. A moving belt reads its
-/// real speed (calibrated, like the pod); paused and still read 0 km/h.
+/// real speed (calibrated); paused and still read 0 km/h.
 pub fn state_for(state: &OrchestratorState) -> WristState {
     let kmh = state.to_physical_speed(state.hardware_speed);
     let belt = match state.last_status {
@@ -97,28 +101,20 @@ pub fn state_for(state: &OrchestratorState) -> WristState {
 pub struct WristLinkSnapshot {
     /// The Labs switch (off by default).
     pub enabled: bool,
-    /// The service is up (served next to the foot pod).
+    /// The service is up.
     pub serving: bool,
     /// Watches subscribed to the state.
     pub watches: u32,
+    /// The service failed or its advertisement was aborted; `message` says why.
+    pub failed: bool,
     /// One plain sentence for the link.
     pub message: String,
 }
 
 /// The sentence for the link.
-pub fn status_message(
-    enabled: bool,
-    pod_on: bool,
-    serving: bool,
-    watches: u32,
-    error: Option<&str>,
-) -> String {
+pub fn status_message(enabled: bool, serving: bool, watches: u32, error: Option<&str>) -> String {
     if !enabled {
         return "Switch WRIST_LINK on to let the watch's data field read the belt.".to_string();
-    }
-    if !pod_on {
-        return "Waiting for GHOST_POD: the watch keeps its foot pod link while the field reads the belt."
-            .to_string();
     }
     if let Some(why) = error {
         return why.to_string();
@@ -204,10 +200,10 @@ mod tests {
 
     #[test]
     fn the_message_follows_the_link() {
-        assert!(status_message(false, true, false, 0, None).starts_with("Switch WRIST_LINK on"));
-        assert!(status_message(true, false, false, 0, None).starts_with("Waiting for GHOST_POD"));
-        assert_eq!(status_message(true, true, true, 0, Some("boom")), "boom");
-        assert!(status_message(true, true, true, 1, None).contains("connected"));
-        assert!(status_message(true, true, true, 0, None).starts_with("Waiting for the watch"));
+        assert!(status_message(false, false, 0, None).starts_with("Switch WRIST_LINK on"));
+        assert_eq!(status_message(true, true, 0, Some("boom")), "boom");
+        assert_eq!(status_message(true, false, 0, None), "Starting the link.");
+        assert!(status_message(true, true, 1, None).contains("connected"));
+        assert!(status_message(true, true, 0, None).starts_with("Waiting for the watch"));
     }
 }

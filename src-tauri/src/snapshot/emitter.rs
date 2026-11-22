@@ -103,7 +103,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     snapshot.calibration = crate::calibration::snapshot(&state);
     // The first-connect offer only shows while the treadmill is connected.
     snapshot.calibration.offer &= snapshot.connection.connected;
-    snapshot.ghost_pod = crate::ghost_pod::snapshot();
+    snapshot.wrist_link = crate::wrist_link::snapshot();
     snapshot.heart_rate = crate::heart_rate::snapshot();
     // The zone shows on PULSE_RATE only with a sensor picked: without one
     // there is no reading to place in it and the zone trims nothing.

@@ -468,15 +468,9 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             blocking(move || calibration::stride_fit::set(&app, kmh, min, max).map(|_| ())).await
         }
 
-        // ---- GHOST_POD and WRIST_LINK (Labs) ----
-        Command::GhostPodSet { on } => {
-            blocking(move || crate::ghost_pod::set_enabled(&app, on)).await
-        }
-        Command::GhostPodPowerSet { on } => {
-            blocking(move || crate::ghost_pod::set_power(&app, on)).await
-        }
+        // ---- WRIST_LINK (Labs) ----
         Command::WristLinkSet { on } => {
-            blocking(move || crate::ghost_pod::set_wrist_link(&app, on)).await
+            blocking(move || crate::wrist_link::set_enabled(&app, on)).await
         }
 
         // ---- HEART_LINK ----

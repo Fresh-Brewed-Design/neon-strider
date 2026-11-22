@@ -7,7 +7,6 @@ import type { DeckSnapshot } from "./DeckSnapshot";
 import type { DeskSync } from "./DeskSync";
 import type { EyeBreakSnapshot } from "./EyeBreakSnapshot";
 import type { FitToDeckOffer } from "./FitToDeckOffer";
-import type { GhostPodSnapshot } from "./GhostPodSnapshot";
 import type { GuidedTaskSnapshot } from "./GuidedTaskSnapshot";
 import type { HeartRateSnapshot } from "./HeartRateSnapshot";
 import type { HudConfig } from "./HudConfig";
@@ -26,6 +25,7 @@ import type { UpdateSnapshot } from "./UpdateSnapshot";
 import type { WalkAwaySnapshot } from "./WalkAwaySnapshot";
 import type { WallClock } from "./WallClock";
 import type { WeeklySummary } from "./WeeklySummary";
+import type { WristLinkSnapshot } from "./WristLinkSnapshot";
 
 export type AppSnapshot = { connection: ConnectionSnapshot, deck: DeckSnapshot, session: SessionSnapshot, programs: Array<Program>, active_program: ActiveProgram | null, 
 /**
@@ -95,9 +95,10 @@ traffic: TrafficSnapshot,
  */
 calibration: CalibrationSnapshot, 
 /**
- * Labs: GHOST_POD, the PC as a foot pod for a watch (off by default).
+ * Labs: WRIST_LINK, the service the watch's data field reads the belt
+ * from (off by default).
  */
-ghost_pod: GhostPodSnapshot, heart_rate: HeartRateSnapshot, 
+wrist_link: WristLinkSnapshot, heart_rate: HeartRateSnapshot, 
 /**
  * The dashboard held open and on top during a guided task (GROUND_TRUTH).
  */

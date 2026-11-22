@@ -9,13 +9,17 @@ export type WristLinkSnapshot = {
  */
 enabled: boolean, 
 /**
- * The service is up (served next to the foot pod).
+ * The service is up.
  */
 serving: boolean, 
 /**
  * Watches subscribed to the state.
  */
 watches: number, 
+/**
+ * The service failed or its advertisement was aborted; `message` says why.
+ */
+failed: boolean, 
 /**
  * One plain sentence for the link.
  */
