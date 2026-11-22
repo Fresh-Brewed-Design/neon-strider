@@ -205,6 +205,13 @@ fn classify(raw: &str) -> LinkErrorKind {
 /// matches on it).
 pub const NO_DEVICES_SEEN: &str = "no bluetooth devices seen";
 
+/// The raw error for a BLE call (`step`, such as "Connect") that passed its
+/// time limit. `classify` reads it as a timeout, so the windows show the
+/// timeout sentence.
+pub fn timed_out(step: &str, limit: Duration) -> String {
+    format!("{step} timed out after {} s", limit.as_secs_f32())
+}
+
 /// The short human message for a raw error. Pure.
 pub fn describe(raw: &str) -> LinkError {
     let kind = classify(raw);
@@ -817,6 +824,22 @@ mod tests {
             LinkErrorKind::Timeout
         );
         assert_eq!(classify("something odd"), LinkErrorKind::Generic);
+    }
+
+    #[test]
+    fn a_ble_call_past_its_limit_reads_as_a_timeout() {
+        let raw = timed_out("Connect", Duration::from_secs(15));
+        assert_eq!(raw, "Connect timed out after 15 s");
+        let e = describe(&raw);
+        assert_eq!(e.kind, LinkErrorKind::Timeout);
+        assert_eq!(
+            e.message,
+            "The treadmill did not answer. Move closer and try again."
+        );
+        assert_eq!(
+            timed_out("Write", Duration::from_millis(2_500)),
+            "Write timed out after 2.5 s"
+        );
     }
 
     #[test]

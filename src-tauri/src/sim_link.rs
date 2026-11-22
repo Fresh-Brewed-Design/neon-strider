@@ -38,6 +38,9 @@ static NEXT_SESSION: AtomicI64 = AtomicI64::new(-1);
 #[derive(Clone)]
 pub(crate) struct SimLink {
     deck: Arc<Mutex<SimDeck>>,
+    /// Tests only: a disconnect never returns, as one can after the PC sleeps.
+    #[cfg(test)]
+    hang_disconnect: bool,
 }
 
 impl SimLink {
@@ -48,7 +51,11 @@ impl SimLink {
     }
 
     pub(crate) fn connect_to(deck: Arc<Mutex<SimDeck>>) -> Self {
-        let link = Self { deck };
+        let link = Self {
+            deck,
+            #[cfg(test)]
+            hang_disconnect: false,
+        };
         {
             let mut deck = link.lock();
             deck.wake(now());
@@ -67,6 +74,20 @@ impl SimLink {
 
     pub(crate) fn disconnect(&self) {
         self.lock().drop_link();
+    }
+
+    /// The same link, but its disconnect hangs (`DeckLink::disconnect`).
+    #[cfg(test)]
+    pub(crate) fn hanging_disconnect(self) -> Self {
+        Self {
+            hang_disconnect: true,
+            ..self
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn hangs_on_disconnect(&self) -> bool {
+        self.hang_disconnect
     }
 
     /// A packet written to the deck.

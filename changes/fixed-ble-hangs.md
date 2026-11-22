@@ -1,0 +1,1 @@
+- The app no longer gets stuck connecting, or freezes its windows, when Bluetooth stops answering after the PC wakes from sleep. Each Bluetooth step now gives up after a few seconds and the app tries again.
