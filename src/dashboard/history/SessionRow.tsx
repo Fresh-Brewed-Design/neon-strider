@@ -205,7 +205,7 @@ export function SessionRow({
           )}
           <GhostButton
             aria-label="ECHO"
-            title={live ? "ECHO waits for the walk to end." : "ECHO saves the walk as a new program."}
+            title={live ? "ECHO waits for the walk to end." : "ECHO saves a History walk as a new program."}
             disabled={live || echo.pending}
             onClick={() => void runEcho()}
             className="px-2!"
