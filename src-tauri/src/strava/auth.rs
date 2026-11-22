@@ -1,7 +1,7 @@
 //! The Strava login: the stored token set, the browser OAuth flow with its
 //! local callback listener, token exchange and refresh, and disconnecting.
 //!
-//! Tokens, the client secret and the OAuth code are never logged and never
+//! Tokens, the client secret, the OAuth code and its `state` are never logged and never
 //! leave Rust. `Auth`, `Callback` and the token reply deliberately do not
 //! implement `Debug`, so they cannot end up in a log line by accident.
 
@@ -88,9 +88,58 @@ struct Callback {
     scope: Option<String>,
 }
 
-/// Wait for the browser to hit `/callback`, answering anything else with 404.
-/// Gives up after `AUTH_TIMEOUT` or when a newer Connect replaces this one.
-fn wait_for_callback(server: Server, generation: u64) -> Result<Callback, String> {
+/// What a request to `/callback` means for the attempt waiting on it.
+enum CallbackOutcome {
+    /// Strava's redirect for this attempt, with a code.
+    Accepted(Callback),
+    /// Strava's redirect for this attempt, after the user declined.
+    Denied,
+    /// Not this attempt's redirect (wrong or missing `state`, or no code): keep waiting.
+    Ignored,
+}
+
+/// A fresh random `state` for one Connect (122 random bits from the OS).
+fn new_state() -> String {
+    uuid::Uuid::new_v4().simple().to_string()
+}
+
+/// Equal without stopping at the first differing byte.
+fn same_secret(a: &str, b: &str) -> bool {
+    a.len() == b.len()
+        && a.bytes()
+            .zip(b.bytes())
+            .fold(0u8, |diff, (x, y)| diff | (x ^ y))
+            == 0
+}
+
+/// Read a `/callback` request against the `state` this attempt sent. Only a
+/// matching `state` can end the attempt; anything else is ignored.
+fn classify_callback(url: &Url, expected_state: &str) -> CallbackOutcome {
+    let param = |name: &str| {
+        url.query_pairs()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.into_owned())
+    };
+    match param("state") {
+        Some(state) if same_secret(&state, expected_state) => {}
+        _ => return CallbackOutcome::Ignored,
+    }
+    if let Some(code) = param("code").filter(|c| !c.is_empty()) {
+        return CallbackOutcome::Accepted(Callback {
+            code,
+            scope: param("scope"),
+        });
+    }
+    if param("error").as_deref() == Some("access_denied") {
+        return CallbackOutcome::Denied;
+    }
+    CallbackOutcome::Ignored
+}
+
+/// Wait for Strava's redirect to `/callback` carrying this attempt's `state`,
+/// answering anything else with a short page and waiting on. Gives up after
+/// `AUTH_TIMEOUT` or when a newer Connect replaces this one.
+fn wait_for_callback(server: Server, generation: u64, state: &str) -> Result<Callback, String> {
     let deadline = Instant::now() + AUTH_TIMEOUT;
     loop {
         if current_generation() != generation {
@@ -113,28 +162,29 @@ fn wait_for_callback(server: Server, generation: u64) -> Result<Callback, String
             let _ = request.respond(Response::from_string("Not found").with_status_code(404));
             continue;
         }
-        let param = |name: &str| {
-            url.query_pairs()
-                .find(|(k, _)| k == name)
-                .map(|(_, v)| v.into_owned())
-        };
-        if let Some(code) = param("code") {
-            let _ = request.respond(Response::from_string(
-                "Strava is linked. Close the browser tab and go back to Neon Strider.",
-            ));
-            return Ok(Callback {
-                code,
-                scope: param("scope"),
-            });
+        match classify_callback(&url, state) {
+            CallbackOutcome::Accepted(cb) => {
+                let _ = request.respond(Response::from_string(
+                    "Strava is linked. Close the browser tab and go back to Neon Strider.",
+                ));
+                return Ok(cb);
+            }
+            CallbackOutcome::Denied => {
+                let _ = request.respond(Response::from_string(
+                    "Strava was not authorized. Close the browser tab and go back to Neon Strider.",
+                ));
+                return Err("Strava access was denied".to_string());
+            }
+            CallbackOutcome::Ignored => {
+                log::info!("ignored a Strava callback that was not this connect attempt's");
+                let _ = request.respond(
+                    Response::from_string(
+                        "Neon Strider is not waiting for this sign-in. Use Connect in Neon Strider to try again.",
+                    )
+                    .with_status_code(400),
+                );
+            }
         }
-        let _ = request.respond(Response::from_string(
-            "Strava was not authorized. Close the browser tab and go back to Neon Strider.",
-        ));
-        return Err(if param("error").as_deref() == Some("access_denied") {
-            "Strava access was denied".to_string()
-        } else {
-            "Strava did not return an authorization code".to_string()
-        });
     }
 }
 
@@ -158,6 +208,7 @@ pub async fn connect(app: &AppHandle) -> Result<(), String> {
 
     let generation = LISTEN_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
     let server = bind_listener().await?;
+    let state = new_state();
 
     let auth_url = Url::parse_with_params(
         AUTHORIZE_URL,
@@ -167,6 +218,7 @@ pub async fn connect(app: &AppHandle) -> Result<(), String> {
             ("response_type", "code"),
             ("approval_prompt", "auto"),
             ("scope", plan::REQUESTED_SCOPE),
+            ("state", state.as_str()),
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -180,7 +232,7 @@ pub async fn connect(app: &AppHandle) -> Result<(), String> {
     live().authorizing_until = Some(Instant::now() + AUTH_TIMEOUT);
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        let waited = super::blocking(move || wait_for_callback(server, generation)).await;
+        let waited = super::blocking(move || wait_for_callback(server, generation, &state)).await;
         // The browser step is over, whichever way it went (unless a newer
         // Connect owns it now).
         if current_generation() == generation {
@@ -397,5 +449,81 @@ pub(super) async fn refresh(app: &AppHandle, old: &Auth) -> Result<Auth, String>
             Err("Strava access was revoked. Connect your account again.".to_string())
         }
         Err(RefreshError::Failed(e)) => Err(format!("Could not refresh the Strava token: {}", e)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const STATE: &str = "0123456789abcdef0123456789abcdef";
+
+    fn classify(query: &str) -> CallbackOutcome {
+        let url = Url::parse(&format!("http://{}/callback?{}", CALLBACK_ADDR, query)).unwrap();
+        classify_callback(&url, STATE)
+    }
+
+    #[test]
+    fn a_matching_state_with_a_code_is_accepted() {
+        let CallbackOutcome::Accepted(cb) =
+            classify(&format!("state={STATE}&code=abc&scope=read,activity:write"))
+        else {
+            panic!("expected the callback to be accepted");
+        };
+        assert_eq!(cb.code, "abc");
+        assert_eq!(cb.scope.as_deref(), Some("read,activity:write"));
+    }
+
+    #[test]
+    fn a_code_without_the_right_state_is_ignored() {
+        for query in [
+            "code=abc".to_string(),
+            "state=&code=abc".to_string(),
+            "state=wrong&code=abc".to_string(),
+            format!("state={}&code=abc", &STATE[..STATE.len() - 1]),
+            format!("state={STATE}0&code=abc"),
+        ] {
+            assert!(
+                matches!(classify(&query), CallbackOutcome::Ignored),
+                "{query}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_matching_state_with_no_code_keeps_waiting() {
+        for query in [
+            format!("state={STATE}"),
+            format!("state={STATE}&code="),
+            format!("state={STATE}&error=server_error"),
+        ] {
+            assert!(
+                matches!(classify(&query), CallbackOutcome::Ignored),
+                "{query}"
+            );
+        }
+    }
+
+    #[test]
+    fn only_a_matching_state_can_report_a_denial() {
+        assert!(matches!(
+            classify(&format!("state={STATE}&error=access_denied")),
+            CallbackOutcome::Denied
+        ));
+        assert!(matches!(
+            classify("state=wrong&error=access_denied"),
+            CallbackOutcome::Ignored
+        ));
+        assert!(matches!(
+            classify("error=access_denied"),
+            CallbackOutcome::Ignored
+        ));
+    }
+
+    #[test]
+    fn each_connect_gets_a_fresh_state() {
+        let (a, b) = (new_state(), new_state());
+        assert_eq!(a.len(), 32);
+        assert_ne!(a, b);
     }
 }
