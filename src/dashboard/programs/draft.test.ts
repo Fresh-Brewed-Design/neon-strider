@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Program } from "../../ipc";
-import { fromDraft, NEW_PROGRAM, toDraft, withZoneUnit, zoneSummary } from "./draft";
+import { fromDraft, NEW_PROGRAM, strideFitFlag, toDraft, withZoneUnit, zoneSummary } from "./draft";
 
 const PROGRAM: Program = {
   id: 7,
@@ -76,5 +76,17 @@ describe("program drafts", () => {
   it("names the step with a missing zone bound", () => {
     const d = { ...NEW_PROGRAM, steps: [{ ...NEW_PROGRAM.steps[0], zone: true, zoneLow: "" }] };
     expect(fromDraft(d, 190)).toBe("Step 1 needs both heart zone bounds.");
+  });
+});
+
+describe("strideFitFlag", () => {
+  it("flags only a speed above STRIDE_FIT, in tenths", () => {
+    expect(strideFitFlag("5.5", 5.4)).toBe("Above STRIDE_FIT 5.4 km/h");
+    expect(strideFitFlag("5.4", 5.4)).toBeNull();
+    expect(strideFitFlag("5.44", 5.4)).toBeNull();
+    expect(strideFitFlag("3", 5.4)).toBeNull();
+    expect(strideFitFlag("6", null)).toBeNull();
+    expect(strideFitFlag("", 5.4)).toBeNull();
+    expect(strideFitFlag("fast", 5.4)).toBeNull();
   });
 });

@@ -15,6 +15,7 @@ import { SessionRow } from "../history/SessionRow";
 import { TotalsPanel, WeeklyPanel } from "../history/Summary";
 import { TcxModal } from "../history/TcxModal";
 import { useSessionUploads } from "../history/useSessionUploads";
+import { WallClockPanel } from "../history/WallClock";
 import { GhostButton, Label, Page, Panel } from "../ui";
 import { cx } from "../util";
 
@@ -29,6 +30,7 @@ export function HistoryPage() {
   const activeSessionId = useAppState((s) => s.session.active_id);
   const weekly = useAppState((s) => s.weekly);
   const deskSync = useAppState((s) => s.desk_sync);
+  const wallClock = useAppState((s) => s.wall_clock);
   const savedIds = useAppState((s) => s.strava.saved_session_ids) ?? [];
 
   const [raw, setRaw] = useState<Session[] | null>(null);
@@ -143,6 +145,7 @@ export function HistoryPage() {
         />
         {weekly && <WeeklyPanel weekly={weekly} />}
         {deskSync && <DeskSyncPanel sync={deskSync} />}
+        {wallClock && <WallClockPanel clock={wallClock} />}
         <TotalsPanel meters={sum.meters} seconds={sum.seconds} kcal={sum.kcal} count={visible.length} />
 
         <Panel className="p-3">

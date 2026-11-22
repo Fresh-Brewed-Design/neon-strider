@@ -28,10 +28,12 @@ import { programs } from "./programs";
 import { seated } from "./seated";
 import { stasis } from "./stasis";
 import { strava } from "./strava";
+import { strideFit } from "./stridefit";
 import { traffic } from "./traffic";
 import type { Scenario } from "./types";
 import { update } from "./update";
 import { walkaway } from "./walkaway";
+import { wallClock } from "./wallclock";
 import { weekly } from "./weekly";
 
 export const SCENARIOS: Scenario[] = [
@@ -62,4 +64,6 @@ export const SCENARIOS: Scenario[] = [
   hrSpark,
   hrZone,
   echo,
+  strideFit,
+  wallClock,
 ];
