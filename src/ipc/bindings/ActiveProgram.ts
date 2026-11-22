@@ -31,4 +31,10 @@ speed_kmh: number, incline_pct: number,
  * The walking step's kind and its count within that kind; None while
  * resting or for a step with no kind.
  */
-kind?: StepKindSpot, };
+kind?: StepKindSpot, 
+/**
+ * Set while a cool-down step's minutes are done and it walks on until
+ * the pulse is under this many bpm (#233); `seconds_remaining` is none
+ * then, since nothing but the pulse, SKIP or END ends it.
+ */
+pulse_to_bpm?: number, };

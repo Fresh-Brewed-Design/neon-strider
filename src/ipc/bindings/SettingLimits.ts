@@ -14,6 +14,14 @@ default_max_heart_rate_bpm: number, seated_minutes: SettingRange, seated_program
  */
 title_chars: number, program_name_chars: number, program_steps: number, 
 /**
+ * A cool-down step's heart rate end, in % of maximum heart rate (#233).
+ */
+cool_down_pulse_pct: SettingRange, 
+/**
+ * The heart rate end a cool-down step starts with in the editor.
+ */
+default_cool_down_pulse_pct: number, 
+/**
  * The longest body the command cycler may send (`protocol::RAW_BODY_MAX`).
  */
 raw_body_bytes: number, };

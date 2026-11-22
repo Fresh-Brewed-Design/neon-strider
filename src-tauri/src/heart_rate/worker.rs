@@ -241,6 +241,7 @@ pub fn snapshot() -> HeartRateSnapshot {
                 Vec::new()
             },
             zone: None,
+            cool_down: None,
             scanning: rt.scanning,
             found: rt.found.clone(),
             max_bpm: u32::from(max_heart_rate()),

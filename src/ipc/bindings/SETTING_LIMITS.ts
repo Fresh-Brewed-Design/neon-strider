@@ -81,5 +81,10 @@ export const SETTING_LIMITS: SettingLimits = {
   "title_chars": 100,
   "program_name_chars": 40,
   "program_steps": 20,
+  "cool_down_pulse_pct": {
+    "min": 50.0,
+    "max": 76.0
+  },
+  "default_cool_down_pulse_pct": 60.0,
   "raw_body_bytes": 17
 };

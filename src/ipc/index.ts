@@ -59,6 +59,8 @@ export type { Program } from "./bindings/Program";
 export type { ProgramPhase } from "./bindings/ProgramPhase";
 export type { ProgramStep } from "./bindings/ProgramStep";
 export type { ProgramWait } from "./bindings/ProgramWait";
+export type { PulseEnd } from "./bindings/PulseEnd";
+export type { PulseTarget } from "./bindings/PulseTarget";
 export type { SavedFile } from "./bindings/SavedFile";
 export type { SeatedSnapshot } from "./bindings/SeatedSnapshot";
 export type { SessionSnapshot } from "./bindings/SessionSnapshot";

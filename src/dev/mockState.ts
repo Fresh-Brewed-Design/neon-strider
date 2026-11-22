@@ -257,6 +257,7 @@ export const snapshot: AppSnapshot = {
     bpm: null,
     history: [],
     zone: null,
+    cool_down: null,
     scanning: false,
     found: [],
     max_bpm: 190,

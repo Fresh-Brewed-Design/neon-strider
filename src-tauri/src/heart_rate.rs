@@ -106,6 +106,9 @@ pub struct HeartRateSnapshot {
     /// The running program step's heart rate zone, for the chart's band;
     /// none without a walking step that has a zone.
     pub zone: Option<ZoneBand>,
+    /// The running cool-down step's pulse target (#233); none without a
+    /// walking step that ends on heart rate.
+    pub cool_down: Option<PulseTarget>,
     /// A scan is running.
     pub scanning: bool,
     /// What the last scan found.
@@ -189,6 +192,61 @@ pub fn zone_band(low: f32, high: f32, bpm: Option<u32>) -> ZoneBand {
         label: label.to_string(),
         message: message.to_string(),
         settle_s: None,
+    }
+}
+
+/// A cool-down step's pulse target in beats per minute, and where the pulse
+/// sits against it (#233).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
+pub struct PulseTarget {
+    /// The step ends once the pulse stays at or under this.
+    pub target_bpm: u32,
+    /// The reading is at or under the target; none without a fresh reading.
+    pub down: Option<bool>,
+    /// The deck-voice word for where the pulse is (`PULSE // HIGH`).
+    pub label: String,
+    /// One plain sentence for it.
+    pub message: String,
+    /// Seconds the pulse must still stay down (`programs::PULSE_END_HOLD`);
+    /// none once it has, or while it isn't down.
+    pub hold_s: Option<u32>,
+}
+
+/// The cool-down target `target` (whole bpm) with the reading `bpm` placed
+/// against it: at or under is down, the same rule that ends the step.
+/// `hold_s` is how long the pulse must still stay down, as the program
+/// counts it. Pure.
+pub fn pulse_target(target: u32, bpm: Option<u32>, hold_s: Option<u32>) -> PulseTarget {
+    let down = bpm.map(|b| b <= target);
+    let (label, message, hold_s) = match (down, hold_s) {
+        (None, _) => (
+            "PULSE // WAIT",
+            "Without a heart rate reading the cool-down ends on its minutes.",
+            None,
+        ),
+        (Some(false), _) => (
+            "PULSE // HIGH",
+            "The cool-down walks on until heart rate drops to the target.",
+            None,
+        ),
+        (Some(true), Some(left)) => (
+            "PULSE // HOLDING",
+            "Heart rate is at the target and needs to stay there for 30 s.",
+            Some(left),
+        ),
+        (Some(true), None) => (
+            "PULSE // CLEAR",
+            "Heart rate is down, so the cool-down ends on its minutes.",
+            None,
+        ),
+    };
+    PulseTarget {
+        target_bpm: target,
+        down,
+        label: label.to_string(),
+        message: message.to_string(),
+        hold_s,
     }
 }
 
@@ -517,5 +575,30 @@ mod tests {
         let b = zone_band(130.0, 150.0, None).settling(75);
         assert_eq!((b.label.as_str(), b.settle_s), ("ZONE // WAIT", Some(75)));
         assert_eq!(zone_band(130.0, 150.0, Some(140)).settle_s, None);
+    }
+
+    #[test]
+    fn a_cool_down_target_places_the_pulse_at_or_under_it() {
+        let wait = pulse_target(114, None, Some(30));
+        assert_eq!(
+            (wait.down, wait.label.as_str(), wait.hold_s),
+            (None, "PULSE // WAIT", None)
+        );
+        let high = pulse_target(114, Some(115), Some(30));
+        assert_eq!(
+            (high.down, high.label.as_str()),
+            (Some(false), "PULSE // HIGH")
+        );
+        // At the target counts as down, so the number shown is the one to reach.
+        let holding = pulse_target(114, Some(114), Some(12));
+        assert_eq!(
+            (holding.down, holding.label.as_str(), holding.hold_s),
+            (Some(true), "PULSE // HOLDING", Some(12))
+        );
+        let clear = pulse_target(114, Some(100), None);
+        assert_eq!(
+            (clear.down, clear.label.as_str()),
+            (Some(true), "PULSE // CLEAR")
+        );
     }
 }
