@@ -58,7 +58,7 @@ type Walk = "sweep" | "guide" | null;
  * START FRESH sets the treadmill's points aside before a new walk, and while
  * a set is aside (`snapshot.calibration.aside_count`) RESTORE and KEEP NEW
  * settle it; Rust keeps both sets. STRIDE_FIT, set by feel, sits above the
- * points while no run or walk is open.
+ * points once the belt loop is known, while no run or walk is open.
  */
 export function GuidedCalibration() {
   const snap = useAppSnapshot();
@@ -161,7 +161,7 @@ export function GuidedCalibration() {
       {beltSet && cal.belt_treadmill && cal.aside_count === null && points.length > 0 && !guide && !sweep && !run && (
         <StartFresh />
       )}
-      {!run && !guide && !sweep && <StrideFit />}
+      {beltSet && !run && !guide && !sweep && <StrideFit />}
       <Label>POINTS</Label>
       <div className="space-y-2">
         {rows.map((row) => {
