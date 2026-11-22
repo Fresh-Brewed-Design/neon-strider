@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.50.2 (2026-11-22)
+
+### Fixed
+
+- The HUD's STASIS and DUMP buttons no longer stick out past the VEL and TILT controls at larger Windows text sizes.
+
 ## 1.50.1 (2026-11-22)
 
 ### Fixed
