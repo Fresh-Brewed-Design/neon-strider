@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.54.1 (2026-11-22)
+
+### Fixed
+
+- INSTALL on the HUD's update card opens the dashboard on the update notes again, and "What's new" stays open after an update.
+
 ## 1.54.0 (2026-11-22)
 
 ### New

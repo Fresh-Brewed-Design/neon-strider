@@ -1,1 +1,0 @@
-- INSTALL on the HUD's update card opens the dashboard on the update notes again, and "What's new" stays open after an update.
