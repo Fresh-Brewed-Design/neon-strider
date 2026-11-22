@@ -26,12 +26,11 @@ export function ActiveProgramCard() {
           <Label className="text-neon-yellow/70">{a.paused ? "Program paused" : "Program running"}</Label>
         )}
         <div className="line-clamp-2 break-words font-digital text-base font-bold leading-tight tracking-wider text-neon-yellow">{a.name}</div>
-        <div className="font-mono text-xs text-white/60">
-          {describeActive(a)}
+        <div className="flex min-w-0 gap-1 font-mono text-xs text-white/60" data-testid="program-step-line">
+          <span className="min-w-0 truncate" title={describeActive(a)}>{describeActive(a)}</span>
           {a.phase === "walking" && (
-            <span className="text-white/40">
-              {" "}
-              · {a.speed_kmh.toFixed(1)}{" "}km/h · {a.incline_pct.toFixed(1)}%
+            <span className="shrink-0 whitespace-nowrap text-white/40">
+              · {a.speed_kmh.toFixed(1)}{" "}km/h · {a.incline_pct.toFixed(1)}%
             </span>
           )}
         </div>
