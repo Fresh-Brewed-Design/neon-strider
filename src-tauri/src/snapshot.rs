@@ -121,6 +121,10 @@ fn deck_snapshot(state: &OrchestratorState, max_incline_level: u8) -> DeckSnapsh
         .deck_profile
         .incline_ceiling()
         .map_or(max_incline_level, |c| max_incline_level.min(c));
+    let stride_fit_kmh = crate::calibration::stride_fit::kmh(
+        state.min_physical_speed(),
+        state.to_physical_speed(state.top_hw_speed()),
+    );
     DeckSnapshot {
         status: state.last_status,
         unknown_status_code: state.unknown_status_code,
@@ -146,6 +150,13 @@ fn deck_snapshot(state: &OrchestratorState, max_incline_level: u8) -> DeckSnapsh
             .collect(),
         incline_steps: state.deck_incline_levels(),
         profile: profile_snapshot(state),
+        stride_fit_kmh,
+        above_stride_fit: crate::calibration::stride_fit::above(
+            state.last_status == crate::protocol::MachineStatus::Running,
+            state.to_physical_speed(state.hardware_speed),
+            target_speed,
+            stride_fit_kmh,
+        ),
     }
 }
 
@@ -220,12 +231,14 @@ fn neural_snapshot(state: &OrchestratorState) -> NeuralSnapshot {
 /// `calibration`, `guided_task` and `hud_view` are left at their defaults: they depend on the clock or shared
 /// state, so the emitter fills them in.
 pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSnapshot {
+    let deck = deck_snapshot(state, parts.max_incline_level);
     AppSnapshot {
         connection: parts.connection,
-        deck: deck_snapshot(state, parts.max_incline_level),
         session: session_snapshot(state, parts.daily_base_m, parts.live_counts_today),
         programs: state.programs.clone(),
         active_program: state.active_program(),
+        fit_to_deck: state.fit_to_deck_offers(deck.stride_fit_kmh),
+        deck,
         neural: neural_snapshot(state),
         hud: parts.hud,
         hud_view: HudView::Full,
@@ -474,6 +487,45 @@ mod tests {
         assert_eq!(s.deck.max_speed_kmh, 6.0);
         // Both limits are calibrated: min_speed 0.6 (hardware) is 0.3 km/h.
         assert!((s.deck.min_speed_kmh - 0.3).abs() < 1e-5);
+    }
+
+    #[test]
+    fn stride_fit_is_in_the_deck_snapshot_held_to_the_range() {
+        let _g = crate::calibration::TEST_GLOBALS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let state = OrchestratorState::default();
+        crate::calibration::stride_fit::set_for_test("TEST", None);
+        assert_eq!(snap(&state, 0.0, 15).deck.stride_fit_kmh, None, "unset");
+        crate::calibration::stride_fit::set_for_test("TEST", Some(2.5));
+        assert_eq!(snap(&state, 0.0, 15).deck.stride_fit_kmh, Some(2.5));
+        let top = snap(&state, 0.0, 15).deck.max_speed_kmh;
+        crate::calibration::stride_fit::set_for_test("TEST", Some(top + 5.0));
+        assert_eq!(snap(&state, 0.0, 15).deck.stride_fit_kmh, Some(top));
+        crate::calibration::stride_fit::set_for_test("TEST", None);
+    }
+
+    #[test]
+    fn above_stride_fit_follows_the_running_belt() {
+        let _g = crate::calibration::TEST_GLOBALS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let mut state = OrchestratorState {
+            last_status: crate::protocol::MachineStatus::Running,
+            hardware_speed: 5.0,
+            manual_intent: Some(crate::protocol::ControlIntent {
+                speed: 5.0,
+                incline: 0,
+            }),
+            ..Default::default()
+        };
+        crate::calibration::stride_fit::set_for_test("TEST", None);
+        assert!(!snap(&state, 0.0, 15).deck.above_stride_fit, "unset");
+        crate::calibration::stride_fit::set_for_test("TEST", Some(4.5));
+        assert!(snap(&state, 0.0, 15).deck.above_stride_fit);
+        state.last_status = crate::protocol::MachineStatus::Paused;
+        assert!(!snap(&state, 0.0, 15).deck.above_stride_fit, "paused");
+        crate::calibration::stride_fit::set_for_test("TEST", None);
     }
 
     #[test]

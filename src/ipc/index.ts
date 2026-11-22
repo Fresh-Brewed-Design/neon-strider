@@ -31,6 +31,7 @@ export type { DeskDay } from "./bindings/DeskDay";
 export type { DeskSync } from "./bindings/DeskSync";
 export type { WallClock } from "./bindings/WallClock";
 export type { EyeBreakSnapshot } from "./bindings/EyeBreakSnapshot";
+export type { FitToDeckOffer } from "./bindings/FitToDeckOffer";
 export type { GuideCheck } from "./bindings/GuideCheck";
 export type { GuideMark } from "./bindings/GuideMark";
 export type { GuideSpeed } from "./bindings/GuideSpeed";

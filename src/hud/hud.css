@@ -201,8 +201,10 @@ body,
   border-bottom: 1px solid var(--hud-line);
 }
 
-/* Neural flow easing the belt off: one quiet row under the stats. */
-.hud-neural {
+/* Neural flow easing the belt off, or the belt above STRIDE_FIT: one quiet
+   row under the stats each, never a toast per change. */
+.hud-neural,
+.hud-stride {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -212,13 +214,15 @@ body,
   border-bottom: 1px solid var(--hud-line);
   min-width: 0;
 }
-.hud-neural .hud-label {
+.hud-neural .hud-label,
+.hud-stride .hud-label {
   color: var(--accent);
   letter-spacing: 0.14em;
   overflow-wrap: anywhere;
   min-width: 0;
 }
-.hud-neural-speed {
+.hud-neural-speed,
+.hud-stride-speed {
   display: flex;
   align-items: baseline;
   gap: 4px;

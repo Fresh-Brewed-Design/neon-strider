@@ -71,6 +71,8 @@ export const snapshot: AppSnapshot = {
     max_incline_pct: 18.75,
     speed_steps: [],
     incline_steps: [],
+    stride_fit_kmh: null,
+    above_stride_fit: false,
     profile: {
       learned: 0,
       floor_kmh: null,
@@ -107,6 +109,7 @@ export const snapshot: AppSnapshot = {
     speed_kmh: 3,
     incline_pct: 5,
   },
+  fit_to_deck: [],
   neural: {
     enabled: true,
     factor: 1,
