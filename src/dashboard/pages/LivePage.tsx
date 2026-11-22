@@ -8,6 +8,7 @@ import { Sparkline } from "../../widgets/Sparkline";
 import { Axis } from "../live/Axis";
 import { PinToggle } from "../live/PinToggle";
 import { Transport } from "../live/Transport";
+import { TargetReadout } from "../live/TargetReadout";
 import { ZoneReadout } from "../live/ZoneReadout";
 import { ActiveProgramCard } from "../programs/ActiveProgramCard";
 import { StatusPill } from "../StatusPill";
@@ -151,6 +152,7 @@ export function LivePage() {
             const { value, unit } = w.read(s);
             const spark = w.spark?.(s);
             const zone = w.zone?.(s);
+            const target = w.target?.(s);
             // PULSE_RATE with a sensor takes two tiles, so its chart sits
             // beside the bpm and the zone beside the name, and the page keeps
             // the height it has without one. It is the last stat, so its row
@@ -160,6 +162,7 @@ export function LivePage() {
                 <div className="flex items-start justify-between gap-1">
                   <Label className="min-w-0 tracking-[0.12em] [overflow-wrap:anywhere]">{w.codename}</Label>
                   {zone && <ZoneReadout zone={zone} />}
+                  {target && <TargetReadout target={target} />}
                   <PinToggle widget={w.id} pinned={pinned.has(w.id)} />
                 </div>
                 <div className="flex items-center gap-3">

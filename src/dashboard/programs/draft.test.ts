@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Program } from "../../ipc";
-import { fromDraft, NEW_PROGRAM, toDraft, withZoneUnit, zoneSummary } from "./draft";
+import { fromDraft, NEW_PROGRAM, pulseSummary, toDraft, withZoneUnit, zoneSummary } from "./draft";
 
 const PROGRAM: Program = {
   id: 7,
@@ -76,5 +76,30 @@ describe("program drafts", () => {
   it("names the step with a missing zone bound", () => {
     const d = { ...NEW_PROGRAM, steps: [{ ...NEW_PROGRAM.steps[0], zone: true, zoneLow: "" }] };
     expect(fromDraft(d, 190)).toBe("Step 1 needs both heart zone bounds.");
+  });
+
+  it("keeps a cool-down's pulse target through the editor, in either unit (#233)", () => {
+    const cool: Program = {
+      ...PROGRAM,
+      steps: [PROGRAM.steps[0], { duration_minutes: 5, speed_kmh: 3, incline_pct: 0, kind: "cool_down", pulse_end: { below_pct: 60 } }],
+    };
+    expect(fromDraft(toDraft(cool), 190)).toEqual(cool);
+    const bpm = withZoneUnit(toDraft(cool), "bpm", 178);
+    expect(bpm.steps[1].pulseTarget).toBe("107");
+    expect(fromDraft(bpm, 178)).toEqual(cool);
+    expect(pulseSummary(toDraft(cool).steps[1], "pct", 190)).toEqual({ pct: 60, bpm: 114 });
+    // Typed in bpm, saved as % of max.
+    const typed = { ...bpm, steps: [bpm.steps[0], { ...bpm.steps[1], pulseTarget: "120" }] };
+    expect((fromDraft(typed, 200) as Program).steps[1].pulse_end).toEqual({ below_pct: 60 });
+    // A step switched to another kind, or switched off, drops the target.
+    const walk = toDraft(cool);
+    walk.steps[1].kind = "walk";
+    expect((fromDraft(walk, 190) as Program).steps[1]).not.toHaveProperty("pulse_end");
+    const off = toDraft(cool);
+    off.steps[1].pulse = false;
+    expect((fromDraft(off, 190) as Program).steps[1]).not.toHaveProperty("pulse_end");
+    expect(fromDraft({ ...toDraft(cool), steps: [toDraft(cool).steps[0], { ...toDraft(cool).steps[1], pulseTarget: "" }] }, 190)).toBe(
+      "Step 2 needs a pulse target.",
+    );
   });
 });

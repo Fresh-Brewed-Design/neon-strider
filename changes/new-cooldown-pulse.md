@@ -1,0 +1,4 @@
+- A COOL_DOWN step can end on heart rate: after its minutes the step walks on until your pulse holds at the target for 30 s.
+- Set the pulse target per cool-down step in the program editor, as a share of your max heart rate or in bpm (60 % to start).
+- PULSE_RATE on the HUD and the Live page shows the target while the cool-down runs, and the program line reads `pulse to 114` while the step waits on the pulse.
+- With no heart rate reading, the cool-down step ends on its minutes as before.

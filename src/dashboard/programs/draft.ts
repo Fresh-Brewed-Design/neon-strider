@@ -1,6 +1,6 @@
 // The program editor's form state. Numbers stay as typed text until saved.
 
-import type { Program, ProgramStep, StepKind, ZoneTrim } from "../../ipc";
+import { SETTING_LIMITS, type Program, type ProgramStep, type StepKind, type ZoneTrim } from "../../ipc";
 
 /** How the editor shows heart rate zones: % of maximum heart rate (what Rust stores) or bpm. */
 export type ZoneUnit = "pct" | "bpm";
@@ -21,6 +21,12 @@ export interface StepDraft {
   zoneTrim: ZoneTrim;
   /** What the step is for (WARM_UP, INTERVAL, ...); null for a step with no kind. */
   kind: StepKind | null;
+  /** A COOL_DOWN step walks on after its minutes until the pulse is down (#233). */
+  pulse: boolean;
+  /** The pulse target as typed, in the draft's `zoneUnit`. */
+  pulseTarget: string;
+  /** The target as saved (% of max), so a bpm round trip that changes nothing saves it unchanged. */
+  savedPulse?: number;
 }
 
 export interface Draft {
@@ -35,10 +41,16 @@ export interface Draft {
 /** A zone switched on for a step starts at 60 to 70 % of max, a steady aerobic walk. */
 const ZONE_DEFAULT: Pick<StepDraft, "zoneLow" | "zoneHigh" | "zoneTrim"> = { zoneLow: "60", zoneHigh: "70", zoneTrim: "speed" };
 
+/** A cool-down's pulse target starts at Rust's default share of max (60 %, inside the light band). */
+const PULSE_DEFAULT: Pick<StepDraft, "pulse" | "pulseTarget"> = {
+  pulse: false,
+  pulseTarget: String(SETTING_LIMITS.default_cool_down_pulse_pct),
+};
+
 export const NEW_PROGRAM: Draft = {
   id: 0,
   name: "",
-  steps: [{ minutes: "10", open: false, speed: "3.0", incline: "0", zone: false, ...ZONE_DEFAULT, kind: null }],
+  steps: [{ minutes: "10", open: false, speed: "3.0", incline: "0", zone: false, ...ZONE_DEFAULT, kind: null, ...PULSE_DEFAULT }],
   repeat: false,
   repeatMinutes: "30",
   zoneUnit: "pct",
@@ -73,6 +85,9 @@ export function toDraft(p: Program): Draft {
           }
         : ZONE_DEFAULT),
       kind: s.kind ?? null,
+      ...(s.pulse_end
+        ? { pulse: true, pulseTarget: String(s.pulse_end.below_pct), savedPulse: s.pulse_end.below_pct }
+        : PULSE_DEFAULT),
     })),
     repeat: p.repeat_every_minutes != null,
     repeatMinutes: p.repeat_every_minutes != null ? String(p.repeat_every_minutes) : "30",
@@ -96,6 +111,7 @@ export function withZoneUnit(d: Draft, unit: ZoneUnit, maxBpm: number): Draft {
       ...s,
       zoneLow: convert(s.zoneLow, s.savedZone?.low_pct),
       zoneHigh: convert(s.zoneHigh, s.savedZone?.high_pct),
+      pulseTarget: convert(s.pulseTarget, s.savedPulse),
     })),
   };
 }
@@ -107,6 +123,13 @@ export function zoneSummary(s: StepDraft, unit: ZoneUnit, maxBpm: number): { pct
   if (s.zoneLow.trim() === "" || s.zoneHigh.trim() === "" || !Number.isFinite(low) || !Number.isFinite(high)) return null;
   if (unit === "bpm") return { bpm: [low, high], pct: [toPct(low, maxBpm), toPct(high, maxBpm)] };
   return { pct: [low, high], bpm: [toBpm(low, maxBpm), toBpm(high, maxBpm)] };
+}
+
+/** A cool-down's pulse target in both units for the editor's hint, or null while it isn't a number. */
+export function pulseSummary(s: StepDraft, unit: ZoneUnit, maxBpm: number): { pct: number; bpm: number } | null {
+  const v = Number(s.pulseTarget);
+  if (s.pulseTarget.trim() === "" || !Number.isFinite(v)) return null;
+  return unit === "bpm" ? { bpm: v, pct: toPct(v, maxBpm) } : { pct: v, bpm: toBpm(v, maxBpm) };
 }
 
 /**
@@ -136,6 +159,12 @@ export function fromDraft(d: Draft, maxBpm: number): Program | string {
           : { low_pct: low, high_pct: high };
       // Speed is the default: left out, as Rust stores it.
       if (s.zoneTrim !== "speed") step.zone.trim = s.zoneTrim;
+    }
+    // Only a COOL_DOWN step keeps a pulse end: a step switched to another kind drops it.
+    if (s.pulse && s.kind === "cool_down") {
+      const target = n(s.pulseTarget);
+      if (Number.isNaN(target)) return `Step ${i + 1} needs a pulse target.`;
+      step.pulse_end = { below_pct: d.zoneUnit === "bpm" ? pctFromBpm(target, s.savedPulse, maxBpm) : target };
     }
     steps.push(step);
   }

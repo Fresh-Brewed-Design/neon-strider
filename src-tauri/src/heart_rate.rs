@@ -204,7 +204,8 @@ pub struct PulseTarget {
     pub target_bpm: u32,
     /// The reading is at or under the target; none without a fresh reading.
     pub down: Option<bool>,
-    /// The deck-voice word for where the pulse is (`PULSE // HIGH`).
+    /// The deck-voice word for where the pulse is (`PULSE // HIGH`,
+    /// `PULSE // HOLD 18S`).
     pub label: String,
     /// One plain sentence for it.
     pub message: String,
@@ -221,33 +222,36 @@ pub fn pulse_target(target: u32, bpm: Option<u32>, hold_s: Option<u32>) -> Pulse
     let down = bpm.map(|b| b <= target);
     let (label, message, hold_s) = match (down, hold_s) {
         (None, _) => (
-            "PULSE // WAIT",
-            "Without a heart rate reading the cool-down ends on its minutes.",
+            "PULSE // WAIT".to_string(),
+            "With no heart rate reading, the cool-down step ends on its minutes.".to_string(),
             None,
         ),
         (Some(false), _) => (
-            "PULSE // HIGH",
-            "The cool-down walks on until heart rate drops to the target.",
+            "PULSE // HIGH".to_string(),
+            "The cool-down step walks on until heart rate drops to the pulse target.".to_string(),
             None,
         ),
-        (Some(true), Some(left)) => (
-            "PULSE // HOLDING",
-            "Heart rate is at the target and needs to stay there for 30 s.",
-            Some(left),
-        ),
+        // The seconds left of the hold, counting down (`PULSE // HOLD 18S`).
+        (Some(true), Some(left)) => (format!("PULSE // HOLD {left}S"), hold_message(), Some(left)),
         (Some(true), None) => (
-            "PULSE // CLEAR",
-            "Heart rate is down, so the cool-down ends on its minutes.",
+            "PULSE // CLEAR".to_string(),
+            "Heart rate is down, so the cool-down step ends on its minutes.".to_string(),
             None,
         ),
     };
     PulseTarget {
         target_bpm: target,
         down,
-        label: label.to_string(),
-        message: message.to_string(),
+        label,
+        message,
         hold_s,
     }
+}
+
+/// The sentence while the pulse is down but not yet for the whole hold.
+fn hold_message() -> String {
+    let hold = crate::programs::PULSE_END_HOLD.as_secs();
+    format!("Heart rate is at the pulse target and needs to hold there for {hold} s.")
 }
 
 /// Shown while a picked sensor does not answer. A Garmin watch only
@@ -593,7 +597,7 @@ mod tests {
         let holding = pulse_target(114, Some(114), Some(12));
         assert_eq!(
             (holding.down, holding.label.as_str(), holding.hold_s),
-            (Some(true), "PULSE // HOLDING", Some(12))
+            (Some(true), "PULSE // HOLD 12S", Some(12))
         );
         let clear = pulse_target(114, Some(100), None);
         assert_eq!(

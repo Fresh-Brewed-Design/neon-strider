@@ -77,7 +77,7 @@ describe("PULSE_RATE spark chart", () => {
     const history = [100, null, 104];
     const zone = mockZone(120, 140, null);
     const s = { ...snapshot, heart_rate: { ...snapshot.heart_rate, history, zone } };
-    expect(statWidget("HEART_RATE")?.spark?.(s)).toEqual({ points: history, zone });
+    expect(statWidget("HEART_RATE")?.spark?.(s)).toEqual({ points: history, zone, target: null });
   });
 
   it("renders a band only with a zone", () => {

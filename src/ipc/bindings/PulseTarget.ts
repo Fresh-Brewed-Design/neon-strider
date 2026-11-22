@@ -14,7 +14,8 @@ target_bpm: number,
  */
 down: boolean | null, 
 /**
- * The deck-voice word for where the pulse is (`PULSE // HIGH`).
+ * The deck-voice word for where the pulse is (`PULSE // HIGH`,
+ * `PULSE // HOLD 18S`).
  */
 label: string, 
 /**
