@@ -260,6 +260,11 @@ pub struct OrchestratorState {
     /// (`programs::ZoneTrim`); off, every zone trims speed only. Set each
     /// second from the saved switch.
     pub zone_incline_trim: bool,
+    /// STRIDE_FIT of the treadmill in use (calibrated km/h), none while
+    /// unset. Above it a zone that needs more effort raises the incline
+    /// instead of the speed, and one easing off lowers the speed first
+    /// (`programs::fit_lever`). Set each second.
+    pub stride_fit_kmh: Option<f32>,
 
     // The deck's latest telemetry, raw.
     pub last_status: MachineStatus,
@@ -430,6 +435,7 @@ impl Default for OrchestratorState {
             heart_bpm: None,
             max_heart_rate: u32::from(crate::heart_rate::DEFAULT_MAX_BPM),
             zone_incline_trim: false,
+            stride_fit_kmh: None,
             last_status: MachineStatus::Stopped,
             hardware_speed: 0.0,
             hardware_incline: 0,

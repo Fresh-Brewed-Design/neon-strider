@@ -8,7 +8,17 @@ import { useAppState } from "../../state/useAppState";
 import { GhostButton, Hint, Label, NeonButton, Panel } from "../ui";
 import { ChoiceGroup } from "../system/fields";
 import { cx } from "../util";
-import { fromDraft, kindPatch, pulseSummary, withZoneUnit, zoneSummary, type Draft, type StepDraft, type ZoneUnit } from "./draft";
+import {
+  fromDraft,
+  kindPatch,
+  pulseSummary,
+  strideFitFlag,
+  withZoneUnit,
+  zoneSummary,
+  type Draft,
+  type StepDraft,
+  type ZoneUnit,
+} from "./draft";
 import { STEP_KINDS } from "./format";
 
 /** Until Rust's snapshot arrives: the estimate Rust starts from (220 minus age at 30). */
@@ -48,6 +58,8 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
   const deck = useAppState((snap) => snap.deck);
   const maxBpm = useAppState((snap) => snap.heart_rate.max_bpm) || FALLBACK_MAX_BPM;
   const inclineTrim = useAppState((snap) => snap.heart_rate.incline_trim) ?? false;
+  // STRIDE_FIT (System, Calibration): steps above it get a one-line flag, nothing more.
+  const strideFit = useAppState((snap) => snap.deck.stride_fit_kmh) ?? null;
   const anyZone = d.steps.some((s) => s.zone);
   const anyPulse = d.steps.some((s) => s.pulse && s.kind === "cool_down");
   // A typed speed moves to one the deck runs (DECK_PROFILE) when the field is left.
@@ -193,6 +205,7 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
               }}
             />
           )}
+          <StrideFitFlag text={strideFitFlag(s.speed, strideFit)} />
           {s.zone && (
             <ZoneRow
               step={s}
@@ -343,6 +356,17 @@ function PulseRow({
         <span className={cx(!step.pulse && "opacity-40")}>{unit === "pct" ? "% of max" : "bpm"}</span>
         {step.pulse && other && <span className="text-white/40">{other}</span>}
       </div>
+    </div>
+  );
+}
+
+/** STRIDE_FIT's one-line flag under a step, lined up with the step's fields. */
+function StrideFitFlag({ text }: { text: string | null }) {
+  if (text === null) return null;
+  return (
+    <div className="grid grid-cols-[2rem_1fr] items-center gap-2">
+      <span />
+      <span className="font-mono text-[11px] text-neon-yellow">{text}</span>
     </div>
   );
 }

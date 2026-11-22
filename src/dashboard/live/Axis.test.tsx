@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { Axis } from "./Axis";
-import { sliderValue } from "./sliderValue";
+import { sliderValue, thumbCentre, trackPct } from "./sliderValue";
 
 /** The Live page's speed axis with a 0.93 km/h floor (the deck's 0.6 on a calibrated belt). */
 function speedAxis(onSet: (v: number) => void, target = 3) {
@@ -52,5 +52,49 @@ describe("speed slider", () => {
     expect(sliderValue("1.03", 0.93, 6.2)).toBe(1);
     expect(sliderValue("9", 0.93, 6.2)).toBe(6.2);
     expect(sliderValue("x", 0.93, 6.2)).toBe(0.93);
+  });
+});
+
+describe("STRIDE_FIT mark on the speed slider", () => {
+  const axis = (mark: { value: number; label: string; title: string } | null) =>
+    render(
+      <Axis
+        title="Velocity"
+        tone="cyan"
+        unit="km/h"
+        actual={3}
+        target={3}
+        min={0.5}
+        max={6.5}
+        step={0.1}
+        presets={[]}
+        formatPreset={(v) => v.toFixed(1)}
+        disabled={false}
+        onSet={() => {}}
+        onNudge={() => {}}
+        pin={{ widget: "VELOCITY", pinned: false }}
+        mark={mark}
+      />,
+    );
+
+  it("sits at the fit speed, lined up with the thumb's centre there", () => {
+    axis({ value: 3.5, label: "FIT 3.5", title: "STRIDE_FIT 3.5 km/h" });
+    expect(trackPct(3.5, 0.5, 6.5)).toBe(50);
+    expect(screen.getByTestId("slider-mark").style.left).toBe(thumbCentre(50));
+    expect(screen.getByText("FIT 3.5")).toBeInTheDocument();
+  });
+
+  it("puts the thumb's centre 8 px in at each end", () => {
+    expect(thumbCentre(0)).toBe("calc(0% + 8px)");
+    expect(thumbCentre(100)).toBe("calc(100% + -8px)");
+  });
+
+  it("shows no mark while STRIDE_FIT is unset or outside the range", () => {
+    const { unmount } = axis(null);
+    expect(screen.queryByTestId("slider-mark")).toBeNull();
+    unmount();
+    axis({ value: 8, label: "FIT 8.0", title: "STRIDE_FIT 8.0 km/h" });
+    expect(screen.queryByTestId("slider-mark")).toBeNull();
+    expect(screen.queryByText("FIT 8.0")).toBeNull();
   });
 });

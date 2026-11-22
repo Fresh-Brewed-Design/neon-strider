@@ -1216,6 +1216,66 @@ mod tests {
         );
     }
 
+    /// STRIDE_FIT at the step's 4.0 km/h (#227): a pulse below the zone
+    /// raises the deck's incline one level a minute, up to 2 %, by targets
+    /// alone, and the belt never runs faster than the fit. Easing off then
+    /// takes the climb back before any speed trim.
+    #[test]
+    fn at_stride_fit_a_zone_climbs_instead_of_speeding_up() {
+        let mut r = zone_rig();
+        r.state.stride_fit_kmh = Some(4.0);
+        r.run_program(ZONE);
+        r.run(20.0 + SETTLE);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(r.deck.incline, 0);
+        let mark = r.mark();
+        r.state.heart_bpm = Some(150);
+        let mut seen = vec![r.deck.incline];
+        for _ in 0..300 {
+            r.run(1.0);
+            seen.push(r.deck.incline);
+            assert!(r.deck.speed_kmh() < 4.05, "{} km/h", r.deck.speed_kmh());
+        }
+        seen.dedup();
+        assert_eq!(seen, vec![0, 1, 2], "2 % above the step at most");
+        r.state.heart_bpm = Some(195);
+        // Two levels a minute apart: the climb goes first, at the fit speed.
+        for _ in 0..200 {
+            if r.deck.incline == 0 {
+                break;
+            }
+            assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+            r.run(1.0);
+        }
+        assert_eq!(r.deck.incline, 0, "the climb went first");
+        r.run(70.0);
+        assert!(r.deck.speed_kmh() < 3.95, "{} km/h", r.deck.speed_kmh());
+        assert_eq!(controls(&r.commands_since(mark)), vec![]);
+    }
+
+    /// Paused with a pulse below the zone and STRIDE_FIT set, the climb that
+    /// stands in for speed sends nothing that moves the belt.
+    #[test]
+    fn a_stride_fit_zone_never_starts_a_still_belt() {
+        let mut r = zone_rig();
+        r.state.stride_fit_kmh = Some(4.0);
+        r.run_program(ZONE);
+        r.run(20.0 + SETTLE);
+        r.press(DeckAction::Pause);
+        r.run(10.0);
+        assert_eq!(r.deck.status_code(), 10, "paused");
+        let mark = r.mark();
+        r.state.heart_bpm = Some(150);
+        r.run(300.0);
+        assert_eq!(r.deck.status_code(), 10, "still paused");
+        assert_eq!(r.deck.incline, 0);
+        assert!(
+            !moves_belt(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+    }
+
     // ---- Cool-down ending on heart rate (#233) ----
 
     /// A 1 minute walk at 4.0 km/h, then a 1 minute COOL_DOWN at 3.0 km/h

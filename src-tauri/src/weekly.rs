@@ -32,6 +32,8 @@ const ACTIVE_SESSION_MIN_M: f64 = crate::strava_plan::MIN_WALK_DISTANCE_M;
 pub struct SessionRow {
     /// Epoch ms (`sessions.start_time`).
     pub start_ms: i64,
+    /// Epoch ms (`sessions.end_time`), for WALL_CLOCK's hours.
+    pub end_ms: i64,
     pub distance_m: f64,
     pub duration_s: i64,
     pub calories: f64,
@@ -342,7 +344,7 @@ pub fn acknowledge(app: &AppHandle) -> Result<(), String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use chrono::{FixedOffset, LocalResult, NaiveDateTime, Offset};
     use std::fmt;
@@ -354,7 +356,7 @@ mod tests {
     const DST_END_UTC_MS: i64 = 1_793_512_800_000; // 2026-11-01T06:00:00Z
 
     #[derive(Clone, Copy, Debug)]
-    struct EasternOffset(i32);
+    pub(crate) struct EasternOffset(i32);
 
     impl fmt::Display for EasternOffset {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -369,7 +371,7 @@ mod tests {
     }
 
     #[derive(Clone, Copy, Debug)]
-    struct Eastern;
+    pub(crate) struct Eastern;
 
     const EST: EasternOffset = EasternOffset(-5 * 3600);
     const EDT: EasternOffset = EasternOffset(-4 * 3600);
@@ -415,7 +417,7 @@ mod tests {
     }
 
     /// Local wall-clock time in `tz` to epoch ms (first instant if ambiguous).
-    fn at<Tz: TimeZone>(tz: &Tz, y: i32, mo: u32, d: u32, h: u32, mi: u32) -> i64 {
+    pub(crate) fn at<Tz: TimeZone>(tz: &Tz, y: i32, mo: u32, d: u32, h: u32, mi: u32) -> i64 {
         tz.with_ymd_and_hms(y, mo, d, h, mi, 0)
             .earliest()
             .expect("valid local time")
@@ -425,6 +427,7 @@ mod tests {
     fn row(start_ms: i64, distance_m: f64, duration_s: i64, calories: f64) -> SessionRow {
         SessionRow {
             start_ms,
+            end_ms: start_ms.saturating_add(duration_s.saturating_mul(1000)),
             distance_m,
             duration_s,
             calories,

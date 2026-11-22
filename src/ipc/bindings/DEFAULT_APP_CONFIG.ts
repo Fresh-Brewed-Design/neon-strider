@@ -5,7 +5,6 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   "last_device_id": null,
   "calibration_points": [],
   "calibration_treadmill": null,
-  "belt_length": 120.0,
   "min_speed": 0.6,
   "max_speed": 12.0,
   "max_incline": 15,

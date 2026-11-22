@@ -16,6 +16,8 @@ use crate::protocol::{ControlIntent, MachineStatus};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
+pub mod fit_to_deck;
+
 pub const KEY_PROGRAMS: &str = "programs";
 const KEY_NEXT_ID: &str = "program_next_id";
 const KEY_LAST_RUN: &str = "program_last_run_id";
@@ -71,6 +73,13 @@ const ZONE_INCLINE_RANGE_PCT: f32 = 2.0;
 /// 0.1 km/h, so it waits about one heart rate time constant (57.6 s, see
 /// `ZONE_SETTLE`) for most of its effect to show before the next.
 const ZONE_INCLINE_TRIM_EVERY: Duration = Duration::from_secs(60);
+/// Above STRIDE_FIT a zone raises incline where it would have raised speed
+/// (#227), up to this many percent of grade past the incline the zone may
+/// reach by itself. It stands in for the speed trim's 1 km/h, which costs
+/// about 2 % of grade by the ACSM walking equation (see
+/// `ZONE_INCLINE_RANGE_PCT`), so the extra climb does no more than the speed
+/// would have. Always held to the deck's top level too.
+const ZONE_FIT_INCLINE_PCT: f32 = ZONE_INCLINE_RANGE_PCT;
 /// A zone's lowest allowed bound, in % of maximum heart rate: below 30 % is
 /// resting heart rate for most people, which walking can't hold down to.
 const ZONE_MIN_PCT: f32 = 30.0;
@@ -284,6 +293,17 @@ pub enum ZoneTrim {
     Incline,
     /// Incline first, then speed once the incline is at its limit.
     Both,
+}
+
+impl ZoneTrim {
+    /// How far from the step's incline the zone moves the incline by itself:
+    /// none for a speed-only zone.
+    fn own_incline_range_pct(self) -> f32 {
+        match self {
+            ZoneTrim::Speed => 0.0,
+            ZoneTrim::Incline | ZoneTrim::Both => ZONE_INCLINE_RANGE_PCT,
+        }
+    }
 }
 
 impl HeartZone {
@@ -1693,7 +1713,10 @@ impl OrchestratorState {
     /// A step waits `ZONE_SETTLE` of running first, so the pulse has caught
     /// up with the step. By the zone's `trims`: speed by 0.1 km/h, incline by
     /// one deck level, or both, incline first away from the step's settings
-    /// and speed first back toward them.
+    /// and speed first back toward them. With STRIDE_FIT set (#227) a trim
+    /// that would take the speed above it raises the incline instead, and
+    /// easing off above it lowers the speed first, then takes back that extra
+    /// incline (`fit_lever`); unset, nothing changes.
     fn trim_speed_to_zone(&mut self, run: &mut ProgramRun, now: Instant) {
         if run.phase != ProgramPhase::Walking
             || run.paused
@@ -1728,7 +1751,7 @@ impl OrchestratorState {
         let incline = match trims {
             ZoneTrim::Speed => None,
             ZoneTrim::Incline | ZoneTrim::Both => {
-                self.zone_incline_level(&step, run.target.incline, harder)
+                self.zone_incline_level(&step, run.target.incline, harder, ZONE_INCLINE_RANGE_PCT)
             }
         };
         // Back toward the step's own speed first; away from it only once
@@ -1745,6 +1768,7 @@ impl OrchestratorState {
                 .map(ZoneLever::Incline)
                 .or(speed.map(ZoneLever::Speed)),
         };
+        let lever = self.fit_lever(&step, run, trims, harder, lever);
         match lever {
             Some(ZoneLever::Speed(kmh)) => {
                 log::info!("Heart rate zone: {} bpm, speed {:.1} km/h", bpm, kmh);
@@ -1763,6 +1787,52 @@ impl OrchestratorState {
             }
         }
         self.set_program_intent_from(run);
+    }
+
+    /// STRIDE_FIT's say in a zone's trim (#227): `lever` as the zone picked
+    /// it, kept as is while STRIDE_FIT is unset. Working harder, a speed above
+    /// STRIDE_FIT becomes one incline level up instead (none at the limit, so
+    /// the speed never goes past it). Easing off, a speed above STRIDE_FIT
+    /// comes down first, then incline above what the zone reaches by itself
+    /// (the extra a harder trim added), before the zone's own choice.
+    fn fit_lever(
+        &self,
+        step: &ProgramStep,
+        run: &ProgramRun,
+        trims: ZoneTrim,
+        harder: bool,
+        lever: Option<ZoneLever>,
+    ) -> Option<ZoneLever> {
+        use crate::calibration::stride_fit::exceeds;
+        let fit = self.stride_fit_kmh;
+        if fit.is_none() {
+            return lever;
+        }
+        let fit_range = trims.own_incline_range_pct() + ZONE_FIT_INCLINE_PCT;
+        if harder {
+            return match lever {
+                Some(ZoneLever::Speed(kmh)) if exceeds(kmh, fit) => self
+                    .zone_incline_level(step, run.target.incline, true, fit_range)
+                    .map(ZoneLever::Incline),
+                other => other,
+            };
+        }
+        if exceeds(run.target.speed, fit) {
+            if let Some(kmh) = self.zone_speed(step, run.target.speed, false) {
+                return Some(ZoneLever::Speed(kmh));
+            }
+        }
+        let pct =
+            |level: u8| level_to_incline_pct(level, self.tilt_multiplier, self.incline_offset);
+        let base = pct(self.step_intent(step).incline);
+        // 0.001 % is float slack, far under a level.
+        if pct(run.target.incline) > base + trims.own_incline_range_pct() + 0.001 {
+            if let Some(level) = self.zone_incline_level(step, run.target.incline, false, fit_range)
+            {
+                return Some(ZoneLever::Incline(level));
+            }
+        }
+        lever
     }
 
     /// The speed one trim takes `current` to (`harder`: up), within
@@ -1789,10 +1859,17 @@ impl OrchestratorState {
 
     /// The incline level one trim takes `current` to (`harder`: steeper): the
     /// next level the deck runs (DECK_PROFILE, up to the top level) within
-    /// `ZONE_INCLINE_RANGE_PCT` of the step's incline. None at the limit, on
-    /// a deck whose levels don't change the grade, or when the incline was
-    /// set by hand outside the range (left alone, like the speed).
-    fn zone_incline_level(&self, step: &ProgramStep, current: u8, harder: bool) -> Option<u8> {
+    /// `range_pct` of the step's incline (`ZONE_INCLINE_RANGE_PCT`, wider
+    /// above STRIDE_FIT). None at the limit, on a deck whose levels don't
+    /// change the grade, or when the incline was set by hand outside the
+    /// range (left alone, like the speed).
+    fn zone_incline_level(
+        &self,
+        step: &ProgramStep,
+        current: u8,
+        harder: bool,
+        range_pct: f32,
+    ) -> Option<u8> {
         if !self.tilt_multiplier.is_finite() || self.tilt_multiplier.abs() < 0.01 {
             return None;
         }
@@ -1800,7 +1877,7 @@ impl OrchestratorState {
             |level: u8| level_to_incline_pct(level, self.tilt_multiplier, self.incline_offset);
         let base = pct(self.step_intent(step).incline);
         // 0.001 % is float slack, far under a level.
-        let within = |level: u8| (pct(level) - base).abs() <= ZONE_INCLINE_RANGE_PCT + 0.001;
+        let within = |level: u8| (pct(level) - base).abs() <= range_pct + 0.001;
         if !within(current) {
             return None;
         }
@@ -1978,6 +2055,53 @@ impl OrchestratorState {
             program.note = if same_plan { slot.note.clone() } else { None };
             *slot = program.clone();
         }
+        Ok(())
+    }
+
+    /// The deck's top incline in percent (DECK_PROFILE's ceiling or the max
+    /// incline setting, whichever is lower): what FIT_TO_DECK may climb to.
+    pub fn top_incline_pct(&self) -> f32 {
+        level_to_incline_pct(
+            self.top_incline_level(),
+            self.tilt_multiplier,
+            self.incline_offset,
+        )
+    }
+
+    /// FIT_TO_DECK (#225): the dashboard's offers, one per unedited seeded
+    /// program with a step above STRIDE_FIT. None while it is unset.
+    pub fn fit_to_deck_offers(&self, fit_kmh: Option<f32>) -> Vec<fit_to_deck::FitToDeckOffer> {
+        fit_to_deck::offers(&self.programs, fit_kmh, self.top_incline_pct())
+    }
+
+    /// FIT_TO_DECK, once the user confirmed: the program's steps above
+    /// STRIDE_FIT run at it with the incline that keeps their effort, held to
+    /// the deck's top incline. Refused unless the program still has an offer
+    /// (unedited seed, a step above the fit), so a stale confirm changes
+    /// nothing. The note stays: the program keeps its plan, at a speed the
+    /// deck fits. Only the stored steps change; a running program keeps its
+    /// own copy until it ends, and nothing starts or moves the belt.
+    pub fn fit_program_to_deck(&mut self, id: u32, fit_kmh: Option<f32>) -> Result<(), String> {
+        let fit = fit_kmh.ok_or("Set STRIDE_FIT in System, Calibration first.")?;
+        let max_pct = self.top_incline_pct();
+        let slot = self
+            .programs
+            .iter_mut()
+            .find(|p| p.id == id)
+            .ok_or_else(|| "Program not found".to_string())?;
+        if fit_to_deck::offer(slot, fit, max_pct).is_none() {
+            return Err(format!(
+                "FIT_TO_DECK only fits a seeded program you haven't edited, with a step above STRIDE_FIT {fit:.1} km/h."
+            ));
+        }
+        let (steps, changes) = fit_to_deck::fit_steps(&slot.steps, fit, max_pct);
+        slot.steps = steps;
+        log::info!(
+            "FIT_TO_DECK: {} steps of program {} set to {:.1} km/h",
+            changes.len(),
+            id,
+            fit
+        );
         Ok(())
     }
 
@@ -4228,6 +4352,125 @@ mod tests {
         s.run_program(9, t0).unwrap();
         s.program.as_mut().unwrap().zone_settle_s = ZONE_SETTLE.as_secs_f64();
         s
+    }
+
+    /// Every (speed, incline) the program asks for, in order, ticking each
+    /// second from `from` to `to`.
+    fn trims_seen(s: &mut OrchestratorState, t0: Instant, from: u64, to: u64) -> Vec<(f32, u8)> {
+        let mut seen = vec![(program_speed(s), program_incline(s))];
+        for t in from..to {
+            run_ticks(s, t0, t, t + 1);
+            let now = (program_speed(s), program_incline(s));
+            if seen.last() != Some(&now) {
+                seen.push(now);
+            }
+        }
+        seen
+    }
+
+    /// STRIDE_FIT unset: a speed zone under its band raises the speed, as
+    /// before #227.
+    #[test]
+    fn without_stride_fit_a_zone_raises_the_speed() {
+        let t0 = Instant::now();
+        let mut s = zone_state(t0);
+        s.stride_fit_kmh = None;
+        s.heart_bpm = Some(150);
+        run_ticks(&mut s, t0, 0, 1);
+        assert_eq!(program_speed(&s), 5.0 + ZONE_TRIM_KMH);
+        assert_eq!(program_incline(&s), 0);
+    }
+
+    /// At STRIDE_FIT a speed zone that needs more effort climbs instead: one
+    /// level a minute, at most 2 % above the step, and the speed stays.
+    #[test]
+    fn at_stride_fit_a_speed_zone_raises_the_incline_instead() {
+        let t0 = Instant::now();
+        let mut s = zone_state(t0);
+        s.stride_fit_kmh = Some(5.0);
+        s.heart_bpm = Some(150);
+        let seen = trims_seen(&mut s, t0, 0, 600);
+        assert_eq!(seen, vec![(5.0, 0), (5.0, 1), (5.0, 2)], "{seen:?}");
+        let t = s.program.as_ref().unwrap().zone_next_trim;
+        assert!(t.is_some(), "still looking, at the limit");
+    }
+
+    /// Below STRIDE_FIT the speed still rises, up to the fit and no further.
+    #[test]
+    fn a_speed_zone_rises_to_stride_fit_then_climbs() {
+        let t0 = Instant::now();
+        let mut s = zone_state(t0);
+        s.stride_fit_kmh = Some(5.2);
+        s.heart_bpm = Some(150);
+        let seen = trims_seen(&mut s, t0, 0, 600);
+        let top = seen.iter().map(|(v, _)| *v).fold(0.0, f32::max);
+        assert!((top - 5.2).abs() < 1e-4, "{seen:?}");
+        let first_climb = seen.iter().position(|(_, i)| *i > 0).unwrap();
+        assert!(
+            (seen[first_climb].0 - 5.2).abs() < 1e-4,
+            "climbs only once at the fit: {seen:?}"
+        );
+    }
+
+    /// The climb that stands in for speed stops at the deck's top level.
+    #[test]
+    fn the_climb_above_stride_fit_keeps_to_the_top_level() {
+        let t0 = Instant::now();
+        let mut s = zone_state(t0);
+        s.max_incline = 1;
+        s.stride_fit_kmh = Some(5.0);
+        s.heart_bpm = Some(150);
+        let seen = trims_seen(&mut s, t0, 0, 600);
+        assert_eq!(seen, vec![(5.0, 0), (5.0, 1)], "{seen:?}");
+    }
+
+    /// Easing off above STRIDE_FIT: the speed comes down to the fit first,
+    /// then the extra incline, then the zone's own speed trim.
+    #[test]
+    fn easing_above_stride_fit_lowers_the_speed_first() {
+        let t0 = Instant::now();
+        let mut s = zone_state(t0);
+        s.stride_fit_kmh = Some(4.5);
+        {
+            let run = s.program.as_mut().unwrap();
+            run.target.incline = 2;
+        }
+        let run = s.program.clone().unwrap();
+        s.set_program_intent_from(&run);
+        s.heart_bpm = Some(195);
+        let seen = trims_seen(&mut s, t0, 0, 1000);
+        let first_tilt = seen.iter().position(|(_, i)| *i < 2).unwrap();
+        assert!(
+            (seen[first_tilt].0 - 4.5).abs() < 1e-4,
+            "the speed reached the fit before the incline moved: {seen:?}"
+        );
+        let flat = seen.iter().position(|(_, i)| *i == 0).unwrap();
+        assert!(
+            seen[..flat].iter().all(|(v, _)| *v > 4.5 - 1e-4),
+            "the extra incline went before the speed went under the fit: {seen:?}"
+        );
+        let (low, incline) = *seen.last().unwrap();
+        assert!(
+            (low - 4.0).abs() < 1e-4,
+            "then down to the step less 1 km/h: {seen:?}"
+        );
+        assert_eq!(incline, 0);
+    }
+
+    /// ZONE_TILT both: incline within its own 2 % first, then, at the fit,
+    /// up to 2 % more in place of the speed; the speed never passes the fit.
+    #[test]
+    fn both_at_stride_fit_climbs_past_its_own_range_in_place_of_speed() {
+        let t0 = Instant::now();
+        let mut s = incline_zone_state(t0, ZoneTrim::Both);
+        s.stride_fit_kmh = Some(4.0);
+        s.heart_bpm = Some(150);
+        let seen = trims_seen(&mut s, t0, 0, 1200);
+        assert!(
+            seen.iter().all(|(v, _)| (*v - 4.0).abs() < 1e-4),
+            "{seen:?}"
+        );
+        assert_eq!(program_incline(&s), 9, "5 % plus 2 % plus 2 %: {seen:?}");
     }
 
     fn program_incline(s: &OrchestratorState) -> u8 {

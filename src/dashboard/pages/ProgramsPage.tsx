@@ -4,6 +4,7 @@ import type { Program } from "../../ipc";
 import { useAppSnapshot } from "../../state/useAppState";
 import { useTreadmillStore } from "../../store/treadmillStore";
 import { ActiveProgramCard } from "../programs/ActiveProgramCard";
+import { FitToDeck } from "../programs/FitToDeck";
 import { NEW_PROGRAM, toDraft, type Draft } from "../programs/draft";
 import { describePlan, describeProgram } from "../programs/format";
 import { ProgramEditor } from "../programs/ProgramEditor";
@@ -13,9 +14,18 @@ import { cx, send } from "../util";
 export function ProgramsPage() {
   const s = useAppSnapshot();
   const confirm = useTreadmillStore((st) => st.confirm);
-  const [editing, setEditing] = useState<Draft | null>(null);
+  const programRequest = useTreadmillStore((st) => st.programRequest);
+  const clearProgramRequest = useTreadmillStore((st) => st.clearProgramRequest);
+  const [picked, setPicked] = useState<Draft | null>(null);
 
   if (!s) return <Waiting />;
+  // A program asked for from History (ECHO) opens in the editor once the snapshot has it.
+  const requested = picked === null && programRequest !== null ? s.programs.find((p) => p.id === programRequest) : undefined;
+  const editing = picked ?? (requested ? toDraft(requested) : null);
+  const closeEditor = () => {
+    setPicked(null);
+    clearProgramRequest();
+  };
   const runningId = s.active_program?.program_id;
 
   const remove = (p: Program) =>
@@ -31,7 +41,7 @@ export function ProgramsPage() {
       title="Programs"
       actions={
         !editing && (
-          <NeonButton className="flex h-8 items-center gap-1.5 px-3" onClick={() => setEditing(NEW_PROGRAM)}>
+          <NeonButton className="flex h-8 items-center gap-1.5 px-3" onClick={() => setPicked(NEW_PROGRAM)}>
             <Plus size={14} /> New
           </NeonButton>
         )
@@ -41,7 +51,7 @@ export function ProgramsPage() {
         <ActiveProgramCard />
 
         {editing ? (
-          <ProgramEditor key={editing.id} initial={editing} onDone={() => setEditing(null)} />
+          <ProgramEditor key={editing.id} initial={editing} onDone={closeEditor} />
         ) : s.programs.length === 0 ? (
           <Panel className="p-6 text-center">
             <p className="font-mono text-xs text-white/55">
@@ -59,8 +69,9 @@ export function ProgramsPage() {
                       <div className="break-words font-digital text-sm font-bold leading-tight tracking-wider text-white">{p.name}</div>
                       <div className="font-mono text-xs text-white/50">{describeProgram(p)}</div>
                       {p.note && <div className="text-xs leading-snug text-white/40">{p.note}</div>}
+                      <FitToDeck offer={s.fit_to_deck.find((o) => o.program_id === p.id) ?? null} />
                     </div>
-                    <GhostButton aria-label={`Edit ${p.name}`} onClick={() => setEditing(toDraft(p))}>
+                    <GhostButton aria-label={`Edit ${p.name}`} onClick={() => setPicked(toDraft(p))}>
                       <Pencil size={14} />
                     </GhostButton>
                     <GhostButton aria-label={`Delete ${p.name}`} className="hover:text-neon-magenta" onClick={() => remove(p)}>

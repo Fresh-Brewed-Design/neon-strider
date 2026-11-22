@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   AlertCircle,
   ChevronDown,
@@ -9,11 +9,12 @@ import {
   FileDown,
   FileSearch,
   Loader2,
+  Repeat,
   Trash2,
 } from "lucide-react";
 import { ActionStatus, InlineAction } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
-import type { SavedFile } from "../../ipc";
+import type { EchoProgram, SavedFile } from "../../ipc";
 import type { MergedSession } from "../../services/sessionMerge";
 import { GhostButton, Panel } from "../ui";
 import { cx } from "../util";
@@ -69,6 +70,8 @@ export function SessionRow({
   onMarkUploaded,
   onInspect,
   onDelete,
+  onEcho,
+  onOpenProgram,
 }: {
   session: MergedSession;
   expanded: boolean;
@@ -91,11 +94,22 @@ export function SessionRow({
   onMarkUploaded: () => Promise<unknown>;
   onInspect: () => void;
   onDelete: () => void;
+  /** ECHO: save the walk as a new program (never started). */
+  onEcho: () => Promise<EchoProgram>;
+  /** Opens a program in the Programs editor. */
+  onOpenProgram: (id: number) => void;
 }) {
   const uploaded = !!s.strava_id || uploadState === "success";
   const save = useAction();
   const mark = useAction();
   const folder = useAction();
+  const echo = useAction();
+  const [echoId, setEchoId] = useState<number | null>(null);
+  const runEcho = async () => {
+    setEchoId(null);
+    const p = await echo.run(onEcho, { done: (r) => `Saved ${r.name} to Programs.` });
+    if (p) setEchoId(p.id);
+  };
   const showSavedLine = saved && !uploaded;
   const time = new Date(s.start_time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const wpm = s.neural_ticks > 0 ? Math.round((s.neural_heat / s.neural_ticks) * 2.4) : 0;
@@ -189,6 +203,15 @@ export function SessionRow({
               {save.pending ? <Loader2 size={15} className="animate-spin" /> : <FileDown size={15} />}
             </GhostButton>
           )}
+          <GhostButton
+            aria-label="ECHO"
+            title={live ? "ECHO waits for the walk to end." : "ECHO saves a History walk as a new program."}
+            disabled={live || echo.pending}
+            onClick={() => void runEcho()}
+            className="px-2!"
+          >
+            {echo.pending ? <Loader2 size={15} className="animate-spin" /> : <Repeat size={15} />}
+          </GhostButton>
           <GhostButton aria-label="Preview TCX" title="Preview the TCX file" onClick={onInspect} className="px-2!">
             <FileSearch size={15} />
           </GhostButton>
@@ -203,7 +226,17 @@ export function SessionRow({
         </div>
       </div>
 
-      {(error || note || save.pending || save.error || save.done || showSavedLine || mark.error || folder.error) && (
+      {(error ||
+        note ||
+        save.pending ||
+        save.error ||
+        save.done ||
+        showSavedLine ||
+        mark.error ||
+        folder.error ||
+        echo.pending ||
+        echo.error ||
+        echo.done) && (
         <div className="flex flex-col gap-1 border-t border-white/5 px-3 py-1.5">
           {uploadState !== "uploading" && error && (
             <ActionStatus error={error}>
@@ -230,6 +263,11 @@ export function SessionRow({
             />
           )}
           <ActionStatus error={mark.error ?? folder.error} />
+          <ActionStatus pending={echo.pending && "Building the ECHO program…"} error={echo.error} done={echo.done}>
+            {echo.done && echoId !== null && (
+              <InlineAction onClick={() => onOpenProgram(echoId)}>Open in Programs</InlineAction>
+            )}
+          </ActionStatus>
         </div>
       )}
 

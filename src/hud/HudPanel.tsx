@@ -107,6 +107,26 @@ export function NeuralLine({ snapshot }: { snapshot: AppSnapshot }) {
   );
 }
 
+/**
+ * Quiet line while the belt runs faster than STRIDE_FIT, by hand or from a
+ * program. Rust decides when it shows (`deck.above_stride_fit`); it stays
+ * while above, with no toast, and nothing here changes the speed.
+ */
+export function StrideFitLine({ snapshot }: { snapshot: AppSnapshot }) {
+  const { deck } = snapshot;
+  const fit = deck.stride_fit_kmh;
+  if (!deck.above_stride_fit || fit === null) return null;
+  return (
+    <div className="hud-stride accent-yellow" data-testid="hud-stride" title={`The belt runs faster than STRIDE_FIT ${fit.toFixed(1)} km/h.`}>
+      <span className="hud-label">ABOVE STRIDE_FIT</span>
+      <span className="hud-stride-speed">
+        {fit.toFixed(1)}
+        <span className="hud-unit">km/h</span>
+      </span>
+    </div>
+  );
+}
+
 /** Engage / Stasis: one `toggle_start` to Rust, the same press as the shortcut. */
 export function EngageButton({ snapshot, send }: { snapshot: AppSnapshot; send: (c: Command) => Promise<boolean> }) {
   const moving = isMoving(snapshot.deck);

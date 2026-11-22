@@ -95,6 +95,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     );
     let now_ms = crate::util::now_ms_u64();
     snapshot.desk_sync = desk_sync::snapshot(snapshot.session.daily_distance_m);
+    snapshot.wall_clock = desk_sync::wall_clock();
     snapshot.walkaway = walkaway::snapshot(now_ms);
     snapshot.update = crate::update::snapshot(now_ms);
     snapshot.traffic = crate::traffic::snapshot();
