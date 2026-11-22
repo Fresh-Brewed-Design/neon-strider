@@ -188,7 +188,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?minified`: the running strip; with `?program=resting|paused`, `?noprogram` or `?idle`; with `?hrspark=...`, `?hrzone=...` or `?heart=on|waiting` it shows PULSE_RATE
 - `?minifykey=off|pause|scroll_lock`: the minify hotkey switched off, or set to Alt+Pause or Alt+Scroll Lock
 - `?neural=active`: Neural flow easing the belt off while typing
-- `?nohistory`: History empty: no walks, an empty week and DESK_SYNC
+- `?nohistory`: History empty: no walks, an empty week, DESK_SYNC and WALL_CLOCK
 - `?noprogram`: no program running
 - `?nostrava`: no Strava credentials or account
 - `?offline`: no treadmill saved yet
@@ -210,6 +210,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?update=available|downloading|failed|whatsnew`: auto-update states
 - `?walkaway=warning|paused|idle`: the walk-away cards
 - `?weekly`: the last-week HUD card; `=long|new|down` variants
+- `?wallclock=new|late|none`: History's WALL_CLOCK card with no desk days, a walk at 21:00 widening the row, or desk days with no walks
 - `?wristlink=waiting|connected`: WRIST_LINK on
 - `?zonetilt`: System -> Labs ZONE_TILT on, so the program editor offers each heart zone step speed, incline or both
 

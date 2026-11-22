@@ -29,6 +29,7 @@ export type { DeckSnapshot } from "./bindings/DeckSnapshot";
 export type { DeckSpeedStep } from "./bindings/DeckSpeedStep";
 export type { DeskDay } from "./bindings/DeskDay";
 export type { DeskSync } from "./bindings/DeskSync";
+export type { WallClock } from "./bindings/WallClock";
 export type { EyeBreakSnapshot } from "./bindings/EyeBreakSnapshot";
 export type { GuideCheck } from "./bindings/GuideCheck";
 export type { GuideMark } from "./bindings/GuideMark";
