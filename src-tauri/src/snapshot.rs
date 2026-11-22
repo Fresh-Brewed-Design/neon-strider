@@ -118,6 +118,10 @@ fn deck_snapshot(state: &OrchestratorState, max_incline_level: u8) -> DeckSnapsh
         .deck_profile
         .incline_ceiling()
         .map_or(max_incline_level, |c| max_incline_level.min(c));
+    let stride_fit_kmh = crate::calibration::stride_fit::kmh(
+        state.min_physical_speed(),
+        state.to_physical_speed(state.top_hw_speed()),
+    );
     DeckSnapshot {
         status: state.last_status,
         unknown_status_code: state.unknown_status_code,
@@ -143,9 +147,12 @@ fn deck_snapshot(state: &OrchestratorState, max_incline_level: u8) -> DeckSnapsh
             .collect(),
         incline_steps: state.deck_incline_levels(),
         profile: profile_snapshot(state),
-        stride_fit_kmh: crate::calibration::stride_fit::kmh(
-            state.min_physical_speed(),
-            state.to_physical_speed(state.top_hw_speed()),
+        stride_fit_kmh,
+        above_stride_fit: crate::calibration::stride_fit::above(
+            state.last_status == crate::protocol::MachineStatus::Running,
+            state.to_physical_speed(state.hardware_speed),
+            target_speed,
+            stride_fit_kmh,
         ),
     }
 }
@@ -489,6 +496,29 @@ mod tests {
         let top = snap(&state, 0.0, 15).deck.max_speed_kmh;
         crate::calibration::stride_fit::set_for_test("TEST", Some(top + 5.0));
         assert_eq!(snap(&state, 0.0, 15).deck.stride_fit_kmh, Some(top));
+        crate::calibration::stride_fit::set_for_test("TEST", None);
+    }
+
+    #[test]
+    fn above_stride_fit_follows_the_running_belt() {
+        let _g = crate::calibration::TEST_GLOBALS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let mut state = OrchestratorState {
+            last_status: crate::protocol::MachineStatus::Running,
+            hardware_speed: 5.0,
+            manual_intent: Some(crate::protocol::ControlIntent {
+                speed: 5.0,
+                incline: 0,
+            }),
+            ..Default::default()
+        };
+        crate::calibration::stride_fit::set_for_test("TEST", None);
+        assert!(!snap(&state, 0.0, 15).deck.above_stride_fit, "unset");
+        crate::calibration::stride_fit::set_for_test("TEST", Some(4.5));
+        assert!(snap(&state, 0.0, 15).deck.above_stride_fit);
+        state.last_status = crate::protocol::MachineStatus::Paused;
+        assert!(!snap(&state, 0.0, 15).deck.above_stride_fit, "paused");
         crate::calibration::stride_fit::set_for_test("TEST", None);
     }
 

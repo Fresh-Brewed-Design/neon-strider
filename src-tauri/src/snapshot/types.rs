@@ -239,6 +239,10 @@ pub struct DeckSnapshot {
     /// still fits this treadmill's deck, set by feel and held to the speed
     /// range. None while unset. The program editor flags steps above it.
     pub stride_fit_kmh: Option<f32>,
+    /// STRIDE_FIT's HUD line: the belt runs faster than STRIDE_FIT, by hand
+    /// or from a program (`stride_fit::above`). False while it is unset. A
+    /// hint only; nothing changes the speed.
+    pub above_stride_fit: bool,
 }
 
 /// One speed the deck runs, or has not been asked yet.

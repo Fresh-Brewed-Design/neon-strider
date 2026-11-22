@@ -1,4 +1,4 @@
-import { sliderValue } from "./sliderValue";
+import { sliderValue, thumbCentre, trackPct, type SliderMark } from "./sliderValue";
 
 /**
  * A range input drawn as a neon track and square thumb. The real input sits on
@@ -11,6 +11,7 @@ export function StylizedSlider({
   value,
   onChange,
   color,
+  mark = null,
 }: {
   min: number;
   max: number;
@@ -18,13 +19,18 @@ export function StylizedSlider({
   value: number;
   onChange: (val: number) => void;
   color: "cyan" | "magenta";
+  mark?: SliderMark | null;
 }) {
   const isCyan = color === "cyan";
   // The 16 px thumb travels the track minus its own width so it never pokes past either end.
-  const pct = max > min ? Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100)) : 0;
+  const pct = trackPct(value, min, max);
+  // A mark outside the range has no place on the track (a fit above a top lowered since).
+  const markPct = mark && mark.value >= min - 1e-6 && mark.value <= max + 1e-6 ? trackPct(mark.value, min, max) : null;
 
   return (
-    <div className="flex flex-col gap-2 w-full group">
+    // With a mark, a 1 px gap and an 11 px label row take the 8 px gap and 4 px
+    // tick row's 12 px, so the Live page keeps its height at 760x600.
+    <div className={`flex w-full flex-col group ${markPct !== null ? "gap-px" : "gap-2"}`}>
       <div className="relative h-6 flex items-center">
         <div className="absolute inset-0 h-1 bg-white/5 top-1/2 -translate-y-1/2 rounded-full overflow-hidden">
           <div
@@ -32,6 +38,14 @@ export function StylizedSlider({
             style={{ width: `${((value - min) / (max - min)) * 100}%` }}
           />
         </div>
+
+        {markPct !== null && (
+          <div
+            data-testid="slider-mark"
+            className="absolute top-1/2 h-4 w-[2px] -translate-x-1/2 -translate-y-1/2 bg-neon-yellow/80 pointer-events-none"
+            style={{ left: thumbCentre(markPct) }}
+          />
+        )}
 
         <input
           type="range"
@@ -54,11 +68,29 @@ export function StylizedSlider({
         />
       </div>
 
-      <div className="flex justify-between px-1">
-        {[0, 1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-1 w-[1px] bg-white/10" />
-        ))}
-      </div>
+      {markPct !== null && mark ? (
+        // The mark's label sits where the decorative ticks were, so the
+        // slider keeps its height. Near either end it lines up with that end
+        // instead of centring, so it never pokes past the track.
+        <div className="relative h-[11px]">
+          <span
+            title={mark.title}
+            className="absolute top-0 whitespace-nowrap font-mono text-[11px] leading-none text-neon-yellow"
+            style={{
+              left: thumbCentre(markPct),
+              transform: `translateX(${markPct < 15 ? "-8px" : markPct > 85 ? "calc(-100% + 8px)" : "-50%"})`,
+            }}
+          >
+            {mark.label}
+          </span>
+        </div>
+      ) : (
+        <div className="flex justify-between px-1">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-1 w-[1px] bg-white/10" />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

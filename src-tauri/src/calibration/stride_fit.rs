@@ -111,6 +111,22 @@ pub fn kmh(min_kmh: f32, max_kmh: f32) -> Option<f32> {
     with_fit(|f| f.kmh).map(|v| in_deck_range(v, min_kmh, max_kmh))
 }
 
+/// Whether the HUD shows its STRIDE_FIT line: the belt is running and both
+/// its reported speed and its target are above STRIDE_FIT. The lower of the
+/// two is compared so the line neither shows while the belt only ramps up
+/// towards a faster target nor stays once the user has chosen a speed at or
+/// under the fit (the reading lags a change by a second or two). Compared in
+/// tenths, the speed the deck runs and the HUD shows, so a belt at the fit
+/// speed whose reading wobbles by a few hundredths never shows it. False
+/// while STRIDE_FIT is unset. Only a hint: nothing here changes a speed.
+pub fn above(running: bool, speed_kmh: f32, target_kmh: f32, fit_kmh: Option<f32>) -> bool {
+    let Some(fit) = fit_kmh else {
+        return false;
+    };
+    let tenth = |v: f32| (v * 10.0).round() as i32;
+    running && tenth(speed_kmh.min(target_kmh)) > tenth(fit)
+}
+
 /// Tests: the treadmill in use, with this speed, without a database.
 #[cfg(test)]
 pub(crate) fn set_for_test(device_id: &str, kmh: Option<f32>) {
@@ -129,6 +145,24 @@ mod tests {
         super::super::TEST_GLOBALS
             .lock()
             .unwrap_or_else(|e| e.into_inner())
+    }
+
+    #[test]
+    fn above_shows_only_while_running_faster_than_the_fit() {
+        assert!(above(true, 5.0, 5.0, Some(4.5)));
+        assert!(!above(true, 5.0, 5.0, None), "unset: never");
+        assert!(!above(false, 5.0, 5.0, Some(4.5)), "paused or stopped");
+        assert!(!above(true, 4.5, 4.5, Some(4.5)), "at the fit");
+        assert!(
+            !above(true, 4.54, 4.5, Some(4.5)),
+            "a reading a few hundredths over"
+        );
+        assert!(!above(true, 4.0, 5.0, Some(4.5)), "still ramping up");
+        assert!(
+            !above(true, 5.0, 4.0, Some(4.5)),
+            "slowing to a fitting speed"
+        );
+        assert!(above(true, 4.6, 4.6, Some(4.5)), "one tenth over");
     }
 
     #[test]

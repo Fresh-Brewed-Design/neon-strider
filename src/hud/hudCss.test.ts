@@ -3,10 +3,14 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const css = readFileSync(join(process.cwd(), "src/hud/hud.css"), "utf8");
+/** The body of the first rule whose selector list names `selector`, alone or beside others (`.a, .b`). */
 const rule = (selector: string) => {
-  const start = css.indexOf(`
-${selector} {`);
-  return start < 0 ? "" : css.slice(start, css.indexOf("}", start));
+  const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  for (const chunk of bare.split("}")) {
+    const [head, body] = chunk.split("{");
+    if (body !== undefined && head.split(",").some((s) => s.trim() === selector)) return body;
+  }
+  return "";
 };
 
 // At a larger Windows text size the HUD content is wider than at 100 %, so nothing may be
@@ -59,6 +63,12 @@ describe("HUD distance readouts at larger text sizes", () => {
     expect(label).not.toBe("");
     expect(label).not.toMatch(/ellipsis|nowrap/);
     expect(rule(".hud-neural")).toMatch(/flex-wrap:\s*wrap/);
+  });
+
+  it("wraps the STRIDE_FIT line the same way", () => {
+    expect(rule(".hud-stride .hud-label")).not.toMatch(/ellipsis|nowrap/);
+    expect(rule(".hud-stride .hud-label")).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(rule(".hud-stride")).toMatch(/flex-wrap:\s*wrap/);
   });
 
   it("never sizes text under 11px, including the smallest a fluid size can reach", () => {

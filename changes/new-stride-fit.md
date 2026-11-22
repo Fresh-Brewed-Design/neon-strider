@@ -1,2 +1,4 @@
 - STRIDE_FIT in System, Calibration: set the fastest speed your walking stride still fits the deck, by feel. Each treadmill keeps its own, and it stays off until you save one. USE CURRENT fills in the belt's speed.
 - The program editor flags any step faster than STRIDE_FIT with one line under the step. The step's speed stays as you set it.
+- The Live page speed slider marks STRIDE_FIT with a FIT tick. The slider still goes to the deck's top speed.
+- The HUD shows an ABOVE STRIDE_FIT line while the belt runs faster than STRIDE_FIT. The line stays until the belt slows, with no toast.

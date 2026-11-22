@@ -65,4 +65,10 @@ incline_steps: Array<number>, profile: DeckProfileSnapshot,
  * still fits this treadmill's deck, set by feel and held to the speed
  * range. None while unset. The program editor flags steps above it.
  */
-stride_fit_kmh: number | null, };
+stride_fit_kmh: number | null, 
+/**
+ * STRIDE_FIT's HUD line: the belt runs faster than STRIDE_FIT, by hand
+ * or from a program (`stride_fit::above`). False while it is unset. A
+ * hint only; nothing changes the speed.
+ */
+above_stride_fit: boolean, };
