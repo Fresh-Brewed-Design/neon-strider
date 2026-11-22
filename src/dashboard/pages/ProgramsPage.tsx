@@ -53,10 +53,14 @@ export function ProgramsPage() {
         {editing ? (
           <ProgramEditor key={editing.id} initial={editing} onDone={closeEditor} />
         ) : s.programs.length === 0 ? (
-          <Panel className="p-6 text-center">
-            <p className="font-mono text-xs text-white/55">
-              Saved programs start with one click, from the Programs page or the HUD.
-            </p>
+          <Panel className="flex flex-col items-center gap-3 p-6 text-center">
+            <div className="flex flex-col gap-1 font-mono text-xs text-white/55" data-testid="programs-empty">
+              <p>No programs yet.</p>
+              <p>Use New to build one, or ECHO on History to turn a walk into one.</p>
+            </div>
+            <NeonButton className="flex h-8 items-center gap-1.5 px-3" onClick={() => setPicked(NEW_PROGRAM)}>
+              <Plus size={14} /> New
+            </NeonButton>
           </Panel>
         ) : (
           <ul className="flex flex-col gap-2">
