@@ -1,5 +1,7 @@
+import { Fragment } from "react";
 import type { AppSnapshot, Command, HudWidget, ZoneBand } from "../ipc";
 import { describeActive, describePlan, waitHeadline, waitReason } from "../dashboard/programs/format";
+import { nextStepLine } from "../dashboard/programs/stepMap";
 import { statWidget } from "../widgets/registry";
 import { Sparkline } from "../widgets/Sparkline";
 import { ZONE_ACCENT, zoneRange } from "../widgets/zone";
@@ -175,6 +177,9 @@ export function ProgramsModule({ snapshot }: { snapshot: AppSnapshot }) {
     // Waiting for GO: the next step would start a still belt, so nothing moves
     // until GO (Rust says why in `wait`).
     const wait = a.wait;
+    // One line for the step after this one keeps the panel small: a chart would
+    // need its own height and still be too small to read at 340 px.
+    const next = nextStepLine(a);
     return (
       <div className={`hud-module accent-yellow${wait ? " hud-ready" : ""}`} role={wait ? "alert" : undefined}>
         {wait && <span className="hud-ready-headline">{waitHeadline(wait)}</span>}
@@ -182,6 +187,21 @@ export function ProgramsModule({ snapshot }: { snapshot: AppSnapshot }) {
           <span className="hud-label">{wait ? "READY" : a.paused ? "PAUSED" : "PROGRAM"}</span>
           <span className="hud-value hud-value-sm">{a.name}</span>
           <span className="hud-sub">{describeActive(a)}</span>
+          {next && (
+            <span className="hud-sub hud-next">
+              {/* Each part stays whole and keeps its trailing dot; a narrow panel wraps between them. */}
+              {next.split(" · ").map((part, i, all) => (
+                <Fragment key={i}>
+                  {/* A flex gap draws the space; the text keeps it for copying and screen readers. */}
+                  {i > 0 && " "}
+                  <span className="hud-next-part">
+                    {part}
+                    {i < all.length - 1 ? " ·" : ""}
+                  </span>
+                </Fragment>
+              ))}
+            </span>
+          )}
           {wait && <span className="hud-sub">{waitReason(wait)}</span>}
         </div>
         <div className="hud-auto-actions">

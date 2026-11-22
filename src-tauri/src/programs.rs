@@ -361,6 +361,11 @@ pub struct ActiveProgram {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub kind: Option<StepKindSpot>,
+    /// The steps and repeat of the copy that runs, for STEP_MAP (#234). A
+    /// save of the running program reaches its next run, not this one, so
+    /// the saved program in `programs` can differ from what runs.
+    pub steps: Vec<ProgramStep>,
+    pub repeat_every_minutes: Option<f32>,
 }
 
 /// What the treadmill was doing when the program took over.
@@ -1782,6 +1787,8 @@ impl OrchestratorState {
                 ProgramPhase::Walking => StepKindSpot::of_step(&run.program.steps, run.step_index),
                 ProgramPhase::Resting => None,
             },
+            steps: run.program.steps.clone(),
+            repeat_every_minutes: run.program.repeat_every_minutes,
         })
     }
 
@@ -2639,6 +2646,26 @@ mod tests {
         s.manual_intent = None;
         let prev = s.capture_previous();
         assert_eq!(prev.moving.map(|i| i.speed), Some(floor));
+    }
+
+    /// STEP_MAP draws the copy that runs: a save of the running program
+    /// reaches its next run, so the snapshot keeps the steps it started with.
+    #[test]
+    fn active_program_carries_the_running_steps_through_an_edit() {
+        let mut s = state();
+        moving(&mut s, 3.0, 0);
+        s.run_program(2, Instant::now()).unwrap();
+        let a = s.active_program().unwrap();
+        assert_eq!(a.steps, s.programs[1].steps);
+        assert_eq!(a.repeat_every_minutes, Some(30.0));
+
+        let mut edit = s.programs[1].clone();
+        edit.steps[0].speed_kmh = 4.0;
+        edit.repeat_every_minutes = Some(45.0);
+        s.save_program(edit).unwrap();
+        let a = s.active_program().unwrap();
+        assert!((a.steps[0].speed_kmh - 3.0).abs() < 1e-4);
+        assert_eq!(a.repeat_every_minutes, Some(30.0));
     }
 
     #[test]
