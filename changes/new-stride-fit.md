@@ -2,3 +2,4 @@
 - The program editor flags any step faster than STRIDE_FIT with one line under the step. The step's speed stays as you set it.
 - The Live page speed slider marks STRIDE_FIT with a FIT tick. The slider still goes to the deck's top speed.
 - The HUD shows an ABOVE STRIDE_FIT line while the belt runs faster than STRIDE_FIT. The line stays until the belt slows, with no toast.
+- Heart rate zones respect STRIDE_FIT. When a zone needs more effort at STRIDE_FIT, the incline goes up instead of the speed, up to 2 % more and never past the deck's top level. Easing off, the speed comes down to STRIDE_FIT first, then the extra incline.

@@ -120,11 +120,15 @@ pub fn kmh(min_kmh: f32, max_kmh: f32) -> Option<f32> {
 /// speed whose reading wobbles by a few hundredths never shows it. False
 /// while STRIDE_FIT is unset. Only a hint: nothing here changes a speed.
 pub fn above(running: bool, speed_kmh: f32, target_kmh: f32, fit_kmh: Option<f32>) -> bool {
-    let Some(fit) = fit_kmh else {
-        return false;
-    };
+    running && exceeds(speed_kmh.min(target_kmh), fit_kmh)
+}
+
+/// Whether a speed is faster than STRIDE_FIT, compared in tenths (the speed
+/// the deck runs), so a speed at the fit never counts. False while unset.
+/// Also what the heart rate zones check before they raise a speed (#227).
+pub fn exceeds(kmh: f32, fit_kmh: Option<f32>) -> bool {
     let tenth = |v: f32| (v * 10.0).round() as i32;
-    running && tenth(speed_kmh.min(target_kmh)) > tenth(fit)
+    fit_kmh.is_some_and(|fit| tenth(kmh) > tenth(fit))
 }
 
 /// Tests: the treadmill in use, with this speed, without a database.
