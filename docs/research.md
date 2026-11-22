@@ -278,6 +278,35 @@ few beats under the target means little and half a minute of them means more.
 - Heart rate only decides when the step ends. It never starts, resumes or stops the belt: the
   next step or the program's end follows the same rules as a timed step.
 
+**On by default: one target, 60 %, for every cool-down.** A COOL_DOWN step gets the target
+when it is made (the editor ticks it when a step's kind is set to COOL_DOWN, and it can be
+unticked), and the seeded VO2 max ends on it. The question was whether the target should
+depend on what comes before: higher after hard climbs, lower after a light walk. The evidence
+says no.
+
+- What comes before changes how long the fall takes, not where it ends. After harder exercise
+  the heart's autonomic recovery is slower, though the dose response is not clear (Michael,
+  Graham and Davis 2017). That is the case a pulse end is for: the cool-down walks on for
+  longer after a hard program, at the same 60 %.
+- A higher target after hard work would end too soon. The 4x4 that VO2 max follows walks its
+  3 minute rests at about 70 % of maximum (Helgerud et al. 2007), so a cool-down that ended at
+  70 % would end at the pace of a rest between climbs, still moderate by the ACSM bands
+  (Garber et al. 2011). 60 % is under the rests and inside the light band.
+- A lower target after hard work could keep the step walking on for a long time. The slow,
+  sympathetic part of the fall lasts up to 90 minutes (Romero et al. 2017), and walking itself
+  holds the pulse above rest, so a target deep in the very light band may never come on the belt.
+- After a light walk the pulse is often already under 60 %. The step then ends on its minutes,
+  which is what a cool-down after easy walking needs (minutes as a minimum, above). A program of
+  light walks gains nothing from a target of its own.
+- Fixed bpm rules do not fit either: equipment manuals and fitness guides give "under 100" or
+  "under 110 bpm", which ignore age and fitness and are not ACSM advice. 60 % of the maximum in
+  System, Heart rate is 114 bpm at the 190 bpm default, near those numbers, and moves with your
+  own maximum.
+
+**Verdict:** keep one default, 60 % of maximum, for every COOL_DOWN step. The seeded VO2 max
+gets it (Interval walk ends on a rest, with no cool-down). An unedited VO2 max on an existing
+install gets it too (migration 11); an edited one and any program you made are left as they are.
+
 **In the app:** "The cool-down walks on until heart rate stays under the target."
 
 ## Idle nudge
@@ -413,6 +442,9 @@ exercise inside a screen break, so this follows the trial's dose, not a tested b
   Exercise* 43(7): 1334–1359. https://doi.org/10.1249/MSS.0b013e318213fefb (bands as reproduced
   in Cochrane review CD012700, table 3, https://pmc.ncbi.nlm.nih.gov/articles/PMC6481524/table/CD012700-tbl-0003,
   and by the CDC, https://www.cdc.gov/physicalactivity/basics/measuring/heartrate.htm)
+- Helgerud J, Høydal K, Wang E, et al. (2007). Aerobic high-intensity intervals improve VO2max
+  more than moderate training. *Medicine & Science in Sports & Exercise* 39(4): 665–671.
+  https://doi.org/10.1249/mss.0b013e3180304570
 - Hunt KJ, Fankhauser SE, Saengsuwan J (2015). Identification of heart rate dynamics during
   moderate-to-vigorous treadmill exercise. *BioMedical Engineering OnLine* 14: 117.
   https://doi.org/10.1186/s12938-015-0112-7
@@ -439,6 +471,9 @@ exercise inside a screen break, so this follows the trial's dose, not a tested b
 - Macartney MJ, Meade RD, Notley SR, Herry CL, Seely AJE, Kenny GP (2020). Fluid loss during
   exercise-heat stress reduces cardiac vagal autonomic modulation. *Medicine & Science in Sports
   & Exercise* 52(2): 362–369. https://doi.org/10.1249/MSS.0000000000002136
+- Michael S, Graham KS, Davis GM (2017). Cardiac autonomic responses during exercise and
+  post-exercise recovery using heart rate variability and systolic time intervals: a review.
+  *Frontiers in Physiology* 8: 301. https://doi.org/10.3389/fphys.2017.00301
 - Nemoto K, Gen-no H, Masuki S, Okazaki K, Nose H (2007). Effects of high-intensity interval
   walking training on physical fitness and blood pressure in middle-aged and older people.
   *Mayo Clinic Proceedings* 82(7): 803–811. https://doi.org/10.4065/82.7.803
