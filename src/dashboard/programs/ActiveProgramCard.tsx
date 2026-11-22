@@ -31,7 +31,7 @@ export function ActiveProgramCard() {
           {a.phase === "walking" && (
             <span className="text-white/40">
               {" "}
-              · {a.speed_kmh.toFixed(1)} km/h · {a.incline_pct.toFixed(1)}%
+              · {a.speed_kmh.toFixed(1)}{" "}km/h · {a.incline_pct.toFixed(1)}%
             </span>
           )}
         </div>
