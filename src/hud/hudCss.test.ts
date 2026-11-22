@@ -85,9 +85,14 @@ describe("HUD header end group at 340 px", () => {
     expect(end).toMatch(/flex-wrap:\s*wrap-reverse/);
     expect(rule(".hud-header-end > .hud-sim-tag")).toMatch(/order:\s*1/);
     expect(rule(".hud-header-end > .hud-header-live")).toMatch(/order:\s*0/);
-    // Status and minify are one nowrap cluster; the status text wraps inside it.
-    expect(rule(".hud-header-live")).not.toMatch(/flex-wrap/);
-    expect(rule(".hud-header-live > .hud-status")).toMatch(/white-space:\s*normal/);
+    // Status and minify share a line; the button may wrap under the status,
+    // and status words never break mid-word.
+    expect(rule(".hud-header-live")).toMatch(/flex-wrap:\s*wrap/);
+    const status = rule(".hud-header-live > .hud-status");
+    expect(status).toMatch(/white-space:\s*normal/);
+    expect(status).toMatch(/overflow-wrap:\s*normal/);
+    expect(status).toMatch(/word-break:\s*normal/);
+    expect(status).not.toMatch(/anywhere|break-all|break-word/);
     expect(end).toMatch(/min-width:\s*0/);
     expect(end).toMatch(/max-width:\s*100%/);
   });

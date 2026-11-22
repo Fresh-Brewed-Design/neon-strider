@@ -304,10 +304,13 @@ body,
 .hud-header-end > .hud-header-live { order: 0; }
 .hud-header-end > .hud-sim-tag { order: 1; }
 
-/* Status and minify never part: where both can't fit the line, the status
-   text wraps inside its own box rather than the button dropping alone. */
+/* Status and minify share a line while they fit. Status words stay whole:
+   a multi-word status may wrap between words, and when even one word plus
+   the button is too wide the button wraps under the status rather than the
+   word breaking or anything overflowing. */
 .hud-header-live {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px 8px;
   min-width: 0;
@@ -316,7 +319,8 @@ body,
 .hud-header-live > .hud-status {
   min-width: 0;
   white-space: normal;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 .hud-header-end:has(.hud-btn-minify) { margin-right: -6px; }
 
