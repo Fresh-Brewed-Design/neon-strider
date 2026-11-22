@@ -130,6 +130,11 @@ HEART_LINK (`heart_rate.rs`: pure Heart Rate Measurement decoding and snapshot t
   `snapshot/commands.rs`) over a new `#[tauri::command]`. Variants, their match arms and the
   `AppSnapshot` fields are grouped by feature under `// ---- ... ----` markers: add to the end of
   your feature's group, or start a new group; settings and sessions still use named commands via `invoke` (plus `strava_tcx_preview`, a query).
+  Each window may call only the app commands its capability allows: `build.rs` declares every
+  `#[tauri::command]` in `APP_COMMANDS` (add a new one there too), the dashboard's
+  `capabilities/default.json` allows the ones it calls, and the HUD's `capabilities/hud.json`
+  only `dispatch`, `get_snapshot` and `set_hud_hit_region`. `src/ipc/capabilities.test.ts`
+  fails if a window invokes a command its capability does not allow.
 
 ## Platform
 
