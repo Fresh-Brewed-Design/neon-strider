@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ActionStatus } from "../../components/ActionStatus";
 import { errorText, useAction } from "../../components/useAction";
-import { dispatch, type SavedFile } from "../../ipc";
+import { dispatch, type EchoProgram, type SavedFile } from "../../ipc";
 import { SessionRepository } from "../../services/db/repositories/sessionRepository";
 import type { Session } from "../../services/db/schema";
 import { mergeSessions, type MergedSession } from "../../services/sessionMerge";
@@ -15,6 +15,7 @@ import { SessionRow } from "../history/SessionRow";
 import { TotalsPanel, WeeklyPanel } from "../history/Summary";
 import { TcxModal } from "../history/TcxModal";
 import { useSessionUploads } from "../history/useSessionUploads";
+import { WallClockPanel } from "../history/WallClock";
 import { GhostButton, Label, Page, Panel } from "../ui";
 import { cx } from "../util";
 
@@ -25,9 +26,11 @@ export function HistoryPage() {
   const refreshTrigger = useTreadmillStore((s) => s.historyRefreshTrigger);
   const thresholdMinutes = useTreadmillStore((s) => s.sessionMergeThresholdMinutes);
   const confirm = useTreadmillStore((s) => s.confirm);
+  const openProgram = useTreadmillStore((s) => s.openProgram);
   const activeSessionId = useAppState((s) => s.session.active_id);
   const weekly = useAppState((s) => s.weekly);
   const deskSync = useAppState((s) => s.desk_sync);
+  const wallClock = useAppState((s) => s.wall_clock);
   const savedIds = useAppState((s) => s.strava.saved_session_ids) ?? [];
 
   const [raw, setRaw] = useState<Session[] | null>(null);
@@ -142,6 +145,7 @@ export function HistoryPage() {
         />
         {weekly && <WeeklyPanel weekly={weekly} />}
         {deskSync && <DeskSyncPanel sync={deskSync} />}
+        {wallClock && <WallClockPanel clock={wallClock} />}
         <TotalsPanel meters={sum.meters} seconds={sum.seconds} kcal={sum.kcal} count={visible.length} />
 
         <Panel className="p-3">
@@ -204,6 +208,8 @@ export function HistoryPage() {
                     }}
                     onInspect={() => void inspect(s, row)}
                     onDelete={() => remove(s, row)}
+                    onEcho={() => invoke<EchoProgram>("program_from_session", { sessionIds: s.mergedIds })}
+                    onOpenProgram={openProgram}
                   />
                 );
               })}

@@ -222,6 +222,10 @@ fn tick_each_second(
     state.heart_bpm = crate::heart_rate::snapshot().bpm;
     state.max_heart_rate = u32::from(crate::heart_rate::max_heart_rate());
     state.zone_incline_trim = crate::heart_rate::zone_incline_trim();
+    state.stride_fit_kmh = crate::calibration::stride_fit::kmh(
+        state.min_physical_speed(),
+        state.to_physical_speed(state.top_hw_speed()),
+    );
     state.tick_profile_sweep(now);
     state.tick_program(now)
 }

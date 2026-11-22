@@ -1,6 +1,6 @@
 // History: a few weeks of fake walks and their samples. With ?heart=on, every
 // other walk was saved with a watch linked. ?nohistory: nothing walked yet, so
-// History shows its empty state (no walks, an empty week and DESK_SYNC).
+// History shows its empty state (no walks, an empty week, DESK_SYNC and WALL_CLOCK).
 import { params, snapshot } from "../mockState";
 import type { Scenario } from "./types";
 
@@ -55,6 +55,7 @@ export const history: Scenario = {
       distance_change: { pct: null, is_new: false },
     });
     Object.assign(snapshot.desk_sync, { days: [], walked: 0, desk_days: 0, today_open: false });
+    Object.assign(snapshot.wall_clock, { hours: Array<number>(24).fill(0), desk_days: 0 });
   },
   queries: {
     export_sessions_csv: () => "C:/Users/you/Downloads/neon-strider-sessions-preview.csv",

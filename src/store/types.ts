@@ -18,8 +18,6 @@ export interface CalibrationPoint {
 export interface Settings {
   lastDeviceId: string | null;
   calibrationPoints: CalibrationPoint[];
-  /** Belt circumference in cm, for the logo-count calibration. */
-  beltLength: number;
   minSpeed: number;
   maxSpeed: number;
   maxIncline: number;
@@ -40,9 +38,6 @@ export interface SettingsSlice extends Settings {
 
   hydrateSettings: (settings: Settings) => void;
   updateSettings: (patch: Partial<Settings>) => void;
-  /** Adds a point, replacing any existing one at (nearly) the same speed. */
-  addCalibrationPoint: (point: CalibrationPoint) => void;
-  updateCalibrationPoint: (index: number, point: CalibrationPoint) => void;
   removeCalibrationPoint: (index: number) => void;
 }
 
@@ -70,6 +65,12 @@ export interface UISlice {
   /** Opens the shared confirm dialog. */
   confirm: (config: ConfirmState) => void;
   clearConfirmation: () => void;
+
+  /** A program to open in the Programs editor (ECHO's "Open in Programs"), until the editor closes. */
+  programRequest: number | null;
+  /** Shows the Programs page with this program open in the editor. */
+  openProgram: (id: number) => void;
+  clearProgramRequest: () => void;
 }
 
 export type TreadmillStore = SettingsSlice & HistorySlice & UISlice;

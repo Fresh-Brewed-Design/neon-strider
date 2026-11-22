@@ -2,7 +2,7 @@
 // URL flags, and `publish` (Rust's `app-state` event). The URL-flag scenarios
 // that change it live in `scenarios/`, one file per feature.
 import { emit } from "@tauri-apps/api/event";
-import type { AppSnapshot, DeskSync } from "../ipc";
+import type { AppSnapshot, DeskSync, WallClock } from "../ipc";
 import type { RustConfig } from "../services/controlOrchestrator";
 
 // Same defaults as src-tauri/src/strava_template.rs.
@@ -26,6 +26,16 @@ function mockDeskSync(): DeskSync {
     d.setDate(d.getDate() - 1);
   }
   return { walked: days.filter((x) => x.walked).length, desk_days: days.length, window: 14, days, today_open: false };
+}
+
+/**
+ * WALL_CLOCK over the same 14 desk days: most mornings walked around 09:00 to
+ * 11:00, some early afternoons, a few late ones.
+ */
+function mockWallClock(): WallClock {
+  const hours = Array<number>(24).fill(0);
+  Object.assign(hours, { 8: 2, 9: 10, 10: 12, 11: 6, 13: 3, 14: 8, 15: 4, 17: 1 });
+  return { hours, desk_days: 14, window: 14, first_hour: 7, last_hour: 19 };
 }
 
 export const snapshot: AppSnapshot = {
@@ -61,6 +71,8 @@ export const snapshot: AppSnapshot = {
     max_incline_pct: 18.75,
     speed_steps: [],
     incline_steps: [],
+    stride_fit_kmh: null,
+    above_stride_fit: false,
     profile: {
       learned: 0,
       floor_kmh: null,
@@ -100,6 +112,7 @@ export const snapshot: AppSnapshot = {
     steps: [{ duration_minutes: 5, speed_kmh: 3, incline_pct: 5, kind: "walk" }],
     repeat_every_minutes: 30,
   },
+  fit_to_deck: [],
   neural: {
     enabled: true,
     factor: 1,
@@ -173,6 +186,7 @@ export const snapshot: AppSnapshot = {
     show_card: false,
   },
   desk_sync: mockDeskSync(),
+  wall_clock: mockWallClock(),
   seated: {
     enabled: true,
     minutes: 30,
@@ -273,7 +287,6 @@ export const params = new URLSearchParams(location.search);
 export const PREVIEW_CONFIG: RustConfig = {
   last_device_id: null,
   calibration_points: [],
-  belt_length: 120,
   min_speed: 0.6,
   max_speed: 12,
   max_incline: 15,

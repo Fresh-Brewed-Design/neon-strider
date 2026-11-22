@@ -20,6 +20,7 @@ mod dashboard;
 pub mod deck_profile;
 pub mod defaults;
 mod display;
+pub mod echo;
 pub mod engine;
 pub mod export;
 pub mod ghost_pod;
@@ -375,7 +376,8 @@ pub fn run() {
             snapshot::dispatch,
             hud::set_hud_hit_region,
             logging::open_log_folder,
-            export::export_sessions_csv
+            export::export_sessions_csv,
+            echo::program_from_session
         ])
         .on_window_event(on_window_event)
         .build(app_context())

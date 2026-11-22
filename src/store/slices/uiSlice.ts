@@ -6,4 +6,8 @@ export const createUISlice: StateCreator<TreadmillStore, [], [], UISlice> = (set
 
   confirm: (config) => set({ pendingConfirmation: config }),
   clearConfirmation: () => set({ pendingConfirmation: null }),
+
+  programRequest: null,
+  openProgram: (id) => set({ programRequest: id }),
+  clearProgramRequest: () => set({ programRequest: null }),
 });

@@ -71,3 +71,24 @@ describe("Live page STEP_MAP", () => {
     expect(screen.getByText("DECK_CYCLES")).toBeInTheDocument();
   });
 });
+
+describe("Live page maintenance banner", () => {
+  it("sits in the header, so the page keeps its height at 760x600", () => {
+    current!.maintenance.due = true;
+    const { container } = render(<LivePage />);
+    const banner = screen.getByText(/Belt service due/).closest("[role=status]")!;
+    expect(banner.closest("header")).not.toBeNull();
+    // The body is the scroll container; nothing in it is the banner.
+    const body = container.querySelector("section > div.overflow-y-auto")!;
+    expect(body.contains(banner)).toBe(false);
+  });
+
+  it("stacks with a header warning instead of adding body height", () => {
+    current!.maintenance.due = true;
+    current!.deck.standby = true;
+    render(<LivePage />);
+    const header = document.querySelector("header")!;
+    expect(header).toHaveTextContent(/Belt service due/);
+    expect(header).toHaveTextContent(/off or asleep/);
+  });
+});
