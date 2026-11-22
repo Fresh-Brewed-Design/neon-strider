@@ -4,6 +4,7 @@ import type { Program } from "../../ipc";
 import { useAppSnapshot } from "../../state/useAppState";
 import { useTreadmillStore } from "../../store/treadmillStore";
 import { ActiveProgramCard } from "../programs/ActiveProgramCard";
+import { FitToDeck } from "../programs/FitToDeck";
 import { NEW_PROGRAM, toDraft, type Draft } from "../programs/draft";
 import { describePlan, describeProgram } from "../programs/format";
 import { ProgramEditor } from "../programs/ProgramEditor";
@@ -59,6 +60,7 @@ export function ProgramsPage() {
                       <div className="break-words font-digital text-sm font-bold leading-tight tracking-wider text-white">{p.name}</div>
                       <div className="font-mono text-xs text-white/50">{describeProgram(p)}</div>
                       {p.note && <div className="text-xs leading-snug text-white/40">{p.note}</div>}
+                      <FitToDeck offer={s.fit_to_deck.find((o) => o.program_id === p.id) ?? null} />
                     </div>
                     <GhostButton aria-label={`Edit ${p.name}`} onClick={() => setEditing(toDraft(p))}>
                       <Pencil size={14} />

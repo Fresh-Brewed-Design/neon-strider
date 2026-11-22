@@ -18,8 +18,6 @@ export interface CalibrationPoint {
 export interface Settings {
   lastDeviceId: string | null;
   calibrationPoints: CalibrationPoint[];
-  /** Belt circumference in cm, for the logo-count calibration. */
-  beltLength: number;
   minSpeed: number;
   maxSpeed: number;
   maxIncline: number;
@@ -40,9 +38,6 @@ export interface SettingsSlice extends Settings {
 
   hydrateSettings: (settings: Settings) => void;
   updateSettings: (patch: Partial<Settings>) => void;
-  /** Adds a point, replacing any existing one at (nearly) the same speed. */
-  addCalibrationPoint: (point: CalibrationPoint) => void;
-  updateCalibrationPoint: (index: number, point: CalibrationPoint) => void;
   removeCalibrationPoint: (index: number) => void;
 }
 
