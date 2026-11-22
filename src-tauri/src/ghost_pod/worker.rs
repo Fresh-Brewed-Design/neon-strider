@@ -7,9 +7,9 @@
 
 use super::{
     control_point, encode_measurement, encode_power, feature_value, frame_for, power_feature_value,
-    power_for, sensor_location_value, status_message, ControlRequest, GhostPodSnapshot, PodMeter,
-    PodStatus, RscFrame, CP_FEATURE, CP_MEASUREMENT, CP_SERVICE, RSC_FEATURE, RSC_MEASUREMENT,
-    RSC_SERVICE, SC_CONTROL_POINT, SENSOR_LOCATION,
+    power_for, sensor_location_value, status_message, write_log_text, ControlRequest,
+    GhostPodSnapshot, PodMeter, PodStatus, RscFrame, WriteLogLimiter, CP_FEATURE, CP_MEASUREMENT,
+    CP_SERVICE, RSC_FEATURE, RSC_MEASUREMENT, RSC_SERVICE, SC_CONTROL_POINT, SENSOR_LOCATION,
 };
 use crate::bluetooth::ORCHESTRATOR;
 use crate::persistence;
@@ -165,6 +165,9 @@ impl Runtime {
         }
     }
 }
+
+static WRITE_LOG: LazyLock<Mutex<WriteLogLimiter>> =
+    LazyLock::new(|| Mutex::new(WriteLogLimiter::default()));
 
 static RT: LazyLock<Mutex<Runtime>> = LazyLock::new(|| Mutex::new(Runtime::default()));
 
@@ -371,11 +374,22 @@ fn on_event(event: PeripheralEvent) {
             }
         }
         PeripheralEvent::Write { uuid, value } => {
-            log::info!(
-                "GHOST_POD: write to {}: {}",
-                uuid_text(uuid),
-                crate::traffic::to_hex(&value)
-            );
+            // Nothing from a write reaches the engine or the belt: the only
+            // effect is the pod's own reported total (capped in
+            // `control_point`). The characteristic stays unencrypted because
+            // watches pair with the pod without bonding.
+            let allowed = WRITE_LOG
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .check(Instant::now());
+            if let Some(skipped) = allowed {
+                log::info!(
+                    "GHOST_POD: write to {}: {} (+{} not logged)",
+                    uuid_text(uuid),
+                    write_log_text(&value),
+                    skipped
+                );
+            }
             if uuid == sig_uuid(SC_CONTROL_POINT) {
                 let (request, response) = control_point(&value);
                 if let ControlRequest::SetTotal(m) = request {
