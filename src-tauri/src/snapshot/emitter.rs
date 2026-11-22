@@ -30,9 +30,10 @@ const DAILY_REFRESH: Duration = Duration::from_secs(60);
 /// listing monitors is a system call, so not every tick.
 const MONITOR_REFRESH: Duration = Duration::from_secs(3);
 
-/// Locking rule: `bluetooth::connect_to` takes CONNECTED_DECK
-/// and then ORCHESTRATOR. Everything here takes them one at a time and never
-/// holds one across an await on the other.
+/// Locking rule: CONNECTED_DECK before ORCHESTRATOR, and neither held across
+/// BLE I/O (`bluetooth::drop_old_link` takes the old link out before closing
+/// it). Everything here takes them one at a time and never holds one across
+/// an await on the other.
 pub(super) async fn read_connection() -> (bool, Option<String>) {
     let connected = bluetooth::is_bluetooth_connected().await;
     let device_id = if connected {
