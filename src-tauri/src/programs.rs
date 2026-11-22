@@ -96,8 +96,12 @@ pub(crate) const PULSE_END_MIN_PCT: f32 = 50.0;
 /// The highest: 77 % and up is the ACSM vigorous band (Garber et al. 2011),
 /// so a target over 76 % would end a cool-down that never cooled down.
 pub(crate) const PULSE_END_MAX_PCT: f32 = 76.0;
-/// What the editor offers first: inside the ACSM light band (57 to 63 %),
-/// a few bpm clear of moderate (64 %). 114 bpm at the default 190 bpm max.
+/// Every COOL_DOWN step's target unless the user changes it (the editor
+/// ticks it on a new cool-down, the seeded VO2 max carries it): inside the
+/// ACSM light band (57 to 63 %), a few bpm clear of moderate (64 %), and
+/// under the 4x4's 70 % rests. One value whatever comes before: a harder
+/// program makes the fall slower, not its end higher (docs/research.md).
+/// 114 bpm at the default 190 bpm max.
 pub(crate) const PULSE_END_DEFAULT_PCT: f32 = 60.0;
 /// A start at the treadmill counts once the deck has reported the belt moving
 /// (Starting or Running) for this long without a break, after reporting it
@@ -169,6 +173,15 @@ pub struct PulseEnd {
 }
 
 impl PulseEnd {
+    /// The target a COOL_DOWN step gets unless the user changes it:
+    /// `PULSE_END_DEFAULT_PCT`, the same for every cool-down whatever comes
+    /// before it (docs/research.md).
+    pub(crate) const fn default_target() -> Self {
+        PulseEnd {
+            below_pct: PULSE_END_DEFAULT_PCT,
+        }
+    }
+
     /// The target in whole beats per minute for a maximum heart rate, rounded
     /// as the editor shows it; a reading at or under it counts as down, so
     /// the number on screen is the one to reach.
@@ -682,7 +695,8 @@ pub(crate) fn validate_program(p: &Program, min_speed: f32, max_speed: f32) -> R
 /// docs/research.md. Existing installs were moved to these by
 /// `persistence::migration_3_research_programs` and
 /// `persistence::migration_8_seeded_programs`, which keep their own copies;
-/// `migration_10_step_kinds` gives unedited ones the step kinds.
+/// `migration_10_step_kinds` gives unedited ones the step kinds and
+/// `migration_11_cool_down_pulse` VO2 max's cool-down its pulse target.
 /// The ids match what a v1.6 install ends up with after every migration
 /// (id 4 was Micro-break, merged into Workday), so a migrated install and
 /// a new one hold the same list.
@@ -747,8 +761,9 @@ const WORKDAY_INCLINE_PCT: f32 = 5.0;
 /// 85 to 95 % of maximum heart rate, the intensity the 4x4 is prescribed at:
 /// with a heart rate reading the zone trims the climb's speed within 1 km/h,
 /// and without one the climb runs its set speed. Existing installs get the
-/// program from `persistence::migration_4_vo2_max_program` and the zones from
-/// `migration_7_vo2_max_zones`, which keep their own copies.
+/// program from `persistence::migration_4_vo2_max_program`, the zones from
+/// `migration_7_vo2_max_zones` and the cool-down's pulse target from
+/// `migration_11_cool_down_pulse`, which keep their own copies.
 fn vo2_max_program(id: u32) -> Program {
     let step = |minutes: f32, speed_kmh: f32, incline_pct: f32, zone, kind| ProgramStep {
         duration_minutes: Some(minutes),
@@ -768,7 +783,12 @@ fn vo2_max_program(id: u32) -> Program {
         steps.push(step(4.0, 6.0, 10.0, climb_zone, StepKind::Interval));
         steps.push(step(3.0, 4.0, 0.0, None, StepKind::Rest));
     }
-    steps.push(step(3.0, 3.0, 0.0, None, StepKind::CoolDown));
+    // The cool-down walks on past its minutes until the pulse is down, at
+    // the one target every cool-down gets (docs/research.md).
+    steps.push(ProgramStep {
+        pulse_end: Some(PulseEnd::default_target()),
+        ..step(3.0, 3.0, 0.0, None, StepKind::CoolDown)
+    });
     Program {
         id,
         name: "VO2 max".to_string(),
@@ -840,7 +860,7 @@ const INTERVAL_BRISK_INCLINE_PCT: f32 = 5.0;
 const INTERVAL_EASY_KMH: f32 = 3.5;
 
 pub const NOTE_VO2_MAX: &str =
-    "Four hard climbs of four minutes, split by easy walks, train VO2 max.";
+    "Four hard climbs train VO2 max, and the last walk ends on heart rate.";
 pub const NOTE_POST_MEAL: &str = "Walking soon after a meal blunts the rise in blood sugar.";
 pub const NOTE_WORKDAY: &str = "Five easy minutes every half hour keep the body online.";
 pub const NOTE_FOCUS: &str = "A slow, flat walk keeps typing and thinking steady.";

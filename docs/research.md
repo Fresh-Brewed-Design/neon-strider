@@ -161,7 +161,9 @@ intensity the 4x4 studies prescribe.
 - Existing installs get the zones only on a VO2 max that was never edited; an edited one keeps
   what you set.
 
-**In the app:** "Four hard climbs of four minutes, split by easy walks, train VO2 max."
+**In the app:** "Four hard climbs train VO2 max, and the last walk ends on heart rate." The
+cool-down ends at or under 60 % of maximum heart rate once its 3 minutes are done (see
+Cool-down on heart rate).
 
 ## Interval walk (new)
 
