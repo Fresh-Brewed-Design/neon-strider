@@ -29,6 +29,7 @@ import {
 import { PointsAside, StartFresh } from "./FreshStart";
 import { GuidePanel, TopSpeedQuestion } from "./GuidePanel";
 import { StepPanel } from "./StepPanel";
+import { StrideFit } from "./StrideFit";
 
 /** Which way a run belongs to a walk: RUN ALL's sweep, the guided walk, or neither. */
 type Walk = "sweep" | "guide" | null;
@@ -56,7 +57,8 @@ type Walk = "sweep" | "guide" | null;
  * way on, so the rows' own RUN buttons hide while a walk is open.
  * START FRESH sets the treadmill's points aside before a new walk, and while
  * a set is aside (`snapshot.calibration.aside_count`) RESTORE and KEEP NEW
- * settle it; Rust keeps both sets.
+ * settle it; Rust keeps both sets. STRIDE_FIT, set by feel, sits above the
+ * points while no run or walk is open.
  */
 export function GuidedCalibration() {
   const snap = useAppSnapshot();
@@ -159,6 +161,7 @@ export function GuidedCalibration() {
       {beltSet && cal.belt_treadmill && cal.aside_count === null && points.length > 0 && !guide && !sweep && !run && (
         <StartFresh />
       )}
+      {!run && !guide && !sweep && <StrideFit />}
       <Label>POINTS</Label>
       <div className="space-y-2">
         {rows.map((row) => {
