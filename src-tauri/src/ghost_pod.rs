@@ -134,6 +134,57 @@ pub enum ControlRequest {
     Other,
 }
 
+/// The most a write may set the pod's total distance to: 100 000 km. The RSC
+/// field itself would allow 429 496 km (u32 of 0.1 m), far beyond any real
+/// odometer, and the control point has no pairing (the watch connects without
+/// encryption), so any nearby central can write it. Larger values are capped
+/// here, never passed on.
+pub const MAX_TOTAL_M: f64 = 100_000_000.0;
+
+/// How many bytes of a control point write the log shows (the length is
+/// always logged), so a stranger's long write cannot flood the log file.
+const LOG_BYTES: usize = 16;
+
+/// Log text for a control point write: at most the first 16 bytes as hex,
+/// then the total length.
+pub fn write_log_text(value: &[u8]) -> String {
+    let shown = &value[..value.len().min(LOG_BYTES)];
+    let more = if value.len() > LOG_BYTES { "..." } else { "" };
+    format!(
+        "{}{} ({} bytes)",
+        crate::traffic::to_hex(shown),
+        more,
+        value.len()
+    )
+}
+
+/// Lets one write log line through per interval and counts the rest, so a
+/// central writing in a loop cannot fill the log (an info line per write
+/// would grow it without bound).
+#[derive(Debug, Default)]
+pub struct WriteLogLimiter {
+    last: Option<std::time::Instant>,
+    skipped: u32,
+}
+
+impl WriteLogLimiter {
+    pub const INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
+
+    /// `Some(skipped since the last logged write)` when this write may be
+    /// logged, `None` when it is held back.
+    pub fn check(&mut self, now: std::time::Instant) -> Option<u32> {
+        if self
+            .last
+            .is_some_and(|t| now.saturating_duration_since(t) < Self::INTERVAL)
+        {
+            self.skipped = self.skipped.saturating_add(1);
+            return None;
+        }
+        self.last = Some(now);
+        Some(std::mem::take(&mut self.skipped))
+    }
+}
+
 /// Read a control point write. Returns the request and the indication to send
 /// back: `[0x10, op code, result]`. Only Set Cumulative Value is supported
 /// (no calibration, one sensor location).
@@ -152,7 +203,7 @@ pub fn control_point(value: &[u8]) -> (ControlRequest, Vec<u8>) {
     }
     match <[u8; 4]>::try_from(&value[1..]) {
         Ok(b) => (
-            ControlRequest::SetTotal(u32::from_le_bytes(b) as f64 / 10.0),
+            ControlRequest::SetTotal((u32::from_le_bytes(b) as f64 / 10.0).min(MAX_TOTAL_M)),
             vec![OP_RESPONSE, op, RESULT_SUCCESS],
         ),
         Err(_) => (
@@ -390,6 +441,42 @@ mod tests {
         assert_eq!(req, ControlRequest::Other);
         assert_eq!(resp, vec![0x10, 0x01, 0x03]);
         assert_eq!(control_point(&[]).0, ControlRequest::Other);
+    }
+
+    #[test]
+    fn control_point_caps_the_total_and_refuses_long_writes() {
+        let (req, resp) = control_point(&[0x01, 0xff, 0xff, 0xff, 0xff]);
+        assert_eq!(req, ControlRequest::SetTotal(MAX_TOTAL_M));
+        assert_eq!(resp, vec![0x10, 0x01, 0x01]);
+        // Oversized writes change nothing.
+        let long = [0x01u8; 600];
+        let (req, resp) = control_point(&long);
+        assert_eq!(req, ControlRequest::Other);
+        assert_eq!(resp, vec![0x10, 0x01, 0x03]);
+        assert_eq!(
+            control_point(&[0x01, 0, 0, 0, 0, 0]).0,
+            ControlRequest::Other
+        );
+    }
+
+    #[test]
+    fn write_log_text_is_short() {
+        assert_eq!(write_log_text(&[0x01, 0xab]), "01ab (2 bytes)");
+        let t = write_log_text(&[0xee; 600]);
+        assert_eq!(t, format!("{}... (600 bytes)", "ee".repeat(16)));
+    }
+
+    #[test]
+    fn write_log_limiter_lets_one_per_interval_through() {
+        use std::time::{Duration, Instant};
+        let t0 = Instant::now();
+        let mut l = WriteLogLimiter::default();
+        assert_eq!(l.check(t0), Some(0));
+        assert_eq!(l.check(t0 + Duration::from_secs(1)), None);
+        assert_eq!(l.check(t0 + Duration::from_secs(9)), None);
+        assert_eq!(l.check(t0 + Duration::from_secs(10)), Some(2));
+        assert_eq!(l.check(t0 + Duration::from_secs(11)), None);
+        assert_eq!(l.check(t0 + Duration::from_secs(20)), Some(1));
     }
 
     #[test]
