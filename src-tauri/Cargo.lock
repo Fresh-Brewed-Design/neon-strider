@@ -2664,7 +2664,7 @@ dependencies = [
 
 [[package]]
 name = "neon-strider"
-version = "1.49.1"
+version = "1.50.0"
 dependencies = [
  "btleplug",
  "chrono",
