@@ -1,2 +1,2 @@
-- The app no longer gets stuck connecting, or freezes its windows, when Bluetooth stops answering after the PC wakes from sleep. Each Bluetooth step now gives up after a few seconds and the app tries again.
-- When the treadmill stops sending its readings while the link still looks connected, the app now reconnects by itself after about 10 seconds. Reconnecting never starts the belt, and a belt that is already moving carries on.
+- The app no longer gets stuck connecting or freezes its windows when Bluetooth stops answering after the PC wakes from sleep. Each Bluetooth step now gives up after a few seconds and the app tries again.
+- When the treadmill stops sending its readings while the link still looks connected, the app now reconnects by itself after about 10 seconds. Reconnecting never starts the belt. A belt that is already moving carries on.
