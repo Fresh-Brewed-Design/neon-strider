@@ -16,6 +16,8 @@ use crate::protocol::{ControlIntent, MachineStatus};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
+pub mod fit_to_deck;
+
 pub const KEY_PROGRAMS: &str = "programs";
 const KEY_NEXT_ID: &str = "program_next_id";
 const KEY_LAST_RUN: &str = "program_last_run_id";
@@ -1746,6 +1748,53 @@ impl OrchestratorState {
             program.note = if same_plan { slot.note.clone() } else { None };
             *slot = program.clone();
         }
+        Ok(())
+    }
+
+    /// The deck's top incline in percent (DECK_PROFILE's ceiling or the max
+    /// incline setting, whichever is lower): what FIT_TO_DECK may climb to.
+    pub fn top_incline_pct(&self) -> f32 {
+        level_to_incline_pct(
+            self.top_incline_level(),
+            self.tilt_multiplier,
+            self.incline_offset,
+        )
+    }
+
+    /// FIT_TO_DECK (#225): the dashboard's offers, one per unedited seeded
+    /// program with a step above STRIDE_FIT. None while it is unset.
+    pub fn fit_to_deck_offers(&self, fit_kmh: Option<f32>) -> Vec<fit_to_deck::FitToDeckOffer> {
+        fit_to_deck::offers(&self.programs, fit_kmh, self.top_incline_pct())
+    }
+
+    /// FIT_TO_DECK, once the user confirmed: the program's steps above
+    /// STRIDE_FIT run at it with the incline that keeps their effort, held to
+    /// the deck's top incline. Refused unless the program still has an offer
+    /// (unedited seed, a step above the fit), so a stale confirm changes
+    /// nothing. The note stays: the program keeps its plan, at a speed the
+    /// deck fits. Only the stored steps change; a running program keeps its
+    /// own copy until it ends, and nothing starts or moves the belt.
+    pub fn fit_program_to_deck(&mut self, id: u32, fit_kmh: Option<f32>) -> Result<(), String> {
+        let fit = fit_kmh.ok_or("Set STRIDE_FIT in System, Calibration first.")?;
+        let max_pct = self.top_incline_pct();
+        let slot = self
+            .programs
+            .iter_mut()
+            .find(|p| p.id == id)
+            .ok_or_else(|| "Program not found".to_string())?;
+        if fit_to_deck::offer(slot, fit, max_pct).is_none() {
+            return Err(format!(
+                "FIT_TO_DECK only fits a seeded program you haven't edited, with a step above STRIDE_FIT {fit:.1} km/h."
+            ));
+        }
+        let (steps, changes) = fit_to_deck::fit_steps(&slot.steps, fit, max_pct);
+        slot.steps = steps;
+        log::info!(
+            "FIT_TO_DECK: {} steps of program {} set to {:.1} km/h",
+            changes.len(),
+            id,
+            fit
+        );
         Ok(())
     }
 

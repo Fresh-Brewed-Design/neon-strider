@@ -99,6 +99,7 @@ export const snapshot: AppSnapshot = {
     speed_kmh: 3,
     incline_pct: 5,
   },
+  fit_to_deck: [],
   neural: {
     enabled: true,
     factor: 1,

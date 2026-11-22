@@ -26,6 +26,10 @@ pub struct AppSnapshot {
     // ---- Programs ----
     pub programs: Vec<Program>,
     pub active_program: Option<ActiveProgram>,
+    /// FIT_TO_DECK (#225): the seeded programs that may trade speed above
+    /// STRIDE_FIT for incline, with Rust's words for the card and the
+    /// confirm dialog. Empty while STRIDE_FIT is unset.
+    pub fit_to_deck: Vec<crate::programs::fit_to_deck::FitToDeckOffer>,
 
     // ---- Neural flow ----
     pub neural: NeuralSnapshot,
@@ -566,6 +570,12 @@ pub enum Command {
     ProgramResume,
     ProgramSkip,
     ProgramEnd,
+    /// FIT_TO_DECK, after the user confirmed it: the seeded program's steps
+    /// above STRIDE_FIT set to it with more incline. Refused unless the
+    /// program is still offered. Never starts the program or moves the belt.
+    ProgramFitToDeck {
+        id: u32,
+    },
 
     // ---- HUD and dashboard windows ----
     HudToggleWidget {

@@ -228,12 +228,14 @@ fn neural_snapshot(state: &OrchestratorState) -> NeuralSnapshot {
 /// `calibration`, `guided_task` and `hud_view` are left at their defaults: they depend on the clock or shared
 /// state, so the emitter fills them in.
 pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSnapshot {
+    let deck = deck_snapshot(state, parts.max_incline_level);
     AppSnapshot {
         connection: parts.connection,
-        deck: deck_snapshot(state, parts.max_incline_level),
         session: session_snapshot(state, parts.daily_base_m, parts.live_counts_today),
         programs: state.programs.clone(),
         active_program: state.active_program(),
+        fit_to_deck: state.fit_to_deck_offers(deck.stride_fit_kmh),
+        deck,
         neural: neural_snapshot(state),
         hud: parts.hud,
         hud_view: HudView::Full,

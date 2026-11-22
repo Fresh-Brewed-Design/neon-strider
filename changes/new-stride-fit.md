@@ -3,3 +3,4 @@
 - The Live page speed slider marks STRIDE_FIT with a FIT tick. The slider still goes to the deck's top speed.
 - The HUD shows an ABOVE STRIDE_FIT line while the belt runs faster than STRIDE_FIT. The line stays until the belt slows, with no toast.
 - Heart rate zones respect STRIDE_FIT. When a zone needs more effort at STRIDE_FIT, the incline goes up instead of the speed, up to 2 % more and never past the deck's top level. Easing off, the speed comes down to STRIDE_FIT first, then the extra incline.
+- FIT_TO_DECK on the Programs page: a seeded program you haven't edited, with steps faster than STRIDE_FIT, can run those steps at STRIDE_FIT with more incline. The new incline keeps about the same effort by the ACSM walking equation. The confirm dialog shows every change first and says when the deck's top incline costs effort. FIT_TO_DECK never starts the program.
