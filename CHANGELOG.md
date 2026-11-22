@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.50.4 (2026-11-22)
+
+### Fixed
+
+- The belt service reminder now sits in the Live page header, so the page no longer scrolls when the reminder shows.
+
 ## 1.50.3 (2026-11-22)
 
 ### Fixed
