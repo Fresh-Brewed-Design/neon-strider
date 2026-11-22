@@ -1,0 +1,1 @@
+- The Live page's program card now fits the dashboard while a program waits for GO, with or without the step map.
