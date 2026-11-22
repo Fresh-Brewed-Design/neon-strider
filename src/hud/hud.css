@@ -286,16 +286,37 @@ body,
 
 .hud-header-end {
   display: inline-flex;
-  /* Never wider than the header: where the SIM tag, status and minify can't
-     share a line, the SIM tag (the least important) drops to its own line.
-     The -6px pulls the minify glyph level with the panel's right edge, so
-     the button sits inside this box, not past it. */
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  /* Never wider than the header. Items lay out right to left and new lines
+     stack upward, so the status and minify cluster fills the bottom line
+     first and, where the SIM tag can't share it, the SIM tag (the least
+     important) wraps to its own line above. The order values below keep the
+     visual order SIM, status, minify. The -6px pulls the minify glyph level
+     with the panel's right edge, so the button sits inside this box, not
+     past it. */
+  flex-direction: row-reverse;
+  flex-wrap: wrap-reverse;
+  justify-content: flex-start;
   align-items: center;
   gap: 6px 8px;
   min-width: 0;
   max-width: 100%;
+}
+.hud-header-end > .hud-header-live { order: 0; }
+.hud-header-end > .hud-sim-tag { order: 1; }
+
+/* Status and minify never part: where both can't fit the line, the status
+   text wraps inside its own box rather than the button dropping alone. */
+.hud-header-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+.hud-header-live > .hud-status {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .hud-header-end:has(.hud-btn-minify) { margin-right: -6px; }
 

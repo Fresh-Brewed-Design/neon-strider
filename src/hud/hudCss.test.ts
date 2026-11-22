@@ -79,7 +79,15 @@ describe("HUD header end group at 340 px", () => {
   it("shrinks to the header and wraps instead of overflowing", () => {
     const end = rule(".hud-header-end");
     expect(end).not.toBe("");
-    expect(end).toMatch(/flex-wrap:\s*wrap/);
+    // Right to left with lines stacking upward: minify and status share the
+    // bottom line, the SIM tag wraps above them.
+    expect(end).toMatch(/flex-direction:\s*row-reverse/);
+    expect(end).toMatch(/flex-wrap:\s*wrap-reverse/);
+    expect(rule(".hud-header-end > .hud-sim-tag")).toMatch(/order:\s*1/);
+    expect(rule(".hud-header-end > .hud-header-live")).toMatch(/order:\s*0/);
+    // Status and minify are one nowrap cluster; the status text wraps inside it.
+    expect(rule(".hud-header-live")).not.toMatch(/flex-wrap/);
+    expect(rule(".hud-header-live > .hud-status")).toMatch(/white-space:\s*normal/);
     expect(end).toMatch(/min-width:\s*0/);
     expect(end).toMatch(/max-width:\s*100%/);
   });
