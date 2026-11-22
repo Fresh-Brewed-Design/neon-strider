@@ -45,7 +45,7 @@ const WALKED_MIN_M: f64 = crate::strava_plan::MIN_WALK_DISTANCE_M;
 const LOOKBACK_DAYS: u64 = 120;
 /// Input within this long counts as the PC being used now.
 /// A minute covers reading or thinking between key presses.
-const ACTIVE_INPUT: Duration = Duration::from_secs(60);
+pub(crate) const ACTIVE_INPUT: Duration = Duration::from_secs(60);
 /// After a failed write, wait this long before trying again.
 /// A failed write is a locked or full disk; five minutes keeps the log quiet and
 /// the day is still recorded long before it ends.
