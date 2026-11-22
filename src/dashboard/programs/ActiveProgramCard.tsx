@@ -23,18 +23,17 @@ export function ActiveProgramCard() {
         {wait ? (
           <div role="alert" className="break-words font-digital text-xs font-bold tracking-widest text-neon-yellow">{waitHeadline(wait)}</div>
         ) : (
-          <Label className="text-neon-yellow/70">{a.paused ? "Program paused" : "Program running"}</Label>
+          <div className="flex min-w-0 items-baseline gap-2" data-testid="program-label-line">
+            <Label className="text-neon-yellow/70">{a.paused ? "Program paused" : "Program running"}</Label>
+            {a.phase === "walking" && (
+              <span className="shrink-0 whitespace-nowrap font-mono text-xs text-white/40">
+                {a.speed_kmh.toFixed(1)}{" "}km/h · {a.incline_pct.toFixed(1)}%
+              </span>
+            )}
+          </div>
         )}
         <div className="line-clamp-2 break-words font-digital text-base font-bold leading-tight tracking-wider text-neon-yellow">{a.name}</div>
-        <div className="font-mono text-xs text-white/60">
-          {describeActive(a)}
-          {a.phase === "walking" && (
-            <span className="text-white/40">
-              {" "}
-              · {a.speed_kmh.toFixed(1)} km/h · {a.incline_pct.toFixed(1)}%
-            </span>
-          )}
-        </div>
+        <div className="font-mono text-xs text-white/60">{describeActive(a)}</div>
         {wait && <div className="font-mono text-xs text-white/70">{waitReason(wait)}</div>}
       </div>
       <div className="flex items-center gap-1">
