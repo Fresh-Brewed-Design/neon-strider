@@ -1,11 +1,20 @@
-import { Pause, Play, SkipForward, Square } from "lucide-react";
+import { ChartNoAxesColumn, Pause, Play, SkipForward, Square } from "lucide-react";
 import { useAppSnapshot } from "../../state/useAppState";
 import { GhostButton, Label, Panel } from "../ui";
 import { cx, send } from "../util";
 import { describeActive, waitHeadline, waitReason } from "./format";
 
-/** The running program, with pause/resume, skip and end. Renders nothing when idle. */
-export function ActiveProgramCard() {
+/** The Live page's STEP_MAP switch: whether the step map shows in place of the stats. */
+export interface StepMapToggle {
+  open: boolean;
+  onToggle: () => void;
+}
+
+/**
+ * The running program, with pause/resume, skip and end. Renders nothing when
+ * idle. With `stepMap` (the Live page) it also offers the STEP_MAP switch.
+ */
+export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
   const s = useAppSnapshot();
   const a = s?.active_program;
   if (!a) return null;
@@ -38,6 +47,16 @@ export function ActiveProgramCard() {
         {wait && <div className="font-mono text-xs text-white/70">{waitReason(wait)}</div>}
       </div>
       <div className="flex items-center gap-1">
+        {stepMap && (
+          <GhostButton
+            onClick={stepMap.onToggle}
+            aria-pressed={stepMap.open}
+            className={cx("flex items-center gap-1.5", stepMap.open && "bg-neon-yellow/10 text-neon-yellow")}
+            title={stepMap.open ? "Show the stats in place of the step map." : "Show every step of the program in place of the stats."}
+          >
+            <ChartNoAxesColumn size={14} /> Map
+          </GhostButton>
+        )}
         {wait ? (
           <button
             type="button"

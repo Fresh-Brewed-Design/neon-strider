@@ -47,3 +47,27 @@ describe("Live page speed slider", () => {
     expect(Math.min(...sent)).toBeGreaterThanOrEqual(0.93);
   });
 });
+
+describe("Live page STEP_MAP", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("shows the running program's steps in place of the stats until switched", () => {
+    render(<LivePage />);
+    expect(screen.getByRole("list", { name: "Program steps" })).toBeInTheDocument();
+    expect(screen.queryByText("DECK_CYCLES")).not.toBeInTheDocument();
+
+    const toggle = screen.getByRole("button", { name: /map/i });
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(toggle);
+    expect(screen.queryByRole("list", { name: "Program steps" })).not.toBeInTheDocument();
+    expect(screen.getByText("DECK_CYCLES")).toBeInTheDocument();
+    expect(localStorage.getItem("liveStepMap")).toBe("closed");
+  });
+
+  it("keeps the stats with no program running", () => {
+    current!.active_program = null;
+    render(<LivePage />);
+    expect(screen.queryByRole("list", { name: "Program steps" })).not.toBeInTheDocument();
+    expect(screen.getByText("DECK_CYCLES")).toBeInTheDocument();
+  });
+});

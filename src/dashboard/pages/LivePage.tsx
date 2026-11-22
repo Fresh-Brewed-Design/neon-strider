@@ -8,8 +8,10 @@ import { Sparkline } from "../../widgets/Sparkline";
 import { Axis } from "../live/Axis";
 import { PinToggle } from "../live/PinToggle";
 import { Transport } from "../live/Transport";
+import { StepMap } from "../live/StepMap";
 import { ZoneReadout } from "../live/ZoneReadout";
 import { ActiveProgramCard } from "../programs/ActiveProgramCard";
+import { readPref, writePref } from "../localPrefs";
 import { StatusPill } from "../StatusPill";
 import { MaintenanceBanner } from "../system/MaintenanceBanner";
 import { Label, Page, Panel, Waiting } from "../ui";
@@ -64,6 +66,9 @@ function headerNotice(s: AppSnapshot): ReactNode {
   );
 }
 
+/** Which of STEP_MAP or the stats shows while a program runs; STEP_MAP until switched. */
+const STEP_MAP_PREF = "liveStepMap";
+
 /** The Live page control a target came from. */
 type NoteFrom = "speed" | "tilt";
 
@@ -73,6 +78,11 @@ export function LivePage() {
   // note is about an older target (a program step, the HUD), so it stays off
   // the control. A press on the control that already shows a note keeps it.
   const [sent, setSent] = useState<{ from: NoteFrom; before: string | null } | null>(null);
+  const [mapOpen, setMapOpen] = useState(() => readPref(STEP_MAP_PREF) !== "closed");
+  const toggleMap = () => {
+    writePref(STEP_MAP_PREF, mapOpen ? "closed" : "open");
+    setMapOpen(!mapOpen);
+  };
   if (s && !s.deck.target_note && sent) setSent(null);
   const sentFrom = (from: NoteFrom) => {
     if (sent?.from !== from) setSent({ from, before: s?.deck.target_note ?? null });
@@ -89,7 +99,7 @@ export function LivePage() {
     <Page codename="LOCOMOTION_DECK" title="Live" actions={headerNotice(s)}>
       {/* Fits the 760x600 popup without scrolling, even with the maintenance
           banner and a running program both showing. */}
-      <div className="flex flex-col gap-2">
+      <div className="flex min-h-full flex-col gap-2">
         <MaintenanceBanner />
         <div className="grid grid-cols-2 gap-3">
           <Axis
@@ -144,35 +154,40 @@ export function LivePage() {
 
         <Transport s={s} />
 
-        <ActiveProgramCard />
+        <ActiveProgramCard stepMap={{ open: mapOpen, onToggle: toggleMap }} />
 
-        <div className="grid grid-cols-3 gap-2">
-          {stats.map((w) => {
-            const { value, unit } = w.read(s);
-            const spark = w.spark?.(s);
-            const zone = w.zone?.(s);
-            // PULSE_RATE with a sensor takes two tiles, so its chart sits
-            // beside the bpm and the zone beside the name, and the page keeps
-            // the height it has without one. It is the last stat, so its row
-            // always has a free tile to take.
-            return (
-              <Panel key={w.id} className={cx("flex flex-col gap-0.5 px-3 py-1.5", spark && "col-span-2")}>
-                <div className="flex items-start justify-between gap-1">
-                  <Label className="min-w-0 tracking-[0.12em] [overflow-wrap:anywhere]">{w.codename}</Label>
-                  {zone && <ZoneReadout zone={zone} />}
-                  <PinToggle widget={w.id} pinned={pinned.has(w.id)} />
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className={cx("shrink-0 font-digital text-base tracking-wider", TONE_TEXT[w.accent])}>
-                    {value}
-                    {unit && <span className="ml-1 font-mono text-[11px] text-white/40">{unit}</span>}
-                  </span>
-                  {spark && <Sparkline data={spark} className={cx("block h-5 min-w-0 flex-1", TONE_TEXT[w.accent])} />}
-                </div>
-              </Panel>
-            );
-          })}
-        </div>
+        {/* STEP_MAP takes the stats' place and the height left under the program card. */}
+        {s.active_program && mapOpen ? (
+          <StepMap a={s.active_program} />
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            {stats.map((w) => {
+              const { value, unit } = w.read(s);
+              const spark = w.spark?.(s);
+              const zone = w.zone?.(s);
+              // PULSE_RATE with a sensor takes two tiles, so its chart sits
+              // beside the bpm and the zone beside the name, and the page keeps
+              // the height it has without one. It is the last stat, so its row
+              // always has a free tile to take.
+              return (
+                <Panel key={w.id} className={cx("flex flex-col gap-0.5 px-3 py-1.5", spark && "col-span-2")}>
+                  <div className="flex items-start justify-between gap-1">
+                    <Label className="min-w-0 tracking-[0.12em] [overflow-wrap:anywhere]">{w.codename}</Label>
+                    {zone && <ZoneReadout zone={zone} />}
+                    <PinToggle widget={w.id} pinned={pinned.has(w.id)} />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={cx("shrink-0 font-digital text-base tracking-wider", TONE_TEXT[w.accent])}>
+                      {value}
+                      {unit && <span className="ml-1 font-mono text-[11px] text-white/40">{unit}</span>}
+                    </span>
+                    {spark && <Sparkline data={spark} className={cx("block h-5 min-w-0 flex-1", TONE_TEXT[w.accent])} />}
+                  </div>
+                </Panel>
+              );
+            })}
+          </div>
+        )}
       </div>
     </Page>
   );
