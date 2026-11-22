@@ -122,6 +122,81 @@ pub struct ProgramStep {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub zone: Option<HeartZone>,
+    /// What the step is for, shown on the HUD, the Live page and the tray as
+    /// `INTERVAL 3/5`. None (every step saved before #235) shows the step
+    /// number only, as before. A name: changing it keeps the program's note.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub kind: Option<StepKind>,
+}
+
+/// What a program step is for (#235). Only a name: no kind changes how a
+/// step drives the belt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ts_rs::TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
+pub enum StepKind {
+    WarmUp,
+    Walk,
+    Interval,
+    Rest,
+    CoolDown,
+}
+
+impl StepKind {
+    /// Every kind, in the editor's order.
+    pub const ALL: [StepKind; 5] = [
+        StepKind::WarmUp,
+        StepKind::Walk,
+        StepKind::Interval,
+        StepKind::Rest,
+        StepKind::CoolDown,
+    ];
+
+    /// The short code the HUD, the Live page and the tray show.
+    pub fn code(self) -> &'static str {
+        match self {
+            StepKind::WarmUp => "WARM_UP",
+            StepKind::Walk => "WALK",
+            StepKind::Interval => "INTERVAL",
+            StepKind::Rest => "REST",
+            StepKind::CoolDown => "COOL_DOWN",
+        }
+    }
+}
+
+/// The running step's kind and its place among the program's steps of that
+/// kind: the 3rd of 5 intervals is `nth` 3 `of` 5, labelled `INTERVAL 3/5`.
+/// A kind the program has once is labelled by its code alone (`WARM_UP`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
+pub struct StepKindSpot {
+    pub kind: StepKind,
+    /// 1-based, counting only steps of this kind.
+    pub nth: u32,
+    pub of: u32,
+    pub label: String,
+}
+
+impl StepKindSpot {
+    /// Step `index` of `steps`, or None when it has no kind (or no such step).
+    pub fn of_step(steps: &[ProgramStep], index: usize) -> Option<Self> {
+        let kind = steps.get(index)?.kind?;
+        let same = |s: &&ProgramStep| s.kind == Some(kind);
+        let nth = steps[..=index].iter().filter(same).count() as u32;
+        let of = steps.iter().filter(same).count() as u32;
+        let label = if of > 1 {
+            format!("{} {nth}/{of}", kind.code())
+        } else {
+            kind.code().to_string()
+        };
+        Some(Self {
+            kind,
+            nth,
+            of,
+            label,
+        })
+    }
 }
 
 /// A heart rate zone as percentages of the maximum heart rate, e.g. VO2 max
@@ -261,6 +336,11 @@ pub struct ActiveProgram {
     /// Current live target (includes manual nudges made during the step).
     pub speed_kmh: f32,
     pub incline_pct: f32,
+    /// The walking step's kind and its count within that kind; None while
+    /// resting or for a step with no kind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub kind: Option<StepKindSpot>,
 }
 
 /// What the treadmill was doing when the program took over.
@@ -512,7 +592,8 @@ pub(crate) fn validate_program(p: &Program, min_speed: f32, max_speed: f32) -> R
 /// The examples a new install starts with. Values and sources are in
 /// docs/research.md. Existing installs were moved to these by
 /// `persistence::migration_3_research_programs` and
-/// `persistence::migration_8_seeded_programs`, which keep their own copies.
+/// `persistence::migration_8_seeded_programs`, which keep their own copies;
+/// `migration_10_step_kinds` gives unedited ones the step kinds.
 /// The ids match what a v1.6 install ends up with after every migration
 /// (id 4 was Micro-break, merged into Workday), so a migrated install and
 /// a new one hold the same list.
@@ -525,11 +606,13 @@ pub fn seed_programs() -> Vec<Program> {
             repeat_every_minutes: repeat,
             note: Some(note.to_string()),
         };
+    // Every one-step example is a plain walk.
     let step = |minutes: Option<f32>, speed_kmh: f32, incline_pct: f32| ProgramStep {
         duration_minutes: minutes,
         speed_kmh,
         incline_pct,
         zone: None,
+        kind: Some(StepKind::Walk),
     };
     vec![
         program(
@@ -577,23 +660,24 @@ const WORKDAY_INCLINE_PCT: f32 = 5.0;
 /// program from `persistence::migration_4_vo2_max_program` and the zones from
 /// `migration_7_vo2_max_zones`, which keep their own copies.
 fn vo2_max_program(id: u32) -> Program {
-    let step = |minutes: f32, speed_kmh: f32, incline_pct: f32, zone| ProgramStep {
+    let step = |minutes: f32, speed_kmh: f32, incline_pct: f32, zone, kind| ProgramStep {
         duration_minutes: Some(minutes),
         speed_kmh,
         incline_pct,
         zone,
+        kind: Some(kind),
     };
     let climb_zone = Some(HeartZone {
         low_pct: 85.0,
         high_pct: 95.0,
         trim: None,
     });
-    let mut steps = vec![step(5.0, 4.5, 0.0, None)];
+    let mut steps = vec![step(5.0, 4.5, 0.0, None, StepKind::WarmUp)];
     for _ in 0..4 {
-        steps.push(step(4.0, 6.0, 10.0, climb_zone));
-        steps.push(step(3.0, 4.0, 0.0, None));
+        steps.push(step(4.0, 6.0, 10.0, climb_zone, StepKind::Interval));
+        steps.push(step(3.0, 4.0, 0.0, None, StepKind::Rest));
     }
-    steps.push(step(3.0, 3.0, 0.0, None));
+    steps.push(step(3.0, 3.0, 0.0, None, StepKind::CoolDown));
     Program {
         id,
         name: "VO2 max".to_string(),
@@ -610,20 +694,34 @@ fn vo2_max_program(id: u32) -> Program {
 /// get it from `persistence::migration_8_seeded_programs`,
 /// which keeps its own copy.
 fn interval_walk_program(id: u32) -> Program {
-    let step = |minutes: f32, speed_kmh: f32, incline_pct: f32| ProgramStep {
+    let step = |minutes: f32, speed_kmh: f32, incline_pct: f32, kind| ProgramStep {
         duration_minutes: Some(minutes),
         speed_kmh,
         incline_pct,
         zone: None,
+        kind: Some(kind),
     };
-    let mut steps = vec![step(INTERVAL_WARMUP_MINUTES, INTERVAL_WARMUP_KMH, 0.0)];
+    let mut steps = vec![step(
+        INTERVAL_WARMUP_MINUTES,
+        INTERVAL_WARMUP_KMH,
+        0.0,
+        StepKind::WarmUp,
+    )];
+    // The easy minutes are the rests between brisk ones; the last easy round
+    // is a rest too, so the rounds count 1/5 to 5/5 in step.
     for _ in 0..INTERVAL_ROUNDS {
         steps.push(step(
             INTERVAL_MINUTES,
             INTERVAL_BRISK_KMH,
             INTERVAL_BRISK_INCLINE_PCT,
+            StepKind::Interval,
         ));
-        steps.push(step(INTERVAL_MINUTES, INTERVAL_EASY_KMH, 0.0));
+        steps.push(step(
+            INTERVAL_MINUTES,
+            INTERVAL_EASY_KMH,
+            0.0,
+            StepKind::Rest,
+        ));
     }
     Program {
         id,
@@ -672,6 +770,7 @@ pub(crate) fn classic_programs() -> Vec<Program> {
             speed_kmh,
             incline_pct,
             zone: None,
+            kind: None,
         }],
         repeat_every_minutes: repeat,
         note: None,
@@ -1602,6 +1701,10 @@ impl OrchestratorState {
                 self.tilt_multiplier,
                 self.incline_offset,
             ),
+            kind: match run.phase {
+                ProgramPhase::Walking => StepKindSpot::of_step(&run.program.steps, run.step_index),
+                ProgramPhase::Resting => None,
+            },
         })
     }
 
@@ -1666,7 +1769,17 @@ impl OrchestratorState {
                 .find(|p| p.id == program.id)
                 .ok_or_else(|| "Program not found".to_string())?;
             // The note survives a rename, not a change to what the program does.
-            let same_plan = slot.steps == program.steps
+            // A step's kind is a name too, so changing one keeps it.
+            let unkinded = |steps: &[ProgramStep]| -> Vec<ProgramStep> {
+                steps
+                    .iter()
+                    .map(|s| ProgramStep {
+                        kind: None,
+                        ..s.clone()
+                    })
+                    .collect()
+            };
+            let same_plan = unkinded(&slot.steps) == unkinded(&program.steps)
                 && slot.repeat_every_minutes == program.repeat_every_minutes;
             program.note = if same_plan { slot.note.clone() } else { None };
             *slot = program.clone();
@@ -2124,6 +2237,7 @@ mod tests {
             speed_kmh: kmh,
             incline_pct: 0.0,
             zone: None,
+            kind: None,
         };
         let mut s = state();
         s.programs.push(Program {
@@ -2190,12 +2304,14 @@ mod tests {
                     speed_kmh: 3.0,
                     incline_pct: 0.0,
                     zone: None,
+                    kind: None,
                 },
                 ProgramStep {
                     duration_minutes: Some(2.0),
                     speed_kmh: 5.0,
                     incline_pct: 2.0,
                     zone: None,
+                    kind: None,
                 },
             ],
             repeat_every_minutes: Some(10.0),
@@ -2334,6 +2450,7 @@ mod tests {
                 speed_kmh: 0.0,
                 incline_pct: 0.0,
                 zone: None,
+                kind: None,
             }],
             repeat_every_minutes: None,
             note: None,
@@ -2446,6 +2563,7 @@ mod tests {
                 speed_kmh: 3.0,
                 incline_pct: 2.0,
                 zone: None,
+                kind: None,
             }],
             repeat_every_minutes: None,
             note: None,
@@ -2531,6 +2649,7 @@ mod tests {
                 speed_kmh: 3.0,
                 incline_pct: 0.0,
                 zone: None,
+                kind: None,
             },
         );
         assert!(err(&p).contains("Step 1"));
@@ -2581,6 +2700,7 @@ mod tests {
             speed_kmh: 4.0,
             incline_pct: 4.0,
             zone: None,
+            kind: None,
         });
         moving(&mut s, 3.0, 0);
         let t0 = Instant::now();
@@ -2847,12 +2967,14 @@ mod tests {
                     speed_kmh: 3.0,
                     incline_pct: 0.0,
                     zone: None,
+                    kind: None,
                 },
                 ProgramStep {
                     duration_minutes: Some(5.0),
                     speed_kmh: 4.0,
                     incline_pct: 0.0,
                     zone: None,
+                    kind: None,
                 },
             ],
             repeat_every_minutes: None,
@@ -2944,12 +3066,14 @@ mod tests {
                     speed_kmh: 0.0,
                     incline_pct: 0.0,
                     zone: None,
+                    kind: None,
                 },
                 ProgramStep {
                     duration_minutes: Some(2.0),
                     speed_kmh: 3.0,
                     incline_pct: 0.0,
                     zone: None,
+                    kind: None,
                 },
             ],
             repeat_every_minutes: None,
@@ -3031,6 +3155,7 @@ mod tests {
             speed_kmh: 5.0,
             incline_pct: 0.0,
             zone: None,
+            kind: None,
         });
         s.last_status = MachineStatus::Running;
         let t0 = Instant::now();
@@ -3284,12 +3409,14 @@ mod tests {
                     speed_kmh: 3.0,
                     incline_pct: 0.0,
                     zone: None,
+                    kind: None,
                 },
                 ProgramStep {
                     duration_minutes: Some(1.0),
                     speed_kmh: 0.0,
                     incline_pct: 0.0,
                     zone: None,
+                    kind: None,
                 },
             ],
             repeat_every_minutes: None,
@@ -3765,6 +3892,7 @@ mod tests {
                     high_pct: 95.0,
                     trim: None,
                 }),
+                kind: None,
             }],
             repeat_every_minutes: None,
             note: None,
@@ -3879,6 +4007,7 @@ mod tests {
                     high_pct: 95.0,
                     trim: Some(trim),
                 }),
+                kind: None,
             }],
             repeat_every_minutes: None,
             note: None,
@@ -4009,6 +4138,7 @@ mod tests {
                 high_pct: 70.0,
                 trim,
             }),
+            kind: None,
         };
         let program = Program {
             id: 0,
@@ -4153,6 +4283,7 @@ mod tests {
                 high_pct,
                 trim: None,
             }),
+            kind: None,
         };
         let program = |s: ProgramStep| Program {
             id: 0,
@@ -4234,6 +4365,130 @@ mod tests {
         let saved = s.programs.iter().find(|p| p.id == seeded.id).unwrap();
         assert_eq!(saved.steps[1].zone.unwrap().low_pct, 70.0);
         assert_eq!(saved.note, None, "a new zone changes what the program does");
+    }
+
+    // -----------------------------------------------------------------------
+    // Step kinds (#235).
+    // -----------------------------------------------------------------------
+
+    fn kinded(kind: Option<StepKind>, speed_kmh: f32) -> ProgramStep {
+        ProgramStep {
+            duration_minutes: Some(2.0),
+            speed_kmh,
+            incline_pct: 0.0,
+            zone: None,
+            kind,
+        }
+    }
+
+    /// A step saved before #235 has no `kind` and loads as none; a step
+    /// with none saves without the field, so old and new JSON match.
+    #[test]
+    fn a_step_without_a_kind_loads_and_saves_as_before() {
+        let old = r#"{"duration_minutes":5.0,"speed_kmh":3.0,"incline_pct":5.0}"#;
+        let step: ProgramStep = serde_json::from_str(old).unwrap();
+        assert_eq!(step.kind, None);
+        assert_eq!(serde_json::to_string(&step).unwrap(), old);
+        let warm: ProgramStep = serde_json::from_str(
+            r#"{"duration_minutes":5.0,"speed_kmh":3.0,"incline_pct":5.0,"kind":"warm_up"}"#,
+        )
+        .unwrap();
+        assert_eq!(warm.kind, Some(StepKind::WarmUp));
+        let codes: Vec<String> = StepKind::ALL
+            .iter()
+            .map(|k| serde_json::to_string(k).unwrap())
+            .collect();
+        assert_eq!(
+            codes,
+            [
+                r#""warm_up""#,
+                r#""walk""#,
+                r#""interval""#,
+                r#""rest""#,
+                r#""cool_down""#
+            ]
+        );
+        let labels: Vec<&str> = StepKind::ALL.iter().map(|k| k.code()).collect();
+        assert_eq!(labels, ["WARM_UP", "WALK", "INTERVAL", "REST", "COOL_DOWN"]);
+    }
+
+    /// The count is within the step's kind: the 3rd interval of 5 is
+    /// `INTERVAL 3/5` wherever it falls in the list; a kind the program has
+    /// once shows its code alone; a step with no kind has no label.
+    #[test]
+    fn a_kind_counts_its_own_steps() {
+        let p = seed_programs()
+            .into_iter()
+            .find(|p| p.name == "Interval walk")
+            .unwrap();
+        let spot = |i| StepKindSpot::of_step(&p.steps, i).unwrap();
+        assert_eq!(spot(0).label, "WARM_UP");
+        assert_eq!((spot(0).nth, spot(0).of), (1, 1));
+        assert_eq!(spot(5).label, "INTERVAL 3/5");
+        assert_eq!(spot(5).kind, StepKind::Interval);
+        assert_eq!(spot(10).label, "REST 5/5");
+        assert_eq!(StepKindSpot::of_step(&p.steps, 11), None);
+        let mixed = [kinded(None, 3.0), kinded(Some(StepKind::Walk), 3.0)];
+        assert_eq!(StepKindSpot::of_step(&mixed, 0), None);
+        assert_eq!(StepKindSpot::of_step(&mixed, 1).unwrap().label, "WALK");
+    }
+
+    /// The running program carries its walking step's kind; a rest between
+    /// cycles carries none, and a step with no kind shows as before.
+    #[test]
+    fn the_running_program_shows_its_step_kind() {
+        let mut s = state();
+        s.programs.push(Program {
+            id: 4,
+            name: "Kinds".to_string(),
+            steps: vec![
+                kinded(Some(StepKind::Interval), 3.0),
+                kinded(None, 4.0),
+                kinded(Some(StepKind::Interval), 5.0),
+            ],
+            repeat_every_minutes: Some(10.0),
+            note: None,
+        });
+        moving(&mut s, 2.0, 0);
+        let t0 = Instant::now();
+        s.run_program(4, t0).unwrap();
+        let label = |s: &OrchestratorState| s.active_program().unwrap().kind.map(|k| k.label);
+        assert_eq!(label(&s).as_deref(), Some("INTERVAL 1/2"));
+        s.skip_program(t0).unwrap();
+        assert_eq!(label(&s), None);
+        s.skip_program(t0).unwrap();
+        assert_eq!(label(&s).as_deref(), Some("INTERVAL 2/2"));
+        s.skip_program(t0).unwrap(); // last step -> Resting
+        assert_eq!(s.active_program().unwrap().phase, ProgramPhase::Resting);
+        assert_eq!(label(&s), None);
+    }
+
+    /// A kind is a name: changing one keeps the seeded note, as a rename does.
+    #[test]
+    fn changing_a_kind_keeps_the_note() {
+        let mut s = state();
+        let seeded = seed_programs()
+            .into_iter()
+            .find(|p| p.name == "Interval walk")
+            .unwrap();
+        s.programs.push(seeded.clone());
+        let mut edit = seeded.clone();
+        edit.note = None;
+        edit.steps[10].kind = Some(StepKind::CoolDown);
+        edit.steps[0].kind = None;
+        s.save_program(edit).unwrap();
+        let saved = s.programs.iter().find(|p| p.id == seeded.id).unwrap();
+        assert_eq!(saved.steps[10].kind, Some(StepKind::CoolDown));
+        assert_eq!(saved.steps[0].kind, None);
+        assert_eq!(saved.note.as_deref(), Some(NOTE_INTERVAL_WALK));
+    }
+
+    /// Every seeded step has a kind.
+    #[test]
+    fn every_seeded_step_has_a_kind() {
+        for p in seed_programs() {
+            assert!(p.steps.iter().all(|s| s.kind.is_some()), "{}", p.name);
+        }
     }
 
     // -----------------------------------------------------------------------

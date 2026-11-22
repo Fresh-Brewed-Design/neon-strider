@@ -1009,6 +1009,7 @@ mod tests {
                         speed_kmh: 2.5,
                         incline_pct: 5.0,
                         zone: None,
+                        kind: None,
                     }],
                     repeat_every_minutes: None,
                     note: None
