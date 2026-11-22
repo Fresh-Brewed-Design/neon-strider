@@ -19,6 +19,7 @@ export function StatCell({ id, snapshot }: { id: HudWidget; snapshot: AppSnapsho
   const spark = def.spark?.(snapshot);
   const zone = def.zone?.(snapshot);
   const target = def.target?.(snapshot);
+  const detail = def.detail?.(snapshot);
   return (
     <div className={`hud-stat accent-${def.accent}`}>
       <span className="hud-label">{def.label}</span>
@@ -29,6 +30,7 @@ export function StatCell({ id, snapshot }: { id: HudWidget; snapshot: AppSnapsho
       {spark && <Sparkline data={spark} className="hud-spark" />}
       {zone && <ZoneLine zone={zone} />}
       {target && <TargetLine target={target} />}
+      {detail && <span className="hud-sub hud-stat-detail">{detail}</span>}
     </div>
   );
 }
