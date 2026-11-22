@@ -1,4 +1,4 @@
-// Programs. ?noprogram: none running.
+// Programs. ?noprogram: none running. ?noprograms: none saved.
 // ?program=ready: Workday's rest is over on a still belt, and cycle 4 waits for GO
 // (REST COMPLETE // PRESS GO). ?program=hold: a walking step after a 0 km/h step waits.
 // ?program=still: the belt was found still after a reconnect. ?program=resting: mid-rest.
@@ -80,6 +80,10 @@ function intervalRound(): ActiveProgram | null {
 export const programs: Scenario = {
   apply() {
     if (params.has("noprogram")) snapshot.active_program = null;
+    if (params.has("noprograms")) {
+      snapshot.programs = [];
+      snapshot.active_program = null;
+    }
     const programFlag = params.get("program");
     if (programFlag === "interval" && snapshot.active_program) {
       snapshot.active_program = intervalRound();

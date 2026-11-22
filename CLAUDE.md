@@ -198,6 +198,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?neural=active`: Neural flow easing the belt off while typing
 - `?nohistory`: History empty: no walks, an empty week, DESK_SYNC and WALL_CLOCK
 - `?noprogram`: no program running
+- `?noprograms`: no saved programs (Programs shows its empty state)
 - `?nostrava`: no Strava credentials or account
 - `?offline`: no treadmill saved yet
 - `?onemonitor`: a single display
