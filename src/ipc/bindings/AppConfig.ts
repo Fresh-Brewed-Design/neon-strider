@@ -20,7 +20,7 @@ calibration_points: Array<CalibrationPoint>,
  * (`bluetooth::sync_orchestrator_config`), so a window that loaded before
  * a switch can't write one treadmill's points over another's.
  */
-calibration_treadmill: string | null, belt_length: number, min_speed: number, max_speed: number, max_incline: number, tilt_multiplier: number, incline_offset: number, focus_stability_enabled: boolean, 
+calibration_treadmill: string | null, min_speed: number, max_speed: number, max_incline: number, tilt_multiplier: number, incline_offset: number, focus_stability_enabled: boolean, 
 /**
  * Body weight for the calorie estimate; kept within MIN/MAX_BODY_MASS_KG.
  */
