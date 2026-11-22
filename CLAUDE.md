@@ -245,7 +245,8 @@ the SmartScreen note below an `<!-- installer-note -->` marker, which the app cu
 release build signs the installer with the updater key and tauri-action uploads `latest.json`
 plus the `.sig`: `release.yml` turns on `createUpdaterArtifacts` with
 `--config src-tauri/tauri.release.conf.json` and reads the key from the
-`TAURI_SIGNING_PRIVATE_KEY` secret (no password). The public key is in `tauri.conf.json`
+`TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets of the `release`
+environment (deployments limited to `main` and `v*` tags, so no other branch's workflow can read them). The public key is in `tauri.conf.json`
 (`plugins.updater.pubkey`); the private key never goes in the repo. Local builds need no key.
 
 ## Voice

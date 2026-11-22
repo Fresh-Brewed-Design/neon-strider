@@ -10,7 +10,8 @@ name: Release
 # its update notes.
 #
 # Updater: the installer and its `.sig` are signed with the updater key (the
-# TAURI_SIGNING_PRIVATE_KEY secret, no password), and tauri-action uploads
+# TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD secrets of the
+# `release` environment, which only main and v* tags may use), and tauri-action uploads
 # `latest.json`, which the app checks. Local builds skip this:
 # createUpdaterArtifacts is only turned on here.
 on:
@@ -33,6 +34,9 @@ permissions:
 jobs:
   release:
     runs-on: windows-latest
+    # The signing key lives in this environment, so a workflow run from any other
+    # branch (a PR, an agent branch) can never read it.
+    environment: release
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -86,7 +90,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ inputs.tag || github.ref_name }}
           releaseName: Neon Strider ${{ inputs.tag || github.ref_name }}
