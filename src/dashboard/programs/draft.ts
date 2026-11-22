@@ -116,6 +116,21 @@ export function withZoneUnit(d: Draft, unit: ZoneUnit, maxBpm: number): Draft {
   };
 }
 
+/**
+ * The patch for a step whose kind is set to `kind`. A step set to COOL_DOWN that can end on heart
+ * rate (minutes, a walking speed, no zone: Rust's rules) gets the pulse target switched on at the
+ * default, the one target every cool-down gets (docs/research.md); the user can untick it. Any other
+ * change, and a step that was already COOL_DOWN, only sets the kind.
+ */
+export function kindPatch(s: StepDraft, kind: StepKind | null, unit: ZoneUnit, maxBpm: number): Partial<StepDraft> {
+  if (kind !== "cool_down" || s.kind === "cool_down") return { kind };
+  const speed = Number(s.speed);
+  const qualifies = !s.open && !s.zone && s.speed.trim() !== "" && Number.isFinite(speed) && speed > 0;
+  if (!qualifies) return { kind };
+  const pct = SETTING_LIMITS.default_cool_down_pulse_pct;
+  return { kind, pulse: true, pulseTarget: String(unit === "bpm" ? toBpm(pct, maxBpm) : pct), savedPulse: pct };
+}
+
 /** A step's zone in both units for the editor's hint, or null while a bound isn't a number. */
 export function zoneSummary(s: StepDraft, unit: ZoneUnit, maxBpm: number): { pct: [number, number]; bpm: [number, number] } | null {
   const low = Number(s.zoneLow);

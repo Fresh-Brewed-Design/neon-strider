@@ -8,7 +8,7 @@ import { useAppState } from "../../state/useAppState";
 import { GhostButton, Hint, Label, NeonButton, Panel } from "../ui";
 import { ChoiceGroup } from "../system/fields";
 import { cx } from "../util";
-import { fromDraft, pulseSummary, withZoneUnit, zoneSummary, type Draft, type StepDraft, type ZoneUnit } from "./draft";
+import { fromDraft, kindPatch, pulseSummary, withZoneUnit, zoneSummary, type Draft, type StepDraft, type ZoneUnit } from "./draft";
 import { STEP_KINDS } from "./format";
 
 /** Until Rust's snapshot arrives: the estimate Rust starts from (220 minus age at 30). */
@@ -130,7 +130,7 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
               className={cx(input, "px-1")}
               aria-label={`Step ${i + 1} kind`}
               value={s.kind ?? ""}
-              onChange={(e) => patchStep(i, { kind: e.target.value === "" ? null : (e.target.value as StepKind) })}
+              onChange={(e) => patchStep(i, kindPatch(s, e.target.value === "" ? null : (e.target.value as StepKind), d.zoneUnit, maxBpm))}
             >
               <option value="">None</option>
               {STEP_KINDS.map((k) => (
