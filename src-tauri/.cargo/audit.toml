@@ -1,0 +1,16 @@
+# Read by `cargo audit` (weekly, .github/workflows/audit.yml). The app ships on
+# Windows only, so advisories for crates that Cargo.lock lists only for Linux
+# targets (Tauri's GTK/WebKit stack) can't affect a release. Each entry was
+# checked with `cargo tree --target x86_64-pc-windows-msvc -i <crate>`, which
+# finds nothing. Remove an entry when the crate leaves Cargo.lock.
+[advisories]
+ignore = [
+  # glib 0.18 (GTK3 bindings, Linux only): unsound VariantStrIter. Fixed in 0.20, which Tauri's gtk-rs 0.18 stack can't use.
+  "RUSTSEC-2024-0429",
+  # proc-macro-error: unmaintained; pulled in by the Linux-only GTK stack.
+  "RUSTSEC-2024-0370",
+  # zbus_names, zvariant, zvariant_derive: unmaintained; pulled in by the Linux-only D-Bus stack.
+  "RUSTSEC-2026-0371",
+  "RUSTSEC-2026-0370",
+  "RUSTSEC-2026-0372",
+]
