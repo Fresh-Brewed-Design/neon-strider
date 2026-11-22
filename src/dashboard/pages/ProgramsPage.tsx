@@ -9,7 +9,24 @@ import { NEW_PROGRAM, toDraft, type Draft } from "../programs/draft";
 import { describePlan, describeProgram } from "../programs/format";
 import { ProgramEditor } from "../programs/ProgramEditor";
 import { GhostButton, NeonButton, Page, Panel, Waiting } from "../ui";
-import { cx, send } from "../util";
+import { linkState } from "../../state/linkStatus";
+import { cx, openLinkDialog, send } from "../util";
+
+/** Why Run is off while no treadmill is linked, with the dashboard's own Connect. It only links; it never starts the belt. */
+function OfflineLine({ linking }: { linking: boolean }) {
+  return (
+    <div className="flex min-h-8 items-center gap-3 px-1" data-testid="programs-offline">
+      <span className="min-w-0 flex-1 font-mono text-xs text-white/60">
+        {linking ? "Connecting to the treadmill." : "Treadmill not connected."}
+      </span>
+      {!linking && (
+        <NeonButton className="h-8 shrink-0 px-4" onClick={openLinkDialog}>
+          Connect
+        </NeonButton>
+      )}
+    </div>
+  );
+}
 
 export function ProgramsPage() {
   const s = useAppSnapshot();
@@ -27,6 +44,8 @@ export function ProgramsPage() {
     clearProgramRequest();
   };
   const runningId = s.active_program?.program_id;
+  const state = linkState(s.connection).state;
+  const linking = state === "connecting" || state === "scanning";
 
   const remove = (p: Program) =>
     confirm({
@@ -64,6 +83,11 @@ export function ProgramsPage() {
           </Panel>
         ) : (
           <ul className="flex flex-col gap-2">
+            {!s.connection.connected && (
+              <li>
+                <OfflineLine linking={linking} />
+              </li>
+            )}
             {s.programs.map((p) => {
               const running = p.id === runningId;
               return (

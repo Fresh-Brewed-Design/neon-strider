@@ -82,3 +82,32 @@ describe("HUD belt buttons", () => {
     for (const b of go) expect(b).toHaveAttribute("title", "Resume the program.");
   });
 });
+
+describe("HUD program list offline", () => {
+  const offline = (state: object, saved = true) =>
+    panel((s) => Object.assign(s.connection, { connected: false, has_saved_device: saved, link: state }));
+
+  it("says why the program buttons are off and offers Connect", async () => {
+    vi.mocked(invoke).mockClear();
+    show(offline({ state: "reconnecting", attempt: 1, next_retry_s: 9 }));
+    expect(screen.getByTestId("hud-offline")).toHaveTextContent("Treadmill not connected.");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "CONNECT" })));
+    expect(dispatched()).toEqual([{ command: { type: "connect_now" } }]);
+  });
+
+  it("opens the dashboard's connect dialog when no treadmill is saved", async () => {
+    vi.mocked(invoke).mockClear();
+    show(offline({ state: "idle" }, false));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "CONNECT" })));
+    expect(dispatched()).toEqual([{ command: { type: "open_connect_dialog" } }]);
+  });
+
+  it("offers no Connect while a link is being made, and shows nothing when linked", () => {
+    const { unmount } = show(offline({ state: "connecting", attempt: 1, of: 3 }));
+    expect(screen.getByTestId("hud-offline")).toHaveTextContent("Connecting to the treadmill.");
+    expect(screen.queryByRole("button", { name: "CONNECT" })).not.toBeInTheDocument();
+    unmount();
+    show(panel());
+    expect(screen.queryByTestId("hud-offline")).not.toBeInTheDocument();
+  });
+});

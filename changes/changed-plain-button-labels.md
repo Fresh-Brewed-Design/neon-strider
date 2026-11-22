@@ -1,2 +1,3 @@
 - The belt buttons on Live and the HUD now say what they do in plain words under each codename: pause, resume, start and end walk.
 - An empty Programs page now says there are no programs yet, points to New and to ECHO on History, and has a New button.
+- Programs on the dashboard and the HUD now say when the treadmill is not connected, with a Connect button.

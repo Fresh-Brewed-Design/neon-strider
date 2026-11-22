@@ -680,6 +680,10 @@ body,
   white-space: nowrap;
 }
 
+/* The program list's reason for being off: one line and a Connect button. */
+.hud-offline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.hud-offline .hud-sub { flex: 1 1 auto; }
+
 .hud-btn-step {
   /* 32px while the column has room; the 24px floor keeps a tap target when
      "- 12.0 +" has to fit about 93px (225 % text size). */

@@ -10,6 +10,8 @@ import { isMoving, startFailure } from "../state/linkStatus";
 import { SmallButton } from "./SmallButton";
 import { engageLabel, engageSub, engageTitle } from "./status";
 import { useHudSend } from "./useHudSend";
+import { useRelink } from "./useRelink";
+import { linkState } from "../state/linkStatus";
 
 /** One pinned stat, read through the shared widget registry. */
 export function StatCell({ id, snapshot }: { id: HudWidget; snapshot: AppSnapshot }) {
@@ -203,6 +205,7 @@ export function Controls({ snapshot }: { snapshot: AppSnapshot }) {
 /** The running program's controls, or one button per saved program. */
 export function ProgramsModule({ snapshot }: { snapshot: AppSnapshot }) {
   const { send, error } = useHudSend();
+  const relink = useRelink(snapshot.connection);
   const a = snapshot.active_program;
   if (a) {
     // Waiting for GO: the next step would start a still belt, so nothing moves
@@ -260,6 +263,7 @@ export function ProgramsModule({ snapshot }: { snapshot: AppSnapshot }) {
   return (
     <div className="hud-module accent-yellow">
       <span className="hud-label">RUN PROGRAM</span>
+      {!snapshot.connection.connected && <OfflineLine connection={snapshot.connection} relink={relink} />}
       <div className="hud-programs">
         {snapshot.programs.slice(0, 6).map((p) => (
           <button
@@ -274,7 +278,26 @@ export function ProgramsModule({ snapshot }: { snapshot: AppSnapshot }) {
           </button>
         ))}
       </div>
-      <HudNote error={error} />
+      <HudNote error={error ?? relink.error} />
     </div>
   );
 }
+
+/** Why the program buttons are off while no treadmill is linked, with the same
+ *  relink the header's link label does. It only links; it never starts the belt. */
+function OfflineLine({ connection, relink }: { connection: AppSnapshot["connection"]; relink: ReturnType<typeof useRelink> }) {
+  const state = linkState(connection).state;
+  const linking = state === "connecting" || state === "scanning";
+  const pending = relink.view?.text != null;
+  return (
+    <div className="hud-offline" data-testid="hud-offline">
+      <span className="hud-sub">{linking ? "Connecting to the treadmill." : "Treadmill not connected."}</span>
+      {(relink.view?.clickable || pending) && (
+        <button type="button" className="hud-btn hud-btn-sm" disabled={pending} onClick={relink.relink}>
+          {pending ? "LINKING…" : "CONNECT"}
+        </button>
+      )}
+    </div>
+  );
+}
+
