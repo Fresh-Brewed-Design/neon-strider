@@ -1,0 +1,3 @@
+- The old calibration panel under ADVANCED // POINT_EDITOR is gone, with its belt logo count and hand point editor. GROUND_TRUTH in System, Calibration is now the only way to calibrate.
+- A point's row in GROUND_TRUTH shows the factor the app really uses when a stored one is outside the limits.
+- The belt loop field starts empty for a treadmill with no measured loop, instead of filling in an old app-wide length.

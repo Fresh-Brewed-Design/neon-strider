@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronRight, Plus, Trash2, X } from "lucide-react";
 import {
-  DEFAULT_APP_CONFIG,
   dispatch,
   type CalibrationLimits,
   type CalibrationRunView,
@@ -28,6 +27,7 @@ import {
 } from "./guided";
 import { PointsAside, StartFresh } from "./FreshStart";
 import { GuidePanel, TopSpeedQuestion } from "./GuidePanel";
+import { appliedScale } from "./math";
 import { StepPanel } from "./StepPanel";
 import { StrideFit } from "./StrideFit";
 
@@ -180,6 +180,7 @@ export function GuidedCalibration() {
                       label="FACTOR"
                       value={`${row.point.distance_scale.toFixed(3)}x`}
                       className="text-neon-magenta"
+                      hint={appliedHint(row.point.distance_scale, cal.limits)}
                     />
                     <Readout label="RUNS" value={String(row.point.runs ?? 1)} className="text-white" />
                   </>
@@ -285,8 +286,11 @@ export function GuidedCalibration() {
   );
 }
 
-/** The old app-wide belt length's default: a stored value other than it was typed in, so it can prefill the form. */
-const OLD_DEFAULT_BELT_CM = DEFAULT_APP_CONFIG.belt_length;
+/** A stored factor outside the limits is applied held inside them; say so under it. */
+function appliedHint(scale: number, limits: CalibrationLimits): string | undefined {
+  const applied = appliedScale(scale, limits);
+  return applied === scale ? undefined : `Applied as ${applied.toFixed(2)}.`;
+}
 
 /** BELT_LOOP: asked once per treadmill, with a short guide. Rust checks and keeps it. */
 function BeltLoopStep({
@@ -300,9 +304,8 @@ function BeltLoopStep({
   treadmillKnown: boolean;
   onSaved: () => void;
 }) {
-  const oldBelt = useTreadmillStore((s) => s.beltLength);
-  const prefill = current ?? (oldBelt !== OLD_DEFAULT_BELT_CM ? oldBelt : null);
-  const [value, setValue] = useState(prefill === null ? "" : String(prefill));
+  // Only a loop already measured for this treadmill fills the field; a new one starts empty.
+  const [value, setValue] = useState(current === null ? "" : String(current));
   const save = useAction();
   const submit = () => {
     if (value.trim() === "" || save.pending) return;
@@ -383,11 +386,12 @@ function AddSpeed() {
   );
 }
 
-function Readout({ label, value, className }: { label: string; value: string; className: string }) {
+function Readout({ label, value, className, hint }: { label: string; value: string; className: string; hint?: string }) {
   return (
     <div className="space-y-0.5">
       <div className="font-mono text-[11px] uppercase text-white/50">{label}</div>
       <div className={cx("font-digital text-sm", className)}>{value}</div>
+      {hint && <div className="font-mono text-[11px] text-neon-yellow">{hint}</div>}
     </div>
   );
 }

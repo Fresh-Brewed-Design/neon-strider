@@ -13,7 +13,7 @@
 //! The feature modules that contribute a part of the snapshot or act on it
 //! (calls, desk, desk_sync, eyebreak, hud_drag, lights_out, maintenance, odometer, seated,
 //! tray, tray_menu,
-//! walkaway, weekly) are declared here rather than in `lib.rs`, so this module owns
+//! walkaway, wall_clock, weekly) are declared here rather than in `lib.rs`, so this module owns
 //! their wiring.
 
 #[path = "calls.rs"]
@@ -40,6 +40,8 @@ pub mod tray;
 pub mod tray_menu;
 #[path = "walkaway.rs"]
 pub mod walkaway;
+#[path = "wall_clock.rs"]
+pub mod wall_clock;
 #[path = "weekly.rs"]
 pub mod weekly;
 
@@ -60,6 +62,7 @@ pub use odometer::OdometerSnapshot;
 pub use seated::SeatedSnapshot;
 pub use types::*;
 pub use walkaway::WalkAwaySnapshot;
+pub use wall_clock::WallClock;
 pub use weekly::WeeklySummary;
 
 // `hud_drag` saves a dragged position through this.
@@ -224,7 +227,7 @@ fn neural_snapshot(state: &OrchestratorState) -> NeuralSnapshot {
 }
 
 /// Build a snapshot from state. Pure (no Tauri, no locks, no I/O) so it can be
-/// unit-tested. `desk_sync`, `walkaway`, `update`, `traffic`, `lights_out`, `ghost_pod`,
+/// unit-tested. `desk_sync`, `wall_clock`, `walkaway`, `update`, `traffic`, `lights_out`, `ghost_pod`,
 /// `calibration`, `guided_task` and `hud_view` are left at their defaults: they depend on the clock or shared
 /// state, so the emitter fills them in.
 pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSnapshot {
@@ -244,6 +247,7 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         maintenance: parts.maintenance,
         weekly: parts.weekly,
         desk_sync: DeskSync::default(),
+        wall_clock: WallClock::default(),
         seated: parts.seated,
         eye_break: parts.eye_break,
         calls: parts.calls,

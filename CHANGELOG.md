@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.49.0 (2026-11-22)
+
+### New
+
+- New WALL_CLOCK card on the History page shows which hours of the day you usually walk. Each hour lights up by how many of your last 14 desk days had a walk in that hour, so days away from the PC never dim the card.
+
 ## 1.48.2 (2026-11-21)
 
 ### Fixed

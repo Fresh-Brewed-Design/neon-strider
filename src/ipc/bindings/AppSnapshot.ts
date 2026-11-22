@@ -24,6 +24,7 @@ import type { StravaSnapshot } from "./StravaSnapshot";
 import type { TrafficSnapshot } from "./TrafficSnapshot";
 import type { UpdateSnapshot } from "./UpdateSnapshot";
 import type { WalkAwaySnapshot } from "./WalkAwaySnapshot";
+import type { WallClock } from "./WallClock";
 import type { WeeklySummary } from "./WeeklySummary";
 
 export type AppSnapshot = { connection: ConnectionSnapshot, deck: DeckSnapshot, session: SessionSnapshot, programs: Array<Program>, active_program: ActiveProgram | null, 
@@ -51,6 +52,11 @@ weekly: WeeklySummary,
  * were walked on.
  */
 desk_sync: DeskSync, 
+/**
+ * WALL_CLOCK: for each local hour, how many of DESK_SYNC's desk days had
+ * walking in it.
+ */
+wall_clock: WallClock, 
 /**
  * Distance and belt hours over every saved session plus the live one.
  */
