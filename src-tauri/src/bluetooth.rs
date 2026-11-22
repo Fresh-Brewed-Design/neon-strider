@@ -291,7 +291,6 @@ fn tick_each_second(
     let now_ms = crate::util::now_ms_u64();
     let quiet = crate::snapshot::calls::quiet_active();
     state.update_neural_flow(keys, quiet, now, now_ms);
-    crate::link::log_frame_flow();
     state.heart_bpm = crate::heart_rate::snapshot().bpm;
     state.max_heart_rate = u32::from(crate::heart_rate::max_heart_rate());
     state.zone_incline_trim = crate::heart_rate::zone_incline_trim();
@@ -351,9 +350,17 @@ pub(crate) async fn spawn_protocol_worker(app: tauri::AppHandle, deck: DeckLink)
         }
 
         let now = Instant::now();
+        let second = now.duration_since(last_second) >= SECOND_TICK;
+        if second {
+            if let Some(quiet) = crate::link::log_frame_flow() {
+                drop_silent_link(&deck, worker_id, quiet).await;
+                crate::hooks::set_key_counting(false);
+                return;
+            }
+        }
         let (packet, program_toasts) = {
             let mut state = ORCHESTRATOR.lock().await;
-            let warning = if now.duration_since(last_second) >= SECOND_TICK {
+            let warning = if second {
                 last_second = now;
                 tick_each_second(&mut state, now)
             } else {
@@ -396,6 +403,31 @@ pub(crate) async fn spawn_protocol_worker(app: tauri::AppHandle, deck: DeckLink)
         })
         .await;
     }
+}
+
+/// A link that reads as up but has sent no status frame for `quiet` (a stale
+/// subscription after a deck power cycle or the PC sleeping): take it out of
+/// the slot, so the watchdog sees no link even if the disconnect hangs, and
+/// close it. The watchdog's reconnect subscribes again; it sends the deck
+/// nothing, and the new connection holds the automatic start
+/// (`reset_connection`), so a still belt stays still and a moving one is
+/// adopted.
+async fn drop_silent_link(deck: &DeckLink, worker_id: u64, quiet: Duration) {
+    log::warn!(
+        "No status frames for {} s on a link that reads as up; dropping it to reconnect.",
+        quiet.as_secs()
+    );
+    {
+        let mut slot = CONNECTED_DECK.lock().await;
+        // Only while this worker is the current one: a newer connection's
+        // deck stays.
+        let current = ORCHESTRATOR.lock().await.worker_id == worker_id;
+        if current && slot.as_ref().is_some_and(|d| d.id() == deck.id()) {
+            slot.take();
+        }
+    }
+    deck.disconnect().await;
+    crate::link::retry_soon();
 }
 
 /// Open the session a moving belt calls for. A simulated deck's walks stay in

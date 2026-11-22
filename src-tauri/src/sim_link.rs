@@ -174,6 +174,53 @@ mod tests {
         sent
     }
 
+    /// A stale subscription over the seam: frames stop while the link still
+    /// reads as up. Past the silent-link limit it is closed, which ends the
+    /// stream, and a new connection to the same deck gets frames again.
+    #[test]
+    fn a_silent_sim_link_is_dropped_and_a_new_one_gets_frames() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .start_paused(true)
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let sim = Arc::new(Mutex::new(SimDeck::new(now())));
+            let link = SimLink::connect_to(sim.clone());
+            let deck = DeckLink::Sim(link.clone());
+            let poll = protocol::status_request();
+            let wait = Duration::from_secs(1);
+
+            let mut stream = link.notifications();
+            deck.write(&poll).await.unwrap();
+            let first = tokio::time::timeout(wait, stream.next()).await;
+            assert!(matches!(first, Ok(Some(_))), "frames flow at first");
+            let last_frame = now();
+
+            link.lock().mute();
+            for _ in 0..22 {
+                deck.write(&poll).await.unwrap();
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+            let muted = tokio::time::timeout(wait, stream.next()).await;
+            assert!(muted.is_err(), "no frame while the subscription is stale");
+            assert!(deck.is_connected().await, "the link still reads as up");
+            let quiet = crate::link::silent_for(Some(last_frame), now());
+            assert!(quiet.is_some_and(|q| q > Duration::from_secs(10)));
+
+            deck.disconnect().await;
+            let ended = tokio::time::timeout(wait, stream.next()).await;
+            assert!(matches!(ended, Ok(None)), "the stream ends with the link");
+
+            let fresh = SimLink::connect_to(sim);
+            let again = DeckLink::Sim(fresh.clone());
+            let mut stream = fresh.notifications();
+            again.write(&poll).await.unwrap();
+            let frame = tokio::time::timeout(wait, stream.next()).await;
+            assert!(matches!(frame, Ok(Some(_))), "the new link gets frames");
+        });
+    }
+
     /// A SimDeck connection through the seam: connecting leaves the belt
     /// still, Start runs it through the countdown, Stop winds it down, and a
     /// dropped link ends the notification stream.

@@ -167,6 +167,10 @@ pub(crate) struct SimDeck {
     /// belt carries on as before (an unknown byte such as 5 or 7). Full
     /// frames only: running, paused, stopping.
     status_override: Option<u8>,
+    /// The app's subscription went stale (a deck power cycle or the PC
+    /// sleeping): the link still reads as up and the deck still answers, but
+    /// no frame reaches the app. A new connection subscribes again.
+    muted: bool,
 }
 
 impl SimDeck {
@@ -193,6 +197,7 @@ impl SimDeck {
             incline_ceiling: u8::MAX,
             incline_skips: vec![],
             status_override: None,
+            muted: false,
         }
     }
 
@@ -445,7 +450,17 @@ impl SimDeck {
             .into_iter()
             .partition(|(at, _)| *at <= now);
         self.outbox = later;
+        if self.muted {
+            return vec![];
+        }
         due.into_iter().map(|(_, b)| b).collect()
+    }
+
+    /// The subscription goes stale: frames stop reaching the app while the
+    /// link stays up (`muted`).
+    #[cfg(test)]
+    pub(crate) fn mute(&mut self) {
+        self.muted = true;
     }
 
     /// Start pressed on the deck's own buttons or remote.
@@ -551,6 +566,7 @@ impl SimDeck {
 
     /// Connect; only a deck that is switched on answers.
     pub(crate) fn connect(&mut self) -> bool {
+        self.muted = false;
         self.linked = self.powered;
         self.linked
     }
@@ -574,6 +590,12 @@ pub(crate) struct Rig {
     /// The duration each closed session was saved with.
     pub(crate) finalised: Vec<i64>,
     pub(crate) toasts: Vec<crate::programs::ProgramToast>,
+    /// When the link came up and the last status frame, for the worker's
+    /// silent-link rule (`link::log_frame_flow`).
+    linked_at: Instant,
+    last_frame: Option<Instant>,
+    /// Links dropped for staying silent.
+    pub(crate) silent_drops: u32,
 }
 
 #[cfg(test)]
@@ -598,6 +620,9 @@ impl Rig {
             sessions_started: 0,
             finalised: vec![],
             toasts: vec![],
+            linked_at: t,
+            last_frame: None,
+            silent_drops: 0,
         };
         assert!(rig.reconnect());
         rig
@@ -616,6 +641,8 @@ impl Rig {
             .sync_config(&crate::persistence::AppConfig::default());
         self.engine = ProtocolEngine::new();
         self.linked = true;
+        self.linked_at = self.t;
+        self.last_frame = None;
         true
     }
 
@@ -633,6 +660,7 @@ impl Rig {
             }
             return;
         };
+        self.last_frame = Some(self.t);
         apply_telemetry(&mut self.state, &t);
         self.state.update_physics();
         self.open_session_if_due();
@@ -662,6 +690,13 @@ impl Rig {
         }
         if now.duration_since(self.last_second) >= Duration::from_secs(1) {
             self.last_second = now;
+            // The worker drops a link that reads as up but stays silent.
+            let since = Some(self.linked_at).max(self.last_frame);
+            if crate::link::silent_for(since, now).is_some() {
+                self.drop_link();
+                self.silent_drops += 1;
+                return;
+            }
             self.state.tick_profile_sweep(now);
             self.toasts.extend(self.state.tick_program(now));
         }
@@ -979,6 +1014,58 @@ mod tests {
             (1, 0),
             "same session"
         );
+    }
+
+    /// A stale subscription mid-walk: frames stop while the link reads as up.
+    /// The worker drops it after 10 s, the reconnect subscribes again and
+    /// adopts the moving belt; nothing is sent that changes it.
+    #[test]
+    fn a_silent_link_mid_walk_is_dropped_and_the_reconnect_carries_on() {
+        let mut r = post_meal_walking();
+        let left = r.program().seconds_remaining.unwrap();
+        r.deck.mute();
+        r.run(9.0);
+        assert_eq!(r.silent_drops, 0, "not before 10 s");
+        r.run(3.0);
+        assert_eq!(r.silent_drops, 1);
+        assert!(!r.linked);
+        assert!(r.deck.running_at(4.0), "dropping the link sends nothing");
+        // The watchdog's reconnect.
+        assert!(r.reconnect());
+        let mark = r.mark();
+        r.run(20.0);
+        assert_eq!(r.commands_since(mark), vec![], "only polls");
+        assert_eq!(r.silent_drops, 1, "frames flow again");
+        assert!(r.deck.running_at(4.0));
+        let a = r.program();
+        assert_eq!(
+            (a.phase, a.paused, a.wait),
+            (ProgramPhase::Walking, false, None)
+        );
+        assert!(a.seconds_remaining.unwrap() <= left - 30);
+        assert_eq!((r.sessions_started, r.finalised.len()), (1, 0));
+    }
+
+    /// The same on a still belt: the reconnect holds the automatic start, so
+    /// nothing starts it.
+    #[test]
+    fn a_silent_link_on_a_still_belt_reconnects_and_starts_nothing() {
+        let mut r = Rig::new();
+        r.run(2.0);
+        r.deck.mute();
+        r.run(12.0);
+        assert_eq!(r.silent_drops, 1);
+        assert!(r.reconnect());
+        let mark = r.mark();
+        r.run(30.0);
+        assert!(
+            !moves_belt(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+        assert!(r.deck.belt_still() && r.deck.status_code() == 0);
+        assert!(r.state.hold_auto_start);
+        assert_eq!(r.silent_drops, 1);
     }
 
     #[test]
