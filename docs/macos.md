@@ -39,7 +39,7 @@ source (below).
 - **Updates** replace the app and reopen it. The belt keeps going meanwhile, as on Windows.
 
 Not on macOS yet: **Slow down on calls** (hidden; macOS lists which apps use the microphone
-only from 14.2) and **GHOST_POD**/**WRIST_LINK** (they say they work on Windows only).
+only from 14.2) and **WRIST_LINK** (it says it works on Windows only).
 
 ## Permissions
 

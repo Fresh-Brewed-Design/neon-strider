@@ -67,7 +67,7 @@ pub fn peripheral_add(
     _service: &super::PeripheralService,
     _events: super::PeripheralEvents,
 ) -> Result<(), String> {
-    Err("The watch pod works on Windows only for now.".to_string())
+    Err("The watch pod only works on Windows for now.".to_string())
 }
 
 pub fn peripheral_notify(_uuid: u128, _value: &[u8]) -> Result<(), String> {
