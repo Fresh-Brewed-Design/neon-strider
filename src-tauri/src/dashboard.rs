@@ -55,6 +55,11 @@ pub(crate) fn show_dashboard(app: &tauri::AppHandle) {
         return;
     }
     log::info!("Spawning UI Flow...");
+    // Stamped before `build()` as well as after it. Called off the main thread
+    // (a HUD button, the startup "What's new"), the main thread handles the new
+    // window's events while `build()` waits, and a focus loss then would find
+    // the previous open's stamp and close the window before it was seen.
+    *lock(&OPENED_AT) = Some(Instant::now());
     let (width, height) = DASHBOARD_SIZE;
     let built = tauri::WebviewWindowBuilder::new(
         app,
