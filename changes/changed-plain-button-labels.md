@@ -1,0 +1,1 @@
+- The belt buttons on Live and the HUD now say what they do in plain words under each codename: pause, resume, start and end walk.

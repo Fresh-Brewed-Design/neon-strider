@@ -8,7 +8,7 @@ import { targetAccent, targetRange, ZONE_ACCENT, zoneRange } from "../widgets/zo
 import { HudNote } from "./HudNote";
 import { isMoving, startFailure } from "../state/linkStatus";
 import { SmallButton } from "./SmallButton";
-import { engageLabel } from "./status";
+import { engageLabel, engageSub, engageTitle } from "./status";
 import { useHudSend } from "./useHudSend";
 
 /** One pinned stat, read through the shared widget registry. */
@@ -130,16 +130,28 @@ export function StrideFitLine({ snapshot }: { snapshot: AppSnapshot }) {
 }
 
 /** Engage / Stasis: one `toggle_start` to Rust, the same press as the shortcut. */
-export function EngageButton({ snapshot, send }: { snapshot: AppSnapshot; send: (c: Command) => Promise<boolean> }) {
+export function EngageButton({
+  snapshot,
+  send,
+  sub = false,
+}: {
+  snapshot: AppSnapshot;
+  send: (c: Command) => Promise<boolean>;
+  /** The panel adds a plain line under the codename; the strips are too short for it. */
+  sub?: boolean;
+}) {
   const moving = isMoving(snapshot.deck);
   return (
     <button
       type="button"
-      className={`hud-btn hud-btn-main ${moving ? "accent-magenta" : "accent-cyan"}`}
+      className={`hud-btn hud-btn-main${sub ? " hud-btn-stack" : ""} ${moving ? "accent-magenta" : "accent-cyan"}`}
       disabled={!snapshot.connection.connected}
+      title={engageTitle(snapshot)}
       onClick={() => void send({ type: "toggle_start" })}
     >
       {engageLabel(snapshot)}
+      {sub && " "}
+      {sub && <span className="hud-btn-sub">{engageSub(snapshot)}</span>}
     </button>
   );
 }
@@ -153,14 +165,16 @@ export function Controls({ snapshot }: { snapshot: AppSnapshot }) {
   return (
     <div className="hud-module">
       <div className="hud-transport">
-        <EngageButton snapshot={snapshot} send={send} />
+        <EngageButton snapshot={snapshot} send={send} sub />
         <button
           type="button"
-          className="hud-btn hud-btn-stop accent-magenta"
+          className="hud-btn hud-btn-stop hud-btn-stack accent-magenta"
           disabled={!connection.connected || deck.status === "Stopped" || deck.status === "Stopping"}
+          title="Stop the belt and end the session."
           onClick={() => send({ type: "stop" })}
         >
-          DUMP
+          DUMP{" "}
+          <span className="hud-btn-sub">end walk</span>
         </button>
       </div>
       <div className="hud-steppers">
@@ -224,12 +238,18 @@ export function ProgramsModule({ snapshot }: { snapshot: AppSnapshot }) {
         <div className="hud-auto-actions">
           <SmallButton
             className={wait ? "hud-btn-go" : undefined}
+            sub={a.paused ? "resume" : "pause"}
+            title={a.paused ? "Resume the program." : "Pause the program."}
             onClick={() => send({ type: a.paused ? "program_resume" : "program_pause" })}
           >
             {a.paused ? "GO" : "HOLD"}
           </SmallButton>
-          <SmallButton onClick={() => send({ type: "program_skip" })}>SKIP</SmallButton>
-          <SmallButton onClick={() => send({ type: "program_end" })}>END</SmallButton>
+          <SmallButton sub="next step" title="Skip to the next step." onClick={() => send({ type: "program_skip" })}>
+            SKIP
+          </SmallButton>
+          <SmallButton sub="end program" title="End the program." onClick={() => send({ type: "program_end" })}>
+            END
+          </SmallButton>
         </div>
         <HudNote error={error} />
       </div>
