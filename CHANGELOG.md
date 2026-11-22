@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.54.0 (2026-11-22)
+
+### New
+
+- A COOL_DOWN step can end on heart rate: after its minutes the step walks on until your pulse holds at the target for 30 s.
+- A step set to COOL_DOWN in the program editor gets a pulse target of 60 % of your max heart rate, the same for every cool-down. Untick the box to keep a cool-down timed.
+- Change the pulse target per cool-down step, as a share of your max heart rate or in bpm.
+- The seeded VO2 max now ends its cool-down on heart rate. A VO2 max you never edited gets the target and a new note, and programs you made or changed stay as they are.
+- PULSE_RATE on the HUD and the Live page shows the target while the cool-down runs, and the program line reads `pulse to 114` while the step waits on the pulse.
+- With no heart rate reading, the cool-down step ends on its minutes as before.
+
 ## 1.53.0 (2026-11-22)
 
 ### New
