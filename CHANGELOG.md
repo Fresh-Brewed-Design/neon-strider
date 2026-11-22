@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.50.1 (2026-11-22)
+
+### Fixed
+
+- The HUD header no longer spills past its edge at a narrow width or a larger text size.
+
 ## 1.50.0 (2026-11-22)
 
 ### New
