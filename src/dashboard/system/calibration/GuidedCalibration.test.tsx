@@ -70,7 +70,7 @@ function result(r: Partial<CalibrationResult> = {}): CalibrationResult {
 beforeEach(() => {
   vi.mocked(invoke).mockClear();
   current = ready();
-  useTreadmillStore.setState({ calibrationPoints: [saved], beltLength: 300 });
+  useTreadmillStore.setState({ calibrationPoints: [saved] });
 });
 
 describe("GuidedCalibration", () => {
@@ -83,17 +83,33 @@ describe("GuidedCalibration", () => {
     expect(dispatched()).toContainEqual({ type: "calibration_run_start", target_kmh: 4 });
   });
 
-  it("asks the belt loop first, prefilled from the old setting, and keeps RUN off until then", async () => {
+  it("asks the belt loop first, starting empty, and keeps RUN off until then", async () => {
     current!.calibration.belt_cm = null;
     render(<GuidedCalibration />);
     expect(screen.getByText("LOOP_LENGTH")).toBeTruthy();
     expect(screen.queryByText("RUN ALL")).toBeNull();
     for (const b of screen.getAllByText("RUN")) expect((b as HTMLButtonElement).disabled).toBe(true);
     const input = screen.getByLabelText("Belt loop length in cm") as HTMLInputElement;
-    expect(input.value).toBe("300");
+    expect(input.value).toBe("");
     fireEvent.change(input, { target: { value: "276" } });
     await act(async () => fireEvent.click(screen.getByText("SAVE")));
     expect(dispatched()).toContainEqual({ type: "calibration_belt_set", cm: 276 });
+  });
+
+  it("CHANGE opens the belt loop with this treadmill's measured length", () => {
+    render(<GuidedCalibration />);
+    fireEvent.click(screen.getByText("CHANGE"));
+    expect((screen.getByLabelText("Belt loop length in cm") as HTMLInputElement).value).toBe("280");
+  });
+
+  it("shows the applied value under a stored factor outside the limits, and none inside", () => {
+    useTreadmillStore.setState({
+      calibrationPoints: [saved, { speed: 4.5, stride_length_cm: 74, distance_scale: 0.15 }],
+    });
+    render(<GuidedCalibration />);
+    expect(screen.getAllByText("Applied as 0.20.")).toHaveLength(1);
+    expect(screen.getByText("0.150x")).toBeTruthy();
+    expect(screen.getByText("0.900x")).toBeTruthy();
   });
 
   it("says a treadmill must be known before a belt length can be kept", () => {

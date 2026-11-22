@@ -68,7 +68,7 @@ beforeEach(() => {
   s.calibration.belt_cm = 280;
   s.calibration.belt_treadmill = true;
   current = s;
-  useTreadmillStore.setState({ calibrationPoints: [], beltLength: 300, maxSpeed: 6 });
+  useTreadmillStore.setState({ calibrationPoints: [], maxSpeed: 6 });
 });
 
 describe("the guided walk", () => {

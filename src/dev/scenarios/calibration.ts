@@ -355,7 +355,7 @@ function runBelt(kmh: number) {
   calRun(kmh);
 }
 /** ?calwizard: two saved points; the old app-wide belt length, 300 cm, prefills ?calwizard=belt. */
-// ?calwizard=oldpoint adds a point stored at 0.15, below the limit.
+// ?calwizard=oldpoint adds a point stored at 0.15, below the limit (GROUND_TRUTH shows "Applied as 0.20.").
 // ?calwizard=measured starts with the 3.0 km/h run already averaged in (3 runs).
 const SAVED_POINTS: CalPoint[] = [
   calFlag === "measured"

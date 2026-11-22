@@ -40,9 +40,6 @@ export interface SettingsSlice extends Settings {
 
   hydrateSettings: (settings: Settings) => void;
   updateSettings: (patch: Partial<Settings>) => void;
-  /** Adds a point, replacing any existing one at (nearly) the same speed. */
-  addCalibrationPoint: (point: CalibrationPoint) => void;
-  updateCalibrationPoint: (index: number, point: CalibrationPoint) => void;
   removeCalibrationPoint: (index: number) => void;
 }
 
