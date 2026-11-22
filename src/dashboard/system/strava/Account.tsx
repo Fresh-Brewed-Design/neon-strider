@@ -88,7 +88,8 @@ export function Credentials({ strava }: { strava: StravaSnapshot }) {
 /**
  * Linking the Strava account: Connect opens the browser and waits for the
  * approval; once linked, Disconnect. `connect` is shared with the sync block,
- * which shows the latest result without repeating this line.
+ * which shows the latest result without repeating this line. Under both sits
+ * Rust's note while the login is kept outside Credential Manager.
  */
 export function Account({
   strava,
@@ -131,6 +132,7 @@ export function Account({
           )}
         </ActionStatus>
         <ActionStatus pending={connect.pending && working} error={connect.error} done={connect.done} />
+        <ActionStatus ambient error={strava.login_storage} />
       </div>
     );
   }
@@ -161,6 +163,7 @@ export function Account({
         error={cancel.error ?? connect.error}
         done={connect.done}
       />
+      <ActionStatus ambient error={strava.login_storage} />
     </div>
   );
 }

@@ -363,6 +363,7 @@ mod tests {
             saved_session_ids: Vec::new(),
             last_result: None,
             needs_reconnect: false,
+            login_storage: None,
             gear: Vec::new(),
             gear_id: None,
             gear_loading: false,

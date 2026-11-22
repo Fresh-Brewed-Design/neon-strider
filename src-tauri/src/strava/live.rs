@@ -40,6 +40,8 @@ pub(super) struct Live {
     /// Walks saved as a file for a manual upload.
     pub saved_ids: Vec<i64>,
     pub needs_reconnect: bool,
+    /// Why the login is not in Credential Manager, while a plaintext copy is in use.
+    pub login_storage: Option<&'static str>,
     pub gear: Vec<StravaGear>,
     pub gear_loading: bool,
     /// Shoe, mute and templates, as the next upload would use them.
@@ -83,6 +85,7 @@ static LIVE: Mutex<Live> = Mutex::new(Live {
     upload_errors: BTreeMap::new(),
     saved_ids: Vec::new(),
     needs_reconnect: false,
+    login_storage: None,
     gear: Vec::new(),
     gear_loading: false,
     prefs: Prefs::DEFAULT,
@@ -137,6 +140,7 @@ pub fn snapshot() -> StravaSnapshot {
         saved_session_ids: l.saved_ids.clone(),
         last_result: l.last_result.clone(),
         needs_reconnect: l.needs_reconnect,
+        login_storage: l.login_storage.map(str::to_string),
         gear: l.gear.clone(),
         gear_id: l.prefs.gear_id.clone(),
         gear_loading: l.gear_loading,
@@ -159,6 +163,8 @@ pub(super) fn reload(app: &AppHandle) {
     let gear = settings::cached_gear(app);
     let prefs = settings::load_prefs(app);
     let saved_ids = settings::read_saved_ids(app);
+    let login_storage =
+        crate::secrets::held_in_database(app).then_some(crate::secrets::NOT_SAVED_SECURELY);
 
     let mut l = live();
     l.saved_ids = saved_ids;
@@ -168,6 +174,7 @@ pub(super) fn reload(app: &AppHandle) {
         .as_ref()
         .is_some_and(|a| plan::needs_reconnect(true, a.scope.as_deref()));
     l.athlete_name = auth.and_then(|a| a.athlete_name);
+    l.login_storage = login_storage;
     l.auto_sync = auto_sync;
     l.daily_rollup = daily_rollup;
     l.shift_end = shift_end;
