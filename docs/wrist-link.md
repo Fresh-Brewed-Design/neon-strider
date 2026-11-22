@@ -2,11 +2,13 @@
 
 A Connect IQ data field on the watch reads the belt from the PC (roadmap #82; the plan and
 research are in the scope page `docs/connect-iq.md` on branch `improve/2026-11-19-connect-iq-scope`).
-It builds on GHOST_POD (watch-pod.md): the PC serves a second Bluetooth service next to the foot pod.
+The PC serves one Bluetooth service for it. Until #297 it ran next to GHOST_POD, the PC as a
+Running Speed and Cadence foot pod; GHOST_POD was removed, and WRIST_LINK now runs on its own
+(`wrist_link/worker.rs`). The hardware notes below date from when the foot pod was still served.
 
 ## Phase 0 (built): the link test
 
-Labs -> WRIST_LINK (needs GHOST_POD on; off by default). The PC serves service
+Labs -> WRIST_LINK (off by default). The PC serves service
 `00b165d6-40c2-4f94-8df9-0f69431f21af` with one characteristic, **State**
 (`00b165d6-40c2-4f94-8df9-0f69431f21b0`, read and notify, PC to watch, little endian):
 
@@ -19,7 +21,7 @@ Labs -> WRIST_LINK (needs GHOST_POD on; off by default). The PC serves service
 | 5 | `last_seq` (0 until commands exist) |
 | 6 | `result` (0 until commands exist) |
 
-State is sent once a second. The log (`GHOST_POD:` / `WRIST_LINK:` lines) records subscriptions,
+State is sent once a second. The log (`Peripheral:` / `WRIST_LINK:` lines) records subscriptions,
 reads and advertisement status. Nothing the watch sends is read, so nothing can move the belt.
 
 The State UUID is this PR's choice; the plan only fixed the service UUID. Command and Workout step
@@ -27,10 +29,9 @@ come with phases 1 and 2.
 
 ### How the PC serves it
 
-- **One Windows provider per service.** The foot pod (RSC), power and WRIST_LINK each have their own
-  `GattServiceProvider`. Switching WRIST_LINK or power adds or removes that one provider, and the
-  foot pod keeps advertising and keeps its watch. (Before, the switch restarted every service, and
-  the watch lost its foot pod link until it was reconnected by hand.)
+- **One Windows provider per service.** WRIST_LINK has its own `GattServiceProvider`, and the
+  switch adds or removes it (with its beacon). While GHOST_POD existed, the foot pod and its power
+  service each had one too, so switching WRIST_LINK never dropped the watch's foot pod link.
 - **WRIST_LINK is not in the advertisement.** On the first hardware test Windows aborted it. A
   check on the PC (`cargo test peripheral_providers_are_independent -- --ignored`, plus probes)
   showed why: an advertised 16-bit service reports Aborted and then Started a moment later (the
@@ -40,9 +41,10 @@ come with phases 1 and 2.
   31 bytes of a legacy advertisement. So WRIST_LINK is served discoverable and not connectable.
   Microsoft's GATT server guide says Windows puts a service's UUID in the advertisement only when it
   is both. Microsoft's BluetoothLE sample says discoverable is what lets a connected device find
-  the service. The field connects through the foot pod's RSC advertisement and finds WRIST_LINK
-  once connected. The phone test below checks that.
-- **What the log says** (`GHOST_POD:` lines). It shows the adapter's advertising limits, and each
+  the service. While GHOST_POD was served, the field could connect through the foot pod's RSC
+  advertisement and find WRIST_LINK once connected. Now the beacon below is the only advertisement
+  the PC sends for WRIST_LINK.
+- **What the log says** (`Peripheral:` lines). It shows the adapter's advertising limits, and each
   service by name and UUID with its advertisement status in words and its Bluetooth error.
   `WRIST_LINK (00b165d6-...) status after start: Created` is normal for a service that isn't
   advertised. A central shows up as `central <address> connected (first seen: ...)` at its
@@ -66,19 +68,17 @@ come with phases 1 and 2.
 
 nRF Connect for Mobile is free from Nordic Semiconductor (Android or iPhone).
 
-1. In the app, switch on Labs, GHOST_POD and WRIST_LINK. On the watch, turn the foot pod sensor off
-   for now, so the phone is the only device connecting.
-2. In nRF Connect, open Scanner and scan. The PC shows under its Bluetooth name, advertising
-   Running Speed and Cadence (`0x1814`). The WRIST_LINK UUID is not in the advertisement.
+1. In the app, switch on Labs, WRIST_LINK.
+2. In nRF Connect, open Scanner and scan. The PC's beacon shows with manufacturer data
+   `0xFFFF` `4e 53 54 52 01`. The WRIST_LINK UUID is not in the advertisement.
 3. Tap Connect. The log should show `central <phone address> connected`.
-4. On the phone, the service list should hold Running Speed and Cadence and
-   `00b165d6-40c2-4f94-8df9-0f69431f21af`. **If the `00b165d6` service is missing, stop here**: the
+4. On the phone, the service list should hold `00b165d6-40c2-4f94-8df9-0f69431f21af`. **If the `00b165d6` service is missing, stop here**: the
    watch can't find it either. Send the log lines from switching WRIST_LINK on to the end.
 5. Open `00b165d6-...`, read the `...21b0` characteristic (seven bytes), and turn its notifications
    on (the triple arrow). The log should show `1 subscribed to 00b165d6-...21b0 on WRIST_LINK`.
 6. Start the belt. Byte 0 goes to 1 and bytes 1-2 follow the speed (little endian, km/h x 100).
-7. Switch WRIST_LINK off and on in the app. The phone loses only the `00b165d6` service; the
-   Running Speed and Cadence service and the phone's connection stay. Then disconnect the phone.
+7. Switch WRIST_LINK off in the app. The phone loses the `00b165d6` service. Then disconnect the
+   phone.
 
 ### Test on the watch
 
@@ -93,7 +93,7 @@ What the field shows:
 |---|---|
 | `SCAN n` | Looking for the PC; `n` counts the scan results heard so far. |
 | `LINK W` | Matched an advertisement with the WRIST_LINK UUID and asked the watch to connect. |
-| `LINK R` | Matched the foot pod's RSC advertisement (0x1814, in Connect IQ's UUID list or in the raw bytes) and asked the watch to connect. |
+| `LINK R` | Matched a Running Speed and Cadence advertisement (0x1814, in Connect IQ's UUID list or in the raw bytes) and asked the watch to connect. The PC stopped sending one when GHOST_POD was removed. |
 | `LINK M` | Matched the PC's WRIST_LINK beacon (the marker below) and asked the watch to connect to that address. |
 | `BLOCKED` | A LINK waited 20 s without connecting. The field stops there and keeps the pairing: unpairing dropped the watch's own foot pod link to the PC (hardware test, 2026-11-20). |
 | `LOST` | Was connected and the link dropped. The pairing stays, so the watch reconnects by itself. |
