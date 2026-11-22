@@ -3,8 +3,8 @@
 
 use super::{
     build_snapshot, calls, daily_base, desk_sync, eyebreak, hud, lights_out, maintenance, odometer,
-    refresh_daily_base, seated, stasis, tray, tray_menu, walkaway, weekly, AppSnapshot,
-    ConnectionSnapshot, SnapshotParts, EVENT_APP_STATE,
+    pc_walk_share, refresh_daily_base, seated, stasis, tray, tray_menu, walkaway, weekly,
+    AppSnapshot, ConnectionSnapshot, SnapshotParts, EVENT_APP_STATE,
 };
 use crate::bluetooth::{self, ORCHESTRATOR};
 use crate::programs::{self, SavedRun};
@@ -96,6 +96,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     let now_ms = crate::util::now_ms_u64();
     snapshot.desk_sync = desk_sync::snapshot(snapshot.session.daily_distance_m);
     snapshot.wall_clock = desk_sync::wall_clock();
+    snapshot.pc_walk_share = pc_walk_share::snapshot();
     snapshot.walkaway = walkaway::snapshot(now_ms);
     snapshot.update = crate::update::snapshot(now_ms);
     snapshot.traffic = crate::traffic::snapshot();

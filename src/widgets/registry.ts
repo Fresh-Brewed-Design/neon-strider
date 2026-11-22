@@ -1,4 +1,4 @@
-import { formatClock, km, lifetimeKm } from "../format";
+import { formatClock, formatDuration, km, lifetimeKm } from "../format";
 import type { AppSnapshot, HudWidget, PulseTarget, ZoneBand } from "../ipc";
 import type { SparkData } from "./spark";
 
@@ -23,6 +23,8 @@ export interface StatWidget {
   zone?: (s: AppSnapshot) => ZoneBand | null;
   /** A cool-down step's pulse target beside the value, with Rust's word for where the pulse is; null shows none. */
   target?: (s: AppSnapshot) => PulseTarget | null;
+  /** A short line under the value; null shows none. */
+  detail?: (s: AppSnapshot) => string | null;
 }
 
 /**
@@ -97,6 +99,14 @@ export const STAT_WIDGETS: StatWidget[] = [
     read: (s) => ({ value: lifetimeKm(s.odometer.distance_km), unit: "KM" }),
   },
   {
+    id: "PC_WALK_SHARE",
+    label: "WALKED",
+    codename: "PC TIME WALKED",
+    accent: "green",
+    read: (s) => pcWalkShareReading(s),
+    detail: (s) => pcWalkShareDetail(s),
+  },
+  {
     id: "HEART_RATE",
     label: "HR",
     codename: "PULSE_RATE",
@@ -114,6 +124,19 @@ export const STAT_WIDGETS: StatWidget[] = [
     target: (s) => s.heart_rate.cool_down,
   },
 ];
+
+/** Today's walked share of active PC time; "--" until Rust has enough PC time to give one. */
+export function pcWalkShareReading(s: AppSnapshot): StatReading {
+  const pct = s.pc_walk_share.share_pct;
+  return { value: pct === null ? "--" : pct.toString(), unit: "%" };
+}
+
+/** Walked time of today's PC time, e.g. "2h 10m of 5h 40m"; none before the PC is used today. */
+export function pcWalkShareDetail(s: AppSnapshot): string | null {
+  const { active_s, walked_s } = s.pc_walk_share;
+  if (active_s <= 0) return null;
+  return `${formatDuration(walked_s)} of ${formatDuration(active_s)}`;
+}
 
 const BY_ID = new Map(STAT_WIDGETS.map((w) => [w.id, w]));
 

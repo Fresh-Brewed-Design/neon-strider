@@ -17,6 +17,7 @@ import type { LightsOutSnapshot } from "./LightsOutSnapshot";
 import type { MaintenanceSnapshot } from "./MaintenanceSnapshot";
 import type { NeuralSnapshot } from "./NeuralSnapshot";
 import type { OdometerSnapshot } from "./OdometerSnapshot";
+import type { PcWalkShare } from "./PcWalkShare";
 import type { Program } from "./Program";
 import type { SeatedSnapshot } from "./SeatedSnapshot";
 import type { SessionSnapshot } from "./SessionSnapshot";
@@ -101,4 +102,9 @@ ghost_pod: GhostPodSnapshot, heart_rate: HeartRateSnapshot,
 /**
  * The dashboard held open and on top during a guided task (GROUND_TRUTH).
  */
-guided_task: GuidedTaskSnapshot, };
+guided_task: GuidedTaskSnapshot, 
+/**
+ * Today's active PC seconds (keyboard or mouse input within the last
+ * minute), how many of them the belt was running, and that share.
+ */
+pc_walk_share: PcWalkShare, };

@@ -248,6 +248,8 @@ export const snapshot: AppSnapshot = {
     aside_count: null,
   },
   guided_task: { pinned: false, tasks: [], unpin_in_s: null },
+  // 2h 10m walked of 5h 40m at the PC today.
+  pc_walk_share: { active_s: 20_400, walked_s: 7_800, share_pct: 38 },
   ghost_pod: {
     enabled: false,
     status: "off",

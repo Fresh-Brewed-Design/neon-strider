@@ -489,6 +489,10 @@ body,
 
 .hud-zone .hud-sub { font-variant-numeric: tabular-nums; }
 
+/* A stat's short line under its value (PC TIME WALKED's walked of PC time);
+   wraps rather than clips in a half-width cell. */
+.hud-stat-detail { line-height: 1.25; font-variant-numeric: tabular-nums; }
+
 .hud-unit {
   font-family: var(--hud-font-mono);
   font-size: 11px;
