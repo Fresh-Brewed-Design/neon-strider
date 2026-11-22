@@ -35,7 +35,10 @@ Strava is Rust-owned too (`strava.rs` plus its `strava/` submodules: `settings`,
 `api`, `upload`, `worker` for the background auto-sync, and `fallback` for the manual-upload TCX;
 `strava_plan.rs` pure logic, `strava_template.rs` title/description templates):
 windows dispatch `strava_*` commands and read `snapshot.strava`; tokens never reach JS. The client secret and
-tokens live in Windows Credential Manager (`secrets.rs`; plaintext DB values migrate at startup).
+tokens live in Windows Credential Manager (`secrets.rs`): a save the store refuses fails with
+`NOT_SAVED_SECURELY` instead of going to the database; an older build's plaintext DB copy migrates
+at startup, keeps working while the store fails (`snapshot.strava.login_storage` says so) and is
+stripped from every backup (`backup.rs`).
 Auto-update is Rust-owned too (`update.rs`, `tauri-plugin-updater`; no window has updater
 permissions and the CSP stays closed): it checks `latest.json` on the newest GitHub release 30 s
 after startup and hourly or on `update_check`, joins the notes of every
@@ -188,6 +191,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?idle`: the belt stopped
 - `?lightsout`: LIGHTS_OUT on; on the HUD preview its toast
 - `?link=scanning|connecting|reconnecting|nodata|bt-off|failed`: each treadmill link state
+- `?loginstorage`: the Strava login kept in the database because Windows Credential Manager failed, with its note under the account
 - `?maxhr=178`: a max heart rate of 178 bpm set in System -> Heart rate (program heart zones use it)
 - `?minified`: the running strip; with `?program=resting|paused`, `?noprogram` or `?idle`; with `?hrspark=...`, `?hrzone=...` or `?heart=on|waiting` it shows PULSE_RATE
 - `?minifykey=off|pause|scroll_lock`: the minify hotkey switched off, or set to Alt+Pause or Alt+Scroll Lock

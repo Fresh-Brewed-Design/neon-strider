@@ -229,10 +229,7 @@ async fn finish_login(app: &AppHandle, auth: Auth) {
     let name = auth.athlete_name.clone();
     if let Err(e) = save(app, &auth) {
         log::warn!("could not save the Strava login: {}", e);
-        live::record(
-            false,
-            "Could not save the Strava login to Windows Credential Manager.",
-        );
+        live::record(false, secrets::NOT_SAVED_SECURELY);
         return;
     }
     live::reload(app);

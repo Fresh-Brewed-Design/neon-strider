@@ -1,0 +1,2 @@
+- When Windows Credential Manager fails, the Strava login is no longer saved in the app database. The Strava section says the login could not be saved securely.
+- Database backups no longer keep a copy of the Strava login. Older backups are cleaned at startup.

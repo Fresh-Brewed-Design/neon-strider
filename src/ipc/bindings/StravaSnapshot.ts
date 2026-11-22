@@ -46,6 +46,11 @@ saved_session_ids: Array<number>, last_result: StravaResult | null,
  */
 needs_reconnect: boolean, 
 /**
+ * Set while the client secret or login sits in the database because Windows
+ * Credential Manager could not take it: one sentence to show under the account.
+ */
+login_storage: string | null, 
+/**
  * Cached shoes from the athlete's profile.
  */
 gear: Array<StravaGear>, 

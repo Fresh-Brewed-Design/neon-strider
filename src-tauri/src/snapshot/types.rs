@@ -128,6 +128,9 @@ pub struct StravaSnapshot {
     pub last_result: Option<StravaResult>,
     /// The linked login predates a permission the app now asks for (shoes, duplicate check).
     pub needs_reconnect: bool,
+    /// Set while the client secret or login sits in the database because Windows
+    /// Credential Manager could not take it: one sentence to show under the account.
+    pub login_storage: Option<String>,
     /// Cached shoes from the athlete's profile.
     pub gear: Vec<StravaGear>,
     /// Shoe applied to every upload; None = none.
