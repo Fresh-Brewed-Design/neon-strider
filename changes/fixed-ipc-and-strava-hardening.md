@@ -1,2 +1,0 @@
-- The HUD can now only read the app state, send its own controls and set its click area. Only the dashboard can change settings, delete walks or talk to the treadmill directly.
-- Connecting to Strava now checks that the browser sign-in belongs to the Connect you started and ignores any other link while it waits.

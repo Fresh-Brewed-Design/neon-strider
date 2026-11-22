@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.55.0 (2026-11-22)
+
+### New
+
+- New WALKED stat (PC TIME WALKED): the share of today's PC time spent walking, as a percent and as time, for example 38 % and 2h 10m of 5h 40m.
+- Pick WALKED on the HUD page. The Live page shows WALKED when a stat tile is free.
+- Only time with keyboard or mouse use counts, so a day away from the PC has no figure. The count carries on through restarts and updates.
+
+### Changed
+
+- The belt buttons on Live and the HUD now say what they do in plain words under each codename: pause, resume, start and end walk.
+- An empty Programs page now says there are no programs yet and offers New and ECHO on History.
+- Programs on the dashboard and the HUD now say when the treadmill is not connected, with a Connect button.
+
+### Fixed
+
+- The app no longer gets stuck connecting or freezes its windows when Bluetooth stops answering after the PC wakes from sleep. Each Bluetooth step now gives up after a few seconds and the app tries again.
+- When the treadmill stops sending its readings while the link still looks connected, the app now reconnects by itself after about 10 seconds. Reconnecting never starts the belt. A belt that is already moving carries on.
+- The HUD can now only read the app state, send its own controls and set its click area. Only the dashboard can change settings, delete walks or talk to the treadmill directly.
+- Connecting to Strava now checks that the browser sign-in belongs to the Connect you started and ignores any other link while it waits.
+- The Live page's program card now fits the dashboard while a program waits for GO, with or without the step map.
+- When Windows Credential Manager fails, the Strava login is no longer saved in the app database. The Strava section says the login could not be saved securely.
+- Database backups no longer keep a copy of the Strava login. Older backups are cleaned at startup.
+- Security fix in a library the app uses to read web addresses.
+
 ## 1.54.2 (2026-11-22)
 
 ### Changed

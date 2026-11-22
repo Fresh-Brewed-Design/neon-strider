@@ -1,1 +1,0 @@
-- Security fix in a library the app uses to read web addresses.
