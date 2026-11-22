@@ -15,8 +15,8 @@
 use crate::engine::{DeckAction, OrchestratorState, Packet, PacketKind, ProtocolEngine};
 use crate::protocol::{self, MachineStatus, Telemetry};
 use btleplug::api::{
-    Central, Characteristic, Manager as _, Peripheral as _, ScanFilter, ValueNotification,
-    WriteType,
+    Central, CharPropFlags, Characteristic, Manager as _, Peripheral as _, ScanFilter,
+    ValueNotification, WriteType,
 };
 use btleplug::platform::{Adapter, Manager as BtleManager, Peripheral};
 use futures::{Stream, StreamExt};
@@ -66,6 +66,19 @@ const DISCOVER_SETTLE: Duration = Duration::from_millis(500);
 /// of range), which would hold the connection lock until the app quits. A
 /// deck that is advertising connects in a second or two, so 10 s is headroom.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// How long a disconnect may wait for the stack to confirm it.
+/// btleplug's macOS disconnect waits for CoreBluetooth's disconnect callback,
+/// which only comes for a link that was up or pending: on a deck that never
+/// connected it would wait forever, before the first connect is even tried.
+/// A real link drops within a few hundred ms, so 2 s.
+const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(2);
+/// How long a write to the deck may wait for its acknowledgement.
+/// btleplug's macOS write-with-response only returns once CoreBluetooth reports
+/// success: a write the deck rejects, or one the characteristic doesn't take
+/// with a response, would never return and stall the worker before its first
+/// status poll. An acknowledged write takes a connection interval or two
+/// (tens of ms); 1 s is well inside the 600 ms poll's second beat.
+const WRITE_TIMEOUT: Duration = Duration::from_secs(1);
 /// Tries per characteristic to subscribe to status frames, and the wait between.
 /// A subscribe that fails right after discovery usually works on the next try;
 /// three tries 200 ms apart give up within a second, then the link reconnects.
@@ -133,9 +146,7 @@ impl DeckLink {
 
     pub(crate) async fn disconnect(&self) {
         match self {
-            DeckLink::Ble(p) => {
-                let _ = p.disconnect().await;
-            }
+            DeckLink::Ble(p) => drop_link(p).await,
             #[cfg(debug_assertions)]
             DeckLink::Sim(s) => s.disconnect(),
         }
@@ -145,9 +156,8 @@ impl DeckLink {
         match self {
             DeckLink::Ble(p) => {
                 let characteristic = find_control_characteristic(p)?;
-                p.write(&characteristic, bytes, WriteType::WithResponse)
-                    .await
-                    .map_err(|e| e.to_string())
+                let kind = control_write_type(characteristic.properties);
+                within(WRITE_TIMEOUT, p.write(&characteristic, bytes, kind)).await
             }
             #[cfg(debug_assertions)]
             DeckLink::Sim(s) => s.write(bytes),
@@ -199,6 +209,18 @@ fn find_control_characteristic(peripheral: &Peripheral) -> Result<Characteristic
         .flat_map(|s| s.characteristics)
         .find(|c| has_tag(&c.uuid, CONTROL_TAG))
         .ok_or_else(|| "Control Char not found".to_string())
+}
+
+/// How to write to the control characteristic: with a response where it takes
+/// one (what every deck got before), without where that is all it offers.
+fn control_write_type(properties: CharPropFlags) -> WriteType {
+    if properties.contains(CharPropFlags::WRITE)
+        || !properties.contains(CharPropFlags::WRITE_WITHOUT_RESPONSE)
+    {
+        WriteType::WithResponse
+    } else {
+        WriteType::WithoutResponse
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -774,6 +796,13 @@ async fn within<T, E: std::fmt::Display>(
     }
 }
 
+/// Drop the BLE link, if any, without waiting past `DISCONNECT_TIMEOUT`.
+async fn drop_link(peripheral: &Peripheral) {
+    if let Err(e) = within(DISCONNECT_TIMEOUT, peripheral.disconnect()).await {
+        log::debug!("Disconnect not confirmed ({}); going on.", e);
+    }
+}
+
 /// Up to `link::CONNECT_TRIES` full cycles of disconnect, connect, discover
 /// and subscribe.
 async fn connect_with_retries(
@@ -789,10 +818,10 @@ async fn connect_with_retries(
             attempt,
             crate::link::CONNECT_TRIES
         );
-        let _ = peripheral.disconnect().await;
+        drop_link(peripheral).await;
         tokio::time::sleep(DISCONNECT_SETTLE).await;
 
-        // The next try's disconnect() cancels a connect that timed out.
+        // The next try's drop_link() cancels a connect that timed out.
         if let Err(e) = within(CONNECT_TIMEOUT, peripheral.connect()).await {
             log::warn!("Connection failed: {}. Retrying...", e);
             continue;
@@ -800,7 +829,7 @@ async fn connect_with_retries(
         tokio::time::sleep(CONNECT_SETTLE).await;
 
         if peripheral.discover_services().await.is_err() {
-            let _ = peripheral.disconnect().await;
+            drop_link(peripheral).await;
             continue;
         }
         tokio::time::sleep(DISCOVER_SETTLE).await;
@@ -808,7 +837,7 @@ async fn connect_with_retries(
         if subscribe_and_start(app, peripheral, raw_id).await? {
             return Ok(());
         }
-        let _ = peripheral.disconnect().await;
+        drop_link(peripheral).await;
     }
     Err(format!(
         "Failed to connect to {} after {} full cycles.",
@@ -824,11 +853,17 @@ async fn subscribe_and_start(
     peripheral: &Peripheral,
     raw_id: &str,
 ) -> Result<bool, String> {
-    let status_characteristics: Vec<Characteristic> = peripheral
+    let fitshow: Vec<Characteristic> = peripheral
         .services()
         .into_iter()
         .filter(|s| has_tag(&s.uuid, SERVICE_TAG))
         .flat_map(|s| s.characteristics)
+        .collect();
+    for c in &fitshow {
+        log::info!("Deck characteristic {}: {:?}", c.uuid, c.properties);
+    }
+    let status_characteristics: Vec<Characteristic> = fitshow
+        .into_iter()
         .filter(|c| has_tag(&c.uuid, STATUS_TAG))
         .collect();
 
@@ -1044,6 +1079,23 @@ mod tests {
             crate::link::describe(&err).kind,
             crate::link::LinkErrorKind::Timeout
         );
+    }
+
+    #[test]
+    fn control_writes_use_what_the_characteristic_offers() {
+        use CharPropFlags as P;
+        // The FitShow deck seen on a Mac: FFF2 takes only unacknowledged writes.
+        assert_eq!(
+            control_write_type(P::WRITE_WITHOUT_RESPONSE),
+            WriteType::WithoutResponse
+        );
+        assert_eq!(control_write_type(P::WRITE), WriteType::WithResponse);
+        assert_eq!(
+            control_write_type(P::WRITE | P::WRITE_WITHOUT_RESPONSE),
+            WriteType::WithResponse
+        );
+        // Properties unknown: as before.
+        assert_eq!(control_write_type(P::empty()), WriteType::WithResponse);
     }
 
     #[tokio::test(start_paused = true)]
