@@ -3,9 +3,20 @@
 // (REST COMPLETE // PRESS GO). ?program=hold: a walking step after a 0 km/h step waits.
 // ?program=still: the belt was found still after a reconnect. ?program=resting: mid-rest.
 // ?program=paused: paused by the user (plain GO, no wait).
-import type { ActiveProgram, Program } from "../../ipc";
+// ?program=interval: Interval walk on its 3rd brisk round (INTERVAL 3/5, step 6 of 11).
+import type { ActiveProgram, Program, ProgramStep, StepKindSpot } from "../../ipc";
 import { params, snapshot } from "../mockState";
 import type { Scenario } from "./types";
+
+/** Rust's `StepKindSpot::of_step`: the step's kind, counted within that kind. */
+export function kindSpot(steps: ProgramStep[], index: number): StepKindSpot | undefined {
+  const kind = steps[index]?.kind;
+  if (!kind) return undefined;
+  const nth = steps.slice(0, index + 1).filter((s) => s.kind === kind).length;
+  const of = steps.filter((s) => s.kind === kind).length;
+  const code = kind.toUpperCase();
+  return { kind, nth, of, label: of > 1 ? `${code} ${nth}/${of}` : code };
+}
 
 /** What Rust reports when a program starts. */
 export function startProgram(p: Program): ActiveProgram {
@@ -22,6 +33,7 @@ export function startProgram(p: Program): ActiveProgram {
     wait: null,
     speed_kmh: first.speed_kmh,
     incline_pct: first.incline_pct,
+    kind: kindSpot(p.steps, 0),
   };
 }
 
@@ -34,16 +46,29 @@ export const setProgramPaused = (paused: boolean) => {
 
 const PROGRAM_SCENARIOS: Record<string, Partial<ActiveProgram>> = {
   ready: { cycle: 4, paused: true, wait: "rest_complete", seconds_remaining: 300 },
-  hold: { step_index: 1, step_count: 3, paused: true, wait: "hold_complete", seconds_remaining: 120 },
+  hold: { step_index: 1, step_count: 3, paused: true, wait: "hold_complete", seconds_remaining: 120, kind: undefined },
   still: { paused: true, wait: "belt_still" },
   resting: { phase: "resting", seconds_remaining: 1294 },
   paused: { paused: true },
 };
 
+/** `?program=interval`: Interval walk (id 7) running its 6th step. */
+function intervalRound(): ActiveProgram | null {
+  const p = snapshot.programs.find((x) => x.id === 7);
+  if (!p) return null;
+  const index = 5;
+  const step = p.steps[index];
+  return { ...startProgram(p), step_index: index, seconds_remaining: 128, speed_kmh: step.speed_kmh, incline_pct: step.incline_pct, kind: kindSpot(p.steps, index) };
+}
+
 export const programs: Scenario = {
   apply() {
     if (params.has("noprogram")) snapshot.active_program = null;
     const programFlag = params.get("program");
+    if (programFlag === "interval" && snapshot.active_program) {
+      snapshot.active_program = intervalRound();
+      return;
+    }
     if (programFlag !== null && snapshot.active_program && PROGRAM_SCENARIOS[programFlag]) {
       Object.assign(snapshot.active_program, PROGRAM_SCENARIOS[programFlag]);
       if (programFlag !== "resting") Object.assign(snapshot.deck, { status: "Paused", speed_kmh: 0, raw_speed_kmh: 0, target_speed_kmh: 0 });
