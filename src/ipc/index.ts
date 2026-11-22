@@ -68,6 +68,8 @@ export type { SessionSnapshot } from "./bindings/SessionSnapshot";
 export type { SettingLimits } from "./bindings/SettingLimits";
 export type { SettingRange } from "./bindings/SettingRange";
 export type { StartResult } from "./bindings/StartResult";
+export type { StepKind } from "./bindings/StepKind";
+export type { StepKindSpot } from "./bindings/StepKindSpot";
 export type { StepRunView } from "./bindings/StepRunView";
 export type { StravaActivity } from "./bindings/StravaActivity";
 export type { StravaGear } from "./bindings/StravaGear";

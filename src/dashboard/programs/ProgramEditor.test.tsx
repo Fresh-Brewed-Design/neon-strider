@@ -83,6 +83,35 @@ describe("ProgramEditor heart zones", () => {
   });
 });
 
+describe("ProgramEditor step kinds", () => {
+  it("shows each step's kind and saves a changed one", async () => {
+    const p = current!.programs.find((x) => x.name === "Interval walk")!;
+    render(<ProgramEditor initial={toDraft(p)} onDone={() => {}} />);
+    const kind = (n: number) => screen.getByLabelText<HTMLSelectElement>(`Step ${n} kind`);
+    expect(kind(1).value).toBe("warm_up");
+    expect(within(kind(2)).getByRole("option", { name: "INTERVAL" })).toBeTruthy();
+    fireEvent.change(kind(11), { target: { value: "cool_down" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save" })));
+    const steps = (saved()[0].program as typeof p).steps;
+    expect(steps[10].kind).toBe("cool_down");
+    expect(steps[1].kind).toBe("interval");
+  });
+
+  it("loads a step with no kind as None and saves it without one", async () => {
+    const p = structuredClone(current!.programs[0]);
+    delete p.steps[0].kind;
+    render(<ProgramEditor initial={toDraft(p)} onDone={() => {}} />);
+    expect(screen.getByLabelText<HTMLSelectElement>("Step 1 kind").value).toBe("");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save" })));
+    expect((saved()[0].program as typeof p).steps[0]).not.toHaveProperty("kind");
+  });
+
+  it("explains what a kind does", () => {
+    render(<ProgramEditor initial={toDraft(current!.programs[0])} onDone={() => {}} />);
+    expect(screen.getByText("A step's kind names the step on the HUD, the Live page and the tray menu.")).toBeTruthy();
+  });
+});
+
 describe("ProgramEditor STRIDE_FIT flag", () => {
   const brisk = () => current!.programs.find((p) => p.name === "Brisk")!;
   const flag = () => screen.queryByText(/^Above STRIDE_FIT/);

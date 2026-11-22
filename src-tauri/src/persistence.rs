@@ -720,6 +720,142 @@ fn treadmill_id_v9(saved: &str) -> Option<String> {
     Some(id.chars().skip(skip).collect())
 }
 
+/// Migration 10: step kinds on the seeded programs (#235). Each seeded program
+/// still exactly as migration 8 or `seed_programs` left it (name, note,
+/// repeat, every step's minutes, speed, incline and zone, and no step with a
+/// kind) gets its kinds: the one-step programs WALK, VO2 max and Interval walk
+/// WARM_UP, then INTERVAL and REST in turn (VO2 max ends on COOL_DOWN). An
+/// edited program, or one with a kind already, is left as it is.
+///
+/// Frozen: the values are written out here, not read from `seed_programs`.
+fn migration_10_step_kinds(tx: &Transaction) -> rusqlite::Result<()> {
+    let Some(raw) = get_setting_str(tx, "programs") else {
+        return Ok(()); // Never seeded: the first start seeds them with kinds.
+    };
+    if let Some(programs) = step_kinds_v10(&raw) {
+        tx.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('programs', ?1)",
+            params![programs],
+        )?;
+    }
+    Ok(())
+}
+
+/// One step of a seeded program as migration 8 left it: minutes (None runs
+/// until ended), km/h, incline %, whether it holds VO2 max's 85 to 95 % zone,
+/// and the kind migration 10 gives it.
+type SeedStepV10 = (Option<f64>, f64, f64, bool, &'static str);
+
+/// Every seeded program as migration 8 or `seed_programs` left it: name,
+/// repeat, note and steps.
+fn seeds_v10() -> Vec<(&'static str, Option<f64>, &'static str, Vec<SeedStepV10>)> {
+    let walk = |min: Option<f64>, kmh: f64, pct: f64| vec![(min, kmh, pct, false, "walk")];
+    let mut vo2 = vec![(Some(5.0), 4.5, 0.0, false, "warm_up")];
+    for _ in 0..4 {
+        vo2.push((Some(4.0), 6.0, 10.0, true, "interval"));
+        vo2.push((Some(3.0), 4.0, 0.0, false, "rest"));
+    }
+    vo2.push((Some(3.0), 3.0, 0.0, false, "cool_down"));
+    let mut interval = vec![(Some(5.0), 4.0, 0.0, false, "warm_up")];
+    for _ in 0..5 {
+        interval.push((Some(3.0), 6.0, 5.0, false, "interval"));
+        interval.push((Some(3.0), 3.5, 0.0, false, "rest"));
+    }
+    vec![
+        (
+            "Post-meal",
+            None,
+            "Walking soon after a meal blunts the rise in blood sugar.",
+            walk(Some(10.0), 4.0, 5.0),
+        ),
+        (
+            "Workday",
+            Some(30.0),
+            "Five easy minutes every half hour keep the body online.",
+            walk(Some(5.0), 3.0, 5.0),
+        ),
+        (
+            "Micro-break",
+            Some(20.0),
+            "Two easy minutes every 20 keep the body moving.",
+            walk(Some(2.0), 3.2, 0.0),
+        ),
+        (
+            "Focus",
+            None,
+            "A slow, flat walk keeps typing and thinking steady.",
+            walk(None, 2.0, 0.0),
+        ),
+        (
+            "Brisk",
+            None,
+            "Thirty brisk minutes count toward a weekly 150 of moderate activity.",
+            walk(Some(30.0), 5.0, 0.0),
+        ),
+        (
+            "VO2 max",
+            None,
+            "Four hard climbs of four minutes, split by easy walks, train VO2 max.",
+            vo2,
+        ),
+        (
+            "Interval walk",
+            None,
+            "Five rounds alternate three brisk minutes with three easy ones.",
+            interval,
+        ),
+    ]
+}
+
+/// Migration 10's change to the stored programs JSON; `None` when there is
+/// nothing to change or the value can't be read.
+fn step_kinds_v10(raw: &str) -> Option<String> {
+    use serde_json::{json, Value};
+    let mut list: Vec<Value> = serde_json::from_str(raw).ok()?;
+    let num = |v: &Value, x: Option<f64>| match x {
+        None => v.is_null(),
+        Some(x) => v.as_f64().is_some_and(|f| (f - x).abs() < 1e-3),
+    };
+    let zone_ok = |s: &Value, climb: bool| {
+        let z = &s["zone"];
+        if !climb {
+            return z.is_null();
+        }
+        z["low_pct"].as_f64() == Some(85.0)
+            && z["high_pct"].as_f64() == Some(95.0)
+            && z.get("trim").is_none_or(Value::is_null)
+    };
+    let seeds = seeds_v10();
+    let mut changed = false;
+    for p in list.iter_mut() {
+        let Some((_, _, _, seed)) = seeds.iter().find(|(name, repeat, note, steps)| {
+            p["name"] == *name
+                && p["note"] == *note
+                && num(&p["repeat_every_minutes"], *repeat)
+                && p["steps"].as_array().is_some_and(|s| {
+                    s.len() == steps.len()
+                        && s.iter().zip(steps).all(|(s, &(min, kmh, pct, climb, _))| {
+                            num(&s["duration_minutes"], min)
+                                && num(&s["speed_kmh"], Some(kmh))
+                                && num(&s["incline_pct"], Some(pct))
+                                && zone_ok(s, climb)
+                                && s.get("kind").is_none_or(Value::is_null)
+                        })
+                })
+        }) else {
+            continue;
+        };
+        for (s, &(_, _, _, _, kind)) in p["steps"].as_array_mut()?.iter_mut().zip(seed) {
+            s["kind"] = json!(kind);
+        }
+        changed = true;
+    }
+    if !changed {
+        return None;
+    }
+    serde_json::to_string(&list).ok()
+}
+
 type Migration = fn(&Transaction) -> rusqlite::Result<()>;
 
 /// Append new migrations at the end; never reorder or edit a shipped one.
@@ -734,6 +870,7 @@ const MIGRATIONS: &[Migration] = &[
     migration_7_vo2_max_zones,
     migration_8_seeded_programs,
     migration_9_points_per_treadmill,
+    migration_10_step_kinds,
 ];
 
 fn schema_version(conn: &Connection) -> rusqlite::Result<u32> {
@@ -2537,6 +2674,102 @@ mod db_tests {
         conn
     }
 
+    /// The seeds a v1.6 install holds after migration 9: no step has a kind.
+    fn seeds_at_v9() -> Connection {
+        let mut conn = seeds_at_v7();
+        migrate_through(&mut conn, 9);
+        conn
+    }
+
+    fn kinds(p: &crate::programs::Program) -> Vec<Option<crate::programs::StepKind>> {
+        p.steps.iter().map(|s| s.kind).collect()
+    }
+
+    #[test]
+    fn migration_10_gives_unedited_seeds_their_kinds() {
+        use crate::programs::StepKind::*;
+        let mut conn = seeds_at_v9();
+        assert!(stored_programs(&conn)
+            .iter()
+            .all(|p| p.steps.iter().all(|s| s.kind.is_none())));
+        migrate(&mut conn).unwrap();
+        let list = stored_programs(&conn);
+        let named = |n: &str| list.iter().find(|p| p.name == n).unwrap();
+        for n in ["Post-meal", "Workday", "Focus", "Brisk"] {
+            assert_eq!(kinds(named(n)), vec![Some(Walk)], "{}", n);
+        }
+        let mut vo2 = vec![Some(WarmUp)];
+        for _ in 0..4 {
+            vo2.extend([Some(Interval), Some(Rest)]);
+        }
+        vo2.push(Some(CoolDown));
+        assert_eq!(kinds(named("VO2 max")), vo2);
+        let mut walk = vec![Some(WarmUp)];
+        for _ in 0..5 {
+            walk.extend([Some(Interval), Some(Rest)]);
+        }
+        assert_eq!(kinds(named("Interval walk")), walk);
+        // Nothing but the kinds changed: the same list as a new install.
+        assert_eq!(list, crate::programs::seed_programs());
+        // Forced to run again, nothing changes.
+        let raw = get_setting_str(&conn, "programs");
+        conn.execute_batch("PRAGMA user_version = 9").unwrap();
+        migrate(&mut conn).unwrap();
+        assert_eq!(get_setting_str(&conn, "programs"), raw);
+    }
+
+    #[test]
+    fn migration_10_leaves_edited_programs_alone() {
+        use crate::programs::StepKind;
+        let mut conn = seeds_at_v9();
+        let mut list = stored_programs(&conn);
+        let mut edit = |name: &str, f: &dyn Fn(&mut crate::programs::Program)| {
+            f(list.iter_mut().find(|p| p.name == name).unwrap());
+        };
+        // A new pace (the save drops the note), a rename, a kind of the
+        // user's own, a zone taken off a climb, and a micro-break kept as
+        // Micro-break by migration 8 at its new note.
+        edit("Workday", &|p| {
+            p.steps[0].speed_kmh = 3.5;
+            p.note = None;
+        });
+        edit("Focus", &|p| p.name = "Deep work".to_string());
+        edit("Brisk", &|p| p.steps[0].kind = Some(StepKind::Interval));
+        edit("VO2 max", &|p| p.steps[1].zone = None);
+        edit("Interval walk", &|p| p.steps.truncate(5));
+        let mut micro = list.iter().find(|p| p.name == "Post-meal").unwrap().clone();
+        micro.id = 30;
+        micro.name = "Micro-break".to_string();
+        micro.steps[0].duration_minutes = Some(2.0);
+        micro.steps[0].speed_kmh = 3.2;
+        micro.steps[0].incline_pct = 0.0;
+        micro.repeat_every_minutes = Some(20.0);
+        micro.note = Some(MICRO_BREAK_NOTE_V8.to_string());
+        list.push(micro);
+        set(&conn, "programs", &serde_json::to_string(&list).unwrap());
+        migrate(&mut conn).unwrap();
+        let after = stored_programs(&conn);
+        for (before, now) in list.iter().zip(&after) {
+            match before.name.as_str() {
+                "Post-meal" | "Micro-break" => {
+                    assert_eq!(kinds(now), vec![Some(StepKind::Walk)], "{}", now.name);
+                    assert_eq!(now.steps[0].speed_kmh, before.steps[0].speed_kmh);
+                }
+                _ => assert_eq!(now, before, "{}", before.name),
+            }
+        }
+        assert_eq!(after.len(), list.len());
+    }
+
+    #[test]
+    fn migration_10_leaves_an_empty_or_unreadable_list_alone() {
+        assert_eq!(step_kinds_v10("[]"), None);
+        assert_eq!(step_kinds_v10("not json"), None);
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&mut conn).unwrap();
+        assert_eq!(get_setting_str(&conn, "programs"), None);
+    }
+
     const ONE_POINT: &str = r#"[{"speed":3.0,"stride_length_cm":70.0,"distance_scale":0.9}]"#;
 
     #[test]
@@ -2563,7 +2796,7 @@ mod db_tests {
             ("calibrationPoints", ONE_POINT),
         ]);
         migrate(&mut conn).unwrap();
-        assert_eq!(version(&conn), 9);
+        assert_eq!(version(&conn), latest());
         assert_eq!(get_setting_str(&conn, "calibrationPoints"), None);
         assert_eq!(
             get_setting_str(&conn, "calibrationPoints:AABBCCDDEEFF").as_deref(),
@@ -2637,7 +2870,8 @@ mod db_tests {
     fn migration_8_keeps_an_untouched_workday_and_drops_an_unused_micro_break() {
         let mut conn = seeds_at_v7();
         let before = stored_programs(&conn);
-        migrate(&mut conn).unwrap();
+        // Through 8 only: migration 10 adds the step kinds.
+        migrate_through(&mut conn, 8);
         let list = stored_programs(&conn);
         let names: Vec<&str> = list.iter().map(|p| p.name.as_str()).collect();
         assert!(!names.contains(&"Micro-break"));
@@ -2652,7 +2886,8 @@ mod db_tests {
         assert_eq!(list.iter().filter(|p| p.name == "Workday").count(), 1);
         // Forced to run again, nothing changes.
         let raw = get_setting_str(&conn, "programs");
-        rerun_from_7(&mut conn);
+        conn.execute_batch("PRAGMA user_version = 7").unwrap();
+        migrate_through(&mut conn, 8);
         assert_eq!(get_setting_str(&conn, "programs"), raw);
     }
 

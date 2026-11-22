@@ -1,6 +1,6 @@
 // The program editor's form state. Numbers stay as typed text until saved.
 
-import type { Program, ProgramStep, ZoneTrim } from "../../ipc";
+import type { Program, ProgramStep, StepKind, ZoneTrim } from "../../ipc";
 
 /** How the editor shows heart rate zones: % of maximum heart rate (what Rust stores) or bpm. */
 export type ZoneUnit = "pct" | "bpm";
@@ -19,6 +19,8 @@ export interface StepDraft {
   savedZone?: { low_pct: number; high_pct: number };
   /** What the zone trims with System -> Labs ZONE_TILT on; speed is the default Rust stores as none. */
   zoneTrim: ZoneTrim;
+  /** What the step is for (WARM_UP, INTERVAL, ...); null for a step with no kind. */
+  kind: StepKind | null;
 }
 
 export interface Draft {
@@ -36,7 +38,7 @@ const ZONE_DEFAULT: Pick<StepDraft, "zoneLow" | "zoneHigh" | "zoneTrim"> = { zon
 export const NEW_PROGRAM: Draft = {
   id: 0,
   name: "",
-  steps: [{ minutes: "10", open: false, speed: "3.0", incline: "0", zone: false, ...ZONE_DEFAULT }],
+  steps: [{ minutes: "10", open: false, speed: "3.0", incline: "0", zone: false, ...ZONE_DEFAULT, kind: null }],
   repeat: false,
   repeatMinutes: "30",
   zoneUnit: "pct",
@@ -70,6 +72,7 @@ export function toDraft(p: Program): Draft {
             zoneTrim: s.zone.trim ?? "speed",
           }
         : ZONE_DEFAULT),
+      kind: s.kind ?? null,
     })),
     repeat: p.repeat_every_minutes != null,
     repeatMinutes: p.repeat_every_minutes != null ? String(p.repeat_every_minutes) : "30",
@@ -121,6 +124,8 @@ export function fromDraft(d: Draft, maxBpm: number): Program | string {
       return `Step ${i + 1} has an empty or non-numeric value.`;
     }
     const step: ProgramStep = { duration_minutes: minutes, speed_kmh: speed, incline_pct: incline };
+    // No kind is left out, as Rust stores it.
+    if (s.kind) step.kind = s.kind;
     if (s.zone) {
       const low = n(s.zoneLow);
       const high = n(s.zoneHigh);

@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { HeartPulse, Plus, X } from "lucide-react";
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
-import { dispatch, SETTING_LIMITS, type ZoneTrim } from "../../ipc";
+import { dispatch, SETTING_LIMITS, type StepKind, type ZoneTrim } from "../../ipc";
 import { roundSpeed, snapToDeck, snapToLevel } from "../../state/deckSpeeds";
 import { useAppState } from "../../state/useAppState";
 import { GhostButton, Hint, Label, NeonButton, Panel } from "../ui";
@@ -17,6 +17,7 @@ import {
   type StepDraft,
   type ZoneUnit,
 } from "./draft";
+import { STEP_KINDS } from "./format";
 
 /** Until Rust's snapshot arrives: the estimate Rust starts from (220 minus age at 30). */
 const FALLBACK_MAX_BPM = SETTING_LIMITS.default_max_heart_rate_bpm;
@@ -121,8 +122,9 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
       </Field>
 
       <div className="flex flex-col gap-2">
-        <div className="grid grid-cols-[2rem_1fr_1fr_1fr_2rem_2rem] items-end gap-2">
+        <div className="grid grid-cols-[2rem_7rem_1fr_1fr_1fr_2rem_2rem] items-end gap-2">
           <span />
+          <Label>Kind</Label>
           <Label>Minutes</Label>
           <Label>Speed km/h</Label>
           <Label>Incline %</Label>
@@ -131,8 +133,21 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
         </div>
         {d.steps.map((s, i) => (
           <div key={i} className="flex flex-col gap-1.5">
-          <div className="grid grid-cols-[2rem_1fr_1fr_1fr_2rem_2rem] items-center gap-2">
+          <div className="grid grid-cols-[2rem_7rem_1fr_1fr_1fr_2rem_2rem] items-center gap-2">
             <span className="font-digital text-xs text-white/40">{i + 1}</span>
+            <select
+              className={cx(input, "px-1")}
+              aria-label={`Step ${i + 1} kind`}
+              value={s.kind ?? ""}
+              onChange={(e) => patchStep(i, { kind: e.target.value === "" ? null : (e.target.value as StepKind) })}
+            >
+              <option value="">None</option>
+              {STEP_KINDS.map((k) => (
+                <option key={k.value} value={k.value}>
+                  {k.code}
+                </option>
+              ))}
+            </select>
             <input
               className={input}
               inputMode="decimal"
@@ -202,6 +217,8 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
           <Plus size={14} /> Add step
         </GhostButton>
       </div>
+
+      <Hint>A step&apos;s kind names the step on the HUD, the Live page and the tray menu.</Hint>
 
       {anyZone && (
         <div className="flex flex-col gap-1.5">

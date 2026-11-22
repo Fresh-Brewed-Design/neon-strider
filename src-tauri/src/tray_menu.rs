@@ -140,6 +140,9 @@ pub struct ProgramView {
     /// 1-based.
     pub step: u32,
     pub steps: u32,
+    /// The step's kind and count within it, e.g. `INTERVAL 3/5`
+    /// (`StepKindSpot::label`); None for a step with no kind.
+    pub kind_label: Option<String>,
     pub seconds_remaining: Option<u32>,
 }
 
@@ -190,6 +193,7 @@ impl MenuInput {
                 waiting: a.wait.is_some(),
                 step: a.step_index + 1,
                 steps: a.step_count,
+                kind_label: a.kind.as_ref().map(|k| k.label.clone()),
                 seconds_remaining: a.seconds_remaining,
             }),
             programs: s.programs.iter().map(|p| (p.id, p.name.clone())).collect(),
@@ -292,7 +296,13 @@ pub fn program_line(v: &MenuInput) -> String {
     };
     let mut text = format!("{what} {}", menu_text(&p.name));
     if !p.resting {
-        text.push_str(&format!("{SEP}STEP {}/{}", p.step, p.steps));
+        if let Some(kind) = &p.kind_label {
+            text.push_str(SEP);
+            text.push_str(kind);
+        }
+        if p.kind_label.is_none() || p.steps > 1 {
+            text.push_str(&format!("{SEP}STEP {}/{}", p.step, p.steps));
+        }
     }
     if let Some(s) = p.seconds_remaining {
         text.push_str(SEP);
@@ -750,6 +760,7 @@ mod tests {
                 waiting: false,
                 step: 2,
                 steps: 4,
+                kind_label: None,
                 seconds_remaining: Some(190),
             }),
             ..walking()
@@ -960,6 +971,33 @@ mod tests {
             p.resting = true;
         }
         assert_eq!(program_line(&resting), "REST Workday \u{b7} 3:10");
+    }
+
+    /// A step with a kind shows it before the step number; a one-step
+    /// program with a kind drops the 1/1. Without a kind, as before #235.
+    #[test]
+    fn program_line_shows_the_step_kind() {
+        let mut v = program();
+        if let Some(p) = v.program.as_mut() {
+            p.kind_label = Some("INTERVAL 1/2".into());
+        }
+        assert_eq!(
+            program_line(&v),
+            "PROGRAM Workday \u{b7} INTERVAL 1/2 \u{b7} STEP 2/4 \u{b7} 3:10"
+        );
+        if let Some(p) = v.program.as_mut() {
+            p.kind_label = Some("WALK".into());
+            p.step = 1;
+            p.steps = 1;
+        }
+        assert_eq!(program_line(&v), "PROGRAM Workday \u{b7} WALK \u{b7} 3:10");
+        if let Some(p) = v.program.as_mut() {
+            p.kind_label = None;
+        }
+        assert_eq!(
+            program_line(&v),
+            "PROGRAM Workday \u{b7} STEP 1/1 \u{b7} 3:10"
+        );
     }
 
     #[test]

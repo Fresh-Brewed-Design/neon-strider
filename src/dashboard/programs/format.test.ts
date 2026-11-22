@@ -54,3 +54,34 @@ describe("waiting for GO", () => {
     expect(describeActive({ ...active, paused: true, wait: "rest_complete" })).toBe("Next: walk · 05:00 · cycle 2");
   });
 });
+
+describe("step kinds", () => {
+  const interval: ActiveProgram = {
+    ...active,
+    cycle: 1,
+    step_index: 5,
+    step_count: 11,
+    seconds_remaining: 128,
+    kind: { kind: "interval", nth: 3, of: 5, label: "INTERVAL 3/5" },
+  };
+
+  it("leads with the kind and keeps the step number", () => {
+    expect(describeActive(interval)).toBe("INTERVAL\u00a03/5 · step\u00a06/11 · 02:08 left");
+    expect(describeActive({ ...interval, paused: true, wait: "hold_complete" })).toBe("Next: INTERVAL\u00a03/5 · step\u00a06/11 · 02:08");
+  });
+
+  it("shows a one-step program by its kind alone", () => {
+    expect(describeActive({ ...active, kind: { kind: "walk", nth: 1, of: 1, label: "WALK" } })).toBe("WALK · 05:00 left · cycle 2");
+  });
+
+  it("shows a step with no kind as before", () => {
+    expect(describeActive({ ...interval, kind: undefined })).toBe("Walk 6/11 · 02:08 left");
+  });
+
+  it("names each kind in the plan", () => {
+    const p: Program = { ...workday, steps: [{ duration_minutes: 5, speed_kmh: 4, incline_pct: 0, kind: "warm_up" }, { duration_minutes: 3, speed_kmh: 6, incline_pct: 5 }] };
+    const plan = describePlan(p).split("\n");
+    expect(plan[1]).toBe("1. WARM_UP 5 min at 4.0 km/h, 0% incline");
+    expect(plan[2]).toBe("2. 3 min at 6.0 km/h, 5% incline");
+  });
+});

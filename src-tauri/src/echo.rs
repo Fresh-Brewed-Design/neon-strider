@@ -327,6 +327,7 @@ pub fn echo_steps(
                 speed_kmh: speed,
                 incline_pct: incline,
                 zone: None,
+                kind: None,
             }),
         }
     }
@@ -656,6 +657,7 @@ mod tests {
                     speed_kmh: 3.0,
                     incline_pct: 0.0,
                     zone: None,
+                    kind: None,
                 }],
                 repeat_every_minutes: None,
                 note: None,

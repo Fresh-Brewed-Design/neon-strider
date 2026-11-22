@@ -1,0 +1,4 @@
+- Program steps can have a kind: WARM_UP, WALK, INTERVAL, REST or COOL_DOWN. Pick one per step in the program editor.
+- The HUD, the Live page and the tray menu show the running step's kind, counted within that kind, before the step number: `INTERVAL 3/5 · step 6/11`. Steps without a kind show as before.
+- The example programs get kinds, so VO2 max and Interval walk show WARM_UP, INTERVAL, REST and COOL_DOWN as they run. A program you edited keeps its steps as they are.
+- Changing only a step's kind keeps an example program's note, as a rename does.

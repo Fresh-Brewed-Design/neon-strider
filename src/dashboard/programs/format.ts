@@ -1,10 +1,23 @@
-import type { ActiveProgram, Program, ProgramWait } from "../../ipc";
+import type { ActiveProgram, Program, ProgramWait, StepKind } from "../../ipc";
 import { formatClock } from "../../format";
 
 const num = (v: number) => (Number.isInteger(v) ? v.toString() : v.toFixed(1));
 
 /** Below this a speed holds the belt still: Rust's `engine::STILL_KMH`, half the deck's 0.1 km/h step. */
 const MOVING_KMH = 0.05;
+
+/** Each step kind's code, as Rust's `StepKind::code` writes it on the HUD, in the editor's order. */
+export const STEP_KINDS: readonly { value: StepKind; code: string }[] = [
+  { value: "warm_up", code: "WARM_UP" },
+  { value: "walk", code: "WALK" },
+  { value: "interval", code: "INTERVAL" },
+  { value: "rest", code: "REST" },
+  { value: "cool_down", code: "COOL_DOWN" },
+];
+
+const NBSP = "\u00a0";
+
+const kindCode = (k: StepKind) => STEP_KINDS.find((x) => x.value === k)?.code ?? k;
 
 /** One-line description, e.g. "5 min every 30 min · 3.0 km/h · 5%". */
 export function describeProgram(p: Program): string {
@@ -38,7 +51,8 @@ export function describePlan(p: Program): string {
     const time = st.duration_minutes == null ? "until you end it" : `${num(st.duration_minutes)} min`;
     const prefix = p.steps.length > 1 ? `${i + 1}. ` : "";
     const zone = st.zone ? `, heart zone ${num(st.zone.low_pct)} to ${num(st.zone.high_pct)} % of max` : "";
-    lines.push(`${prefix}${time} at ${st.speed_kmh.toFixed(1)} km/h, ${num(st.incline_pct)}% incline${zone}`);
+    const kind = st.kind ? `${kindCode(st.kind)} ` : "";
+    lines.push(`${prefix}${kind}${time} at ${st.speed_kmh.toFixed(1)} km/h, ${num(st.incline_pct)}% incline${zone}`);
   });
   if (walksAfterAHold(p)) {
     lines.push("After a 0 km/h step, the belt waits for GO before it moves.");
@@ -76,12 +90,23 @@ export function waitReason(w: ProgramWait): string {
   }
 }
 
-/** Status line for a running program, e.g. "Walk 2/3 · 04:12" or "Rest · next in 21:30". */
+/**
+ * Status line for a running program, e.g. "Walk 2/3 · 04:12 left" or "Rest · next walk in 21:30".
+ * A step with a kind leads with Rust's label, counted within the kind, and keeps the step
+ * number after it: "INTERVAL 3/5 · step 6/11 · 02:08 left".
+ */
 export function describeActive(a: ActiveProgram): string {
   const left = a.seconds_remaining != null ? formatClock(a.seconds_remaining) : null;
   if (a.phase === "resting") return left ? `Rest · next walk in ${left}` : "Rest";
-  const step = a.step_count > 1 ? ` ${a.step_index + 1}/${a.step_count}` : "";
+  const position = a.step_count > 1 ? `${a.step_index + 1}/${a.step_count}` : "";
   const cycle = a.cycle > 1 ? ` · cycle ${a.cycle}` : "";
+  if (a.kind) {
+    // No-break spaces keep "INTERVAL 3/5" and "step 6/11" whole when a narrow HUD wraps the line.
+    const step = `${a.kind.label.replace(/ /g, NBSP)}${position ? ` · step${NBSP}${position}` : ""}`;
+    if (a.wait) return `Next: ${step}${left ? ` · ${left}` : ""}${cycle}`;
+    return `${step}${left ? ` · ${left} left` : ""}${cycle}`;
+  }
+  const step = position ? ` ${position}` : "";
   if (a.wait) return `Next: walk${step}${left ? ` · ${left}` : ""}${cycle}`;
   return `Walk${step}${left ? ` · ${left} left` : ""}${cycle}`;
 }
