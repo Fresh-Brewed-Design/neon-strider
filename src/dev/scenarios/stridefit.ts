@@ -1,6 +1,7 @@
 // STRIDE_FIT (#223). ?stridefit=4.5: the fastest speed the stride still fits
 // the deck set to 4.5 km/h in System, Calibration, so the program editor flags
-// Brisk's 5.0 km/h step (Post-meal's 4.0 stays unflagged).
+// Brisk's 5.0 km/h step and Interval walk's 6.0 km/h steps (Post-meal's 4.0
+// stays unflagged).
 import { params, snapshot } from "../mockState";
 import type { Scenario } from "./types";
 
