@@ -64,6 +64,18 @@ function headerNotice(s: AppSnapshot): ReactNode {
   );
 }
 
+/** The header's right side: the maintenance banner, with a warning under it when both show. */
+function headerActions(s: AppSnapshot): ReactNode {
+  const notice = headerNotice(s);
+  if (!s.maintenance?.due) return notice;
+  return (
+    <div className="flex flex-col items-end gap-0.5">
+      <MaintenanceBanner />
+      {notice}
+    </div>
+  );
+}
+
 /** STRIDE_FIT's mark on the speed slider, or none while it is unset. Only a mark: the slider still goes to the top. */
 function strideFitMark(deck: DeckSnapshot) {
   const fit = deck.stride_fit_kmh;
@@ -97,11 +109,10 @@ export function LivePage() {
   const pinned = new Set(s.hud.widgets);
 
   return (
-    <Page codename="LOCOMOTION_DECK" title="Live" actions={headerNotice(s)}>
+    <Page codename="LOCOMOTION_DECK" title="Live" actions={headerActions(s)}>
       {/* Fits the 760x600 popup without scrolling, even with the maintenance
-          banner and a running program both showing. */}
+          banner and a running program both showing: both banners sit in the header. */}
       <div className="flex flex-col gap-2">
-        <MaintenanceBanner />
         <div className="grid grid-cols-2 gap-3">
           <Axis
             title="Velocity"
