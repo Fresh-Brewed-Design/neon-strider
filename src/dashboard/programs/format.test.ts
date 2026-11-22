@@ -21,6 +21,8 @@ const active: ActiveProgram = {
   wait: null,
   speed_kmh: 3,
   incline_pct: 5,
+  steps: workday.steps,
+  repeat_every_minutes: 30,
 };
 
 describe("describePlan", () => {

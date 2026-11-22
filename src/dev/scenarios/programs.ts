@@ -34,6 +34,8 @@ export function startProgram(p: Program): ActiveProgram {
     speed_kmh: first.speed_kmh,
     incline_pct: first.incline_pct,
     kind: kindSpot(p.steps, 0),
+    steps: structuredClone(p.steps),
+    repeat_every_minutes: p.repeat_every_minutes,
   };
 }
 
@@ -46,7 +48,21 @@ export const setProgramPaused = (paused: boolean) => {
 
 const PROGRAM_SCENARIOS: Record<string, Partial<ActiveProgram>> = {
   ready: { cycle: 4, paused: true, wait: "rest_complete", seconds_remaining: 300 },
-  hold: { step_index: 1, step_count: 3, paused: true, wait: "hold_complete", seconds_remaining: 120, kind: undefined },
+  hold: {
+    step_index: 1,
+    step_count: 3,
+    paused: true,
+    wait: "hold_complete",
+    seconds_remaining: 120,
+    kind: undefined,
+    // A 0 km/h step, then two walking steps; no kinds, as before #235.
+    steps: [
+      { duration_minutes: 1, speed_kmh: 0, incline_pct: 0 },
+      { duration_minutes: 2, speed_kmh: 3, incline_pct: 5 },
+      { duration_minutes: 5, speed_kmh: 3, incline_pct: 5 },
+    ],
+    repeat_every_minutes: null,
+  },
   still: { paused: true, wait: "belt_still" },
   resting: { phase: "resting", seconds_remaining: 1294 },
   paused: { paused: true },

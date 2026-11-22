@@ -1,0 +1,4 @@
+- STEP_MAP on the Live page lists every step of the running program, with the current step marked and finished steps dimmed, and charts speed and incline across the whole program with a yellow line at the current point of the program.
+- STEP_MAP shows each step's kind, minutes, speed, incline and heart zone. A repeating program shows its cycle and the rest between cycles. A step with no end runs until END.
+- STEP_MAP takes the place of the stats while a program runs. MAP on the program card switches between the two.
+- The HUD shows the next step under the current one, e.g. `NEXT // REST 3/5 · 3 min · 3.5 km/h`.
