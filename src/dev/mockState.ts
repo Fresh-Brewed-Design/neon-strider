@@ -280,6 +280,23 @@ export const snapshot: AppSnapshot = {
     max_bpm_set: false,
     incline_trim: false,
   },
+  platform: {
+    os: "windows",
+    computer: "PC",
+    settings: "Windows settings",
+    microphone: true,
+    minify_key_choice: true,
+    shortcuts: {
+      speed_up: "Alt+=",
+      speed_down: "Alt+-",
+      incline_up: "Alt+Page Up",
+      incline_down: "Alt+Page Down",
+      toggle_start: "Alt+Home",
+      toggle_program: "Alt+End",
+      toggle_minified: "Alt+Insert",
+      calibration_tap: "Alt+Space",
+    },
+  },
 };
 
 export const params = new URLSearchParams(location.search);

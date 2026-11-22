@@ -130,12 +130,23 @@ HEART_LINK (`heart_rate.rs`: pure Heart Rate Measurement decoding and snapshot t
 ## Platform
 
 OS-specific code goes only in `src-tauri/src/platform/` (`mod.rs` is the interface, `windows.rs`
-the Windows implementation, `other.rs` the stand-in for every other OS). It covers the input
+the Windows implementation, `macos.rs` the macOS one with its pure key tables in `macos_keys.rs`,
+`other.rs` the stand-in for every other OS). It covers the input
 hooks, whether another instance of the app runs (its single-instance mutex), session lock, display power (`display_off`, for `LIGHTS_OUT` in `snapshot/lights_out.rs`),
 which apps use the microphone, the cursor and mouse button, the PC's idle time, and the BLE peripheral (the GHOST_POD running pod,
 WinRT `GattServiceProvider`, one per service). The rest of
-the code calls `platform::...` and never the OS directly. macOS and Linux are on the roadmap, so
-new code must not import `windows::` (or other OS APIs) outside `platform/`.
+the code calls `platform::...` and never the OS directly; new code must not import `windows::`,
+`objc2` (or other OS APIs) outside `platform/`. macOS (docs/macos.md, #33) is a menu bar app:
+no Dock icon (`platform::app_started`, `LSUIElement` in `src-tauri/Info.plist`), a template tray
+icon (`tray_art::template`), the dashboard dropping down from the icon (`platform::MENU_BAR_APP`,
+`placement::below_menu_bar_icon`), ⌃⌥ Carbon hot keys, and the Keychain. Desktop units are
+physical px on Windows and points on macOS (`platform::DESKTOP_IN_POINTS`): `display.rs`
+converts at Tauri's edge, so placement and the HUD's hit rect never use Tauri's raw positions.
+`snapshot.platform` (the OS, its words from `platform::WORDS`, its shortcut labels, and OS-only
+features such as `microphone`) lets the UI word things the OS's way and hide what it lacks;
+user-facing Rust text that names the OS uses `platform::WORDS`. macOS builds use
+`src-tauri/tauri.macos.conf.json` on top of `tauri.conf.json`; CI runs the Rust tests and clippy
+on a Mac too (`ci.yml` `macos`).
 
 ## Commands
 
@@ -187,6 +198,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?idle`: the belt stopped
 - `?lightsout`: LIGHTS_OUT on; on the HUD preview its toast
 - `?link=scanning|connecting|reconnecting|nodata|bt-off|failed`: each treadmill link state
+- `?mac`: running on macOS: its words ("this Mac", System Settings), ⌃⌥ shortcuts, no minify key choice, no Slow down on calls
 - `?maxhr=178`: a max heart rate of 178 bpm set in System -> Heart rate (program heart zones use it)
 - `?minified`: the running strip; with `?program=resting|paused`, `?noprogram` or `?idle`; with `?hrspark=...`, `?hrzone=...` or `?heart=on|waiting` it shows PULSE_RATE
 - `?minifykey=off|pause|scroll_lock`: the minify hotkey switched off, or set to Alt+Pause or Alt+Scroll Lock

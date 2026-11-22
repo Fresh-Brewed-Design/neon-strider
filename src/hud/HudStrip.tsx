@@ -142,7 +142,7 @@ export function RunStripRow({ snapshot }: { snapshot: AppSnapshot }) {
           type="button"
           className="hud-btn hud-btn-expand"
           aria-label="Show the whole HUD"
-          title={hotkeyTitle("Show the whole HUD", snapshot.hud.minify_hotkey)}
+          title={hotkeyTitle("Show the whole HUD", snapshot.hud.minify_hotkey, snapshot.platform)}
           onClick={() => void send({ type: "hud_set_minified", minified: false })}
         >
           <ExpandIcon />

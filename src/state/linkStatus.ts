@@ -28,7 +28,8 @@ export function linkState(c: ConnectionSnapshot): LinkState {
   return { state: "idle" };
 }
 
-export function linkView(c: ConnectionSnapshot): LinkView {
+/** `settings`: where the OS switches Bluetooth on (`snapshot.platform.settings`). */
+export function linkView(c: ConnectionSnapshot, settings = "Windows settings"): LinkView {
   const l = linkState(c);
   const withError = (text: string) => (c.last_error ? `${text} ${c.last_error.message}` : text);
   switch (l.state) {
@@ -73,7 +74,7 @@ export function linkView(c: ConnectionSnapshot): LinkView {
         tone: "problem",
         label: "BT OFF",
         hudLabel: "BT OFFLINE",
-        headline: "Bluetooth is off. Turn it on in Windows settings.",
+        headline: `Bluetooth is off. Turn it on in ${settings}.`,
         title: c.last_error?.message ?? "Bluetooth is off or there is no Bluetooth adapter.",
         canRetry: true,
       };

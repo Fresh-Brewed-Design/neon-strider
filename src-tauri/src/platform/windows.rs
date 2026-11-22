@@ -22,6 +22,26 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_SYSKEYDOWN, WS_EX_TRANSPARENT,
 };
 
+pub const DESKTOP_IN_POINTS: bool = false;
+pub const MENU_BAR_APP: bool = false;
+pub const TRAY_ICON_TEMPLATE: bool = false;
+pub const MICROPHONE: bool = true;
+pub const MINIFY_KEY_CHOICE: bool = true;
+
+pub const WORDS: super::Words = super::Words {
+    computer: "PC",
+    settings: "Windows settings",
+    bluetooth_blocked: "Windows blocked Bluetooth access. Check Settings, Privacy, Bluetooth.",
+    credential_store: "Windows Credential Manager",
+    release_download: "Windows installer",
+};
+
+/// Nothing to set up once the app runs: the hooks are installed before it.
+pub fn app_started(_app: &tauri::AppHandle) {}
+
+/// A tray popup needs nothing beyond what the window builder sets.
+pub fn prepare_popup_window(_window: &tauri::WebviewWindow) {}
+
 // ---------------------------------------------------------------------------
 // Input hooks
 // ---------------------------------------------------------------------------

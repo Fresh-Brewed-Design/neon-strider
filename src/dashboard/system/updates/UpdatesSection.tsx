@@ -82,7 +82,7 @@ export function UpdatesSection() {
       <div>
         <Toggle
           label="Install automatically"
-          description="Only after the belt is still for 10 minutes and the PC idle for 5."
+          description={`Only after the belt is still for 10 minutes and the ${s?.platform.computer ?? "PC"} idle for 5.`}
           checked={u.auto_install}
           onChange={(on) => void autoToggle.run(() => dispatch({ type: "update_auto_install", on }))}
         />

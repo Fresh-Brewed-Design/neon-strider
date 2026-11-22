@@ -1,5 +1,5 @@
 //! Secrets at rest: the Strava client secret and OAuth tokens live in Windows
-//! Credential Manager, not in the SQLite settings table.
+//! Credential Manager (the Keychain on macOS), not in the SQLite settings table.
 //!
 //! If the credential store is unavailable the app keeps working from the
 //! settings table (and logs a warning). Secret values are never logged: every
@@ -50,7 +50,7 @@ pub trait SecretStore {
     fn delete(&self, key: &str) -> Result<(), String>;
 }
 
-/// Windows Credential Manager through the `keyring` crate.
+/// Windows Credential Manager (the Keychain on macOS) through the `keyring` crate.
 pub struct KeyringStore;
 
 fn entry(key: &str) -> Result<keyring::Entry, String> {

@@ -46,7 +46,7 @@ function levelForPct(deck: DeckSnapshot, pct: number): number {
 function headerNotice(s: AppSnapshot): ReactNode {
   let notice: { label: string; title: string; text: string };
   if (s.connection.link?.state === "no_data") {
-    const view = linkView(s.connection);
+    const view = linkView(s.connection, s.platform.settings);
     notice = { label: "NO DATA", title: view.title, text: view.headline };
   } else if (s.connection.connected && s.deck.unknown_status_code !== null) {
     notice = {

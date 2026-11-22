@@ -1,5 +1,6 @@
 //! The dashboard window: a tray popup that opens where the user last left it
-//! (or bottom-right of the primary display) and closes when it loses focus,
+//! (or bottom-right of the primary display; on macOS it drops down from the
+//! menu bar icon each time, `platform::MENU_BAR_APP`) and closes when it loses focus,
 //! unless pinned: by the user (`Pin open`) or by a guided task
 //! (`guided_task.rs`), which also keeps it on top.
 
@@ -17,6 +18,10 @@ const DASHBOARD_SIZE: (f64, f64) = (760.0, 600.0);
 /// Gap from the primary display's right and bottom edges when there is no
 /// saved spot, logical px (the bottom one clears the taskbar).
 const DEFAULT_MARGIN: (f64, f64) = (20.0, 60.0);
+/// Below the menu bar, and in from the display's edges, for the macOS
+/// dropdown, points (the gap macOS leaves under its own menu bar extras).
+const MENU_BAR_GAP: i32 = 6;
+const MENU_BAR_MARGIN: i32 = 8;
 /// Quiet time after the last move event before the position is saved.
 /// Windows sends a move event per frame while dragging; half a second after the
 /// last one the drag is over, so a drag is one write.
@@ -82,6 +87,7 @@ pub(crate) fn show_dashboard(app: &tauri::AppHandle) {
         }
     };
 
+    crate::platform::prepare_popup_window(&w);
     crate::snapshot::refresh_monitors(app);
     *lock(&PLACED_AT) = Some(Instant::now());
     place(app, &w);
@@ -91,9 +97,14 @@ pub(crate) fn show_dashboard(app: &tauri::AppHandle) {
 }
 
 /// Where the user last left it, if that spot is still on a screen; otherwise
-/// bottom-right of the primary display, like a tray popup.
+/// bottom-right of the primary display, like a tray popup. In the macOS menu
+/// bar, under the icon.
 fn place(app: &tauri::AppHandle, w: &tauri::WebviewWindow) {
     let monitors = crate::display::current_monitors(app);
+    if crate::platform::MENU_BAR_APP {
+        place_below_menu_bar_icon(app, w, &monitors);
+        return;
+    }
     let restored = persistence::read_setting(app, KEY_DASHBOARD_POSITION)
         .and_then(|raw| placement::parse_saved_position(&raw))
         .and_then(|saved| placement::resolve_dashboard_position(&saved, DASHBOARD_SIZE, &monitors));
@@ -120,6 +131,30 @@ fn place(app: &tauri::AppHandle, w: &tauri::WebviewWindow) {
         let x = pos.x + size.width - DASHBOARD_SIZE.0 - DEFAULT_MARGIN.0;
         let y = pos.y + size.height - DASHBOARD_SIZE.1 - DEFAULT_MARGIN.1;
         let _ = w.set_position(tauri::LogicalPosition::new(x, y));
+    }
+}
+
+/// Drop down from the menu bar icon, or from the top-right of the primary
+/// display if the icon can't be found.
+fn place_below_menu_bar_icon(
+    app: &tauri::AppHandle,
+    w: &tauri::WebviewWindow,
+    monitors: &[placement::MonitorGeom],
+) {
+    let cursor_x = crate::platform::cursor_position().map(|(x, _)| x);
+    let icon_x = crate::display::tray_icon_center_x(app, cursor_x).or_else(|| {
+        monitors
+            .iter()
+            .find(|m| m.is_primary)
+            .map(|m| m.work.x + m.work.w)
+    });
+    let size = (DASHBOARD_SIZE.0 as i32, DASHBOARD_SIZE.1 as i32);
+    let spot = icon_x.and_then(|x| {
+        placement::below_menu_bar_icon(x, size, MENU_BAR_GAP, MENU_BAR_MARGIN, monitors)
+    });
+    if let Some((x, y)) = spot {
+        log::debug!("Dashboard below the menu bar icon at ({}, {})", x, y);
+        let _ = w.set_position(crate::display::position(x, y));
     }
 }
 
@@ -167,6 +202,10 @@ pub(crate) fn on_guided_pin_changed(app: &tauri::AppHandle) {
 /// `SAVE_DEBOUNCE`. The write happens even if the window is destroyed
 /// meanwhile (it closes on blur), because the position comes from the event.
 pub(crate) fn dashboard_moved(app: &tauri::AppHandle, x: i32, y: i32) {
+    // A menu bar dropdown always opens under its icon; a drag lasts while it's open.
+    if crate::platform::MENU_BAR_APP {
+        return;
+    }
     let ours = lock(&PLACED_AT).is_some_and(|t| t.elapsed() < PLACE_GRACE);
     if ours {
         return;

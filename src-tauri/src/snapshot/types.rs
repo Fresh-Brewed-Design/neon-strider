@@ -91,6 +91,11 @@ pub struct AppSnapshot {
     // ---- Guided tasks ----
     /// The dashboard held open and on top during a guided task (GROUND_TRUTH).
     pub guided_task: crate::guided_task::GuidedTaskSnapshot,
+
+    // ---- Platform ----
+    /// The OS, its OS-only features and how it writes the shortcuts, so the
+    /// windows word things the OS's way and hide what it lacks.
+    pub platform: crate::platform::PlatformSnapshot,
 }
 
 /// Strava as the windows see it. Tokens and the client secret never appear here.

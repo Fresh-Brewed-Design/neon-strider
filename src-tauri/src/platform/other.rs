@@ -1,10 +1,28 @@
-//! Stand-ins for operating systems other than Windows: each feature reports
+//! Stand-ins for operating systems other than Windows and macOS: each feature reports
 //! "unsupported". No input is ever seen (so the sit-too-long nudge and the
 //! walk-away idle timer never fire), the session is never locked, the display
 //! is never off (so lights out never fires), and the microphone is always
 //! free. PC idle time is unknown, so updates never install by themselves. The
 //! HUD stays click-through. There is no Bluetooth peripheral, so GHOST_POD
 //! says it isn't supported.
+
+pub const DESKTOP_IN_POINTS: bool = false;
+pub const MENU_BAR_APP: bool = false;
+pub const TRAY_ICON_TEMPLATE: bool = false;
+pub const MICROPHONE: bool = false;
+pub const MINIFY_KEY_CHOICE: bool = false;
+
+pub const WORDS: super::Words = super::Words {
+    computer: "computer",
+    settings: "the system settings",
+    bluetooth_blocked: "The system blocked Bluetooth access. Allow it in the system settings.",
+    credential_store: "the system keyring",
+    release_download: "download for this system",
+};
+
+pub fn app_started(_app: &tauri::AppHandle) {}
+
+pub fn prepare_popup_window(_window: &tauri::WebviewWindow) {}
 
 pub fn install_input_hooks() {
     log::info!("Global input hooks are not supported on this OS");
@@ -49,7 +67,7 @@ pub fn peripheral_add(
     _service: &super::PeripheralService,
     _events: super::PeripheralEvents,
 ) -> Result<(), String> {
-    Err("The watch pod only works on Windows for now.".to_string())
+    Err("The watch pod works on Windows only for now.".to_string())
 }
 
 pub fn peripheral_notify(_uuid: u128, _value: &[u8]) -> Result<(), String> {

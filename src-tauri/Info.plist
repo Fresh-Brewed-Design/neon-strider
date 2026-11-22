@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into the macOS app's Info.plist by Tauri (and embedded in dev builds). -->
+<plist version="1.0">
+<dict>
+	<!-- macOS stops an app that touches Bluetooth without saying why. -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Neon Strider connects to your treadmill and heart rate sensor over Bluetooth.</string>
+	<!-- A menu bar app: no Dock icon and no app menu. -->
+	<key>LSUIElement</key>
+	<true/>
+</dict>
+</plist>

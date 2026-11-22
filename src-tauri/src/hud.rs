@@ -38,12 +38,12 @@ type Edges = (i32, i32, i32, i32);
 type Area = (i32, i32, i32, i32);
 
 /// The desktop rectangle covered by visible HUD content, in the mouse hook's
-/// coordinate space (physical px on the virtual desktop). The hook only ever
+/// coordinate space (desktop units, `crate::display`). The hook only ever
 /// `try_lock`s it.
 static HIT_RECT: Mutex<Option<Edges>> = Mutex::new(None);
-/// The same rectangle as the page measured it, relative to the HUD's client
-/// area. `HIT_RECT` is this plus the window's position, re-derived whenever
-/// either changes.
+/// The same rectangle relative to the HUD's client area, desktop units.
+/// `HIT_RECT` is this plus the window's position, re-derived whenever either
+/// changes.
 static HIT_REL: Mutex<Option<Area>> = Mutex::new(None);
 
 /// A drag of the HUD by its logo is in progress (`snapshot::hud_drag`). The
@@ -118,10 +118,10 @@ pub(crate) fn set_click_through(click_through: bool) {
 
 /// Report the rectangle covered by visible HUD content. The page sends it in
 /// physical px relative to its own window (`getBoundingClientRect` times
-/// `devicePixelRatio`); adding the window's client-area position gives the
-/// mouse hook's coordinate space. (`window.screenX/Y` would not do: its units
-/// differ per monitor when monitors have different scales.) An empty rect
-/// (`width` or `height` <= 0) clears it.
+/// `devicePixelRatio`); in desktop units, plus the window's client-area
+/// position, it is in the mouse hook's coordinate space. (`window.screenX/Y`
+/// would not do: its units differ per monitor when monitors have different
+/// scales.) An empty rect (`width` or `height` <= 0) clears it.
 #[tauri::command]
 pub fn set_hud_hit_region(
     window: tauri::WebviewWindow,
@@ -135,7 +135,9 @@ pub fn set_hud_hit_region(
         *lock(&HIT_RECT) = None;
         return;
     }
-    *lock(&HIT_REL) = Some((left, top, width, height));
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let d = |v| crate::display::from_window_px(scale, v);
+    *lock(&HIT_REL) = Some((d(left), d(top), d(width), d(height)));
     refresh_hit_rect(&window);
 }
 
@@ -143,9 +145,9 @@ pub fn set_hud_hit_region(
 /// the window's current position. Call after the window moves.
 fn refresh_hit_rect(w: &tauri::WebviewWindow) {
     let rel = *lock(&HIT_REL);
-    let abs = match (rel, w.inner_position()) {
-        (Some(rel), Ok(origin)) => {
-            let rect = placement::hit_rect_abs((origin.x, origin.y), rel);
+    let abs = match (rel, crate::display::window_origin(w)) {
+        (Some(rel), Some(origin)) => {
+            let rect = placement::hit_rect_abs(origin, rel);
             log::debug!("hud hit rect={:?}", rect);
             Some(rect)
         }
@@ -162,8 +164,8 @@ pub(crate) fn set_hit_live(rel: Area, abs: Edges) {
     *lock(&HIT_RECT) = Some(abs);
 }
 
-/// The HUD content's last measured size, physical px (`None` before the page
-/// reported one).
+/// The HUD content's last measured size, desktop units (`None` before the
+/// page reported one).
 pub(crate) fn hit_size() -> Option<(i32, i32)> {
     lock(&HIT_REL).map(|(_, _, w, h)| (w, h))
 }
@@ -173,9 +175,10 @@ pub(crate) fn hit_size() -> Option<(i32, i32)> {
 /// position. The monitor is the saved one (see `placement::choose_monitor`);
 /// none, or one no longer connected, means the primary.
 ///
-/// Physical coordinates throughout: a logical position would be converted with
-/// the window's current scale, which is wrong when the target monitor has
-/// another one.
+/// Desktop units throughout (physical px on Windows): a logical position there
+/// would be converted with the window's current scale, which is wrong when the
+/// target monitor has another one. On macOS they are points, which AppKit
+/// places windows in.
 pub(crate) fn position_hud(w: &tauri::WebviewWindow, cfg: &HudConfig) {
     let saved = cfg.saved_monitor();
     let monitor = saved.as_ref();
@@ -215,15 +218,14 @@ pub(crate) fn position_hud(w: &tauri::WebviewWindow, cfg: &HudConfig) {
     refresh_hit_rect(w);
 }
 
-/// Move (and with `resize`, size) the HUD strip window, physical px.
+/// Move (and with `resize`, size) the HUD strip window, desktop units.
 pub(crate) fn place_hud_strip(w: &tauri::WebviewWindow, strip: placement::Rect, resize: bool) {
-    let pos = tauri::PhysicalPosition::new(strip.x, strip.y);
+    let pos = crate::display::position(strip.x, strip.y);
     let _ = w.set_position(pos);
     if resize {
         // Move, size, move: a move onto a monitor with another scale makes
         // Windows rescale and nudge the window, so it is placed again after.
-        let size = tauri::PhysicalSize::new(strip.w.max(1) as u32, strip.h.max(1) as u32);
-        let _ = w.set_size(size);
+        let _ = w.set_size(crate::display::size(strip.w, strip.h));
         let _ = w.set_position(pos);
     }
 }
@@ -246,6 +248,9 @@ pub(crate) fn ensure_hud_native(app: &tauri::AppHandle) {
             .shadow(false)
             .always_on_top(true)
             .skip_taskbar(true)
+            // A click on an inactive HUD presses the button, not just the
+            // window (macOS; Windows already does).
+            .accept_first_mouse(true)
             // Hidden until placed, so it never flashes at the provisional spot.
             .visible(false)
             .build();

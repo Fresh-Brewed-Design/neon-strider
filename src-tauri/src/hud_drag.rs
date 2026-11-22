@@ -10,7 +10,7 @@
 //!
 //! The page only says when a drag starts (after the pointer moved about 4 px,
 //! so a click stays a click). From then on Rust follows the real cursor
-//! (physical px, right across monitors with different scales) every frame until
+//! (desktop units, right across monitors with different scales) every frame until
 //! the button is released, sets the click-through hit rect itself each frame,
 //! and tells the page the content's new top (`hud-drag`). `hud::DRAGGING` keeps
 //! the window interactive meanwhile; it is cleared within a frame of the
@@ -69,7 +69,7 @@ pub fn start(app: &AppHandle, grab_x: f64, grab_y: f64) -> Result<(), String> {
         // Already dragging.
         return Ok(());
     }
-    let scale = w.scale_factor().unwrap_or(1.0).max(0.1);
+    let scale = crate::display::desktop_scale(&w).max(0.1);
     let content = (cw as f64 / scale, ch as f64 / scale);
     let grab = (grab_x.clamp(0.0, content.0), grab_y.clamp(0.0, content.1));
     let app = app.clone();

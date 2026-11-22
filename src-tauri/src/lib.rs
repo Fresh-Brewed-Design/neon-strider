@@ -107,6 +107,12 @@ static QUITTING: AtomicBool = AtomicBool::new(false);
 /// When the dashboard was last closed by `close_to_tray` or a blur.
 static DASHBOARD_CLOSED_AT: Mutex<Option<Instant>> = Mutex::new(None);
 
+/// Let the app exit (or restart) next time it asks: Quit, or an update
+/// relaunching it (`update.rs`). Otherwise closing never quits it.
+pub(crate) fn allow_exit() {
+    QUITTING.store(true, Ordering::SeqCst);
+}
+
 pub(crate) fn app_handle() -> Option<&'static tauri::AppHandle> {
     APP.get()
 }
@@ -218,8 +224,9 @@ fn on_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
     }
 }
 
-/// The tray icon: left click opens the dashboard; right click opens the
-/// menu (`snapshot::tray_menu`: status, controls, programs, windows, Quit).
+/// The tray icon (the menu bar icon on macOS): left click opens the
+/// dashboard; right click (or Control-click) opens the menu
+/// (`snapshot::tray_menu`: status, controls, programs, windows, Quit).
 /// The snapshot emitter keeps its tooltip, icon and menu live.
 fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let menu = snapshot::tray_menu::initial_menu(app)?;
@@ -231,7 +238,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
         .on_menu_event(|app, event| {
             if event.id.as_ref() == snapshot::tray_menu::QUIT_ID {
                 log::info!("quitting...");
-                QUITTING.store(true, Ordering::SeqCst);
+                allow_exit();
                 app.exit(0);
             } else {
                 snapshot::tray_menu::on_menu_event(app, event.id.as_ref());
@@ -253,11 +260,14 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
             dashboard::show_dashboard(tray.app_handle());
         });
     // The tray's own art (icons/tray.png): the app icon's thin lines vanish at
-    // tray size. Dimmed to start with: nothing is connected yet.
+    // tray size. Dimmed to start with: nothing is connected yet. In the macOS
+    // menu bar, a template image macOS tints to suit the menu bar.
     let icon = snapshot::tray::icon(snapshot::tray::TrayState::Offline)
         .or_else(|| app.default_window_icon().cloned());
     if let Some(icon) = icon {
-        tray = tray.icon(icon);
+        tray = tray
+            .icon(icon)
+            .icon_as_template(platform::TRAY_ICON_TEMPLATE);
     }
     tray.build(app)?;
     Ok(())
@@ -352,6 +362,8 @@ pub fn run() {
         .setup(|app| {
             logging::log_startup(app.handle());
             build_tray(app)?;
+            // On macOS: no Dock icon, and the shortcuts (main thread, app up).
+            platform::app_started(app.handle());
             let _ = APP.set(app.handle().clone());
             tauri::async_runtime::spawn(start_backend(app.handle().clone()));
             Ok(())

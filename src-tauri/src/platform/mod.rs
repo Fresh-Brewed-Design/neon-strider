@@ -17,17 +17,179 @@
 //!   such as a watch (GHOST_POD, `crate::ghost_pod`), one provider each. The treadmill link is a
 //!   central and goes through btleplug instead.
 //!
-//! `windows.rs` implements it. `other.rs` is the stand-in for every other OS:
-//! each feature reports "unsupported" (no input seen, never locked, microphone
-//! free, idle time unknown, no Bluetooth peripheral), so the app runs without them.
+//! - Desktop units: the one coordinate space the HUD's placement, its hit
+//!   rectangle and the cursor share (`DESKTOP_IN_POINTS`; `crate::display`
+//!   converts at Tauri's edge).
+//!
+//! `windows.rs` implements it for Windows and `macos.rs` for macOS (with the
+//! pure key tables in `macos_keys.rs`). `other.rs` is the stand-in for every
+//! other OS: each feature reports "unsupported" (no input seen, never locked,
+//! microphone free, idle time unknown, no Bluetooth peripheral), so the app
+//! runs without them. A feature one OS lacks is hidden in the UI through
+//! `snapshot.platform` ([`snapshot`]).
 
 #[cfg(windows)]
 #[path = "windows.rs"]
 mod imp;
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+#[path = "macos.rs"]
+mod imp;
+
+#[cfg(not(any(windows, target_os = "macos")))]
 #[path = "other.rs"]
 mod imp;
+
+#[cfg(any(target_os = "macos", test))]
+mod macos_keys;
+
+use crate::hooks::Shortcut;
+use serde::{Deserialize, Serialize};
+
+/// Desktop units are points (macOS), not physical pixels (Windows). AppKit
+/// places windows in points, and Tauri's physical pixels there are points
+/// times a scale that differs per window and per display.
+pub const DESKTOP_IN_POINTS: bool = imp::DESKTOP_IN_POINTS;
+
+/// The app lives in the menu bar (macOS): the dashboard drops down from its
+/// icon, rather than opening where it was last left like a tray popup.
+pub const MENU_BAR_APP: bool = imp::MENU_BAR_APP;
+
+/// The tray icon is a template image the OS tints for the menu bar
+/// (`tray_art::template`), not the colour art.
+pub const TRAY_ICON_TEMPLATE: bool = imp::TRAY_ICON_TEMPLATE;
+
+/// How the OS names its own parts, for messages the user reads.
+pub struct Words {
+    /// The computer: "PC", "Mac".
+    pub computer: &'static str,
+    /// Where Bluetooth is switched on: "Windows settings", "System Settings".
+    pub settings: &'static str,
+    /// The sentence for an OS that refused the app Bluetooth, saying where to allow it.
+    pub bluetooth_blocked: &'static str,
+    /// Where secrets are kept: "Windows Credential Manager", "the Keychain".
+    pub credential_store: &'static str,
+    /// What a release carries for this OS: "Windows installer", "Mac download".
+    pub release_download: &'static str,
+}
+
+/// This OS's words.
+pub const WORDS: Words = imp::WORDS;
+
+/// What the app is running on, for the UI's wording.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
+pub enum Os {
+    Windows,
+    Macos,
+    Other,
+}
+
+/// The OS and which OS-only features it has, so the UI words things the
+/// way the OS does and hides what it lacks.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
+pub struct PlatformSnapshot {
+    pub os: Os,
+    /// The computer, as the OS calls it: "PC", "Mac" (`WORDS`).
+    pub computer: String,
+    /// Where settings such as Bluetooth are changed: "Windows settings",
+    /// "System Settings" (`WORDS`).
+    pub settings: String,
+    /// Slow down on calls: the apps using the microphone can be listed.
+    pub microphone: bool,
+    /// The HUD's minify hotkey can be put on another key (Windows: Insert,
+    /// Pause or Scroll Lock); otherwise only switched on or off.
+    pub minify_key_choice: bool,
+    /// The global shortcuts as this OS writes them (`Alt+Home`, `⌃⌥↩`).
+    pub shortcuts: ShortcutLabels,
+}
+
+/// Each global shortcut's keys as this OS writes them. On Windows the minify
+/// key is the HUD setting's (`toggle_minified` is its default, Insert).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
+pub struct ShortcutLabels {
+    pub speed_up: String,
+    pub speed_down: String,
+    pub incline_up: String,
+    pub incline_down: String,
+    pub toggle_start: String,
+    pub toggle_program: String,
+    pub toggle_minified: String,
+    pub calibration_tap: String,
+}
+
+impl ShortcutLabels {
+    fn from(label: impl Fn(Shortcut) -> String) -> Self {
+        Self {
+            speed_up: label(Shortcut::SpeedUp),
+            speed_down: label(Shortcut::SpeedDown),
+            incline_up: label(Shortcut::InclineUp),
+            incline_down: label(Shortcut::InclineDown),
+            toggle_start: label(Shortcut::ToggleStart),
+            toggle_program: label(Shortcut::ToggleProgram),
+            toggle_minified: label(Shortcut::ToggleMinified),
+            calibration_tap: label(Shortcut::CalibrationTap),
+        }
+    }
+}
+
+/// The OS this build runs on, and its features.
+pub fn snapshot() -> PlatformSnapshot {
+    let os = if cfg!(windows) {
+        Os::Windows
+    } else if cfg!(target_os = "macos") {
+        Os::Macos
+    } else {
+        Os::Other
+    };
+    PlatformSnapshot {
+        os,
+        computer: WORDS.computer.to_string(),
+        settings: WORDS.settings.to_string(),
+        microphone: imp::MICROPHONE,
+        minify_key_choice: imp::MINIFY_KEY_CHOICE,
+        shortcuts: ShortcutLabels::from(shortcut_label),
+    }
+}
+
+/// A shortcut as this OS writes it. Pure, for every OS's build.
+fn shortcut_label(shortcut: Shortcut) -> String {
+    #[cfg(target_os = "macos")]
+    return macos_keys::label(shortcut);
+    #[cfg(not(target_os = "macos"))]
+    return windows_shortcut_label(shortcut);
+}
+
+/// The Windows shortcuts, as `windows.rs` maps them (Alt plus a key).
+#[cfg(not(target_os = "macos"))]
+fn windows_shortcut_label(shortcut: Shortcut) -> String {
+    let key = match shortcut {
+        Shortcut::SpeedUp => "=",
+        Shortcut::SpeedDown => "-",
+        Shortcut::InclineUp => "Page Up",
+        Shortcut::InclineDown => "Page Down",
+        Shortcut::ToggleStart => "Home",
+        Shortcut::ToggleProgram => "End",
+        Shortcut::ToggleMinified => "Insert",
+        Shortcut::CalibrationTap => "Space",
+    };
+    format!("Alt+{key}")
+}
+
+/// Once the app is up, on the main thread: OS setup that needs the app
+/// (on macOS: no Dock icon, and the shortcuts).
+pub fn app_started(app: &tauri::AppHandle) {
+    imp::app_started(app);
+}
+
+/// Make the dashboard window behave like the OS's own dropdowns (on macOS:
+/// it opens on the Space in use, over a full-screen app too).
+pub fn prepare_popup_window(window: &tauri::WebviewWindow) {
+    imp::prepare_popup_window(window);
+}
 
 /// Install the keyboard and mouse hooks on a thread of their own, for the life
 /// of the app. Call once, before the event loop starts.
@@ -45,7 +207,7 @@ pub fn app_instance_running(identifier: &str) -> bool {
 }
 
 /// Remember the HUD window, so the mouse hook can read its real click-through
-/// state on every move and correct it.
+/// state on every move and correct it (and, on macOS, keep it on every Space).
 pub fn remember_hud_window(window: &tauri::WebviewWindow) {
     imp::remember_hud_window(window);
 }
@@ -78,8 +240,8 @@ pub fn primary_button_down() -> bool {
     imp::primary_button_down()
 }
 
-/// The cursor in physical desktop pixels (the coordinate space of
-/// `placement` and the mouse hook).
+/// The cursor in desktop units (the coordinate space of `placement` and the
+/// mouse hook; see `DESKTOP_IN_POINTS`).
 pub fn cursor_position() -> Option<(i32, i32)> {
     imp::cursor_position()
 }
@@ -154,6 +316,10 @@ pub struct PeripheralBeacon {
 }
 
 impl PeripheralBeacon {
+    #[cfg_attr(
+        not(any(windows, test)),
+        expect(dead_code, reason = "only Windows serves beacons so far (#33)")
+    )]
     /// Bytes on air: the flags Windows adds (3) plus this section's length,
     /// type and company ID (4) and the data. A legacy advertisement holds 31.
     pub fn air_len(&self) -> usize {
@@ -164,6 +330,10 @@ impl PeripheralBeacon {
 /// What the peripheral reports, from a Bluetooth thread. `service` is the
 /// service UUID the event belongs to.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(
+    not(windows),
+    expect(dead_code, reason = "only Windows serves a peripheral so far (#33)")
+)]
 pub enum PeripheralEvent {
     /// The service's advertisement started: devices can find it and connect.
     Advertising { service: u128 },

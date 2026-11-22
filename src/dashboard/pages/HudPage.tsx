@@ -6,6 +6,7 @@ import {
   type HudMinifyHotkey,
   type HudMonitor,
   type HudWidget,
+  type PlatformSnapshot,
 } from "../../ipc";
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
@@ -166,11 +167,15 @@ function IdleModePicker({ mode }: { mode: HudIdleMode }) {
   );
 }
 
-/** The Alt hotkey that minifies the HUD: on or off, and which key. Off, the key is kept for next time. */
-function MinifyHotkeyPicker({ hotkey }: { hotkey: HudMinifyHotkey }) {
+/**
+ * The hotkey that minifies the HUD: on or off, and on Windows which key (Alt
+ * with Insert, Pause or Scroll Lock). Off, the key is kept for next time. On
+ * macOS it is always ⌃⌥M (`platform.minify_key_choice` off).
+ */
+function MinifyHotkeyPicker({ hotkey, platform }: { hotkey: HudMinifyHotkey; platform: PlatformSnapshot }) {
   const set = useAction();
   const save = (next: HudMinifyHotkey) => void set.run(() => dispatch({ type: "hud_set_minify_hotkey", hotkey: next }));
-  const keyText = minifyKeyText(hotkey.key);
+  const keyText = minifyKeyText(hotkey.key, platform);
   return (
     <div className="flex flex-col gap-1.5">
       <Toggle
@@ -183,7 +188,7 @@ function MinifyHotkeyPicker({ hotkey }: { hotkey: HudMinifyHotkey }) {
             : `Other apps get ${keyText}.`
         }
       />
-      {hotkey.enabled && (
+      {hotkey.enabled && platform.minify_key_choice && (
         <div className="flex flex-col gap-1" role="radiogroup" aria-label="Minify hotkey">
           {MINIFY_KEYS.map((k) => (
             <button
@@ -200,7 +205,7 @@ function MinifyHotkeyPicker({ hotkey }: { hotkey: HudMinifyHotkey }) {
                   : "border-white/15 text-white/70 hover:border-neon-cyan/50",
               )}
             >
-              {minifyKeyText(k.key)}
+              {minifyKeyText(k.key, platform)}
             </button>
           ))}
         </div>
@@ -291,7 +296,7 @@ export function HudPage() {
           <PlacementRow anchor={anchor} custom={s.hud.custom !== null} />
           <MonitorPicker monitors={s.hud_monitors} selected={monitor} />
           <IdleModePicker mode={s.hud.idle_mode} />
-          <MinifyHotkeyPicker hotkey={s.hud.minify_hotkey} />
+          <MinifyHotkeyPicker hotkey={s.hud.minify_hotkey} platform={s.platform} />
           <Hint>
             Clicks pass through the HUD except on its panel. Speed and tilt pop-ups stay hidden while VEL or TILT is on
             the HUD.

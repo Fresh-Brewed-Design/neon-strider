@@ -17,6 +17,7 @@ import type { LightsOutSnapshot } from "./LightsOutSnapshot";
 import type { MaintenanceSnapshot } from "./MaintenanceSnapshot";
 import type { NeuralSnapshot } from "./NeuralSnapshot";
 import type { OdometerSnapshot } from "./OdometerSnapshot";
+import type { PlatformSnapshot } from "./PlatformSnapshot";
 import type { Program } from "./Program";
 import type { SeatedSnapshot } from "./SeatedSnapshot";
 import type { SessionSnapshot } from "./SessionSnapshot";
@@ -101,4 +102,9 @@ ghost_pod: GhostPodSnapshot, heart_rate: HeartRateSnapshot,
 /**
  * The dashboard held open and on top during a guided task (GROUND_TRUTH).
  */
-guided_task: GuidedTaskSnapshot, };
+guided_task: GuidedTaskSnapshot, 
+/**
+ * The OS, its OS-only features and how it writes the shortcuts, so the
+ * windows word things the OS's way and hide what it lacks.
+ */
+platform: PlatformSnapshot, };

@@ -206,25 +206,29 @@ fn classify(raw: &str) -> LinkErrorKind {
 pub const NO_DEVICES_SEEN: &str = "no bluetooth devices seen";
 
 /// The short human message for a raw error. Pure.
+/// Each in the OS's own words (`platform::WORDS`: "Windows settings", "this Mac").
 pub fn describe(raw: &str) -> LinkError {
     let kind = classify(raw);
+    let words = crate::platform::WORDS;
     let message = match kind {
-        LinkErrorKind::NotFound => "Treadmill not found. Is it switched on?",
-        LinkErrorKind::NoDevices => {
-            "This PC's Bluetooth isn't seeing any devices. Turn Bluetooth off and on, or restart the PC."
+        LinkErrorKind::NotFound => "Treadmill not found. Is it switched on?".to_string(),
+        LinkErrorKind::NoDevices => format!(
+            "This {pc}'s Bluetooth isn't seeing any devices. Turn Bluetooth off and on, or restart the {pc}.",
+            pc = words.computer
+        ),
+        LinkErrorKind::AdapterOff => {
+            format!("Bluetooth is off. Turn it on in {}.", words.settings)
         }
-        LinkErrorKind::AdapterOff => "Bluetooth is off. Turn it on in Windows settings.",
-        LinkErrorKind::AdapterMissing => "No Bluetooth adapter found on this PC.",
-        LinkErrorKind::Permission => {
-            "Windows blocked Bluetooth access. Check Settings, Privacy, Bluetooth."
+        LinkErrorKind::AdapterMissing => {
+            format!("No Bluetooth adapter found on this {}.", words.computer)
         }
-        LinkErrorKind::Timeout => "The treadmill did not answer. Move closer and try again.",
-        LinkErrorKind::Generic => "Could not reach the treadmill. Try again.",
+        LinkErrorKind::Permission => words.bluetooth_blocked.to_string(),
+        LinkErrorKind::Timeout => {
+            "The treadmill did not answer. Move closer and try again.".to_string()
+        }
+        LinkErrorKind::Generic => "Could not reach the treadmill. Try again.".to_string(),
     };
-    LinkError {
-        kind,
-        message: message.to_string(),
-    }
+    LinkError { kind, message }
 }
 
 // ---------------------------------------------------------------------------

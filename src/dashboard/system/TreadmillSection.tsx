@@ -69,7 +69,7 @@ export function TreadmillSection() {
           max={L.body_mass_kg.max}
           step={0.5}
           value={bodyMassKg}
-          hint="Used to estimate calories burned. Stays on this PC."
+          hint="Used to estimate calories burned. Stays on this computer."
           onCommit={(v) => updateSettings({ bodyMassKg: v })}
         />
       </div>

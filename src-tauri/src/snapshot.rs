@@ -260,6 +260,7 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         ghost_pod: crate::ghost_pod::GhostPodSnapshot::default(),
         heart_rate: crate::heart_rate::HeartRateSnapshot::default(),
         guided_task: crate::guided_task::GuidedTaskSnapshot::default(),
+        platform: crate::platform::snapshot(),
     }
 }
 

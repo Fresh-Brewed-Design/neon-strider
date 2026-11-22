@@ -257,7 +257,10 @@ export function WalkAwayCard({ snapshot }: { snapshot: AppSnapshot }) {
       </div>
     );
   }
-  const why = w.reason === "lock" ? "You locked the PC." : `No keyboard or mouse input for ${w.idle_minutes} minutes.`;
+  const why =
+    w.reason === "lock"
+      ? `You locked the ${snapshot.platform.computer}.`
+      : `No keyboard or mouse input for ${w.idle_minutes} minutes.`;
   return (
     <div className="hud-toast hud-walkaway accent-magenta" role="alert">
       <div className="hud-toast-body">

@@ -8,6 +8,12 @@
 //! - **Update dot:** any of the above plus a small pink dot, ringed in the
 //!   tile's dark blue, in the top-right corner: an update is waiting.
 //!
+//! The macOS menu bar takes template images instead: black, with the shape in
+//! alpha, which macOS tints to suit a light or dark menu bar (`template`). The
+//! tile goes; the chevrons stay. Idle is the chevrons, running adds the belt
+//! line under them, offline dims the chevrons, and the update dot is a solid
+//! dot with a clear ring cut round it (`template_dot`).
+//!
 //! Pure, no dependencies: `build.rs` includes this file (`#[path]`) to write
 //! the variants into `OUT_DIR` at build time, and the tests run against it from
 //! `tray.rs`.
@@ -48,34 +54,85 @@ fn blend(rgba: &mut [u8], i: usize, colour: [u8; 3], cov: f32) {
     rgba[i + 3] = (out_a * 255.0).round().clamp(0.0, 255.0) as u8;
 }
 
-/// Add the "update waiting" dot in the top-right corner, anti-aliased.
-pub fn update_dot(rgba: &mut [u8], width: u32, height: u32) {
+/// The update dot's coverage of pixel (x, y): (disc, dot), each 0..1. The
+/// disc is the dot and its ring together.
+fn dot_coverage(x: u32, y: u32, width: u32, height: u32) -> (f32, f32) {
     let size = width.min(height) as f32;
     let (cx, cy) = (DOT_CX * size, DOT_CY * size);
     let (r, ring) = (DOT_R * size, DOT_RING_R * size);
+    let (mut in_ring, mut in_dot) = (0u32, 0u32);
+    for sy in 0..AA {
+        for sx in 0..AA {
+            let px = x as f32 + (sx as f32 + 0.5) / AA as f32 - cx;
+            let py = y as f32 + (sy as f32 + 0.5) / AA as f32 - cy;
+            let d = (px * px + py * py).sqrt();
+            if d <= r {
+                in_dot += 1;
+            } else if d <= ring {
+                in_ring += 1;
+            }
+        }
+    }
+    let n = (AA * AA) as f32;
+    ((in_ring + in_dot) as f32 / n, in_dot as f32 / n)
+}
+
+/// Add the "update waiting" dot in the top-right corner, anti-aliased.
+pub fn update_dot(rgba: &mut [u8], width: u32, height: u32) {
     for y in 0..height {
         for x in 0..width {
-            let (mut in_ring, mut in_dot) = (0u32, 0u32);
-            for sy in 0..AA {
-                for sx in 0..AA {
-                    let px = x as f32 + (sx as f32 + 0.5) / AA as f32 - cx;
-                    let py = y as f32 + (sy as f32 + 0.5) / AA as f32 - cy;
-                    let d = (px * px + py * py).sqrt();
-                    if d <= r {
-                        in_dot += 1;
-                    } else if d <= ring {
-                        in_ring += 1;
-                    }
-                }
-            }
-            if in_ring + in_dot == 0 {
+            let (disc, dot) = dot_coverage(x, y, width, height);
+            if disc <= 0.0 {
                 continue;
             }
-            let n = (AA * AA) as f32;
             let i = ((y * width + x) * 4) as usize;
             // The ring covers the whole disc first, then the dot goes on top.
-            blend(rgba, i, DOT_RING, (in_ring + in_dot) as f32 / n);
-            blend(rgba, i, DOT, in_dot as f32 / n);
+            blend(rgba, i, DOT_RING, disc);
+            blend(rgba, i, DOT, dot);
+        }
+    }
+}
+
+/// How far a colour channel is from the tile's (`floor`) towards full art
+/// (`top`), 0..1.
+fn ramp(v: u8, floor: u8, top: u8) -> f32 {
+    ((v as f32 - floor as f32) / (top as f32 - floor as f32)).clamp(0.0, 1.0)
+}
+
+/// Opacity of the offline template's chevrons.
+pub const TEMPLATE_OFFLINE_ALPHA: f32 = 0.4;
+
+/// The macOS template variant of the colour art: black pixels whose alpha
+/// is the chevrons (cyan) and, with `belt`, the belt line (magenta), scaled
+/// by `opacity`. The dark tile becomes clear.
+pub fn template(rgba: &mut [u8], belt: bool, opacity: f32) {
+    for px in rgba.as_chunks_mut::<4>().0 {
+        let [r, g, b, a] = *px;
+        // Cyan: green and blue both high, red low. Magenta: red high, green low.
+        let chevron = ramp(g.min(b), 0x10, 0xf3) * (1.0 - ramp(r, 0x06, 0xff));
+        let belt_line = if belt && r > g {
+            ramp(r, 0x06, 0xff)
+        } else {
+            0.0
+        };
+        let shape = chevron.max(belt_line) * (a as f32 / 255.0) * opacity;
+        *px = [0, 0, 0, (shape * 255.0).round().clamp(0.0, 255.0) as u8];
+    }
+}
+
+/// The update dot on a template image: the ring is cut clear, so the dot
+/// stands apart from the chevron, then the dot is drawn solid.
+pub fn template_dot(rgba: &mut [u8], width: u32, height: u32) {
+    for y in 0..height {
+        for x in 0..width {
+            let (disc, dot) = dot_coverage(x, y, width, height);
+            if disc <= 0.0 {
+                continue;
+            }
+            let i = ((y * width + x) * 4) as usize;
+            let cut = rgba[i + 3] as f32 * (1.0 - disc);
+            let a = cut * (1.0 - dot) + 255.0 * dot;
+            rgba[i..i + 4].copy_from_slice(&[0, 0, 0, a.round().clamp(0.0, 255.0) as u8]);
         }
     }
 }

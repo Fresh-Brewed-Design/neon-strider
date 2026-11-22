@@ -231,7 +231,10 @@ async fn finish_login(app: &AppHandle, auth: Auth) {
         log::warn!("could not save the Strava login: {}", e);
         live::record(
             false,
-            "Could not save the Strava login to Windows Credential Manager.",
+            format!(
+                "Could not save the Strava login to {}.",
+                crate::platform::WORDS.credential_store
+            ),
         );
         return;
     }
