@@ -30,7 +30,7 @@ describe("Programs empty state", () => {
     show((s) => (s.programs = []));
     const empty = screen.getByTestId("programs-empty");
     expect(empty).toHaveTextContent("No programs yet.");
-    expect(empty).toHaveTextContent("Use New to build one, or ECHO on History to turn a walk into one.");
+    expect(empty).toHaveTextContent("Use New to build a program or ECHO on History to turn a walk into a program.");
   });
 
   it("has a New button that opens the editor like the header's", () => {

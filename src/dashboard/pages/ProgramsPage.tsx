@@ -75,7 +75,7 @@ export function ProgramsPage() {
           <Panel className="flex flex-col items-center gap-3 p-6 text-center">
             <div className="flex flex-col gap-1 font-mono text-xs text-white/55" data-testid="programs-empty">
               <p>No programs yet.</p>
-              <p>Use New to build one, or ECHO on History to turn a walk into one.</p>
+              <p>Use New to build a program or ECHO on History to turn a walk into a program.</p>
             </div>
             <NeonButton className="flex h-8 items-center gap-1.5 px-3" onClick={() => setPicked(NEW_PROGRAM)}>
               <Plus size={14} /> New
