@@ -3,6 +3,10 @@
 //! The database runs in WAL mode, so a plain file copy can miss committed data
 //! sitting in the -wal file. Backups use SQLite's online backup API instead,
 //! on their own connection so writers are not blocked while it runs.
+//!
+//! No backup keeps the Strava client secret or login: a plaintext copy an older
+//! build left in the settings table (see `secrets.rs`) is deleted from each copy
+//! with `secure_delete` on, so its bytes are overwritten, not just unlinked.
 
 use chrono::NaiveDate;
 use rusqlite::backup::Backup;
@@ -73,8 +77,69 @@ pub enum BackupOutcome {
     },
 }
 
+/// Delete the secrets' rows from a backup copy, overwriting their bytes.
+/// Returns how many rows went. A copy without a settings table (an old
+/// schema) or without those rows is left untouched.
+fn strip_secrets(conn: &Connection) -> Result<usize, String> {
+    let [a, b] = crate::secrets::Secret::ALL.map(|s| s.key());
+    let has_settings: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'settings')",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if !has_settings {
+        return Ok(0);
+    }
+    let present: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM settings WHERE key IN (?1, ?2)",
+            [a, b],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if present == 0 {
+        return Ok(0);
+    }
+    // No journal on disk for the delete (it would hold the old page), and the
+    // freed cells are zeroed.
+    let _mode: String = conn
+        .query_row("PRAGMA journal_mode = MEMORY", [], |r| r.get(0))
+        .map_err(|e| e.to_string())?;
+    conn.pragma_update(None, "secure_delete", true)
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM settings WHERE key IN (?1, ?2)", [a, b])
+        .map_err(|e| e.to_string())
+}
+
+/// Strip the secrets from every backup already in `dir` (daily and
+/// pre-migration copies made by older builds). Returns how many files changed.
+fn scrub_backups(dir: &Path) -> usize {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut changed = 0;
+    for entry in entries.filter_map(|e| e.ok()) {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !(name.starts_with(PREFIX) && name.ends_with(SUFFIX)) {
+            continue;
+        }
+        let result = Connection::open(entry.path())
+            .map_err(|e| e.to_string())
+            .and_then(|conn| strip_secrets(&conn));
+        match result {
+            Ok(0) => {}
+            Ok(_) => changed += 1,
+            Err(e) => log::warn!("could not clean backup {}: {}", name, e),
+        }
+    }
+    changed
+}
+
 /// Copy the database at `src_path` to `dest` with the online backup API,
 /// through a temp file so a half-written backup never carries a real name.
+/// The Strava secrets are stripped from the copy before it gets that name.
 pub fn backup_database_file(src_path: &Path, dest: &Path) -> Result<(), String> {
     let tmp = dest.with_extension("db.tmp");
     let _ = std::fs::remove_file(&tmp);
@@ -89,6 +154,7 @@ pub fn backup_database_file(src_path: &Path, dest: &Path) -> Result<(), String> 
                 .run_to_completion(PAGES_PER_STEP, STEP_PAUSE, None)
                 .map_err(|e| format!("copy: {}", e))?;
         }
+        strip_secrets(&dst).map_err(|e| format!("strip secrets: {}", e))?;
         let check: String = dst
             .query_row("PRAGMA quick_check", [], |r| r.get(0))
             .map_err(|e| format!("verify: {}", e))?;
@@ -160,6 +226,18 @@ fn run_backup_logged(app: &AppHandle) {
 /// still gets one backup per day.
 pub fn spawn_daily(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
+        let app_s = app.clone();
+        let scrub = tauri::async_runtime::spawn_blocking(move || {
+            if let Ok(dir) = backups_dir(&app_s) {
+                let n = scrub_backups(&dir);
+                if n > 0 {
+                    log::info!("removed the Strava login from {} older backups", n);
+                }
+            }
+        });
+        if let Err(e) = scrub.await {
+            log::error!("backup clean-up task failed: {}", e);
+        }
         loop {
             let app_c = app.clone();
             // Panics inside the blocking task surface as a JoinError, not a crash.
@@ -228,6 +306,104 @@ mod tests {
         names.push("treadmill-2026-01-03.db.tmp".into());
         names.push("treadmill.db".into());
         assert_eq!(backups_to_delete(&names, 1), files(&[d(2026, 1, 1)]));
+    }
+
+    /// A fresh empty folder under the temp dir, unique to the test.
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "neon-strider-backup-{}-{}",
+            name,
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    const SECRET: &str = "secret-value-0123456789abcdef";
+    const TOKEN: &str = "token-json-fedcba9876543210";
+
+    /// A WAL database with both secrets and an ordinary setting.
+    fn db_with_secrets(path: &Path) -> Connection {
+        let conn = Connection::open(path).unwrap();
+        let _mode: String = conn
+            .query_row("PRAGMA journal_mode = WAL", [], |r| r.get(0))
+            .unwrap();
+        conn.execute_batch(&format!(
+            "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+             INSERT INTO settings VALUES ('stravaClientId', '123');
+             INSERT INTO settings VALUES ('stravaClientSecret', '{SECRET}');
+             INSERT INTO settings VALUES ('stravaAuth', '{TOKEN}');"
+        ))
+        .unwrap();
+        conn
+    }
+
+    fn keys(path: &Path) -> Vec<String> {
+        let conn = Connection::open(path).unwrap();
+        let mut stmt = conn
+            .prepare("SELECT key FROM settings ORDER BY key")
+            .unwrap();
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0)).unwrap();
+        rows.map(|r| r.unwrap()).collect()
+    }
+
+    fn file_contains(path: &Path, needle: &str) -> bool {
+        let bytes = std::fs::read(path).unwrap();
+        bytes.windows(needle.len()).any(|w| w == needle.as_bytes())
+    }
+
+    #[test]
+    fn backup_leaves_out_the_strava_secrets_but_the_source_keeps_them() {
+        let dir = temp_dir("strip");
+        let src_path = dir.join("treadmill.db");
+        let dest = dir.join(backup_file_name(d(2026, 11, 22)));
+        let src = db_with_secrets(&src_path);
+
+        backup_database_file(&src_path, &dest).unwrap();
+
+        assert_eq!(keys(&dest), vec!["stravaClientId".to_string()]);
+        assert!(!file_contains(&dest, SECRET));
+        assert!(!file_contains(&dest, TOKEN));
+        let left: i64 = src
+            .query_row("SELECT COUNT(*) FROM settings", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(left, 3, "the live database keeps its copy");
+        drop(src);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn strip_skips_a_database_without_settings_or_secrets() {
+        let conn = Connection::open_in_memory().unwrap();
+        assert_eq!(strip_secrets(&conn).unwrap(), 0);
+        conn.execute_batch(
+            "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+             INSERT INTO settings VALUES ('a', '1');",
+        )
+        .unwrap();
+        assert_eq!(strip_secrets(&conn).unwrap(), 0);
+    }
+
+    #[test]
+    fn scrub_cleans_older_backups_and_ignores_other_files() {
+        let dir = temp_dir("scrub");
+        let old = dir.join("treadmill-pre-v9-20261101-080000.db");
+        drop(db_with_secrets(&old));
+        let clean = dir.join(backup_file_name(d(2026, 11, 20)));
+        Connection::open(&clean)
+            .unwrap()
+            .execute_batch("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);")
+            .unwrap();
+        let other = dir.join("notes.db");
+        drop(db_with_secrets(&other));
+
+        assert_eq!(scrub_backups(&dir), 1);
+        assert_eq!(keys(&old), vec!["stravaClientId".to_string()]);
+        assert!(!file_contains(&old, SECRET));
+        assert_eq!(keys(&other).len(), 3, "not a backup name, left alone");
+        assert_eq!(scrub_backups(&dir), 0, "a second pass finds nothing");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
