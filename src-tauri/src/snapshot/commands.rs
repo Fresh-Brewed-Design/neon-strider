@@ -61,7 +61,7 @@ async fn press(action: &str) -> Result<(), String> {
 }
 
 /// Save the program list after `change` edits it.
-async fn change_programs(
+pub(crate) async fn change_programs(
     app: &AppHandle,
     change: impl FnOnce(&mut OrchestratorState) -> Result<(), String>,
 ) -> Result<(), String> {

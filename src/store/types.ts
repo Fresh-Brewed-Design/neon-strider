@@ -65,6 +65,12 @@ export interface UISlice {
   /** Opens the shared confirm dialog. */
   confirm: (config: ConfirmState) => void;
   clearConfirmation: () => void;
+
+  /** A program to open in the Programs editor (ECHO's "Open in Programs"), until the editor closes. */
+  programRequest: number | null;
+  /** Shows the Programs page with this program open in the editor. */
+  openProgram: (id: number) => void;
+  clearProgramRequest: () => void;
 }
 
 export type TreadmillStore = SettingsSlice & HistorySlice & UISlice;
