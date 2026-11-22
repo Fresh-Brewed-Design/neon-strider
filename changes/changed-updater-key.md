@@ -1,1 +1,0 @@
-- Updates are now signed with a new, password-protected key. Install this version before the next one: later updates only verify with the new key, so a copy that skips this version needs one manual reinstall.
