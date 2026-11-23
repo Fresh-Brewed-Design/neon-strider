@@ -171,7 +171,16 @@ pub(crate) struct SimDeck {
     /// sleeping): the link still reads as up and the deck still answers, but
     /// no frame reaches the app. A new connection subscribes again.
     muted: bool,
+    /// Windows closed the app's GATT session: the link still reads as up,
+    /// but every write fails with RO_E_CLOSED and no frame arrives. A new
+    /// connection opens a new session.
+    closed: bool,
 }
+
+/// What Windows returns for a write on a GATT session it has closed, as
+/// btleplug formats it (the app's log, 2026-11-22).
+pub(crate) const CLOSED_WRITE: &str =
+    r#"Error { code: HRESULT(0x80000013), message: "The object has been closed." }"#;
 
 impl SimDeck {
     /// A deck switched on, idle, not yet connected.
@@ -198,6 +207,7 @@ impl SimDeck {
             incline_skips: vec![],
             status_override: None,
             muted: false,
+            closed: false,
         }
     }
 
@@ -356,6 +366,16 @@ impl SimDeck {
         }
     }
 
+    /// A packet written over the link, as the app's write sees it: an error
+    /// on a closed session (`CLOSED_WRITE`), else the deck takes it.
+    pub(crate) fn write(&mut self, bytes: &[u8], now: Instant) -> Result<(), String> {
+        if self.closed {
+            return Err(CLOSED_WRITE.to_string());
+        }
+        self.receive(bytes, now);
+        Ok(())
+    }
+
     /// A packet the engine wrote. Nothing reaches a deck that isn't linked.
     pub(crate) fn receive(&mut self, bytes: &[u8], now: Instant) {
         if !self.linked {
@@ -450,7 +470,7 @@ impl SimDeck {
             .into_iter()
             .partition(|(at, _)| *at <= now);
         self.outbox = later;
-        if self.muted {
+        if self.muted || self.closed {
             return vec![];
         }
         due.into_iter().map(|(_, b)| b).collect()
@@ -461,6 +481,13 @@ impl SimDeck {
     #[cfg(test)]
     pub(crate) fn mute(&mut self) {
         self.muted = true;
+    }
+
+    /// Windows closes the app's GATT session while the link reads as up
+    /// (`closed`).
+    #[cfg(test)]
+    pub(crate) fn close_session(&mut self) {
+        self.closed = true;
     }
 
     /// Start pressed on the deck's own buttons or remote.
@@ -567,6 +594,7 @@ impl SimDeck {
     /// Connect; only a deck that is switched on answers.
     pub(crate) fn connect(&mut self) -> bool {
         self.muted = false;
+        self.closed = false;
         self.linked = self.powered;
         self.linked
     }
@@ -596,6 +624,10 @@ pub(crate) struct Rig {
     last_frame: Option<Instant>,
     /// Links dropped for staying silent.
     pub(crate) silent_drops: u32,
+    /// Links dropped because a write found them closed.
+    pub(crate) closed_drops: u32,
+    /// Writes that failed.
+    pub(crate) failed_writes: u32,
 }
 
 #[cfg(test)]
@@ -623,6 +655,8 @@ impl Rig {
             linked_at: t,
             last_frame: None,
             silent_drops: 0,
+            closed_drops: 0,
+            failed_writes: 0,
         };
         assert!(rig.reconnect());
         rig
@@ -701,8 +735,17 @@ impl Rig {
             self.toasts.extend(self.state.tick_program(now));
         }
         if let Some(packet) = self.engine.determine_next_packet(&mut self.state, now) {
+            // As `bluetooth::write_packet` and the worker: a failed write
+            // leaves the command gap alone, and one on a closed link drops it.
+            if let Err(e) = self.deck.write(&packet.bytes, now) {
+                self.failed_writes += 1;
+                if crate::link::write_lost_link(&e) {
+                    self.drop_link();
+                    self.closed_drops += 1;
+                }
+                return;
+            }
             self.state.last_cmd_time = now;
-            self.deck.receive(&packet.bytes, now);
             self.sent.push(packet);
         }
         self.toasts.extend(self.state.take_program_toast());
@@ -1044,6 +1087,62 @@ mod tests {
         );
         assert!(a.seconds_remaining.unwrap() <= left - 30);
         assert_eq!((r.sessions_started, r.finalised.len()), (1, 0));
+    }
+
+    /// Windows closes the link mid-walk while it still reads as up (the app's
+    /// log, 2026-11-22: about 9,700 writes into a closed link over 1 h 45 m).
+    /// The first write that fails that way drops it, long before the 10 s
+    /// silent-link rule; the reconnect adopts the moving belt and sends
+    /// nothing that changes it.
+    #[test]
+    fn a_closed_link_mid_walk_is_dropped_on_the_first_failed_write() {
+        let mut r = post_meal_walking();
+        let left = r.program().seconds_remaining.unwrap();
+        r.deck.close_session();
+        r.run(1.0);
+        assert_eq!(
+            (r.closed_drops, r.failed_writes),
+            (1, 1),
+            "one write, then dropped"
+        );
+        assert_eq!(r.silent_drops, 0);
+        assert!(!r.linked);
+        assert!(r.deck.running_at(4.0), "dropping the link sends nothing");
+        assert!(r.reconnect());
+        let mark = r.mark();
+        r.run(20.0);
+        assert_eq!(r.commands_since(mark), vec![], "only polls");
+        assert_eq!((r.closed_drops, r.failed_writes, r.silent_drops), (1, 1, 0));
+        assert!(r.deck.running_at(4.0));
+        let a = r.program();
+        assert_eq!(
+            (a.phase, a.paused, a.wait),
+            (ProgramPhase::Walking, false, None)
+        );
+        assert!(a.seconds_remaining.unwrap() <= left - 20);
+        assert_eq!((r.sessions_started, r.finalised.len()), (1, 0));
+    }
+
+    /// A closed link on a still belt: dropped at the next poll, and the
+    /// reconnect starts nothing.
+    #[test]
+    fn a_closed_link_on_a_still_belt_reconnects_and_starts_nothing() {
+        let mut r = Rig::new();
+        r.run(2.0);
+        r.deck.close_session();
+        r.run(2.0);
+        assert_eq!((r.closed_drops, r.failed_writes), (1, 1));
+        assert!(r.reconnect());
+        let mark = r.mark();
+        r.run(30.0);
+        assert!(
+            !moves_belt(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+        assert!(r.deck.belt_still() && r.deck.status_code() == 0);
+        assert!(r.state.hold_auto_start);
+        assert_eq!(r.failed_writes, 1);
     }
 
     /// The same on a still belt: the reconnect holds the automatic start, so

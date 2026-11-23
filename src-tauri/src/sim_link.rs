@@ -96,8 +96,7 @@ impl SimLink {
         if !deck.linked() {
             return Err("Simulated deck not linked".to_string());
         }
-        deck.receive(bytes, now());
-        Ok(())
+        deck.write(bytes, now())
     }
 
     /// The deck's notifications as the status characteristic delivers them;

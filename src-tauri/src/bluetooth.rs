@@ -303,16 +303,18 @@ fn tick_each_second(
 }
 
 /// Write one packet; a successful write restarts the engine's command gap.
-async fn write_packet(deck: &DeckLink, packet: &Packet) {
+/// False when the write says the link is gone (`link::write_lost_link`).
+async fn write_packet(deck: &DeckLink, packet: &Packet) -> bool {
     if let Err(e) = deck.write(&packet.bytes).await {
         log::error!("Write failed: {}", e);
-        return;
+        return !crate::link::write_lost_link(&e);
     }
     ORCHESTRATOR.lock().await.last_cmd_time = Instant::now();
     crate::traffic::record_tx(packet.kind.label(), &packet.bytes);
     if packet.kind != PacketKind::PollStatus {
         log::debug!("SENT_{}: {:?}", packet.kind.label(), packet.bytes);
     }
+    true
 }
 
 /// Drive one connection until the link drops or a newer worker takes over.
@@ -353,7 +355,11 @@ pub(crate) async fn spawn_protocol_worker(app: tauri::AppHandle, deck: DeckLink)
         let second = now.duration_since(last_second) >= SECOND_TICK;
         if second {
             if let Some(quiet) = crate::link::log_frame_flow() {
-                drop_silent_link(&deck, worker_id, quiet).await;
+                log::warn!(
+                    "No status frames for {} s on a link that reads as up; dropping it to reconnect.",
+                    quiet.as_secs()
+                );
+                drop_dead_link(&deck, worker_id).await;
                 crate::hooks::set_key_counting(false);
                 return;
             }
@@ -385,7 +391,12 @@ pub(crate) async fn spawn_protocol_worker(app: tauri::AppHandle, deck: DeckLink)
             );
         }
         if let Some(packet) = packet {
-            write_packet(&deck, &packet).await;
+            if !write_packet(&deck, &packet).await {
+                log::warn!("Windows closed the treadmill link; dropping it to reconnect.");
+                drop_dead_link(&deck, worker_id).await;
+                crate::hooks::set_key_counting(false);
+                return;
+            }
         }
 
         let stopped = {
@@ -405,18 +416,14 @@ pub(crate) async fn spawn_protocol_worker(app: tauri::AppHandle, deck: DeckLink)
     }
 }
 
-/// A link that reads as up but has sent no status frame for `quiet` (a stale
-/// subscription after a deck power cycle or the PC sleeping): take it out of
-/// the slot, so the watchdog sees no link even if the disconnect hangs, and
+/// A link that reads as up but is dead: no status frame for 10 s (a stale
+/// subscription after a deck power cycle or the PC sleeping), or a write
+/// Windows refused because it closed the link. Take it out of the slot, so the watchdog sees no link even if the disconnect hangs, and
 /// close it. The watchdog's reconnect subscribes again; it sends the deck
 /// nothing, and the new connection holds the automatic start
 /// (`reset_connection`), so a still belt stays still and a moving one is
 /// adopted.
-async fn drop_silent_link(deck: &DeckLink, worker_id: u64, quiet: Duration) {
-    log::warn!(
-        "No status frames for {} s on a link that reads as up; dropping it to reconnect.",
-        quiet.as_secs()
-    );
+async fn drop_dead_link(deck: &DeckLink, worker_id: u64) {
     {
         let mut slot = CONNECTED_DECK.lock().await;
         // Only while this worker is the current one: a newer connection's
