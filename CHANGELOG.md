@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.55.2 (2026-11-23)
+
+### Fixed
+
+- When Windows closes the treadmill link while it still reads as connected, Neon Strider now reconnects at once instead of writing into the dead link until the link goes silent for 10 s.
+
 ## 1.55.1 (2026-11-23)
 
 ### Changed

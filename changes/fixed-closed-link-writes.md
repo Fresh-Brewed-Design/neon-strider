@@ -1,1 +1,0 @@
-- When Windows closes the treadmill link while it still reads as connected, Neon Strider now reconnects at once instead of writing into the dead link until the link goes silent for 10 s.
