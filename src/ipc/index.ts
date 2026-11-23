@@ -84,6 +84,7 @@ export type { StravaResult } from "./bindings/StravaResult";
 export type { StravaSnapshot } from "./bindings/StravaSnapshot";
 export type { StravaStep } from "./bindings/StravaStep";
 export type { SweepMark } from "./bindings/SweepMark";
+export type { TemplateField } from "./bindings/TemplateField";
 export type { TrafficSnapshot } from "./bindings/TrafficSnapshot";
 export type { UpdateOffer } from "./bindings/UpdateOffer";
 export type { UpdateResult } from "./bindings/UpdateResult";
@@ -104,6 +105,8 @@ export type { UnlistenFn };
 export { SETTING_LIMITS } from "./bindings/SETTING_LIMITS";
 /** `AppConfig::default()`, written by `cargo test`: the settings shown until Rust's saved ones load. */
 export { DEFAULT_APP_CONFIG } from "./bindings/DEFAULT_APP_CONFIG";
+/** Every Strava template field with what it shows and its sample text, written by `cargo test`. */
+export { TEMPLATE_FIELDS } from "./bindings/TEMPLATE_FIELDS";
 
 export function getSnapshot(): Promise<AppSnapshot> {
   return invoke<AppSnapshot>("get_snapshot");

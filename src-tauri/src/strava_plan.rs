@@ -498,12 +498,47 @@ fn local_naive(ms: i64) -> chrono::NaiveDateTime {
         .unwrap_or_default()
 }
 
+/// Metres climbed over these laps: each metre walked uphill rises by the
+/// incline, as the TCX altitude does. Downhill never counts back.
+fn climb_m(laps: &[Lap]) -> f64 {
+    let mut climb = 0.0_f64;
+    for lap in laps {
+        let mut last = 0.0_f64;
+        for p in &lap.points {
+            let d = p.distance_m as f64;
+            if d > last && p.incline_percent > 0.0 {
+                climb += (d - last) * (p.incline_percent as f64 / 100.0);
+            }
+            last = d;
+        }
+    }
+    climb
+}
+
+/// The programs these sessions ran, in order, joined as one walk's are.
+fn programs_of(ordered: &[&(Session, Vec<Sample>)]) -> Option<String> {
+    let mut names: Option<String> = None;
+    for (s, _) in ordered {
+        for name in s
+            .program_name
+            .as_deref()
+            .unwrap_or("")
+            .split(crate::programs::PROGRAM_NAME_JOIN)
+        {
+            names = crate::programs::with_program_name(names.as_deref(), name).or(names);
+        }
+    }
+    names
+}
+
 /// Build the activity for these sessions (any order) with their samples. The
-/// title and description come from the user's templates.
+/// title and description come from the user's templates; `pc_walked_pct` is
+/// the PC time walked on the walk's day, for the `{pc_walked}` field.
 pub fn plan_activity(
     data: &[(Session, Vec<Sample>)],
     naming: Naming,
     templates: &Templates,
+    pc_walked_pct: Option<u32>,
 ) -> ActivityPlan {
     let mut ordered: Vec<&(Session, Vec<Sample>)> = data.iter().collect();
     ordered.sort_by_key(|(s, _)| s.start_time);
@@ -547,6 +582,14 @@ pub fn plan_activity(
         Naming::Walk => (&templates.title, 1),
         Naming::Rollup { walks } => (&templates.rollup_title, walks),
     };
+    let all_points: Vec<Point> = laps.iter().flat_map(|l| l.points.clone()).collect();
+    let heart_rate = heart_rate_summary(&all_points);
+    let peak = |f: fn(&Point) -> f32| {
+        all_points
+            .iter()
+            .map(|p| f(p) as f64)
+            .fold(None, |m: Option<f64>, v| Some(m.map_or(v, |m| m.max(v))))
+    };
     let stats = Stats {
         distance_m,
         duration_s,
@@ -555,6 +598,14 @@ pub fn plan_activity(
         steps,
         walks,
         start_local: local_naive(start_ms),
+        end_local: local_naive(end_ms),
+        program: programs_of(&ordered),
+        avg_heart_rate: heart_rate.map(|(avg, _)| avg),
+        max_heart_rate: heart_rate.map(|(_, max)| max),
+        max_speed: peak(|p| p.speed_kmh),
+        max_incline: peak(|p| p.incline_percent),
+        climb_m: (!all_points.is_empty()).then(|| climb_m(&laps)),
+        pc_walked_pct,
     };
     let name = template::render_title(title_template, &stats);
     let description = template::render_description(&templates.description, &stats);
@@ -880,6 +931,7 @@ mod tests {
             hardware_time_offset: 0,
             avg_heart_rate: None,
             max_heart_rate: None,
+            program_name: None,
         }
     }
 
@@ -1341,9 +1393,10 @@ mod tests {
             &[(s.clone(), vec![sample(1000, 3.0, 0.0, 5.0)])],
             Naming::Walk,
             &Templates::default(),
+            None,
         );
         assert_eq!(one.payload, Payload::Manual);
-        let none = plan_activity(&[(s, vec![])], Naming::Walk, &Templates::default());
+        let none = plan_activity(&[(s, vec![])], Naming::Walk, &Templates::default(), None);
         assert_eq!(none.payload, Payload::Manual);
         assert_eq!(none.distance_m, 1000.0);
         assert_eq!(none.elapsed_s, 600);
@@ -1359,6 +1412,7 @@ mod tests {
             )],
             Naming::Walk,
             &Templates::default(),
+            None,
         );
         let Payload::Tcx(tcx) = plan.payload else {
             panic!("expected a TCX")
@@ -1379,7 +1433,12 @@ mod tests {
         let b = sample(2000, 3.6, 2.0, 1.0); // no reading
         let mut c = sample(3000, 3.6, 2.0, 2.0);
         c.heart_rate = Some(121);
-        let plan = plan_activity(&[(s, vec![a, b, c])], Naming::Walk, &Templates::default());
+        let plan = plan_activity(
+            &[(s, vec![a, b, c])],
+            Naming::Walk,
+            &Templates::default(),
+            None,
+        );
         let Payload::Tcx(tcx) = plan.payload else {
             panic!("expected a TCX")
         };
@@ -1408,6 +1467,7 @@ mod tests {
             )],
             Naming::Walk,
             &Templates::default(),
+            None,
         );
         let Payload::Tcx(tcx) = plan.payload else {
             panic!("expected a TCX")
@@ -1432,6 +1492,7 @@ mod tests {
             ],
             Naming::Rollup { walks: 2 },
             &Templates::default(),
+            None,
         );
         let Payload::Tcx(tcx) = plan.payload else {
             panic!("expected a TCX")
@@ -1473,13 +1534,100 @@ mod tests {
             description: "{duration} @ {avg_speed} km/h, {avg_incline}% {calories} kcal"
                 .to_string(),
         };
-        let walk = plan_activity(&[(a.clone(), vec![])], Naming::Walk, &t);
+        let walk = plan_activity(&[(a.clone(), vec![])], Naming::Walk, &t, None);
         assert_eq!(walk.name, "1 walk 1.00");
         assert_eq!(walk.description, "10:00 @ 6.0 km/h, 2.0% 40 kcal");
-        let day = plan_activity(&[(a, vec![]), (b, vec![])], Naming::Rollup { walks: 2 }, &t);
+        let day = plan_activity(
+            &[(a, vec![]), (b, vec![])],
+            Naming::Rollup { walks: 2 },
+            &t,
+            None,
+        );
         assert_eq!(day.name, "2 walks 3600 steps");
         // 10 min at 2% and 30 min at 6%: 5% by duration.
         assert_eq!(day.description, "40:00 @ 6.0 km/h, 5.0% 160 kcal");
+    }
+
+    fn hr(mut s: Sample, bpm: u16) -> Sample {
+        s.heart_rate = Some(bpm);
+        s
+    }
+
+    fn fields_template() -> Templates {
+        Templates {
+            title: "{program}".to_string(),
+            rollup_title: "{program}".to_string(),
+            description: "{max_speed}|{max_incline}|{climb_m}|{avg_heart_rate}|{max_heart_rate}|{pc_walked}|{end_time}"
+                .to_string(),
+        }
+    }
+
+    #[test]
+    fn every_walk_stat_reaches_the_template() {
+        let mut a = session(1, 0, 10);
+        a.program_name = Some("Brisk".to_string());
+        let mut b = session(2, 60, 30);
+        b.program_name = Some("VO2 max + Brisk".to_string());
+        let plan = plan_activity(
+            &[
+                (
+                    b,
+                    vec![
+                        hr(sample(3_601_000, 4.0, 10.0, 0.0), 140),
+                        // 50 m at 10 %: 5 m up.
+                        hr(sample(3_602_000, 5.2, 10.0, 50.0), 150),
+                    ],
+                ),
+                (
+                    a,
+                    vec![
+                        hr(sample(1000, 3.0, 2.0, 0.0), 100),
+                        // 100 m at 4 %: 4 m up.
+                        sample(2000, 3.5, 4.0, 100.0),
+                        // Back down a level: no climb.
+                        sample(3000, 3.5, -2.0, 150.0),
+                    ],
+                ),
+            ],
+            Naming::Rollup { walks: 2 },
+            &fields_template(),
+            Some(38),
+        );
+        // Each program once, in the order the walks ran.
+        assert_eq!(plan.name, "Brisk + VO2 max");
+        let end = local_naive(90 * MIN).format("%H:%M").to_string();
+        // (100 + 140 + 150) / 3 = 130.
+        assert_eq!(plan.description, format!("5.2|10.0|9|130|150|38|{end}"));
+    }
+
+    #[test]
+    fn a_walk_without_samples_program_or_pc_time_leaves_those_fields_empty() {
+        let t = Templates {
+            title: "{distance_km} km \u{b7} {program}".to_string(),
+            description: "UPLINK {duration}\nPULSE {avg_heart_rate} / {max_heart_rate} bpm \u{b7} PEAK {max_speed} km/h\nCLIMB {climb_m} m \u{b7} WALKED {pc_walked}% of PC time \u{b7} TOP {max_incline}%\nEND {end_time}"
+                .to_string(),
+            ..Templates::default()
+        };
+        let plan = plan_activity(&[(session(1, 0, 10), vec![])], Naming::Walk, &t, None);
+        assert_eq!(plan.name, "1.00 km");
+        let end = local_naive(10 * MIN).format("%H:%M").to_string();
+        assert_eq!(plan.description, format!("UPLINK 10:00\nEND {end}"));
+
+        // Samples without a heart rate: speed, incline and climb show, a
+        // flat walk climbs 0 m.
+        let plan = plan_activity(
+            &[(
+                session(1, 0, 10),
+                vec![sample(1000, 3.0, 0.0, 0.0), sample(2000, 3.4, 0.0, 10.0)],
+            )],
+            Naming::Walk,
+            &t,
+            None,
+        );
+        assert_eq!(
+            plan.description,
+            format!("UPLINK 10:00\nPEAK 3.4 km/h\nCLIMB 0 m \u{b7} TOP 0.0%\nEND {end}")
+        );
     }
 
     #[test]
@@ -1495,6 +1643,7 @@ mod tests {
             )],
             Naming::Walk,
             &t,
+            None,
         );
         let Payload::Tcx(tcx) = plan.payload else {
             panic!("expected a TCX")

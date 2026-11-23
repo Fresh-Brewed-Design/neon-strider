@@ -4,19 +4,16 @@
 // a fresh grant; ?saved marks a walk as saved for Strava; ?savefail makes
 // saving one fail; ?loginstorage is a login an older build kept in the
 // database because Windows Credential Manager failed.
-import type { StravaSnapshot } from "../../ipc";
+import { TEMPLATE_FIELDS, type StravaSnapshot } from "../../ipc";
 import { DEFAULT_DESCRIPTION, DEFAULT_ROLLUP_TITLE, DEFAULT_TITLE, later, params, publish, snapshot } from "../mockState";
 import { lastId, sessions } from "./history";
 import type { Scenario } from "./types";
 
-/** A rough stand-in for the Rust renderer: the real one is tested in Rust. */
+/** A rough stand-in for the Rust renderer, with Rust's sample values: the real one is tested in Rust. */
 function previewTemplate(template: string, fallback: string): string {
-  const sample: Record<string, string> = {
-    distance_km: "3.42", duration: "1:02:05", avg_speed: "3.3", avg_incline: "4.5", calories: "214",
-    steps: "4980", walks: "3", date: "2026-11-13", time: "07:45",
-  };
+  const sample = new Map(TEMPLATE_FIELDS.map((f) => [f.name, f.sample]));
   const text = template.trim() === "" ? fallback : template;
-  return text.replace(/\{(\w+)\}/g, (whole, name: string) => sample[name] ?? whole);
+  return text.replace(/\{(\w+)\}/g, (whole, name: string) => sample.get(name) ?? whole);
 }
 
 const stravaFlag = params.get("strava");
