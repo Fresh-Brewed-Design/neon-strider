@@ -97,6 +97,9 @@ pub struct AppSnapshot {
     /// Today's active PC seconds (keyboard or mouse input within the last
     /// minute), how many of them the belt was running, and that share.
     pub pc_walk_share: PcWalkShare,
+    /// Today from the first PC input to now, in runs of 5-minute slots: away,
+    /// at the PC, or walking. None on a day with no PC input yet.
+    pub today_timeline: Option<super::pc_walk_share::TodayTimeline>,
 
     // ---- Platform ----
     /// The OS, its OS-only features and how it writes the shortcuts, so the
