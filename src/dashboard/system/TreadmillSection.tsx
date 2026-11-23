@@ -3,6 +3,7 @@ import { deckLimitOffer, limitsText, snapToDeck, snapToLevel } from "../../state
 import { useAppState } from "../../state/useAppState";
 import { useTreadmillStore } from "../../store/treadmillStore";
 import { GhostButton, Hint } from "../ui";
+import { EasyStartSetting } from "./EasyStartSetting";
 import { NumberField, Section, SliderField } from "./fields";
 
 /** Speed and incline limits, incline scaling and body weight. Saved by Rust as part of its config. */
@@ -95,6 +96,7 @@ export function TreadmillSection() {
         hint="Corrects incline readings for adjustable feet or a sloping floor without moving the motor's zero point."
         onCommit={(v) => updateSettings({ inclineOffset: v })}
       />
+      <EasyStartSetting />
     </Section>
   );
 }
