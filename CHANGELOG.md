@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.56.1 (2026-11-23)
+
+### Fixed
+
+- A belt paused with the treadmill's own button now stays paused when the app raises the speed by itself in the same moment (Neural flow speeding back up, a call ending) or when a higher minimum speed is saved. GO, Engage or a speed set by hand resumes it.
+
 ## 1.56.0 (2026-11-23)
 
 ### New
