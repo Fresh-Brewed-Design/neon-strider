@@ -26,6 +26,7 @@ function walk(id: number, daysAgo: number, hour: number, meters: number): Merged
     last_hardware_time: 0,
     avg_heart_rate: null,
     max_heart_rate: null,
+    program_name: null,
   };
 }
 

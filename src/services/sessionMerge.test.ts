@@ -24,6 +24,7 @@ function session(id: number, startMin: number, durationMin: number, extra: Parti
     last_hardware_time: 0,
     avg_heart_rate: null,
     max_heart_rate: null,
+    program_name: null,
     ...extra,
   };
 }

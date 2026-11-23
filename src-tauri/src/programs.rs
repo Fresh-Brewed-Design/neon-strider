@@ -1012,9 +1012,11 @@ impl OrchestratorState {
     }
 
     /// Neural flow eases any running belt, manual or program, so key presses
-    /// are counted exactly while it is enabled and the belt is running.
+    /// are counted exactly while it is enabled and the belt is running. Labs,
+    /// typing by speed, uses the same count while its switch is on.
     pub fn neural_monitor_wanted(&self) -> bool {
-        self.focus_stability_enabled && self.last_status == MachineStatus::Running
+        (self.focus_stability_enabled || self.typing_speed_enabled)
+            && self.last_status == MachineStatus::Running
     }
 
     fn step_intent(&self, step: &ProgramStep) -> ControlIntent {
@@ -2303,9 +2305,60 @@ pub fn persist_active_run(
     *last = Some((current, Instant::now()));
 }
 
+// The programs a walk ran (`sessions.program_name`).
+
+/// Joins the names of the programs one walk ran.
+pub const PROGRAM_NAME_JOIN: &str = " + ";
+/// A walk keeps at most this many program names.
+/// Four 40-character names already fill a Strava title; more is a day of
+/// testing programs, not a walk to describe.
+const MAX_PROGRAMS_PER_WALK: usize = 4;
+
+/// `names` (a walk's programs, joined) with `name` added at the end, unless
+/// the walk already ran it or holds the most names it keeps.
+pub fn with_program_name(names: Option<&str>, name: &str) -> Option<String> {
+    let name = name.trim();
+    let mut list: Vec<&str> = names
+        .map(|n| {
+            n.split(PROGRAM_NAME_JOIN)
+                .filter(|p| !p.trim().is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+    if !name.is_empty() && !list.contains(&name) && list.len() < MAX_PROGRAMS_PER_WALK {
+        list.push(name);
+    }
+    (!list.is_empty()).then(|| list.join(PROGRAM_NAME_JOIN))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_walk_lists_each_program_once_in_run_order() {
+        assert_eq!(with_program_name(None, "Brisk").as_deref(), Some("Brisk"));
+        assert_eq!(
+            with_program_name(Some("Brisk"), "Brisk").as_deref(),
+            Some("Brisk")
+        );
+        assert_eq!(
+            with_program_name(Some("Brisk"), "VO2 max").as_deref(),
+            Some("Brisk + VO2 max")
+        );
+        assert_eq!(
+            with_program_name(Some("Brisk + VO2 max"), "Brisk").as_deref(),
+            Some("Brisk + VO2 max")
+        );
+        // A blank name adds nothing, and nothing at all stays nothing.
+        assert_eq!(
+            with_program_name(Some("Brisk"), "  ").as_deref(),
+            Some("Brisk")
+        );
+        assert_eq!(with_program_name(None, ""), None);
+        let full = "A + B + C + D";
+        assert_eq!(with_program_name(Some(full), "E").as_deref(), Some(full));
+    }
 
     fn secs(n: u64) -> Duration {
         Duration::from_secs(n)

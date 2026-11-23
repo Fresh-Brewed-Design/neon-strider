@@ -116,6 +116,7 @@ mod tests {
             hardware_time_offset: 0,
             avg_heart_rate: None,
             max_heart_rate: None,
+            program_name: None,
         }
     }
 

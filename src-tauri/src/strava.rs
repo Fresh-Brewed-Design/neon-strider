@@ -36,10 +36,12 @@ pub use settings::{
 pub use upload::{refresh_gear_command, upload_manual};
 pub use worker::{notify_session_ended, retry_now, spawn_worker, sync_now};
 
+use crate::persistence::{Sample, Session};
 use crate::strava_plan::{self as plan, Naming, Payload};
 use crate::strava_save::SavedFile;
 use crate::strava_template::{self as template, Templates};
 use crate::util::blocking;
+use chrono::TimeZone;
 use serde::Serialize;
 use tauri::AppHandle;
 
@@ -62,13 +64,28 @@ pub async fn strava_tcx_preview(app: AppHandle, session_ids: Vec<i64>) -> Result
     }
     let data = upload::load_data(&app, session_ids).await?;
     let templates = settings::load_templates(&app);
-    match plan::plan_activity(&data, Naming::Walk, &templates).payload {
+    let pc_walked = pc_walked_pct(&app, &data).await;
+    match plan::plan_activity(&data, Naming::Walk, &templates, pc_walked).payload {
         Payload::Tcx(tcx) => Ok(tcx),
         Payload::Manual => Err(
             "Fewer than 2 telemetry samples, so Strava would get a manual activity with no file."
                 .to_string(),
         ),
     }
+}
+
+/// The PC time walked on the day these sessions start, for `plan_activity`.
+pub(crate) async fn pc_walked_pct(app: &AppHandle, data: &[(Session, Vec<Sample>)]) -> Option<u32> {
+    let start_ms = data.iter().map(|(s, _)| s.start_time).min()?;
+    let day = chrono::Local
+        .timestamp_millis_opt(start_ms)
+        .earliest()?
+        .date_naive();
+    let app = app.clone();
+    blocking(move || Ok(crate::snapshot::pc_walk_share::share_on(&app, day)))
+        .await
+        .ok()
+        .flatten()
 }
 
 /// The templates rendered for a sample walk, for the settings preview.
