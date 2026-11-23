@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.61.0 (2026-11-23)
+
+### New
+
+- Speed drift in System, off until you switch it on: on a long manual walk, the belt speed moves a little within a band you set (3.2 to 3.8 km/h to start), so your stride varies without touching the controls.
+- Speed drift waits until the belt has run steadily inside the band for one interval (5 minutes to start, 2 to 30). Each change is at most 0.3 km/h, one deck step about every 10 seconds.
+- Speed drift only adjusts a belt already running at a speed you set. It never starts, pauses or stops the belt, and uses only speeds the deck runs, none above STRIDE_FIT.
+- Programs, pauses, calls and Neural flow take over from speed drift. A speed you set by hand, in the app or on the treadmill, ends speed drift until the next walk.
+- The HUD shows a SPEED DRIFT line with the band while speed drift sets the speed, and no speed toast for each small change.
+
 ## 1.60.0 (2026-11-23)
 
 ### New
