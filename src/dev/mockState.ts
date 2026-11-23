@@ -216,6 +216,7 @@ export const snapshot: AppSnapshot = {
   odometer: { distance_km: 412.6, belt_hours: 138.2, since_ms: Date.UTC(2026, 2, 12) },
   walkaway: { lock_enabled: true, idle_enabled: true, idle_minutes: 10, card: "none", pause_in_s: 0, reason: null },
   lights_out: { enabled: false },
+  easy_start: { enabled: true },
   update: {
     current_version: "1.2.0",
     status: { state: "up_to_date" },

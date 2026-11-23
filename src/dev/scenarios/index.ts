@@ -10,6 +10,7 @@ import { calibration } from "./calibration";
 import { calls } from "./calls";
 import { deckProfile } from "./deckprofile";
 import { deskSync } from "./desksync";
+import { easyStart } from "./easystart";
 import { echo } from "./echo";
 import { engage } from "./engage";
 import { eyeBreak } from "./eyebreak";
@@ -74,6 +75,7 @@ export const SCENARIOS: Scenario[] = [
   hrCool,
   pcWalkShare,
   platform,
+  easyStart,
   typingSpeed,
   today,
 ];

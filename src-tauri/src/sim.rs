@@ -2052,7 +2052,8 @@ mod tests {
         let mark = r.mark();
         r.set_speed(4.5);
         r.run(2.0);
-        assert!(target_bytes_since(&r, mark).is_empty());
+        let bytes = target_bytes_since(&r, mark);
+        assert!(bytes.is_empty(), "{bytes:?}");
         r.press(DeckAction::SpeedUp);
         r.run(2.0);
         assert!(
@@ -2073,7 +2074,8 @@ mod tests {
         let mark = r.mark();
         r.press(DeckAction::SpeedDown);
         r.run(2.0);
-        assert!(target_bytes_since(&r, mark).is_empty());
+        let bytes = target_bytes_since(&r, mark);
+        assert!(bytes.is_empty(), "{bytes:?}");
         assert!(r.deck.running_at(0.8));
 
         // The profile outlives the connection.
@@ -4302,6 +4304,392 @@ mod tests {
         r.run(10.0);
         assert!(app_starts(&r.commands_since(mark)));
         assert!(r.deck.running_at(0.6), "{} km/h", r.deck.speed_kmh());
+    }
+
+    // ---- Easy start (#259) ----
+
+    /// A fresh app with Easy start switched on, as the saved default is.
+    fn eased_rig() -> Rig {
+        let mut r = Rig::new();
+        r.state.easy_start_enabled = true;
+        r
+    }
+
+    /// From a start just pressed: the deck runs at the slowest speed first,
+    /// then eases up to `target` over about 30 s in steps it runs, and the app
+    /// asked only rising targets from the floor (0.6 km/h) to `target`.
+    fn assert_eases_up(r: &mut Rig, mark: usize, target: f32) {
+        assert_eases_up_from(r, mark, target, 6);
+    }
+
+    /// As `assert_eases_up`, from at most byte `from`: a start at the
+    /// treadmill eases on from the speed the deck already runs.
+    fn assert_eases_up_from(r: &mut Rig, mark: usize, target: f32, from: u8) {
+        let mut waited = 0.0;
+        while r.deck.status_code() != 3 && waited < 10.0 {
+            r.run(0.1);
+            waited += 0.1;
+        }
+        assert_eq!(r.deck.status_code(), 3, "the start ran the belt");
+        let mut speeds = vec![];
+        for _ in 0..40 {
+            r.run(1.0);
+            speeds.push(r.deck.speed_kmh());
+        }
+        assert!(speeds[3] < 1.5, "slow at first: {speeds:?}");
+        assert!(
+            speeds[14] < target - 0.8,
+            "still easing up at 15 s: {speeds:?}"
+        );
+        assert!(
+            speeds[3..].windows(2).all(|w| w[1] >= w[0] - 0.01),
+            "only up: {speeds:?}"
+        );
+        assert!(r.deck.running_at(target), "{speeds:?}");
+        assert!(!r.state.easing_up(), "the ramp is over");
+        let bytes = target_bytes_since(r, mark);
+        assert!(
+            bytes.first().is_some_and(|b| (6..=from).contains(b)),
+            "from the floor: {bytes:?}"
+        );
+        assert!(bytes.windows(2).all(|w| w[0] <= w[1]), "{bytes:?}");
+        assert_eq!(bytes.last(), Some(&((target * 10.0).round() as u8)));
+        assert!(bytes.len() >= 10, "in steps: {bytes:?}");
+    }
+
+    #[test]
+    fn easy_start_eases_a_speed_set_by_hand_on_a_still_belt() {
+        let mut r = eased_rig();
+        r.run(1.0);
+        let mark = r.mark();
+        r.set_speed(4.0);
+        assert_eases_up(&mut r, mark, 4.0);
+    }
+
+    #[test]
+    fn easy_start_eases_a_program_start_and_the_step_timer_counts_it() {
+        let mut r = eased_rig();
+        r.run(1.0);
+        let mark = r.mark();
+        r.run_program(POST_MEAL);
+        assert_eases_up(&mut r, mark, 4.0);
+        // The ramp is part of the step: its 10 minutes count from the start.
+        let left = r.program().seconds_remaining.expect("timed step");
+        assert!(left < 600 - 35, "{left} s left");
+    }
+
+    #[test]
+    fn easy_start_eases_a_resume_after_a_pause_on_a_manual_walk() {
+        let mut r = eased_rig();
+        r.run(1.0);
+        r.set_speed(3.0);
+        r.run(45.0);
+        assert!(r.deck.running_at(3.0));
+        r.press(DeckAction::Pause);
+        r.run(10.0);
+        assert!(r.deck.belt_still());
+        let mark = r.mark();
+        // GO on the paused manual walk.
+        r.press(DeckAction::Start);
+        assert_eases_up(&mut r, mark, 3.0);
+        assert_eq!(r.sessions_started, 1, "the same walk");
+    }
+
+    #[test]
+    fn easy_start_eases_re_jack_on_a_paused_program() {
+        let mut r = eased_rig();
+        r.run(1.0);
+        r.run_program(POST_MEAL);
+        r.run(60.0);
+        r.press(DeckAction::Pause);
+        r.run(10.0);
+        assert!(r.program().paused);
+        let mark = r.mark();
+        r.press(DeckAction::Start);
+        assert_eases_up(&mut r, mark, 4.0);
+    }
+
+    #[test]
+    fn easy_start_eases_go_on_the_step_after_a_rest() {
+        let mut r = eased_rig();
+        r.run(1.0);
+        r.run_program(WORKDAY);
+        r.run(5.0 * 60.0 + 20.0);
+        assert_eq!(r.program().phase, ProgramPhase::Resting);
+        r.run(26.0 * 60.0);
+        assert_eq!(r.program().wait, Some(ProgramWait::RestComplete));
+        let mark = r.mark();
+        r.go();
+        assert_eases_up(&mut r, mark, 3.0);
+    }
+
+    #[test]
+    fn easy_start_eases_a_start_at_the_treadmill_that_is_a_programs_go() {
+        let mut r = eased_rig();
+        r.run(1.0);
+        r.run_program(POST_MEAL);
+        r.run(60.0);
+        let t = r.t;
+        r.deck.press_pause(t);
+        r.run(5.0);
+        assert!(r.program().paused);
+        let mark = r.mark();
+        let t = r.t;
+        r.deck.press_start(t);
+        // The deck winds up on its own before the app's GO: from there.
+        assert_eases_up_from(&mut r, mark, 4.0, 10);
+        let sent = r.commands_since(mark);
+        assert!(!app_starts(&sent), "the deck started it: {sent:?}");
+    }
+
+    /// A start at the treadmill on a manual walk keeps the deck's own speed:
+    /// the app takes that speed as its target, so there is nothing to ease.
+    #[test]
+    fn easy_start_leaves_a_start_at_the_treadmill_at_its_own_speed() {
+        let mut r = eased_rig();
+        // Past the manual lockout after connecting, so the start is adopted.
+        r.run(10.0);
+        let mark = r.mark();
+        let t = r.t;
+        r.deck.press_start(t);
+        r.run(40.0);
+        assert!(r.deck.running_at(0.6), "{} km/h", r.deck.speed_kmh());
+        let bytes = target_bytes_since(&r, mark);
+        assert!(bytes.iter().all(|b| *b == 6), "its own speed: {bytes:?}");
+    }
+
+    #[test]
+    fn a_pause_during_easy_start_wins_at_once() {
+        let mut r = eased_rig();
+        r.run(1.0);
+        r.run_program(POST_MEAL);
+        r.run(12.0);
+        assert!(r.state.easing_up());
+        let mark = r.mark();
+        r.press(DeckAction::Pause);
+        r.run(0.3);
+        assert_eq!(r.commands_since(mark), vec![PacketKind::AtomicAction]);
+        r.run(1.0);
+        assert!(!r.state.easing_up());
+        r.run(30.0);
+        assert_eq!(r.deck.status_code(), 10);
+        assert!(!moves_belt(&r.commands_since(mark)), "nothing resumes it");
+    }
+
+    #[test]
+    fn a_stop_during_easy_start_wins_at_once() {
+        let mut r = eased_rig();
+        r.run(1.0);
+        r.set_speed(4.0);
+        r.run(12.0);
+        assert!(r.state.easing_up());
+        let mark = r.mark();
+        r.press(DeckAction::Stop);
+        r.run(0.3);
+        assert_eq!(r.controls_since(mark, Control::Stop), 1);
+        assert!(!r.state.easing_up());
+        r.run(30.0);
+        assert!(r.deck.belt_still());
+        assert!(!moves_belt(&r.commands_since(mark)));
+    }
+
+    #[test]
+    fn a_speed_set_by_hand_ends_easy_start() {
+        let mut r = eased_rig();
+        r.run(1.0);
+        r.set_speed(4.0);
+        r.run(10.0);
+        assert!(r.state.easing_up());
+        let mark = r.mark();
+        r.set_speed(5.0);
+        r.run(1.0);
+        assert!(!r.state.easing_up());
+        assert_eq!(target_bytes_since(&r, mark), vec![50], "straight to it");
+        r.run(15.0);
+        assert!(r.deck.running_at(5.0));
+    }
+
+    #[test]
+    fn easy_start_steps_over_speeds_deck_profile_says_the_deck_skips() {
+        use crate::deck_profile::Outcome;
+        let mut r = eased_rig();
+        r.deck.set_skip(15, 16);
+        r.state.deck_profile.learn(15, Outcome::Took(16));
+        r.state.deck_profile.learn(14, Outcome::Refused);
+        r.run(1.0);
+        let mark = r.mark();
+        r.set_speed(4.0);
+        assert_eases_up(&mut r, mark, 4.0);
+        let bytes = target_bytes_since(&r, mark);
+        assert!(!bytes.contains(&14) && !bytes.contains(&15), "{bytes:?}");
+    }
+
+    /// A belt found moving (a restart, a reconnect) carries on as it was.
+    #[test]
+    fn a_reconnect_to_a_moving_belt_never_eases_it_again() {
+        let mut r = eased_rig();
+        r.run(1.0);
+        r.set_speed(4.0);
+        r.run(45.0);
+        assert!(r.deck.running_at(4.0));
+        r.drop_link();
+        r.run(2.0);
+        assert!(r.reconnect());
+        let mark = r.mark();
+        r.run(20.0);
+        assert!(!r.state.easing_up());
+        assert_eq!(r.commands_since(mark), vec![], "nothing sent");
+        assert!(r.deck.running_at(4.0));
+    }
+
+    #[test]
+    fn with_easy_start_off_the_belt_runs_straight_to_the_target() {
+        let mut r = Rig::new();
+        r.run(1.0);
+        let mark = r.mark();
+        r.set_speed(4.0);
+        r.run(15.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(target_bytes_since(&r, mark), vec![40]);
+    }
+
+    /// GROUND_TRUTH's RUN (RUN ALL and the guided walk open theirs the same
+    /// way, `calibration::begin_run`): the belt starts at the run's speed at
+    /// once, so taps never time a belt still easing up.
+    #[test]
+    fn a_calibration_run_is_never_eased() {
+        let mut r = eased_rig();
+        r.run(5.0);
+        let mark = r.mark();
+        r.state.set_test_now(r.t);
+        crate::calibration::begin_run(&mut r.state, 4.0).unwrap();
+        r.run(5.0);
+        assert!(!r.state.easing_up());
+        r.run(10.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(target_bytes_since(&r, mark), vec![40], "straight to it");
+        // A pause and Engage mid-run resume at the run's speed too.
+        r.press(DeckAction::Pause);
+        r.run(10.0);
+        assert!(r.deck.belt_still());
+        let mark = r.mark();
+        r.press(DeckAction::Start);
+        r.run(5.0);
+        assert!(!r.state.easing_up());
+        r.run(10.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        let bytes = target_bytes_since(&r, mark);
+        assert!(bytes.iter().all(|b| *b == 40), "no slower step: {bytes:?}");
+    }
+
+    /// A calibration run started on an easing belt ends the ease at once.
+    #[test]
+    fn a_calibration_run_ends_an_ease_under_way() {
+        let mut r = eased_rig();
+        r.run(1.0);
+        r.set_speed(4.0);
+        r.run(10.0);
+        assert!(r.state.easing_up());
+        let mark = r.mark();
+        r.state.set_test_now(r.t);
+        crate::calibration::begin_run(&mut r.state, 3.0).unwrap();
+        r.run(1.0);
+        assert!(!r.state.easing_up());
+        assert_eq!(target_bytes_since(&r, mark), vec![30]);
+    }
+
+    /// After calibrating, the next walk eases again: a stop and a speed set
+    /// by hand end the calibration's hold.
+    #[test]
+    fn the_walk_after_a_calibration_run_eases_again() {
+        let mut r = eased_rig();
+        r.run(5.0);
+        r.state.set_test_now(r.t);
+        crate::calibration::begin_run(&mut r.state, 4.0).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(4.0));
+        r.press(DeckAction::Stop);
+        r.run(20.0);
+        assert!(r.deck.belt_still());
+        let mark = r.mark();
+        r.set_speed(3.0);
+        assert_eases_up(&mut r, mark, 3.0);
+    }
+
+    /// A pause with the treadmill's own button mid-ease: the ramp sends a
+    /// slower byte than the target, but the engine's auto-resume compares
+    /// against the target itself (`last_physical_speed`), so nothing resumes
+    /// the belt. GO resumes it, eased again.
+    #[test]
+    fn a_pause_at_the_treadmill_mid_ease_stays_paused_until_go() {
+        let mut r = eased_rig();
+        r.run(1.0);
+        r.set_speed(4.0);
+        r.run(14.0);
+        assert!(r.state.easing_up(), "about 10 s into the ease");
+        let t = r.t;
+        r.deck.press_pause(t);
+        let pressed = r.mark();
+        // Until the next poll reports the pause, the engine still reads the
+        // belt as running: a ramp step in that window reaches a paused deck,
+        // which refuses it (as any target then). Never a start.
+        while r.state.last_status != protocol::MachineStatus::Paused {
+            r.run(0.05);
+        }
+        assert!(r.t - t < Duration::from_secs(1), "the poll reports it");
+        let mark = r.mark();
+        r.run(60.0);
+        assert_eq!(r.deck.status_code(), 10, "still paused");
+        assert!(r.deck.belt_still());
+        let sent = r.commands_since(mark);
+        assert!(!moves_belt(&sent), "nothing resumes it: {sent:?}");
+        let all = r.commands_since(pressed);
+        assert!(!app_starts(&all), "{all:?}");
+        assert!(
+            all.iter().filter(|k| **k == PacketKind::ControlSet).count() <= 1,
+            "{all:?}"
+        );
+        assert!(!r.state.easing_up());
+        let mark = r.mark();
+        r.press(DeckAction::Start);
+        assert_eases_up(&mut r, mark, 4.0);
+    }
+
+    /// The same on a program: the pause at the treadmill pauses the program,
+    /// and only GO starts the belt again.
+    #[test]
+    fn a_pause_at_the_treadmill_mid_ease_holds_a_program_until_go() {
+        let mut r = eased_rig();
+        r.run(1.0);
+        r.run_program(POST_MEAL);
+        r.run(14.0);
+        assert!(r.state.easing_up(), "about 10 s into the ease");
+        let t = r.t;
+        r.deck.press_pause(t);
+        let pressed = r.mark();
+        // Until the next poll reports the pause, the engine still reads the
+        // belt as running: a ramp step in that window reaches a paused deck,
+        // which refuses it (as any target then). Never a start.
+        while r.state.last_status != protocol::MachineStatus::Paused {
+            r.run(0.05);
+        }
+        assert!(r.t - t < Duration::from_secs(1), "the poll reports it");
+        let mark = r.mark();
+        r.run(60.0);
+        assert_eq!(r.deck.status_code(), 10, "still paused");
+        assert!(r.deck.belt_still());
+        let sent = r.commands_since(mark);
+        assert!(!moves_belt(&sent), "nothing resumes it: {sent:?}");
+        let all = r.commands_since(pressed);
+        assert!(!app_starts(&all), "{all:?}");
+        assert!(
+            all.iter().filter(|k| **k == PacketKind::ControlSet).count() <= 1,
+            "{all:?}"
+        );
+        assert!(r.program().paused);
+        let mark = r.mark();
+        r.go();
+        assert_eases_up(&mut r, mark, 4.0);
     }
 
     /// A manual walk at 3 km/h paused at the treadmill, with the Paused frame

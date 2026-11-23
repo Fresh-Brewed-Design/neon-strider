@@ -330,6 +330,9 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         }
         Command::DeckProfileSweepSet { on } => crate::profile_sweep::set_enabled(&app, on).await,
 
+        // ---- Easy start ----
+        Command::EasyStartSet { on } => crate::easy_start::set_enabled(&app, on).await,
+
         // ---- Guided calibration (GROUND_TRUTH) ----
         Command::CalibrationRunStart { target_kmh } => {
             if !super::emitter::read_connection().await.0 {

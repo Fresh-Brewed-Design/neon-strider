@@ -70,6 +70,10 @@ pub struct AppSnapshot {
     /// Lights out: stop the belt when the PC's display turns off.
     pub lights_out: LightsOutSnapshot,
 
+    // ---- Easy start ----
+    /// Every belt start eases up from the slowest speed (on by default).
+    pub easy_start: crate::easy_start::EasyStartSnapshot,
+
     // ---- Auto-update ----
     /// Auto-update: the running version, any update on offer and its notes.
     pub update: crate::update::UpdateSnapshot,
@@ -840,6 +844,13 @@ pub enum Command {
     /// Labs: the DECK_SWEEP switch on or off (persisted, off by default). Off
     /// also ends a sweep; the belt keeps going.
     DeckProfileSweepSet {
+        on: bool,
+    },
+
+    // ---- Easy start ----
+    /// System -> Treadmill: every belt start eases up from the slowest speed
+    /// (`on`, the default) or runs straight to the target. Persisted.
+    EasyStartSet {
         on: bool,
     },
 

@@ -20,6 +20,7 @@ mod dashboard;
 pub mod deck_profile;
 pub mod defaults;
 mod display;
+pub mod easy_start;
 pub mod echo;
 pub mod engine;
 pub mod export;
@@ -285,6 +286,7 @@ async fn start_backend(app: tauri::AppHandle) {
         bluetooth::switch_deck_profile(&app, id).await;
     }
     profile_sweep::init(&app).await;
+    easy_start::init(&app).await;
 
     // Once per database: earlier builds saved bad session averages.
     let (app_c, tilt, offset) = (app.clone(), config.tilt_multiplier, config.incline_offset);
