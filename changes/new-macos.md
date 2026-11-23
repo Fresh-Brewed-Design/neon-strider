@@ -1,1 +1,0 @@
-- Neon Strider runs on macOS 13 or later as a menu bar app: the dashboard drops down from a menu bar icon that follows light and dark mode, the HUD floats over every Space and full-screen app, the shortcuts are ⌃⌥ plus a key, and the Strava login lives in the Keychain. There's no Mac download yet; it builds from source (docs/macos.md).
