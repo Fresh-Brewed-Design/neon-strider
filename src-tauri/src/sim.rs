@@ -4552,4 +4552,67 @@ mod tests {
         assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
         assert_eq!(target_bytes_since(&r, mark), vec![40]);
     }
+
+    /// GROUND_TRUTH's RUN (RUN ALL and the guided walk open theirs the same
+    /// way, `calibration::begin_run`): the belt starts at the run's speed at
+    /// once, so taps never time a belt still easing up.
+    #[test]
+    fn a_calibration_run_is_never_eased() {
+        let mut r = eased_rig();
+        r.run(5.0);
+        let mark = r.mark();
+        r.state.set_test_now(r.t);
+        crate::calibration::begin_run(&mut r.state, 4.0).unwrap();
+        r.run(5.0);
+        assert!(!r.state.easing_up());
+        r.run(10.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(target_bytes_since(&r, mark), vec![40], "straight to it");
+        // A pause and Engage mid-run resume at the run's speed too.
+        r.press(DeckAction::Pause);
+        r.run(10.0);
+        assert!(r.deck.belt_still());
+        let mark = r.mark();
+        r.press(DeckAction::Start);
+        r.run(5.0);
+        assert!(!r.state.easing_up());
+        r.run(10.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        let bytes = target_bytes_since(&r, mark);
+        assert!(bytes.iter().all(|b| *b == 40), "no slower step: {bytes:?}");
+    }
+
+    /// A calibration run started on an easing belt ends the ease at once.
+    #[test]
+    fn a_calibration_run_ends_an_ease_under_way() {
+        let mut r = eased_rig();
+        r.run(1.0);
+        r.set_speed(4.0);
+        r.run(10.0);
+        assert!(r.state.easing_up());
+        let mark = r.mark();
+        r.state.set_test_now(r.t);
+        crate::calibration::begin_run(&mut r.state, 3.0).unwrap();
+        r.run(1.0);
+        assert!(!r.state.easing_up());
+        assert_eq!(target_bytes_since(&r, mark), vec![30]);
+    }
+
+    /// After calibrating, the next walk eases again: a stop and a speed set
+    /// by hand end the calibration's hold.
+    #[test]
+    fn the_walk_after_a_calibration_run_eases_again() {
+        let mut r = eased_rig();
+        r.run(5.0);
+        r.state.set_test_now(r.t);
+        crate::calibration::begin_run(&mut r.state, 4.0).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(4.0));
+        r.press(DeckAction::Stop);
+        r.run(20.0);
+        assert!(r.deck.belt_still());
+        let mark = r.mark();
+        r.set_speed(3.0);
+        assert_eases_up(&mut r, mark, 3.0);
+    }
 }

@@ -1,3 +1,4 @@
-- Easy start: every belt start now begins at the slowest speed and eases up to the target over 30 s. It covers GO, a program start, a resume after a pause, the step after a rest and a start at the treadmill that the app then sets a speed for.
+- Easy start: every belt start now begins at the slowest speed and eases up to the target over 30 s. Easy start covers GO, a program start, a resume after a pause, the step after a rest and a start at the treadmill that the app then sets a speed for.
 - A pause, a stop or a speed set by hand during the ease takes over at once.
+- Calibration runs start at their speed at once, so taps always time the belt at that speed.
 - Easy start is on by default. Switch it off in System -> Treadmill.

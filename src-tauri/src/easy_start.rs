@@ -15,6 +15,14 @@
 //! moving (a restart, a reconnect, an update) carries on untouched: a ramp
 //! needs the belt seen still on this connection first.
 //!
+//! Calibration runs are never eased: GROUND_TRUTH's RUN, RUN ALL and the
+//! guided walk set their speed through `calibration::begin_run`, which calls
+//! `measure_at_set_speed`. The belt then starts at the run's speed at once,
+//! and taps (belt passes or GAIT_SYNC footsteps) never time a belt still
+//! easing up, which would save a wrong point. The hold lasts until a speed is
+//! set some other way, a program runs or the belt is stopped, so a pause and
+//! Engage mid-run resumes at the run's speed too.
+//!
 //! Each speed is one the deck runs: a byte DECK_PROFILE knows the deck skips
 //! is stepped down past, and the usual snap in `control_packet` follows.
 //!
@@ -62,6 +70,9 @@ pub struct EasyStart {
     ramp: Option<Ramp>,
     /// When the last ramp ended, for the quiet toasts (`QUIET_AFTER`).
     ended_at: Option<Instant>,
+    /// A calibration run set the speed: `speed_hand_epoch` then. No ramp
+    /// begins while the epoch is unchanged (`measure_at_set_speed`).
+    measuring: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -149,6 +160,13 @@ impl OrchestratorState {
         if self.stop_requested || self.profile_sweep.is_some() {
             self.end_easy_start(now, Some("a stop or DECK_SWEEP"));
         }
+        // A calibration run's hold ends with a speed set another way, a
+        // program or a stop.
+        if self.easy_start.measuring.is_some_and(|epoch| {
+            epoch != self.speed_hand_epoch || self.stop_requested || self.program.is_some()
+        }) {
+            self.easy_start.measuring = None;
+        }
         match self.last_status {
             MachineStatus::Stopped | MachineStatus::Paused => {
                 self.end_easy_start(now, Some("the belt paused or stopped"));
@@ -167,7 +185,14 @@ impl OrchestratorState {
                     && !self.stop_requested
                     && self.profile_sweep.is_none()
                 {
-                    self.begin_easy_start(now, app_start);
+                    if self.easy_start.measuring.is_some() {
+                        // A calibration run measures at its speed: no ease.
+                        self.easy_start.seen_still = false;
+                        self.easy_start.app_start = None;
+                        log::info!("Easy start skipped: a calibration run sets the speed");
+                    } else {
+                        self.begin_easy_start(now, app_start);
+                    }
                 }
             }
             _ => {}
@@ -186,6 +211,15 @@ impl OrchestratorState {
                 self.end_easy_start(now, Some("at the target"));
             }
         }
+    }
+
+    /// A calibration run sets the belt's speed (`calibration::begin_run`,
+    /// after its speed is set): end any ramp, and start no new one while the
+    /// run's speed stands, so the belt runs at the measured speed at once.
+    pub(crate) fn measure_at_set_speed(&mut self) {
+        let now = self.now();
+        self.end_easy_start(now, Some("a calibration run"));
+        self.easy_start.measuring = Some(self.speed_hand_epoch);
     }
 
     fn begin_easy_start(&mut self, now: Instant, app_start: bool) {
