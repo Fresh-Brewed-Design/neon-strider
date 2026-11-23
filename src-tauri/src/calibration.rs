@@ -889,6 +889,8 @@ pub(crate) fn begin_run(state: &mut OrchestratorState, target_hw_kmh: f32) -> Re
     // The speed is set as if typed in by hand (`note_hand_speed`).
     let speed = intent_for_target(state, target_hw_kmh);
     crate::bluetooth::apply_manual_intent(state, Some(speed), None);
+    // Taps time the belt at this speed: Easy start never eases it up.
+    state.measure_at_set_speed();
     // RUN is the user's press, so a paused or stopped belt gets an explicit
     // start or resume, as GO sends. The automatic resume only fires on a
     // target above the paused speed, so a RUN at the speed the belt paused

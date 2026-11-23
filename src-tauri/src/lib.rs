@@ -20,6 +20,7 @@ mod dashboard;
 pub mod deck_profile;
 pub mod defaults;
 mod display;
+pub mod easy_start;
 pub mod echo;
 pub mod engine;
 pub mod export;
@@ -53,6 +54,7 @@ pub mod strava_save;
 pub mod strava_status;
 pub mod strava_template;
 pub mod traffic;
+pub mod typing_speed;
 pub mod update;
 mod util;
 
@@ -285,6 +287,7 @@ async fn start_backend(app: tauri::AppHandle) {
         bluetooth::switch_deck_profile(&app, id).await;
     }
     profile_sweep::init(&app).await;
+    easy_start::init(&app).await;
 
     // Once per database: earlier builds saved bad session averages.
     let (app_c, tilt, offset) = (app.clone(), config.tilt_multiplier, config.incline_offset);
@@ -305,6 +308,7 @@ async fn start_backend(app: tauri::AppHandle) {
     wrist_link::spawn(app.clone());
     heart_rate::init(&app);
     speed_drift::init(&app);
+    typing_speed::init(&app);
     heart_rate::spawn(app.clone());
 
     if persistence::has_pinned_elements(&app) {

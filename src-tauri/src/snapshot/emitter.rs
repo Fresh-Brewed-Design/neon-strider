@@ -99,6 +99,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     snapshot.wall_clock = desk_sync::wall_clock();
     snapshot.pc_walk_share = pc_walk_share::snapshot();
     snapshot.speed_drift = state.speed_drift_snapshot(&crate::speed_drift::config(), now_ms);
+    snapshot.today_timeline = pc_walk_share::today_timeline();
     snapshot.walkaway = walkaway::snapshot(now_ms);
     snapshot.update = crate::update::snapshot(now_ms);
     snapshot.traffic = crate::traffic::snapshot();
@@ -107,6 +108,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     // The first-connect offer only shows while the treadmill is connected.
     snapshot.calibration.offer &= snapshot.connection.connected;
     snapshot.wrist_link = crate::wrist_link::snapshot();
+    snapshot.typing_speed = crate::typing_speed::snapshot();
     snapshot.heart_rate = crate::heart_rate::snapshot();
     // The zone shows on PULSE_RATE only with a sensor picked: without one
     // there is no reading to place in it and the zone trims nothing.
@@ -249,6 +251,7 @@ impl Loop {
             }
             if session_changed {
                 desk_sync::refresh(&app, active_id);
+                crate::typing_speed::refresh(&app);
             }
             // After the refresh, so the card judges the current week even when
             // the session starts just after Monday 00:00.

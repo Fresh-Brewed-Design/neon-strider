@@ -24,11 +24,12 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
   return (
     <Panel
       className={cx(
-        "flex items-center gap-4 px-4 py-2",
+        // The status lines sit in a row of their own under the buttons, so the buttons never squeeze them onto two lines.
+        "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 px-4 py-2",
         wait ? "border-l-4 border-neon-yellow bg-neon-yellow/10" : "border-neon-yellow/30",
       )}
     >
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0">
         {wait ? (
           <div role="alert" className="break-words font-digital text-xs font-bold tracking-widest text-neon-yellow">{waitHeadline(wait)}</div>
         ) : (
@@ -42,8 +43,6 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
           </div>
         )}
         <div className="line-clamp-2 break-words font-digital text-base font-bold leading-tight tracking-wider text-neon-yellow">{a.name}</div>
-        <div className="font-mono text-xs text-white/60">{describeActive(a)}</div>
-        {wait && <div className="font-mono text-xs text-white/70">{waitReason(wait)}</div>}
       </div>
       <div className="flex items-center gap-1">
         {stepMap && (
@@ -84,6 +83,10 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
         >
           <Square size={14} /> End
         </GhostButton>
+      </div>
+      <div className="col-span-2 min-w-0">
+        <div className="font-mono text-xs text-white/60">{describeActive(a)}</div>
+        {wait && <div className="font-mono text-xs text-white/70">{waitReason(wait)}</div>}
       </div>
     </Panel>
   );

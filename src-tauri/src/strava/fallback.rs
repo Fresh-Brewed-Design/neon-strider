@@ -61,7 +61,13 @@ pub(super) async fn save_for_strava(
     }
 
     let data = upload::load_data(&app, ids.clone()).await?;
-    let activity = plan::plan_activity(&data, Naming::Walk, &settings::load_templates(&app));
+    let pc_walked = super::pc_walked_pct(&app, &data).await;
+    let activity = plan::plan_activity(
+        &data,
+        Naming::Walk,
+        &settings::load_templates(&app),
+        pc_walked,
+    );
     let Payload::Tcx(tcx) = activity.payload else {
         return Err("The walk has too few telemetry samples to make a file.".to_string());
     };

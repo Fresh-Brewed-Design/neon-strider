@@ -75,6 +75,10 @@ pub struct AppSnapshot {
     /// Lights out: stop the belt when the PC's display turns off.
     pub lights_out: LightsOutSnapshot,
 
+    // ---- Easy start ----
+    /// Every belt start eases up from the slowest speed (on by default).
+    pub easy_start: crate::easy_start::EasyStartSnapshot,
+
     // ---- Auto-update ----
     /// Auto-update: the running version, any update on offer and its notes.
     pub update: crate::update::UpdateSnapshot,
@@ -90,6 +94,9 @@ pub struct AppSnapshot {
     /// Labs: WRIST_LINK, the service the watch's data field reads the belt
     /// from (off by default).
     pub wrist_link: crate::wrist_link::WristLinkSnapshot,
+    /// Labs: typing by speed, key presses per minute in each speed band over
+    /// recent walks (off by default).
+    pub typing_speed: crate::typing_speed::TypingSpeedSnapshot,
 
     // ---- HEART_LINK ----
     pub heart_rate: crate::heart_rate::HeartRateSnapshot,
@@ -102,6 +109,9 @@ pub struct AppSnapshot {
     /// Today's active PC seconds (keyboard or mouse input within the last
     /// minute), how many of them the belt was running, and that share.
     pub pc_walk_share: PcWalkShare,
+    /// Today from the first PC input to now, in runs of 5-minute slots: away,
+    /// at the PC, or walking. None on a day with no PC input yet.
+    pub today_timeline: Option<super::pc_walk_share::TodayTimeline>,
 
     // ---- Platform ----
     /// The OS, its OS-only features and how it writes the shortcuts, so the
@@ -852,6 +862,13 @@ pub enum Command {
         on: bool,
     },
 
+    // ---- Easy start ----
+    /// System -> Treadmill: every belt start eases up from the slowest speed
+    /// (`on`, the default) or runs straight to the target. Persisted.
+    EasyStartSet {
+        on: bool,
+    },
+
     // ---- Guided calibration (GROUND_TRUTH) ----
     /// RUN (or REPEAT) on a target speed: set the belt to `target_kmh` (deck
     /// km/h) and start it if it is still. The press is his.
@@ -940,6 +957,13 @@ pub enum Command {
     /// Labs: WRIST_LINK on (`on`) or off. On, the PC serves the service the
     /// watch's Connect IQ data field reads the belt from.
     WristLinkSet {
+        on: bool,
+    },
+
+    // ---- Typing by speed (Labs) ----
+    /// Labs: count key presses per minute while walking (`on`) and save the
+    /// count with the walk's samples, or stop (off, the default).
+    TypingSpeedSet {
         on: bool,
     },
 
@@ -1243,6 +1267,8 @@ mod tests {
         assert_eq!(c, Command::TrafficRecord { on: true });
         let c: Command = serde_json::from_str(r#"{"type":"wrist_link_set","on":true}"#).unwrap();
         assert_eq!(c, Command::WristLinkSet { on: true });
+        let c: Command = serde_json::from_str(r#"{"type":"typing_speed_set","on":true}"#).unwrap();
+        assert_eq!(c, Command::TypingSpeedSet { on: true });
         let c: Command = serde_json::from_str(r#"{"type":"heart_rate_scan"}"#).unwrap();
         assert_eq!(c, Command::HeartRateScan);
         let c: Command =

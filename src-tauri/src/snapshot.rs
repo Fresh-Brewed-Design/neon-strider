@@ -232,7 +232,7 @@ fn neural_snapshot(state: &OrchestratorState) -> NeuralSnapshot {
 }
 
 /// Build a snapshot from state. Pure (no Tauri, no locks, no I/O) so it can be
-/// unit-tested. `speed_drift`, `desk_sync`, `wall_clock`, `pc_walk_share`, `walkaway`, `update`, `traffic`, `lights_out`, `wrist_link`,
+/// unit-tested. `speed_drift`, `desk_sync`, `wall_clock`, `pc_walk_share`, `today_timeline`, `walkaway`, `update`, `traffic`, `lights_out`, `wrist_link`,
 /// `calibration`, `guided_task` and `hud_view` are left at their defaults: they depend on the clock or shared
 /// state, so the emitter fills them in.
 pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSnapshot {
@@ -262,11 +262,14 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         update: crate::update::UpdateSnapshot::default(),
         traffic: crate::traffic::TrafficSnapshot::default(),
         lights_out: LightsOutSnapshot::default(),
+        easy_start: state.easy_start_snapshot(),
         calibration: crate::calibration::CalibrationSnapshot::default(),
         wrist_link: crate::wrist_link::WristLinkSnapshot::default(),
+        typing_speed: crate::typing_speed::TypingSpeedSnapshot::default(),
         heart_rate: crate::heart_rate::HeartRateSnapshot::default(),
         guided_task: crate::guided_task::GuidedTaskSnapshot::default(),
         pc_walk_share: PcWalkShare::default(),
+        today_timeline: None,
         platform: crate::platform::snapshot(),
     }
 }

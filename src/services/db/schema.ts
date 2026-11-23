@@ -23,6 +23,8 @@ export const SessionSchema = z.object({
   /** Beats per minute over the walk; null for a walk without a heart rate sensor. */
   avg_heart_rate: z.number().nullable().default(null),
   max_heart_rate: z.number().nullable().default(null),
+  /** The programs the walk ran, joined with " + "; null for a walk without one. */
+  program_name: z.string().nullable().default(null),
 });
 
 export const SampleSchema = z.object({

@@ -228,6 +228,7 @@ export const snapshot: AppSnapshot = {
   odometer: { distance_km: 412.6, belt_hours: 138.2, since_ms: Date.UTC(2026, 2, 12) },
   walkaway: { lock_enabled: true, idle_enabled: true, idle_minutes: 10, card: "none", pause_in_s: 0, reason: null },
   lights_out: { enabled: false },
+  easy_start: { enabled: true },
   update: {
     current_version: "1.2.0",
     status: { state: "up_to_date" },
@@ -263,12 +264,22 @@ export const snapshot: AppSnapshot = {
   guided_task: { pinned: false, tasks: [], unpin_in_s: null },
   // 2h 10m walked of 5h 40m at the PC today.
   pc_walk_share: { active_s: 20_400, walked_s: 7_800, share_pct: 38 },
+  // No timeline unless ?today asks for one.
+  today_timeline: null,
   wrist_link: {
     enabled: false,
     serving: false,
     watches: 0,
     failed: false,
     message: "Switch WRIST_LINK on to let the watch's data field read the belt.",
+  },
+  typing_speed: {
+    enabled: false,
+    bands: [],
+    walks: 0,
+    typing_minutes: 0,
+    min_minutes: 5,
+    recent_walks: 20,
   },
   heart_rate: {
     sensor: null,

@@ -144,7 +144,8 @@ pub(super) async fn upload_sessions(
     let sessions: Vec<Session> = data.iter().map(|(s, _)| s.clone()).collect();
     let walks = plan::merge_sessions(&sessions, settings::merge_minutes(app)).len();
     let prefs = settings::load_prefs(app);
-    let activity = plan::plan_activity(&data, name(walks), &prefs.templates);
+    let pc_walked = super::pc_walked_pct(app, &data).await;
+    let activity = plan::plan_activity(&data, name(walks), &prefs.templates, pc_walked);
     live::set_label(format!("{:.2} km", activity.distance_m / 1000.0));
 
     if let Some(existing) = find_existing(app, &activity).await? {

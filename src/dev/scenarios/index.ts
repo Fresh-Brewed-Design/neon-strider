@@ -10,6 +10,7 @@ import { calibration } from "./calibration";
 import { calls } from "./calls";
 import { deckProfile } from "./deckprofile";
 import { deskSync } from "./desksync";
+import { easyStart } from "./easystart";
 import { echo } from "./echo";
 import { engage } from "./engage";
 import { eyeBreak } from "./eyebreak";
@@ -32,8 +33,10 @@ import { speedDrift } from "./speeddrift";
 import { stasis } from "./stasis";
 import { strava } from "./strava";
 import { strideFit } from "./stridefit";
+import { today } from "./today";
 import { traffic } from "./traffic";
 import type { Scenario } from "./types";
+import { typingSpeed } from "./typingspeed";
 import { update } from "./update";
 import { walkaway } from "./walkaway";
 import { wallClock } from "./wallclock";
@@ -73,5 +76,8 @@ export const SCENARIOS: Scenario[] = [
   hrCool,
   pcWalkShare,
   platform,
+  easyStart,
+  typingSpeed,
+  today,
   speedDrift,
 ];

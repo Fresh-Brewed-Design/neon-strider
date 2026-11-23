@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.59.0 (2026-11-23)
+
+### New
+
+- Strava title and description templates have a field for every walk stat: `{max_speed}`, `{max_incline}`, `{climb_m}`, `{avg_heart_rate}`, `{max_heart_rate}`, `{program}`, `{pc_walked}` and `{end_time}` join the fields you had.
+- A field with no value for a walk, such as heart rate without a watch, drops out of the text with its label and one separator. A line left empty drops out too.
+- System, Strava lists every template field with what it shows.
+- Walks now save the program they ran, for the `{program}` field. Walks from before show no program.
+
+## 1.58.0 (2026-11-23)
+
+### New
+
+- New Today strip on the History page: today from your first keyboard or mouse input to now, in 5-minute slots, marked as walking, at the PC or away. A long sit after lunch shows up at a glance. Days with no PC use have no strip, and an app restart or update keeps the morning.
+
+## 1.57.0 (2026-11-23)
+
+### New
+
+- Typing by speed in System -> Labs, off until you switch it on: while you walk, the app saves how many keys you press each minute (never which keys) and shows, for each 0.5 km/h speed band over your last 20 walks, the minutes walked and the median key presses per minute. A speed shows once it has 5 minutes with typing, and minutes without a key press are left out. Switched off, nothing is counted or saved.
+
+## 1.56.4 (2026-11-23)
+
+### Fixed
+
+- The program buttons in the HUD (HOLD, SKIP, END) now stay inside the panel at every Windows text size. END used to run past the edge at 225 %.
+
+## 1.56.3 (2026-11-23)
+
+### Fixed
+
+- The HUD next-step line (NEXT // ...) wraps inside the program section at 200 and 225 % text size instead of running past its edge.
+
+## 1.56.2 (2026-11-23)
+
+### Fixed
+
+- The Live page program card keeps its status line (for example INTERVAL 3/5 · step 6/11 · 02:08 left) on one line, so the step map keeps its rows.
+
+## 1.56.1 (2026-11-23)
+
+### Fixed
+
+- A belt paused with the treadmill's own button now stays paused when the app raises the speed by itself in the same moment (Neural flow speeding back up, a call ending) or when a higher minimum speed is saved. GO, Engage or a speed set by hand resumes it.
+
 ## 1.56.0 (2026-11-23)
 
 ### New

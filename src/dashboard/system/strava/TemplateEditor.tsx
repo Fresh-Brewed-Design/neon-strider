@@ -2,22 +2,10 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ActionStatus } from "../../../components/ActionStatus";
 import { useAction } from "../../../components/useAction";
-import { SETTING_LIMITS, type StravaSnapshot } from "../../../ipc";
+import { SETTING_LIMITS, TEMPLATE_FIELDS, type StravaSnapshot } from "../../../ipc";
 import { GhostButton, Hint, Label } from "../../ui";
 import { cx, post } from "../../util";
 import { INPUT_CLASS } from "../fields";
-
-const PLACEHOLDERS = [
-  "{distance_km}",
-  "{duration}",
-  "{avg_speed}",
-  "{avg_incline}",
-  "{calories}",
-  "{steps}",
-  "{walks}",
-  "{date}",
-  "{time}",
-];
 
 type Preview = { title: string; rollup_title: string; description: string };
 
@@ -105,10 +93,20 @@ export function TemplateEditor({ strava }: { strava: StravaSnapshot }) {
         />
       </label>
 
-      <Hint>
-        Placeholders: {PLACEHOLDERS.join(" ")}. Anything else in braces is left as typed. Titles stop at {SETTING_LIMITS.title_chars}
-        characters.
-      </Hint>
+      <div className="flex flex-col gap-1">
+        <Hint>Template fields:</Hint>
+        <dl aria-label="Template fields" className="grid grid-cols-[auto_1fr] gap-x-3 font-mono text-[11px] leading-relaxed">
+          {TEMPLATE_FIELDS.map((f) => (
+            <div key={f.name} className="contents">
+              <dt className="select-text text-cyan-300/80">{`{${f.name}}`}</dt>
+              <dd className="min-w-0 break-words text-white/45">{f.about}</dd>
+            </div>
+          ))}
+        </dl>
+        <Hint>A field with no value for a walk is left out with its label and one separator.</Hint>
+        <Hint>Anything else in braces stays as typed.</Hint>
+        <Hint>Titles stop at {SETTING_LIMITS.title_chars} characters.</Hint>
+      </div>
 
       <div
         aria-label="Preview from a sample walk"

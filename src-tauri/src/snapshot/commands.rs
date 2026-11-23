@@ -343,6 +343,9 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         }
         Command::DeckProfileSweepSet { on } => crate::profile_sweep::set_enabled(&app, on).await,
 
+        // ---- Easy start ----
+        Command::EasyStartSet { on } => crate::easy_start::set_enabled(&app, on).await,
+
         // ---- Guided calibration (GROUND_TRUTH) ----
         Command::CalibrationRunStart { target_kmh } => {
             if !super::emitter::read_connection().await.0 {
@@ -484,6 +487,11 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         // ---- WRIST_LINK (Labs) ----
         Command::WristLinkSet { on } => {
             blocking(move || crate::wrist_link::set_enabled(&app, on)).await
+        }
+
+        // ---- Typing by speed (Labs) ----
+        Command::TypingSpeedSet { on } => {
+            blocking(move || crate::typing_speed::set_enabled(&app, on)).await
         }
 
         // ---- HEART_LINK ----
