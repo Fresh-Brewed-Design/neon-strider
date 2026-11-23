@@ -259,6 +259,13 @@ pub struct OrchestratorState {
     /// (`programs::ZoneTrim`); off, every zone trims speed only. Set each
     /// second from the saved switch.
     pub zone_incline_trim: bool,
+    /// Labs, typing by speed: the switch, set each second from the saved
+    /// one; while on, key presses are counted with the belt running.
+    pub typing_speed_enabled: bool,
+    /// The minute of walking being counted for typing by speed.
+    pub typing_minute: crate::typing_speed::MinuteCount,
+    /// A whole minute's key press count waiting for the next sample.
+    pub typing_minute_done: Option<u16>,
     /// STRIDE_FIT of the treadmill in use (calibrated km/h), none while
     /// unset. Above it a zone that needs more effort raises the incline
     /// instead of the speed, and one easing off lowers the speed first
@@ -439,6 +446,9 @@ impl Default for OrchestratorState {
             heart_bpm: None,
             max_heart_rate: u32::from(crate::heart_rate::DEFAULT_MAX_BPM),
             zone_incline_trim: false,
+            typing_speed_enabled: false,
+            typing_minute: crate::typing_speed::MinuteCount::default(),
+            typing_minute_done: None,
             stride_fit_kmh: None,
             last_status: MachineStatus::Stopped,
             hardware_speed: 0.0,
@@ -1198,6 +1208,8 @@ impl OrchestratorState {
             raw_speed: self.hardware_speed,
             // Read only: heart rate never feeds back into the belt.
             heart_rate: crate::heart_rate::current_bpm(),
+            // Labs, typing by speed: a minute's count lands on the next sample.
+            key_presses: self.typing_minute_done.take(),
         };
         let flush = self
             .session
@@ -1923,6 +1935,22 @@ impl OrchestratorState {
 
     /// Neural flow, once a second. `keys` is the key presses counted since the
     /// last tick (a count only); `quiet` is quiet mode holding the belt for a call.
+    /// Labs, typing by speed, once a second with the key presses counted
+    /// since the last tick: a whole minute of walking with the switch on
+    /// leaves its count for the next sample (`record_sample`).
+    pub fn count_typing_minute(&mut self, keys: u32) {
+        let walking = self.typing_speed_enabled
+            && self.last_status == MachineStatus::Running
+            && !self.stop_requested
+            && self.session.active_session_id.is_some();
+        if let Some(n) = self.typing_minute.tick(walking, keys) {
+            self.typing_minute_done = Some(n);
+        }
+        if !walking {
+            self.typing_minute_done = None;
+        }
+    }
+
     pub fn update_neural_flow(&mut self, keys: u32, quiet: bool, now: Instant, now_ms: u64) {
         let (base, _, _) = self.resolve_base(now);
         let tick = crate::neural::Tick {
@@ -4106,6 +4134,40 @@ mod tests {
         assert_eq!(r.sessions_started, 1);
         assert!(!r.state.stop_requested);
         assert_eq!(r.state.last_status, MachineStatus::Stopped);
+    }
+
+    /// Labs, typing by speed: with Neural flow off the switch alone turns key
+    /// counting on for a running belt, and only a whole minute of walking in
+    /// a session leaves a count for the next sample.
+    #[test]
+    fn typing_by_speed_counts_whole_walking_minutes_only() {
+        let mut state = OrchestratorState {
+            last_status: MachineStatus::Running,
+            ..OrchestratorState::default()
+        };
+        state.session.active_session_id = Some(1);
+        assert!(!state.neural_monitor_wanted());
+        state.typing_speed_enabled = true;
+        assert!(state.neural_monitor_wanted());
+        for _ in 0..59 {
+            state.count_typing_minute(2);
+        }
+        assert_eq!(state.typing_minute_done, None);
+        state.count_typing_minute(2);
+        assert_eq!(state.typing_minute_done, Some(120));
+        // A pause drops the waiting count and the part minute.
+        state.count_typing_minute(1);
+        state.last_status = MachineStatus::Paused;
+        state.count_typing_minute(1);
+        assert_eq!(state.typing_minute_done, None);
+        // Switched off, nothing is counted.
+        state.last_status = MachineStatus::Running;
+        state.typing_speed_enabled = false;
+        for _ in 0..120 {
+            state.count_typing_minute(5);
+        }
+        assert_eq!(state.typing_minute_done, None);
+        assert!(!state.neural_monitor_wanted());
     }
 
     /// Status 1 (workout ended) is not a running belt: no session opens, no

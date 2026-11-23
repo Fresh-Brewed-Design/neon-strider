@@ -85,6 +85,9 @@ pub struct AppSnapshot {
     /// Labs: WRIST_LINK, the service the watch's data field reads the belt
     /// from (off by default).
     pub wrist_link: crate::wrist_link::WristLinkSnapshot,
+    /// Labs: typing by speed, key presses per minute in each speed band over
+    /// recent walks (off by default).
+    pub typing_speed: crate::typing_speed::TypingSpeedSnapshot,
 
     // ---- HEART_LINK ----
     pub heart_rate: crate::heart_rate::HeartRateSnapshot,
@@ -928,6 +931,13 @@ pub enum Command {
         on: bool,
     },
 
+    // ---- Typing by speed (Labs) ----
+    /// Labs: count key presses per minute while walking (`on`) and save the
+    /// count with the walk's samples, or stop (off, the default).
+    TypingSpeedSet {
+        on: bool,
+    },
+
     // ---- HEART_LINK ----
     /// HEART_LINK: scan for heart rate sensors (about 5 s); the result is
     /// `heart_rate.found`.
@@ -1228,6 +1238,8 @@ mod tests {
         assert_eq!(c, Command::TrafficRecord { on: true });
         let c: Command = serde_json::from_str(r#"{"type":"wrist_link_set","on":true}"#).unwrap();
         assert_eq!(c, Command::WristLinkSet { on: true });
+        let c: Command = serde_json::from_str(r#"{"type":"typing_speed_set","on":true}"#).unwrap();
+        assert_eq!(c, Command::TypingSpeedSet { on: true });
         let c: Command = serde_json::from_str(r#"{"type":"heart_rate_scan"}"#).unwrap();
         assert_eq!(c, Command::HeartRateScan);
         let c: Command =

@@ -3,6 +3,7 @@ import { useAction } from "../../components/useAction";
 import { dispatch } from "../../ipc";
 import { useAppSnapshot } from "../../state/useAppState";
 import { Section, Toggle } from "./fields";
+import { TypingSpeedTable } from "./TypingSpeedTable";
 import { wristLinkTone } from "./wristLink";
 
 /**
@@ -11,6 +12,8 @@ import { wristLinkTone } from "./wristLink";
  * `wrist_link.rs`). It only reports the belt; nothing from the watch moves it.
  * ZONE_TILT lets program heart zones trim incline (`heart_rate.incline_trim`,
  * Rust's `programs::ZoneTrim`); off, every zone trims speed only.
+ * Typing by speed saves key presses per minute (a count only) with each walk
+ * and shows the median per speed band (`typing_speed`, Rust's `typing_speed.rs`).
  */
 export function LabsSection() {
   const snap = useAppSnapshot();
@@ -18,7 +21,9 @@ export function LabsSection() {
   const heart = snap?.heart_rate;
   const wristChange = useAction();
   const tiltChange = useAction();
-  if (!wrist || !heart) return null;
+  const typingChange = useAction();
+  const typing = snap?.typing_speed;
+  if (!wrist || !heart || !typing) return null;
 
   const wristTone = wristLinkTone(wrist);
 
@@ -69,6 +74,25 @@ export function LabsSection() {
             className="mt-1"
           />
         )}
+      </div>
+      <div>
+        <Toggle
+          label="Typing by speed: Count key presses per minute while walking"
+          description="Saves how many keys you press in each minute of a walk, never which keys."
+          hint="Switched off, nothing is counted or saved."
+          checked={typing.enabled}
+          onChange={(on) => void typingChange.run(() => dispatch({ type: "typing_speed_set", on }))}
+        />
+        {(typingChange.pending || typingChange.error) && (
+          <ActionStatus
+            pending={typingChange.pending}
+            error={
+              typingChange.error && `Could not switch typing by speed ${typing.enabled ? "off" : "on"}: ${typingChange.error}`
+            }
+            className="mt-1"
+          />
+        )}
+        {typing.enabled && <TypingSpeedTable data={typing} />}
       </div>
     </Section>
   );

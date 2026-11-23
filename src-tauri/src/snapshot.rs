@@ -261,6 +261,7 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         lights_out: LightsOutSnapshot::default(),
         calibration: crate::calibration::CalibrationSnapshot::default(),
         wrist_link: crate::wrist_link::WristLinkSnapshot::default(),
+        typing_speed: crate::typing_speed::TypingSpeedSnapshot::default(),
         heart_rate: crate::heart_rate::HeartRateSnapshot::default(),
         guided_task: crate::guided_task::GuidedTaskSnapshot::default(),
         pc_walk_share: PcWalkShare::default(),

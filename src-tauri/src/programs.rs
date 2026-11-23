@@ -1012,9 +1012,11 @@ impl OrchestratorState {
     }
 
     /// Neural flow eases any running belt, manual or program, so key presses
-    /// are counted exactly while it is enabled and the belt is running.
+    /// are counted exactly while it is enabled and the belt is running. Labs,
+    /// typing by speed, uses the same count while its switch is on.
     pub fn neural_monitor_wanted(&self) -> bool {
-        self.focus_stability_enabled && self.last_status == MachineStatus::Running
+        (self.focus_stability_enabled || self.typing_speed_enabled)
+            && self.last_status == MachineStatus::Running
     }
 
     fn step_intent(&self, step: &ProgramStep) -> ControlIntent {
