@@ -203,7 +203,8 @@ const MIN_CHANGE_GAP_MS: u64 = 15_000;
 /// After a speed set by hand: no slowing for this long.
 const HAND_HOLD_MS: u64 = 30_000;
 /// Key presses counted per second at most (a held key auto-repeats ~30/s).
-const MAX_KEYS_PER_TICK: u32 = 12;
+/// Labs, typing by speed, caps its counts the same way.
+pub(crate) const MAX_KEYS_PER_TICK: u32 = 12;
 /// Speed steps per change: down, and back up (at least).
 const SLOW_STEPS_PER_CHANGE: u32 = 2;
 /// Two deck steps (0.2 km/h) per change is felt without being a jolt; the same both ways.

@@ -52,6 +52,7 @@ pub mod strava_save;
 pub mod strava_status;
 pub mod strava_template;
 pub mod traffic;
+pub mod typing_speed;
 pub mod update;
 mod util;
 
@@ -303,6 +304,7 @@ async fn start_backend(app: tauri::AppHandle) {
     wrist_link::init(&app);
     wrist_link::spawn(app.clone());
     heart_rate::init(&app);
+    typing_speed::init(&app);
     heart_rate::spawn(app.clone());
 
     if persistence::has_pinned_elements(&app) {

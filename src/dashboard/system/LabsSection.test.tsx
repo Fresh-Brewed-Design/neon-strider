@@ -39,3 +39,43 @@ describe("System -> Labs ZONE_TILT", () => {
     expect(screen.getByRole("switch", { name: TILT })).toHaveAttribute("aria-checked", "true");
   });
 });
+
+describe("System -> Labs typing by speed", () => {
+  const TYPING = "Typing by speed: Count key presses per minute while walking";
+
+  it("is off by default, shows no table and says what off means", () => {
+    render(<LabsSection />);
+    expect(screen.getByRole("switch", { name: TYPING })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByText("Switched off, nothing is counted or saved.")).toBeTruthy();
+    expect(screen.queryByRole("table")).toBeNull();
+  });
+
+  it("asks Rust to switch it on", async () => {
+    render(<LabsSection />);
+    await act(async () => fireEvent.click(screen.getByRole("switch", { name: TYPING })));
+    expect(dispatched()).toEqual([{ command: { type: "typing_speed_set", on: true } }]);
+  });
+
+  it("shows the empty state when no walk has counts", () => {
+    current!.typing_speed = { ...current!.typing_speed, enabled: true };
+    render(<LabsSection />);
+    expect(screen.getByText("No walks with key counts saved yet.")).toBeTruthy();
+    expect(screen.queryByRole("table")).toBeNull();
+  });
+
+  it("shows each band's minutes and median", () => {
+    current!.typing_speed = {
+      ...current!.typing_speed,
+      enabled: true,
+      walks: 3,
+      typing_minutes: 20,
+      bands: [{ from_kmh: 3, to_kmh: 3.5, minutes: 14, median_kpm: 162 }],
+    };
+    render(<LabsSection />);
+    expect(screen.getByRole("table")).toBeTruthy();
+    expect(screen.getByText("3.0 to 3.5 km/h")).toBeTruthy();
+    expect(screen.getByText("14")).toBeTruthy();
+    expect(screen.getByText("162")).toBeTruthy();
+    expect(screen.getByText("Medians over your last 3 walks with key counts.")).toBeTruthy();
+  });
+});

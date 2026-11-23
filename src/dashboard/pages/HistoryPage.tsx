@@ -14,6 +14,7 @@ import { groupByDay, metersByDay, RANGES, totals, visibleSessions, type Range } 
 import { SessionRow } from "../history/SessionRow";
 import { TotalsPanel, WeeklyPanel } from "../history/Summary";
 import { TcxModal } from "../history/TcxModal";
+import { TodayPanel } from "../history/Today";
 import { useSessionUploads } from "../history/useSessionUploads";
 import { WallClockPanel } from "../history/WallClock";
 import { GhostButton, Label, Page, Panel } from "../ui";
@@ -31,6 +32,7 @@ export function HistoryPage() {
   const weekly = useAppState((s) => s.weekly);
   const deskSync = useAppState((s) => s.desk_sync);
   const wallClock = useAppState((s) => s.wall_clock);
+  const todayTimeline = useAppState((s) => s.today_timeline);
   const savedIds = useAppState((s) => s.strava.saved_session_ids) ?? [];
 
   const [raw, setRaw] = useState<Session[] | null>(null);
@@ -145,6 +147,7 @@ export function HistoryPage() {
         />
         {weekly && <WeeklyPanel weekly={weekly} />}
         {deskSync && <DeskSyncPanel sync={deskSync} />}
+        {todayTimeline && <TodayPanel timeline={todayTimeline} />}
         {wallClock && <WallClockPanel clock={wallClock} />}
         <TotalsPanel meters={sum.meters} seconds={sum.seconds} kcal={sum.kcal} count={visible.length} />
 

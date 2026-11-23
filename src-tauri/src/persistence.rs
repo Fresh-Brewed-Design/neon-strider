@@ -953,10 +953,35 @@ fn migration_12_pc_walk_share(tx: &Transaction) -> rusqlite::Result<()> {
     Ok(())
 }
 
-/// Migration 13: the program a walk ran (issue #260), for the Strava template's
+/// Migration 13: Labs, typing by speed (#250). A sample that closes a full
+/// minute of walking with the Labs switch on keeps how many keys were pressed
+/// in that minute (a count only, never which keys); every other sample, and
+/// every older one, stays NULL. The partial index keeps the "recent walks with
+/// counts" lookup off a scan of every sample ever saved.
+fn migration_13_key_presses(tx: &Transaction) -> rusqlite::Result<()> {
+    if !has_column(tx, "samples", "key_presses")? {
+        tx.execute_batch("ALTER TABLE samples ADD COLUMN key_presses INTEGER DEFAULT NULL")?;
+    }
+    tx.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_samples_key_presses
+         ON samples(session_id) WHERE key_presses IS NOT NULL",
+    )
+}
+
+/// Migration 14: today's timeline. Each desk day keeps its 5-minute slots of
+/// active and walked PC seconds as text (`pc_walk_share::encode_slots`), so a
+/// restart keeps the morning's shape. Days recorded before have none.
+fn migration_14_today_slots(tx: &Transaction) -> rusqlite::Result<()> {
+    if !has_column(tx, "desk_days", "slots")? {
+        tx.execute_batch("ALTER TABLE desk_days ADD COLUMN slots TEXT NOT NULL DEFAULT ''")?;
+    }
+    Ok(())
+}
+
+/// Migration 15: the program a walk ran (issue #260), for the Strava template's
 /// `{program}` field. NULL for a walk without a program and for every walk
 /// saved before, so older walks read as before.
-fn migration_13_session_program(tx: &Transaction) -> rusqlite::Result<()> {
+fn migration_15_session_program(tx: &Transaction) -> rusqlite::Result<()> {
     if !has_column(tx, "sessions", "program_name")? {
         tx.execute_batch("ALTER TABLE sessions ADD COLUMN program_name TEXT DEFAULT NULL")?;
     }
@@ -980,7 +1005,9 @@ const MIGRATIONS: &[Migration] = &[
     migration_10_step_kinds,
     migration_11_cool_down_pulse,
     migration_12_pc_walk_share,
-    migration_13_session_program,
+    migration_13_key_presses,
+    migration_14_today_slots,
+    migration_15_session_program,
 ];
 
 fn schema_version(conn: &Connection) -> rusqlite::Result<u32> {
@@ -1479,6 +1506,11 @@ pub struct Sample {
     /// fresh reading.
     #[serde(default)]
     pub heart_rate: Option<u16>,
+    /// Labs, typing by speed: the key presses counted over the minute of
+    /// walking this sample closes (a count only); `None` on every other
+    /// sample and whenever the Labs switch is off.
+    #[serde(default)]
+    pub key_presses: Option<u16>,
 }
 
 /// Insert an empty session starting now and return its id.
@@ -1564,8 +1596,8 @@ fn insert_sample(
     now: i64,
 ) -> rusqlite::Result<()> {
     conn.execute(
-        "INSERT INTO samples (session_id, timestamp, speed, raw_speed, incline, distance, raw_distance, steps, raw_steps, heart_rate)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        "INSERT INTO samples (session_id, timestamp, speed, raw_speed, incline, distance, raw_distance, steps, raw_steps, heart_rate, key_presses)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         params![
             session_id,
             now,
@@ -1576,7 +1608,8 @@ fn insert_sample(
             sample.raw_distance,
             sample.steps,
             sample.raw_steps,
-            sample.heart_rate
+            sample.heart_rate,
+            sample.key_presses
         ],
     )
     .map(|_| ())
@@ -1682,7 +1715,7 @@ pub fn db_get_samples(app: &tauri::AppHandle, session_id: i64) -> Result<Vec<Sam
 /// `db_get_samples` on a connection.
 fn samples_of(conn: &Connection, session_id: i64) -> rusqlite::Result<Vec<Sample>> {
     let mut stmt = conn.prepare(
-        "SELECT timestamp, speed, incline, distance, raw_distance, steps, raw_steps, raw_speed, heart_rate
+        "SELECT timestamp, speed, incline, distance, raw_distance, steps, raw_steps, raw_speed, heart_rate, key_presses
          FROM samples WHERE session_id = ?1 ORDER BY timestamp ASC",
     )?;
     let rows = stmt.query_map(params![session_id], |row| {
@@ -1696,9 +1729,51 @@ fn samples_of(conn: &Connection, session_id: i64) -> rusqlite::Result<Vec<Sample
             raw_steps: row.get(6)?,
             raw_speed: row.get(7)?,
             heart_rate: row.get(8)?,
+            key_presses: row.get(9)?,
         })
     })?;
     rows.collect::<rusqlite::Result<Vec<_>>>()
+}
+
+/// Labs, typing by speed: the newest `walks` sessions that have key press
+/// counts, newest first, each with its samples' (timestamp ms, speed km/h,
+/// key presses) oldest first.
+pub fn typing_walks(
+    app: &tauri::AppHandle,
+    walks: u32,
+) -> Result<Vec<Vec<crate::typing_speed::WalkSample>>, String> {
+    with_conn(app, |conn| typing_walks_of(conn, walks))
+}
+
+/// `typing_walks` on a connection.
+fn typing_walks_of(
+    conn: &Connection,
+    walks: u32,
+) -> rusqlite::Result<Vec<Vec<crate::typing_speed::WalkSample>>> {
+    let mut ids = conn.prepare(
+        "SELECT id FROM sessions
+         WHERE id IN (SELECT DISTINCT session_id FROM samples WHERE key_presses IS NOT NULL)
+         ORDER BY start_time DESC, id DESC LIMIT ?1",
+    )?;
+    let ids = ids
+        .query_map(params![walks], |row| row.get::<_, i64>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut stmt = conn.prepare(
+        "SELECT timestamp, speed, key_presses FROM samples
+         WHERE session_id = ?1 ORDER BY timestamp ASC",
+    )?;
+    let mut out = Vec::with_capacity(ids.len());
+    for id in ids {
+        let rows = stmt.query_map(params![id], |row| {
+            Ok(crate::typing_speed::WalkSample {
+                at_ms: row.get(0)?,
+                kmh: row.get(1)?,
+                key_presses: row.get(2)?,
+            })
+        })?;
+        out.push(rows.collect::<rusqlite::Result<Vec<_>>>()?);
+    }
+    Ok(out)
 }
 
 #[tauri::command]
@@ -1713,6 +1788,7 @@ pub async fn delete_session(app: tauri::AppHandle, id: i64) -> Result<(), String
     // The weekly totals and the odometer are cached; a deleted session changes them.
     crate::snapshot::weekly::refresh(&app, None);
     crate::snapshot::desk_sync::refresh(&app, None);
+    crate::typing_speed::refresh(&app);
     crate::snapshot::odometer::refresh_current(&app);
     Ok(())
 }
@@ -2032,18 +2108,22 @@ pub fn desk_days_since(app: &tauri::AppHandle, since_day: &str) -> Result<Vec<St
     })
 }
 
-/// Save the PC walk share counts for `day` (local `YYYY-MM-DD`). Creates the desk
-/// day if DESK_SYNC hasn't yet, keeping its first input time when it has. A
-/// count never goes down, so a late or repeated write can't undo a newer one.
+/// Save the PC walk share counts and today's timeline slots (`slots`, the text
+/// `pc_walk_share::encode_slots` writes) for `day` (local `YYYY-MM-DD`).
+/// Creates the desk day if DESK_SYNC hasn't yet, keeping its first input time
+/// when it has. A count never goes down, and the slots are replaced only by a
+/// write with at least as many active seconds, so a late or repeated write
+/// can't undo a newer one.
 pub fn save_pc_walk_share(
     app: &tauri::AppHandle,
     day: &str,
     input_ms: i64,
     active_s: u32,
     walked_s: u32,
+    slots: &str,
 ) -> Result<(), String> {
     with_conn(app, |conn| {
-        upsert_pc_walk_share(conn, day, input_ms, active_s, walked_s)
+        upsert_pc_walk_share(conn, day, input_ms, active_s, walked_s, slots)
     })
 }
 
@@ -2053,27 +2133,39 @@ fn upsert_pc_walk_share(
     input_ms: i64,
     active_s: u32,
     walked_s: u32,
+    slots: &str,
 ) -> rusqlite::Result<()> {
+    // In the UPDATE, a bare column is the stored row's value from before it.
     conn.execute(
-        "INSERT INTO desk_days (day, first_input_ms, active_s, walked_s) VALUES (?1, ?2, ?3, ?4)
+        "INSERT INTO desk_days (day, first_input_ms, active_s, walked_s, slots)
+         VALUES (?1, ?2, ?3, ?4, ?5)
          ON CONFLICT(day) DO UPDATE SET
+            slots = CASE WHEN excluded.active_s >= active_s THEN excluded.slots ELSE slots END,
             active_s = MAX(active_s, excluded.active_s),
             walked_s = MAX(walked_s, excluded.walked_s)",
-        params![day, input_ms, active_s, walked_s],
+        params![day, input_ms, active_s, walked_s, slots],
     )
     .map(|_| ())
 }
 
-/// The PC walk share's saved counts for `day` as (active, walked) seconds; None when
-/// the day has no row.
-pub fn pc_walk_share_on(app: &tauri::AppHandle, day: &str) -> Result<Option<(u32, u32)>, String> {
+/// The PC walk share's saved counts for `day` as (active, walked) seconds and
+/// the slots text; None when the day has no row.
+pub fn pc_walk_share_on(
+    app: &tauri::AppHandle,
+    day: &str,
+) -> Result<Option<(u32, u32, String)>, String> {
     with_conn(app, |conn| pc_walk_share_row(conn, day))
 }
 
-fn pc_walk_share_row(conn: &Connection, day: &str) -> rusqlite::Result<Option<(u32, u32)>> {
-    let mut stmt = conn.prepare("SELECT active_s, walked_s FROM desk_days WHERE day = ?1")?;
+fn pc_walk_share_row(conn: &Connection, day: &str) -> rusqlite::Result<Option<(u32, u32, String)>> {
+    let mut stmt =
+        conn.prepare("SELECT active_s, walked_s, slots FROM desk_days WHERE day = ?1")?;
     let mut rows = stmt.query_map(params![day], |row| {
-        Ok((row.get::<_, u32>(0)?, row.get::<_, u32>(1)?))
+        Ok((
+            row.get::<_, u32>(0)?,
+            row.get::<_, u32>(1)?,
+            row.get::<_, String>(2)?,
+        ))
     })?;
     rows.next().transpose()
 }
@@ -2183,6 +2275,7 @@ pub fn backfill_session_averages(app: &AppHandle, tilt_multiplier: f32, incline_
                             raw_steps: 0.0,
                             raw_speed: 0.0,
                             heart_rate: None,
+                            key_presses: None,
                         })
                     })?
                     .collect::<rusqlite::Result<_>>()?;
@@ -2471,20 +2564,20 @@ mod db_tests {
         tx.commit().unwrap();
         assert_eq!(
             pc_walk_share_row(&conn, "2026-11-20").unwrap(),
-            Some((0, 0))
+            Some((0, 0, String::new()))
         );
         assert_eq!(pc_walk_share_row(&conn, "2026-11-21").unwrap(), None);
 
         // A new day gets its row; an existing one keeps its first input time.
-        upsert_pc_walk_share(&conn, "2026-11-21", 9, 600, 240).unwrap();
-        upsert_pc_walk_share(&conn, "2026-11-20", 99, 3_000, 1_200).unwrap();
+        upsert_pc_walk_share(&conn, "2026-11-21", 9, 600, 240, "").unwrap();
+        upsert_pc_walk_share(&conn, "2026-11-20", 99, 3_000, 1_200, "").unwrap();
         assert_eq!(
             pc_walk_share_row(&conn, "2026-11-21").unwrap(),
-            Some((600, 240))
+            Some((600, 240, String::new()))
         );
         assert_eq!(
             pc_walk_share_row(&conn, "2026-11-20").unwrap(),
-            Some((3_000, 1_200))
+            Some((3_000, 1_200, String::new()))
         );
         let first: i64 = conn
             .query_row(
@@ -2495,11 +2588,102 @@ mod db_tests {
             .unwrap();
         assert_eq!(first, 5);
         // An older write landing late leaves the newer counts.
-        upsert_pc_walk_share(&conn, "2026-11-21", 9, 540, 200).unwrap();
+        upsert_pc_walk_share(&conn, "2026-11-21", 9, 540, 200, "").unwrap();
         assert_eq!(
             pc_walk_share_row(&conn, "2026-11-21").unwrap(),
-            Some((600, 240))
+            Some((600, 240, String::new()))
         );
+    }
+
+    #[test]
+    fn migration_13_gives_old_desk_days_no_slots_and_a_late_write_keeps_newer_ones() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        for (i, m) in MIGRATIONS[..12].iter().enumerate() {
+            let tx = conn.transaction().unwrap();
+            m(&tx).unwrap();
+            tx.execute_batch(&format!("PRAGMA user_version = {}", i + 1))
+                .unwrap();
+            tx.commit().unwrap();
+        }
+        conn.execute(
+            "INSERT INTO desk_days (day, first_input_ms, active_s, walked_s)
+             VALUES ('2026-11-22', 5, 900, 300)",
+            [],
+        )
+        .unwrap();
+        assert_eq!(migrate(&mut conn).unwrap(), latest());
+        // Running it again (a half-applied file) changes nothing.
+        let tx = conn.transaction().unwrap();
+        migration_14_today_slots(&tx).unwrap();
+        tx.commit().unwrap();
+        assert_eq!(
+            pc_walk_share_row(&conn, "2026-11-22").unwrap(),
+            Some((900, 300, String::new()))
+        );
+
+        upsert_pc_walk_share(&conn, "2026-11-23", 9, 600, 300, "96:300:0,97:300:300").unwrap();
+        // An older write landing late keeps the newer slots and counts.
+        upsert_pc_walk_share(&conn, "2026-11-23", 9, 300, 0, "96:300:0").unwrap();
+        assert_eq!(
+            pc_walk_share_row(&conn, "2026-11-23").unwrap(),
+            Some((600, 300, "96:300:0,97:300:300".to_string()))
+        );
+        // A newer one replaces them.
+        upsert_pc_walk_share(&conn, "2026-11-23", 9, 660, 360, "96:300:0,97:360:360").unwrap();
+        assert_eq!(
+            pc_walk_share_row(&conn, "2026-11-23").unwrap(),
+            Some((660, 360, "96:300:0,97:360:360".to_string()))
+        );
+    }
+
+    #[test]
+    fn migration_13_adds_key_presses_that_old_samples_leave_empty() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        for (i, m) in MIGRATIONS[..12].iter().enumerate() {
+            let tx = conn.transaction().unwrap();
+            m(&tx).unwrap();
+            tx.execute_batch(&format!("PRAGMA user_version = {}", i + 1))
+                .unwrap();
+            tx.commit().unwrap();
+        }
+        conn.execute_batch(
+            "INSERT INTO sessions (id, start_time, end_time) VALUES (1, 0, 0);
+             INSERT INTO samples (session_id, timestamp, speed, incline) VALUES (1, 1000, 3.0, 0);",
+        )
+        .unwrap();
+        assert_eq!(migrate(&mut conn).unwrap(), latest());
+        // Running it again (a half-applied file) changes nothing.
+        let tx = conn.transaction().unwrap();
+        migration_13_key_presses(&tx).unwrap();
+        tx.commit().unwrap();
+        assert_eq!(samples_of(&conn, 1).unwrap()[0].key_presses, None);
+        // A walk without counts is not one of the typing walks.
+        assert!(typing_walks_of(&conn, 20).unwrap().is_empty());
+    }
+
+    #[test]
+    fn typing_walks_are_the_newest_walks_with_counts() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&mut conn).unwrap();
+        conn.execute_batch(
+            "INSERT INTO sessions (id, start_time, end_time) VALUES (1, 100, 100), (2, 200, 200), (3, 300, 300);",
+        )
+        .unwrap();
+        let keyed = |k: Option<u16>| Sample {
+            key_presses: k,
+            ..hr_sample(None)
+        };
+        insert_sample(&conn, 1, &keyed(None), 1000).unwrap();
+        insert_sample(&conn, 1, &keyed(Some(40)), 2000).unwrap();
+        insert_sample(&conn, 2, &keyed(None), 3000).unwrap();
+        insert_sample(&conn, 3, &keyed(Some(70)), 4000).unwrap();
+        let walks = typing_walks_of(&conn, 20).unwrap();
+        // Walk 2 has no counts; the newest comes first.
+        assert_eq!(walks.len(), 2);
+        assert_eq!(walks[0][0].key_presses, Some(70));
+        assert_eq!(walks[1].len(), 2);
+        assert_eq!(walks[1][1].key_presses, Some(40));
+        assert_eq!(typing_walks_of(&conn, 1).unwrap().len(), 1);
     }
 
     fn hr_sample(heart_rate: Option<u16>) -> Sample {
@@ -2513,6 +2697,7 @@ mod db_tests {
             raw_steps: 0.0,
             raw_speed: 3.0,
             heart_rate,
+            key_presses: None,
         }
     }
 
@@ -2588,7 +2773,7 @@ mod db_tests {
     }
 
     #[test]
-    fn migration_13_leaves_old_walks_without_a_program_and_an_update_keeps_the_saved_one() {
+    fn migration_15_leaves_old_walks_without_a_program_and_an_update_keeps_the_saved_one() {
         let mut conn = Connection::open_in_memory().unwrap();
         for (i, m) in MIGRATIONS[..12].iter().enumerate() {
             let tx = conn.transaction().unwrap();
@@ -2602,7 +2787,7 @@ mod db_tests {
         assert_eq!(migrate(&mut conn).unwrap(), latest());
         // Running it again (a half-applied file) changes nothing.
         let tx = conn.transaction().unwrap();
-        migration_13_session_program(&tx).unwrap();
+        migration_15_session_program(&tx).unwrap();
         tx.commit().unwrap();
         assert_eq!(saved_session(&conn, 1).program_name, None);
 
@@ -3685,6 +3870,7 @@ mod averages_tests {
             raw_steps: 0.0,
             raw_speed: 0.0,
             heart_rate: None,
+            key_presses: None,
         }
     }
 
