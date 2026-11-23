@@ -260,6 +260,14 @@ export const snapshot: AppSnapshot = {
     failed: false,
     message: "Switch WRIST_LINK on to let the watch's data field read the belt.",
   },
+  typing_speed: {
+    enabled: false,
+    bands: [],
+    walks: 0,
+    typing_minutes: 0,
+    min_minutes: 5,
+    recent_walks: 20,
+  },
   heart_rate: {
     sensor: null,
     status: "off",

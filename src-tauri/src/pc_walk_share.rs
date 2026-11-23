@@ -15,7 +15,7 @@
 //! whether the belt runs.
 //!
 //! The same seconds also go into today's 5-minute slots (`SLOT_MIN`), saved
-//! with the counts (migration 13), so `snapshot.today_timeline` can lay out
+//! with the counts (migration 14), so `snapshot.today_timeline` can lay out
 //! today from the first input to now: when the PC was in use and when the belt
 //! walked during it. A day with no PC input has no timeline.
 //!

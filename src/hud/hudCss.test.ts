@@ -58,6 +58,11 @@ describe("HUD distance readouts at larger text sizes", () => {
     expect(rule(".hud-steppers")).toMatch(/repeat\(auto-fit/);
   });
 
+  it("caps a program button at the row's width and wraps its line, as END does at 225 % text size", () => {
+    expect(css).toMatch(/\.hud-auto-actions \.hud-btn\s*\{[^}]*min-width:\s*min\(max-content,\s*100%\)/);
+    expect(rule(".hud-auto-actions .hud-btn-sub")).toMatch(/white-space:\s*normal/);
+  });
+
   it("lets the steppers shrink to a column narrower than one of them, as at 225 % text size", () => {
     expect(rule(".hud-steppers")).toMatch(/minmax\(min\(104px,\s*100%\),\s*1fr\)/);
     expect(rule(".hud-stepper")).toMatch(/min-width:\s*0/);

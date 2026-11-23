@@ -24,6 +24,7 @@ import type { SessionSnapshot } from "./SessionSnapshot";
 import type { StravaSnapshot } from "./StravaSnapshot";
 import type { TodayTimeline } from "./TodayTimeline";
 import type { TrafficSnapshot } from "./TrafficSnapshot";
+import type { TypingSpeedSnapshot } from "./TypingSpeedSnapshot";
 import type { UpdateSnapshot } from "./UpdateSnapshot";
 import type { WalkAwaySnapshot } from "./WalkAwaySnapshot";
 import type { WallClock } from "./WallClock";
@@ -101,7 +102,12 @@ calibration: CalibrationSnapshot,
  * Labs: WRIST_LINK, the service the watch's data field reads the belt
  * from (off by default).
  */
-wrist_link: WristLinkSnapshot, heart_rate: HeartRateSnapshot, 
+wrist_link: WristLinkSnapshot, 
+/**
+ * Labs: typing by speed, key presses per minute in each speed band over
+ * recent walks (off by default).
+ */
+typing_speed: TypingSpeedSnapshot, heart_rate: HeartRateSnapshot, 
 /**
  * The dashboard held open and on top during a guided task (GROUND_TRUTH).
  */

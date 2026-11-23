@@ -34,6 +34,7 @@ import { strideFit } from "./stridefit";
 import { today } from "./today";
 import { traffic } from "./traffic";
 import type { Scenario } from "./types";
+import { typingSpeed } from "./typingspeed";
 import { update } from "./update";
 import { walkaway } from "./walkaway";
 import { wallClock } from "./wallclock";
@@ -73,5 +74,6 @@ export const SCENARIOS: Scenario[] = [
   hrCool,
   pcWalkShare,
   platform,
+  typingSpeed,
   today,
 ];

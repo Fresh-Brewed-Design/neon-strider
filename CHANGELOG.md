@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.56.4 (2026-11-23)
+
+### Fixed
+
+- The program buttons in the HUD (HOLD, SKIP, END) now stay inside the panel at every Windows text size. END used to run past the edge at 225 %.
+
+## 1.56.3 (2026-11-23)
+
+### Fixed
+
+- The HUD next-step line (NEXT // ...) wraps inside the program section at 200 and 225 % text size instead of running past its edge.
+
+## 1.56.2 (2026-11-23)
+
+### Fixed
+
+- The Live page program card keeps its status line (for example INTERVAL 3/5 · step 6/11 · 02:08 left) on one line, so the step map keeps its rows.
+
+## 1.56.1 (2026-11-23)
+
+### Fixed
+
+- A belt paused with the treadmill's own button now stays paused when the app raises the speed by itself in the same moment (Neural flow speeding back up, a call ending) or when a higher minimum speed is saved. GO, Engage or a speed set by hand resumes it.
+
 ## 1.56.0 (2026-11-23)
 
 ### New
