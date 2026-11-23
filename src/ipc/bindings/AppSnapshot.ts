@@ -22,6 +22,7 @@ import type { Program } from "./Program";
 import type { SeatedSnapshot } from "./SeatedSnapshot";
 import type { SessionSnapshot } from "./SessionSnapshot";
 import type { StravaSnapshot } from "./StravaSnapshot";
+import type { TodayTimeline } from "./TodayTimeline";
 import type { TrafficSnapshot } from "./TrafficSnapshot";
 import type { TypingSpeedSnapshot } from "./TypingSpeedSnapshot";
 import type { UpdateSnapshot } from "./UpdateSnapshot";
@@ -116,6 +117,11 @@ guided_task: GuidedTaskSnapshot,
  * minute), how many of them the belt was running, and that share.
  */
 pc_walk_share: PcWalkShare, 
+/**
+ * Today from the first PC input to now, in runs of 5-minute slots: away,
+ * at the PC, or walking. None on a day with no PC input yet.
+ */
+today_timeline: TodayTimeline | null, 
 /**
  * The OS, its OS-only features and how it writes the shortcuts, so the
  * windows word things the OS's way and hide what it lacks.

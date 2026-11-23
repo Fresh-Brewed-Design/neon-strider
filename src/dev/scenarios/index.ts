@@ -31,6 +31,7 @@ import { seated } from "./seated";
 import { stasis } from "./stasis";
 import { strava } from "./strava";
 import { strideFit } from "./stridefit";
+import { today } from "./today";
 import { traffic } from "./traffic";
 import type { Scenario } from "./types";
 import { typingSpeed } from "./typingspeed";
@@ -74,4 +75,5 @@ export const SCENARIOS: Scenario[] = [
   pcWalkShare,
   platform,
   typingSpeed,
+  today,
 ];
