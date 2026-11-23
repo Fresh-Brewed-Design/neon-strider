@@ -4303,4 +4303,103 @@ mod tests {
         assert!(app_starts(&r.commands_since(mark)));
         assert!(r.deck.running_at(0.6), "{} km/h", r.deck.speed_kmh());
     }
+
+    /// A manual walk at 3 km/h paused at the treadmill, with the Paused frame
+    /// taken in at once: whatever `raise` does to the target in between lands
+    /// before the engine sends anything for the walk at the old speed.
+    fn paused_at_the_treadmill_after(raise: impl FnOnce(&mut Rig)) -> (Rig, usize) {
+        let mut r = walking_at_three();
+        let mark = r.mark();
+        let t = r.t;
+        r.deck.press_pause(t);
+        r.state.set_test_now(t);
+        raise(&mut r);
+        let frame = r.deck.current_frame();
+        r.rx(&frame);
+        assert_eq!(r.state.last_status, protocol::MachineStatus::Paused);
+        (r, mark)
+    }
+
+    /// The speed a call's end restores, written the way the desk loop does it
+    /// (`desk::apply_speed`): the manual intent, not a speed set by hand.
+    fn call_restore(r: &mut Rig, kmh: f32) {
+        let incline = r.state.manual_intent.map_or(0, |i| i.incline);
+        r.state.set_intent(Some(kmh), Some(incline), false);
+    }
+
+    /// Issue #311: a call ends and restores the speed in the same moment the
+    /// belt is paused at the treadmill. The deck still reported running when
+    /// the call logic looked, so the restore went in; the belt stays paused.
+    #[test]
+    fn a_call_restore_racing_a_pause_at_the_treadmill_never_resumes_the_belt() {
+        let (mut r, mark) = paused_at_the_treadmill_after(|r| call_restore(r, 4.0));
+        r.run(60.0);
+        assert_eq!(r.deck.status_code(), 10, "still paused");
+        assert!(
+            !app_starts(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+        // GO resumes it, at the restored speed.
+        r.press(DeckAction::Start);
+        r.run(15.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+    }
+
+    /// Issue #311: a rise nobody pressed that lands after the pause frame
+    /// leaves the belt paused too.
+    #[test]
+    fn an_automatic_rise_on_a_belt_paused_at_the_treadmill_never_resumes_it() {
+        let (mut r, mark) = paused_at_the_treadmill_after(|_| {});
+        r.run(5.0);
+        call_restore(&mut r, 4.0);
+        r.run(60.0);
+        assert_eq!(r.deck.status_code(), 10, "still paused");
+        assert!(!app_starts(&r.commands_since(mark)));
+    }
+
+    /// Issue #311: a higher minimum speed saved while the belt is paused at
+    /// the treadmill lifts the walk's target to the new floor; the belt stays
+    /// paused until a press.
+    #[test]
+    fn a_higher_floor_saved_while_paused_at_the_treadmill_never_resumes_the_belt() {
+        let (mut r, mark) = paused_at_the_treadmill_after(|_| {});
+        r.run(5.0);
+        r.state.set_test_now(r.t);
+        r.state.sync_config(&crate::persistence::AppConfig {
+            min_speed: 3.5,
+            ..Default::default()
+        });
+        assert!(
+            r.state.resolve_target().0 > 3.4,
+            "the floor lifts the target"
+        );
+        r.run(60.0);
+        assert_eq!(r.deck.status_code(), 10, "still paused");
+        assert!(!app_starts(&r.commands_since(mark)));
+    }
+
+    /// A speed set by hand on a belt paused at the treadmill is a press: it
+    /// resumes the belt at that speed, as it always has.
+    #[test]
+    fn a_speed_set_by_hand_resumes_a_belt_paused_at_the_treadmill() {
+        let (mut r, mark) = paused_at_the_treadmill_after(|_| {});
+        r.run(5.0);
+        r.set_speed(3.5);
+        r.run(15.0);
+        assert!(app_starts(&r.commands_since(mark)));
+        assert!(r.deck.running_at(3.5), "{} km/h", r.deck.speed_kmh());
+    }
+
+    /// A speed press on the HUD or a shortcut on a belt paused at the
+    /// treadmill resumes it one step up.
+    #[test]
+    fn a_speed_up_press_resumes_a_belt_paused_at_the_treadmill() {
+        let (mut r, mark) = paused_at_the_treadmill_after(|_| {});
+        r.run(5.0);
+        r.press(DeckAction::SpeedUp);
+        r.run(15.0);
+        assert!(app_starts(&r.commands_since(mark)));
+        assert!(r.deck.running_at(3.1), "{} km/h", r.deck.speed_kmh());
+    }
 }
