@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.56.2 (2026-11-23)
+
+### Fixed
+
+- The Live page program card keeps its status line (for example INTERVAL 3/5 · step 6/11 · 02:08 left) on one line, so the step map keeps its rows.
+
 ## 1.56.1 (2026-11-23)
 
 ### Fixed
