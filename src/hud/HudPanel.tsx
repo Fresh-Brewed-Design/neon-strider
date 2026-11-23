@@ -133,6 +133,26 @@ export function StrideFitLine({ snapshot }: { snapshot: AppSnapshot }) {
   );
 }
 
+/**
+ * Quiet line while speed drift sets the belt's speed, so a slow change never
+ * looks like a fault. Rust decides when (`speed_drift.state`); its sentence
+ * is the tooltip. A speed set by hand ends drift and the line goes.
+ */
+export function SpeedDriftLine({ snapshot }: { snapshot: AppSnapshot }) {
+  const d = snapshot.speed_drift;
+  const drifting = d.state === "drifting" || d.state === "held";
+  if (!drifting || d.band_low_kmh === null || d.band_high_kmh === null) return null;
+  return (
+    <div className="hud-drift accent-cyan" data-testid="hud-drift" title={d.message}>
+      <span className="hud-label">SPEED DRIFT</span>
+      <span className="hud-drift-speed">
+        {d.band_low_kmh.toFixed(1)} to {d.band_high_kmh.toFixed(1)}
+        <span className="hud-unit">km/h</span>
+      </span>
+    </div>
+  );
+}
+
 /** Engage / Stasis: one `toggle_start` to Rust, the same press as the shortcut. */
 export function EngageButton({
   snapshot,

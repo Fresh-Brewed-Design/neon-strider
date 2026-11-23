@@ -31,6 +31,12 @@ pub struct SettingLimits {
     pub body_mass_kg: SettingRange,
     // ---- Neural flow (neural.rs) ----
     pub neural_floor_pct: SettingRange,
+    // ---- Speed drift (speed_drift.rs) ----
+    /// Either end of the band, calibrated km/h.
+    pub speed_drift_kmh: SettingRange,
+    /// How far the fastest speed may sit above the slowest.
+    pub speed_drift_width_kmh: SettingRange,
+    pub speed_drift_minutes: SettingRange,
     // ---- HEART_LINK (heart_rate/worker.rs) ----
     pub max_heart_rate_bpm: SettingRange,
     /// The max heart rate zones use until one is set (`DEFAULT_MAX_BPM`).
@@ -77,6 +83,18 @@ impl Default for SettingLimits {
             incline_offset_pct: range(p::MIN_INCLINE_OFFSET_PCT, p::MAX_INCLINE_OFFSET_PCT),
             body_mass_kg: range(p::MIN_BODY_MASS_KG, p::MAX_BODY_MASS_KG),
             neural_floor_pct: range(crate::neural::MIN_FLOOR_PCT, crate::neural::MAX_FLOOR_PCT),
+            speed_drift_kmh: range(
+                crate::speed_drift::MIN_BAND_KMH,
+                crate::speed_drift::MAX_BAND_KMH,
+            ),
+            speed_drift_width_kmh: range(
+                crate::speed_drift::MIN_BAND_WIDTH_KMH,
+                crate::speed_drift::MAX_BAND_WIDTH_KMH,
+            ),
+            speed_drift_minutes: range(
+                crate::speed_drift::MIN_EVERY_MINUTES as f32,
+                crate::speed_drift::MAX_EVERY_MINUTES as f32,
+            ),
             max_heart_rate_bpm: range(
                 f32::from(crate::heart_rate::MIN_MAX_BPM),
                 f32::from(crate::heart_rate::MAX_MAX_BPM),

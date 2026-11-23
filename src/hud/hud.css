@@ -204,7 +204,8 @@ body,
 /* Neural flow easing the belt off, or the belt above STRIDE_FIT: one quiet
    row under the stats each, never a toast per change. */
 .hud-neural,
-.hud-stride {
+.hud-stride,
+.hud-drift {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -215,14 +216,16 @@ body,
   min-width: 0;
 }
 .hud-neural .hud-label,
-.hud-stride .hud-label {
+.hud-stride .hud-label,
+.hud-drift .hud-label {
   color: var(--accent);
   letter-spacing: 0.14em;
   overflow-wrap: anywhere;
   min-width: 0;
 }
 .hud-neural-speed,
-.hud-stride-speed {
+.hud-stride-speed,
+.hud-drift-speed {
   display: flex;
   align-items: baseline;
   gap: 4px;

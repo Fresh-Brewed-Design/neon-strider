@@ -368,6 +368,9 @@ pub struct OrchestratorState {
     /// When Neural flow last changed the target, so the protocol worker
     /// doesn't toast the deck's speed change that follows.
     pub neural_changed_at: Option<Instant>,
+    /// Speed drift (speed_drift.rs): its settings as last read, its machine,
+    /// and when it last changed the target.
+    pub speed_drift: crate::speed_drift::DriftRun,
 
     /// An Engage/start is waiting for the deck to report Starting or Running.
     pub start_requested_at: Option<Instant>,
@@ -489,6 +492,7 @@ impl Default for OrchestratorState {
             speed_hand_epoch: 0,
             hand_epoch_before_pause: 0,
             neural_changed_at: None,
+            speed_drift: Default::default(),
             start_requested_at: None,
             start_blocked: false,
             start_sent_at: None,
@@ -1970,7 +1974,8 @@ impl OrchestratorState {
     }
 
     pub fn update_neural_flow(&mut self, keys: u32, quiet: bool, now: Instant, now_ms: u64) {
-        let (base, _, _) = self.resolve_base(now);
+        let (base, _, source) = self.resolve_base(now);
+        let base = self.drift_speed(base, source);
         let tick = crate::neural::Tick {
             now_ms,
             keys,
@@ -2034,9 +2039,12 @@ impl OrchestratorState {
         (speed, incline.min(INCLINE_LEVEL_LIMIT), source)
     }
 
-    /// The base eased by Neural flow, before the belt's floor.
+    /// The base moved by speed drift and eased by Neural flow, before the
+    /// belt's floor.
     fn resolve_eased(&self) -> (f32, u8, TargetSource) {
         let (speed, incline, source) = self.resolve_base(self.now());
+        // Speed drift moves a manual speed within its band (speed_drift.rs).
+        let speed = self.drift_speed(speed, source);
         // A speed set by hand since Neural flow's last tick wins at once; quiet
         // mode on a call takes the lower speed and is never slowed further.
         let speed = self.neural.speed_for(

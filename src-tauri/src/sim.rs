@@ -58,6 +58,9 @@ const STANDBY_AFTER: Duration = Duration::from_secs(14 * 60);
 /// 0.057 kcal a metre (4 km/h at 75 kg), in the deck's 0.1 kcal units.
 const STRIDE_M: f64 = 0.74;
 const CALORIES_RAW_PER_M: f64 = 0.57;
+/// The epoch-ms time a rig starts at (any fixed instant: only differences count).
+#[cfg(test)]
+const SIM_EPOCH_MS: u64 = 1_800_000_000_000;
 /// The physics step, so a long `advance` still ramps smoothly.
 const SIM_STEP: Duration = Duration::from_millis(50);
 
@@ -612,6 +615,8 @@ pub(crate) struct Rig {
     engine: ProtocolEngine,
     linked: bool,
     pub(crate) t: Instant,
+    /// When the rig began: epoch-ms times (speed drift) count from it.
+    t0: Instant,
     last_second: Instant,
     pub(crate) sent: Vec<Packet>,
     pub(crate) sessions_started: u32,
@@ -647,6 +652,7 @@ impl Rig {
             engine: ProtocolEngine::new(),
             linked: false,
             t,
+            t0: t,
             last_second: t,
             sent: vec![],
             sessions_started: 0,
@@ -731,6 +737,10 @@ impl Rig {
                 self.silent_drops += 1;
                 return;
             }
+            // As `bluetooth::tick_each_second`: drift before the program;
+            // no call or calibration run here.
+            let now_ms = SIM_EPOCH_MS + now.duration_since(self.t0).as_millis() as u64;
+            self.state.tick_speed_drift(now, now_ms, false, false);
             self.state.tick_profile_sweep(now);
             self.toasts.extend(self.state.tick_program(now));
         }
@@ -4304,6 +4314,199 @@ mod tests {
         r.run(10.0);
         assert!(app_starts(&r.commands_since(mark)));
         assert!(r.deck.running_at(0.6), "{} km/h", r.deck.speed_kmh());
+    }
+
+    // ---- Speed drift (#251) ----
+
+    /// A manual walk at 3.5 km/h with speed drift on (3.2 to 3.8 km/h, every
+    /// 2 minutes), the belt already running by a press.
+    fn drift_rig() -> Rig {
+        let mut r = Rig::new();
+        r.state.speed_drift.cfg = crate::speed_drift::Config {
+            enabled: true,
+            low_kmh: 3.2,
+            high_kmh: 3.8,
+            every_minutes: 2,
+        };
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(5.0);
+        r.set_speed(3.5);
+        r.run(10.0);
+        assert!(r.deck.running_at(3.5));
+        r
+    }
+
+    /// Drift waits an interval, then moves the running belt within its band
+    /// by targets alone, one deck step at a time, and never starts, pauses or
+    /// stops it.
+    #[test]
+    fn speed_drift_varies_a_manual_walk_within_its_band() {
+        let mut r = drift_rig();
+        let mark = r.mark();
+        r.run(100.0);
+        assert!(
+            target_bytes_since(&r, mark).is_empty(),
+            "nothing before the interval"
+        );
+        r.run(40.0 * 60.0);
+        let bytes = target_bytes_since(&r, mark);
+        assert!(bytes.len() >= 3, "it varies: {bytes:?}");
+        assert!(bytes.iter().all(|b| (32..=38).contains(b)), "{bytes:?}");
+        let mut last = 35;
+        for b in &bytes {
+            assert!(b.abs_diff(last) <= 1, "one deck step at a time: {bytes:?}");
+            last = *b;
+        }
+        let sent = r.commands_since(mark);
+        assert!(!app_starts(&sent), "{sent:?}");
+        assert_eq!(r.controls_since(mark, Control::Pause), 0);
+        assert_eq!(r.controls_since(mark, Control::Stop), 0);
+        assert!(r.deck.speed_kmh() >= 3.15 && r.deck.speed_kmh() <= 3.85);
+        assert_eq!(
+            r.state.manual_intent.map(|i| i.speed),
+            Some(3.5),
+            "the speed set by hand stays the user's"
+        );
+    }
+
+    /// With STRIDE_FIT at 3.6 km/h, drift never asks a faster speed.
+    #[test]
+    fn speed_drift_stays_at_or_below_stride_fit() {
+        let mut r = drift_rig();
+        r.state.stride_fit_kmh = Some(3.6);
+        let mark = r.mark();
+        r.run(60.0 * 60.0);
+        let bytes = target_bytes_since(&r, mark);
+        assert!(!bytes.is_empty());
+        assert!(bytes.iter().all(|b| (32..=36).contains(b)), "{bytes:?}");
+    }
+
+    /// A speed set by hand while drift has the belt wins at once and ends
+    /// drift for the walk: the belt stays at the speed set.
+    #[test]
+    fn a_speed_set_by_hand_ends_speed_drift_for_the_walk() {
+        let mut r = drift_rig();
+        r.run(5.0 * 60.0);
+        assert_eq!(
+            r.state.speed_drift.machine.state(),
+            crate::speed_drift::SpeedDriftState::Drifting
+        );
+        r.set_speed(3.0);
+        r.run(10.0);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+        let mark = r.mark();
+        r.run(30.0 * 60.0);
+        assert!(target_bytes_since(&r, mark).iter().all(|b| *b == 30));
+        assert!(r.deck.running_at(3.0));
+        assert_eq!(
+            r.state.speed_drift.machine.state(),
+            crate::speed_drift::SpeedDriftState::Ended
+        );
+    }
+
+    /// The deck's remote is a hand too.
+    #[test]
+    fn the_remote_ends_speed_drift_for_the_walk() {
+        let mut r = drift_rig();
+        r.run(5.0 * 60.0);
+        r.remote_speed(true, 6);
+        r.run(5.0);
+        let at = r.deck.speed_kmh();
+        let mark = r.mark();
+        r.run(20.0 * 60.0);
+        assert!(
+            target_bytes_since(&r, mark).is_empty(),
+            "the deck's setting stays"
+        );
+        assert!((r.deck.speed_kmh() - at).abs() < 0.05);
+        assert_eq!(
+            r.state.speed_drift.machine.state(),
+            crate::speed_drift::SpeedDriftState::Ended
+        );
+    }
+
+    /// A pause wins: nothing moves the paused belt, however long, and the
+    /// resume (a press) goes back to the user's own speed, where drift waits
+    /// a full interval again.
+    #[test]
+    fn a_pause_wins_over_speed_drift_and_never_resumes_the_belt() {
+        let mut r = drift_rig();
+        r.run(5.0 * 60.0);
+        r.press(DeckAction::Pause);
+        r.run(10.0);
+        assert!(r.deck.belt_still(), "{:?}", r.commands_since(0));
+        let mark = r.mark();
+        r.run(30.0 * 60.0);
+        assert!(
+            !moves_belt(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+        assert!(r.deck.belt_still());
+        assert_eq!(r.deck.status_code(), 10);
+        r.press(DeckAction::Start);
+        r.run(15.0);
+        assert!(r.deck.running_at(3.5), "{} km/h", r.deck.speed_kmh());
+        let mark = r.mark();
+        r.run(90.0);
+        assert!(
+            target_bytes_since(&r, mark).is_empty(),
+            "a fresh wait after the resume"
+        );
+    }
+
+    /// A pause at the treadmill the moment after a drift step (the step may
+    /// not have reached the deck yet) never resumes the belt.
+    #[test]
+    fn a_pause_at_the_treadmill_right_after_a_drift_step_never_resumes() {
+        let mut r = drift_rig();
+        let mark = r.mark();
+        let mut n = 0;
+        while target_bytes_since(&r, mark).is_empty() {
+            r.run(0.2);
+            n += 1;
+            assert!(n < 5 * 60 * 10, "no drift step");
+        }
+        r.deck.press_pause(r.t);
+        let paused = r.mark();
+        r.run(10.0 * 60.0);
+        assert!(
+            !app_starts(&r.commands_since(paused)),
+            "{:?}",
+            r.commands_since(paused)
+        );
+        assert!(r.deck.belt_still());
+    }
+
+    /// A program wins: while one runs, drift asks nothing and the belt runs
+    /// the program's speed.
+    #[test]
+    fn a_program_wins_over_speed_drift() {
+        let mut r = drift_rig();
+        r.run(5.0 * 60.0);
+        r.run_program(POST_MEAL);
+        r.run(20.0);
+        let mark = r.mark();
+        r.run(5.0 * 60.0);
+        assert!(target_bytes_since(&r, mark).iter().all(|b| *b == 40));
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+    }
+
+    /// Switched on with the belt still, drift starts nothing.
+    #[test]
+    fn speed_drift_never_starts_a_still_belt() {
+        let mut r = Rig::new();
+        r.state.speed_drift.cfg = crate::speed_drift::Config {
+            enabled: true,
+            every_minutes: 2,
+            ..Default::default()
+        };
+        r.run(1.0);
+        let mark = r.mark();
+        r.run(30.0 * 60.0);
+        assert!(!moves_belt(&r.commands_since(mark)));
+        assert!(r.deck.belt_still());
     }
 
     // ---- Easy start (#259) ----

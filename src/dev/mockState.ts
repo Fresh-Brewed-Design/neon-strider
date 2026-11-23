@@ -123,6 +123,18 @@ export const snapshot: AppSnapshot = {
     floor_pct: 90,
     sensitivity: "medium",
   },
+  speed_drift: {
+    enabled: false,
+    low_kmh: 3.2,
+    high_kmh: 3.8,
+    every_minutes: 5,
+    state: "off",
+    band_low_kmh: 3.2,
+    band_high_kmh: 3.8,
+    speed_kmh: null,
+    starts_in_s: null,
+    message: "Speed drift is off.",
+  },
   hud: {
     widgets: ["VELOCITY", "INCLINE", "TIMER", "DISTANCE", "DAILY", "CONTROLS", "PROGRAMS"],
     anchor: "bottom_right",
