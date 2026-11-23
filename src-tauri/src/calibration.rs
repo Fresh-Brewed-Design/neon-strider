@@ -1057,6 +1057,12 @@ fn with_run<T>(f: impl FnOnce(&mut Option<Run>) -> T) -> T {
     out
 }
 
+/// A GROUND_TRUTH run is open: it holds the belt at the run's speed, so
+/// speed drift leaves the belt alone.
+pub fn run_open() -> bool {
+    RUN.lock().unwrap_or_else(|e| e.into_inner()).is_some()
+}
+
 /// A run is open and taking taps, so Alt+Space is a tap (read by the input
 /// hook on every key press, so an atomic and no lock).
 pub fn tap_listening() -> bool {

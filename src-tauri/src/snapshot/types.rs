@@ -34,6 +34,11 @@ pub struct AppSnapshot {
     // ---- Neural flow ----
     pub neural: NeuralSnapshot,
 
+    // ---- Speed drift ----
+    /// Speed drift (#251): its settings, what it is doing and Rust's sentence
+    /// for it. The HUD shows a line while it sets the speed.
+    pub speed_drift: crate::speed_drift::SpeedDriftSnapshot,
+
     // ---- HUD ----
     pub hud: HudConfig,
     /// How the HUD panel shows right now: in full, as a strip or not at all
@@ -757,6 +762,16 @@ pub enum Command {
     /// STAY STILL on the eye-break resume card: the card goes, the belt stays
     /// paused.
     EyeBreakStayStill,
+
+    // ---- Speed drift ----
+    /// Speed drift settings: on or off, the band (calibrated km/h, 0.5 to 12,
+    /// 0.2 to 1.5 wide) and the minutes between changes (2 to 30).
+    SpeedDriftSetConfig {
+        enabled: bool,
+        low_kmh: f32,
+        high_kmh: f32,
+        every_minutes: u32,
+    },
 
     // ---- Slow down on calls ----
     /// Slow-down-on-calls settings: on or off, and the quiet speed 0.5 to 6 km/h.

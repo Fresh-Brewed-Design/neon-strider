@@ -268,6 +268,19 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             Ok(())
         }
 
+        // ---- Speed drift ----
+        Command::SpeedDriftSetConfig {
+            enabled,
+            low_kmh,
+            high_kmh,
+            every_minutes,
+        } => {
+            blocking(move || {
+                crate::speed_drift::set_config(&app, enabled, low_kmh, high_kmh, every_minutes)
+            })
+            .await
+        }
+
         // ---- Slow down on calls ----
         Command::CallsSetConfig { enabled, quiet_kmh } => {
             blocking(move || calls::set_config(&app, enabled, quiet_kmh)).await

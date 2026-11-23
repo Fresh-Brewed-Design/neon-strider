@@ -21,6 +21,7 @@ import type { PlatformSnapshot } from "./PlatformSnapshot";
 import type { Program } from "./Program";
 import type { SeatedSnapshot } from "./SeatedSnapshot";
 import type { SessionSnapshot } from "./SessionSnapshot";
+import type { SpeedDriftSnapshot } from "./SpeedDriftSnapshot";
 import type { StravaSnapshot } from "./StravaSnapshot";
 import type { TrafficSnapshot } from "./TrafficSnapshot";
 import type { UpdateSnapshot } from "./UpdateSnapshot";
@@ -35,7 +36,12 @@ export type AppSnapshot = { connection: ConnectionSnapshot, deck: DeckSnapshot, 
  * STRIDE_FIT for incline, with Rust's words for the card and the
  * confirm dialog. Empty while STRIDE_FIT is unset.
  */
-fit_to_deck: Array<FitToDeckOffer>, neural: NeuralSnapshot, hud: HudConfig, 
+fit_to_deck: Array<FitToDeckOffer>, neural: NeuralSnapshot, 
+/**
+ * Speed drift (#251): its settings, what it is doing and Rust's sentence
+ * for it. The HUD shows a line while it sets the speed.
+ */
+speed_drift: SpeedDriftSnapshot, hud: HudConfig, 
 /**
  * How the HUD panel shows right now: in full, as a strip or not at all
  * (`hud.idle_mode` while the belt is still; see `snapshot/stasis.rs`).

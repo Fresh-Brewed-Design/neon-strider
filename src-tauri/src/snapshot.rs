@@ -208,7 +208,9 @@ fn session_snapshot(
 
 fn neural_snapshot(state: &OrchestratorState) -> NeuralSnapshot {
     let (target_speed, _, _) = state.resolve_target();
-    let (base_speed, _, _) = state.resolve_base(state.now());
+    let (base_speed, _, source) = state.resolve_base(state.now());
+    // Neural flow eases from speed drift's speed while drift has the belt.
+    let base_speed = state.drift_speed(base_speed, source);
     let active = state.focus_stability_enabled
         && state.neural.active()
         && base_speed > 0.0
@@ -230,7 +232,7 @@ fn neural_snapshot(state: &OrchestratorState) -> NeuralSnapshot {
 }
 
 /// Build a snapshot from state. Pure (no Tauri, no locks, no I/O) so it can be
-/// unit-tested. `desk_sync`, `wall_clock`, `pc_walk_share`, `walkaway`, `update`, `traffic`, `lights_out`, `wrist_link`,
+/// unit-tested. `speed_drift`, `desk_sync`, `wall_clock`, `pc_walk_share`, `walkaway`, `update`, `traffic`, `lights_out`, `wrist_link`,
 /// `calibration`, `guided_task` and `hud_view` are left at their defaults: they depend on the clock or shared
 /// state, so the emitter fills them in.
 pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSnapshot {
@@ -243,6 +245,7 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         fit_to_deck: state.fit_to_deck_offers(deck.stride_fit_kmh),
         deck,
         neural: neural_snapshot(state),
+        speed_drift: crate::speed_drift::SpeedDriftSnapshot::default(),
         hud: parts.hud,
         hud_view: HudView::Full,
         hud_monitors: parts.hud_monitors,

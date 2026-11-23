@@ -30,6 +30,18 @@ export const SETTING_LIMITS: SettingLimits = {
     "min": 50.0,
     "max": 95.0
   },
+  "speed_drift_kmh": {
+    "min": 0.5,
+    "max": 12.0
+  },
+  "speed_drift_width_kmh": {
+    "min": 0.2,
+    "max": 1.5
+  },
+  "speed_drift_minutes": {
+    "min": 2.0,
+    "max": 30.0
+  },
   "max_heart_rate_bpm": {
     "min": 120.0,
     "max": 230.0

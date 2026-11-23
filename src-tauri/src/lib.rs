@@ -38,6 +38,7 @@ pub mod profile_sweep;
 pub mod programs;
 pub mod protocol;
 pub mod secrets;
+pub mod speed_drift;
 pub mod wrist_link;
 // The simulated deck: tests, and the dev builds' "simulated treadmill"
 // choice (`sim_link`). Never in release builds.
@@ -303,6 +304,7 @@ async fn start_backend(app: tauri::AppHandle) {
     wrist_link::init(&app);
     wrist_link::spawn(app.clone());
     heart_rate::init(&app);
+    speed_drift::init(&app);
     heart_rate::spawn(app.clone());
 
     if persistence::has_pinned_elements(&app) {

@@ -98,6 +98,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     snapshot.desk_sync = desk_sync::snapshot(snapshot.session.daily_distance_m);
     snapshot.wall_clock = desk_sync::wall_clock();
     snapshot.pc_walk_share = pc_walk_share::snapshot();
+    snapshot.speed_drift = state.speed_drift_snapshot(&crate::speed_drift::config(), now_ms);
     snapshot.walkaway = walkaway::snapshot(now_ms);
     snapshot.update = crate::update::snapshot(now_ms);
     snapshot.traffic = crate::traffic::snapshot();

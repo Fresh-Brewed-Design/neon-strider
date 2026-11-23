@@ -4,7 +4,15 @@ import type { SettingRange } from "./SettingRange";
 /**
  * Every range a dashboard field offers, as Rust enforces it.
  */
-export type SettingLimits = { min_speed_kmh: SettingRange, max_speed_kmh: SettingRange, max_incline_level: SettingRange, tilt_multiplier: SettingRange, incline_offset_pct: SettingRange, body_mass_kg: SettingRange, neural_floor_pct: SettingRange, max_heart_rate_bpm: SettingRange, 
+export type SettingLimits = { min_speed_kmh: SettingRange, max_speed_kmh: SettingRange, max_incline_level: SettingRange, tilt_multiplier: SettingRange, incline_offset_pct: SettingRange, body_mass_kg: SettingRange, neural_floor_pct: SettingRange, 
+/**
+ * Either end of the band, calibrated km/h.
+ */
+speed_drift_kmh: SettingRange, 
+/**
+ * How far the fastest speed may sit above the slowest.
+ */
+speed_drift_width_kmh: SettingRange, speed_drift_minutes: SettingRange, max_heart_rate_bpm: SettingRange, 
 /**
  * The max heart rate zones use until one is set (`DEFAULT_MAX_BPM`).
  */

@@ -73,6 +73,8 @@ export type { SessionSnapshot } from "./bindings/SessionSnapshot";
 export type { SettingLimits } from "./bindings/SettingLimits";
 export type { SettingRange } from "./bindings/SettingRange";
 export type { ShortcutLabels } from "./bindings/ShortcutLabels";
+export type { SpeedDriftSnapshot } from "./bindings/SpeedDriftSnapshot";
+export type { SpeedDriftState } from "./bindings/SpeedDriftState";
 export type { StartResult } from "./bindings/StartResult";
 export type { StepKind } from "./bindings/StepKind";
 export type { StepKindSpot } from "./bindings/StepKindSpot";
