@@ -14,6 +14,10 @@
 //! (`speed_hand_epoch`), and so does DECK_SWEEP. A belt the app finds already
 //! moving (a restart, a reconnect, an update) carries on untouched: a ramp
 //! needs the belt seen still on this connection first.
+//! A pause at the treadmill mid-ease is never resumed by the ramp either: the
+//! engine's automatic resume compares against the target itself
+//! (`last_physical_speed` holds the target, never the slower ramp byte), and
+//! the ramp ends as soon as the deck reports the pause.
 //!
 //! Calibration runs are never eased: GROUND_TRUTH's RUN, RUN ALL and the
 //! guided walk set their speed through `calibration::begin_run`, which calls

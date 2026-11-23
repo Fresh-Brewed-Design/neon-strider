@@ -4615,4 +4615,80 @@ mod tests {
         r.set_speed(3.0);
         assert_eases_up(&mut r, mark, 3.0);
     }
+
+    /// A pause with the treadmill's own button mid-ease: the ramp sends a
+    /// slower byte than the target, but the engine's auto-resume compares
+    /// against the target itself (`last_physical_speed`), so nothing resumes
+    /// the belt. GO resumes it, eased again.
+    #[test]
+    fn a_pause_at_the_treadmill_mid_ease_stays_paused_until_go() {
+        let mut r = eased_rig();
+        r.run(1.0);
+        r.set_speed(4.0);
+        r.run(14.0);
+        assert!(r.state.easing_up(), "about 10 s into the ease");
+        let t = r.t;
+        r.deck.press_pause(t);
+        let pressed = r.mark();
+        // Until the next poll reports the pause, the engine still reads the
+        // belt as running: a ramp step in that window reaches a paused deck,
+        // which refuses it (as any target then). Never a start.
+        while r.state.last_status != protocol::MachineStatus::Paused {
+            r.run(0.05);
+        }
+        assert!(r.t - t < Duration::from_secs(1), "the poll reports it");
+        let mark = r.mark();
+        r.run(60.0);
+        assert_eq!(r.deck.status_code(), 10, "still paused");
+        assert!(r.deck.belt_still());
+        let sent = r.commands_since(mark);
+        assert!(!moves_belt(&sent), "nothing resumes it: {sent:?}");
+        let all = r.commands_since(pressed);
+        assert!(!app_starts(&all), "{all:?}");
+        assert!(
+            all.iter().filter(|k| **k == PacketKind::ControlSet).count() <= 1,
+            "{all:?}"
+        );
+        assert!(!r.state.easing_up());
+        let mark = r.mark();
+        r.press(DeckAction::Start);
+        assert_eases_up(&mut r, mark, 4.0);
+    }
+
+    /// The same on a program: the pause at the treadmill pauses the program,
+    /// and only GO starts the belt again.
+    #[test]
+    fn a_pause_at_the_treadmill_mid_ease_holds_a_program_until_go() {
+        let mut r = eased_rig();
+        r.run(1.0);
+        r.run_program(POST_MEAL);
+        r.run(14.0);
+        assert!(r.state.easing_up(), "about 10 s into the ease");
+        let t = r.t;
+        r.deck.press_pause(t);
+        let pressed = r.mark();
+        // Until the next poll reports the pause, the engine still reads the
+        // belt as running: a ramp step in that window reaches a paused deck,
+        // which refuses it (as any target then). Never a start.
+        while r.state.last_status != protocol::MachineStatus::Paused {
+            r.run(0.05);
+        }
+        assert!(r.t - t < Duration::from_secs(1), "the poll reports it");
+        let mark = r.mark();
+        r.run(60.0);
+        assert_eq!(r.deck.status_code(), 10, "still paused");
+        assert!(r.deck.belt_still());
+        let sent = r.commands_since(mark);
+        assert!(!moves_belt(&sent), "nothing resumes it: {sent:?}");
+        let all = r.commands_since(pressed);
+        assert!(!app_starts(&all), "{all:?}");
+        assert!(
+            all.iter().filter(|k| **k == PacketKind::ControlSet).count() <= 1,
+            "{all:?}"
+        );
+        assert!(r.program().paused);
+        let mark = r.mark();
+        r.go();
+        assert_eases_up(&mut r, mark, 4.0);
+    }
 }
