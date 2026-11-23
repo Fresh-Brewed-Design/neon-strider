@@ -1,1 +1,0 @@
-- New Today strip on the History page: today from your first keyboard or mouse input to now, in 5-minute slots, marked as walking, at the PC or away. A long sit after lunch shows up at a glance. Days with no PC use have no strip, and an app restart or update keeps the morning.
