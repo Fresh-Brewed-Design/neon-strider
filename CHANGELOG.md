@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.56.3 (2026-11-23)
+
+### Fixed
+
+- The HUD next-step line (NEXT // ...) wraps inside the program section at 200 and 225 % text size instead of running past its edge.
+
 ## 1.56.2 (2026-11-23)
 
 ### Fixed
