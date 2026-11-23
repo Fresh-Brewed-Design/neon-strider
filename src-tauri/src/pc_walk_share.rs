@@ -420,7 +420,7 @@ mod tests {
     }
 
     /// Run `n` seconds of the same input and belt.
-    fn run(mut t: Tally, today: NaiveDate, n: u32, active: bool, running: bool) -> Tally {
+    fn run(t: Tally, today: NaiveDate, n: u32, active: bool, running: bool) -> Tally {
         run_at(t, today, 9 * 60, n, active, running)
     }
 

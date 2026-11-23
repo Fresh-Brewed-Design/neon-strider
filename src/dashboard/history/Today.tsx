@@ -29,7 +29,7 @@ export function TodayPanel({ timeline }: { timeline: TodayTimeline }) {
         <ul aria-label="Legend" className="flex flex-wrap gap-x-3 gap-y-1">
           {LEGEND.map((m) => (
             <li key={m} className="flex items-center gap-1.5 font-mono text-[11px] text-white/50">
-              <span aria-hidden className={cx("h-2.5 w-2.5 rounded-sm", MARK_CLASS[m])} />
+              <span aria-hidden className={cx("h-2.5 w-2.5 rounded-sm", MARK_CLASS[m], m === "away" && "ring-1 ring-inset ring-white/25")} />
               {MARK_WORDS[m]}
             </li>
           ))}
