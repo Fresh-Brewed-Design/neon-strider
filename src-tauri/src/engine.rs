@@ -4125,8 +4125,10 @@ mod tests {
     /// a session leaves a count for the next sample.
     #[test]
     fn typing_by_speed_counts_whole_walking_minutes_only() {
-        let mut state = OrchestratorState::default();
-        state.last_status = MachineStatus::Running;
+        let mut state = OrchestratorState {
+            last_status: MachineStatus::Running,
+            ..OrchestratorState::default()
+        };
         state.session.active_session_id = Some(1);
         assert!(!state.neural_monitor_wanted());
         state.typing_speed_enabled = true;
