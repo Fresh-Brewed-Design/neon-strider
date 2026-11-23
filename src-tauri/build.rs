@@ -49,6 +49,24 @@ fn tray_variants() {
         tray_art::update_dot(&mut dotted, w, h);
         write_png(&out.join(format!("tray-{name}-dot.png")), &dotted, w, h);
     }
+
+    // The macOS menu bar's template variants (tray_art::template).
+    for (name, belt, opacity) in [
+        ("idle", false, 1.0),
+        ("running", true, 1.0),
+        ("offline", false, tray_art::TEMPLATE_OFFLINE_ALPHA),
+    ] {
+        let mut px = rgba.to_vec();
+        tray_art::template(&mut px, belt, opacity);
+        write_png(&out.join(format!("tray-template-{name}.png")), &px, w, h);
+        tray_art::template_dot(&mut px, w, h);
+        write_png(
+            &out.join(format!("tray-template-{name}-dot.png")),
+            &px,
+            w,
+            h,
+        );
+    }
 }
 
 /// Every app `#[tauri::command]` (the `generate_handler!` list in `src/lib.rs`). Declaring them

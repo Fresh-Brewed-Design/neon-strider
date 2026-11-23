@@ -20,8 +20,8 @@
 use crate::engine::{DeckAction, OrchestratorState, Packet, PacketKind, ProtocolEngine};
 use crate::protocol::{self, MachineStatus, Telemetry};
 use btleplug::api::{
-    Central, Characteristic, Manager as _, Peripheral as _, ScanFilter, ValueNotification,
-    WriteType,
+    Central, CharPropFlags, Characteristic, Manager as _, Peripheral as _, ScanFilter,
+    ValueNotification, WriteType,
 };
 use btleplug::platform::{Adapter, Manager as BtleManager, Peripheral};
 use futures::{Stream, StreamExt};
@@ -76,20 +76,25 @@ const SUBSCRIBE_RETRY: Duration = Duration::from_millis(200);
 /// Connecting to an awake deck in range takes a second or two on Windows, a
 /// few more when the stack opens a fresh GATT session; 15 s is well past
 /// that, and short enough that three hung connects end within a minute.
+/// CoreBluetooth (macOS) never fails a connect the deck doesn't answer (linked
+/// to another device, asleep, out of range): only this limit ends the try.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 /// Service discovery reads the services and their characteristics, a few
 /// round trips over the air (uncached on a first connect): 5 s, since it runs
 /// once per connect and a slow first read must not fail the try.
 const DISCOVER_TIMEOUT: Duration = Duration::from_secs(5);
 /// Closing a link is local plus one exchange with the deck. One that hangs
-/// leaves a link that is gone anyway, so after 3 s the app carries on.
+/// leaves a link that is gone anyway, so after 3 s the app carries on. On
+/// macOS btleplug waits for a disconnect callback that never comes for a deck
+/// that never connected, so the disconnect before each connect try needs it.
 const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 /// Subscribing writes the status characteristic's descriptor and waits for
 /// the deck's answer: one round trip, so 3 s, like a disconnect.
 const SUBSCRIBE_TIMEOUT: Duration = Duration::from_secs(3);
 /// A write with response is one round trip of a few connection intervals
 /// (tens of ms). 2 s is far past that on a live link and keeps the worker
-/// from stalling long on a dead one.
+/// from stalling long on a dead one, or on macOS, where an acknowledged write
+/// the characteristic doesn't take never returns (`control_write_type`).
 const WRITE_TIMEOUT: Duration = Duration::from_secs(2);
 /// Asking whether the link is up is a local query with no radio traffic, so
 /// it only hangs when the Bluetooth stack is stuck; after 2 s the link counts
@@ -198,7 +203,8 @@ impl DeckLink {
             match self {
                 DeckLink::Ble(p) => {
                     let characteristic = find_control_characteristic(p)?;
-                    p.write(&characteristic, bytes, WriteType::WithResponse)
+                    let kind = control_write_type(characteristic.properties);
+                    p.write(&characteristic, bytes, kind)
                         .await
                         .map_err(|e| e.to_string())
                 }
@@ -266,6 +272,18 @@ fn find_control_characteristic(peripheral: &Peripheral) -> Result<Characteristic
         .flat_map(|s| s.characteristics)
         .find(|c| has_tag(&c.uuid, CONTROL_TAG))
         .ok_or_else(|| "Control Char not found".to_string())
+}
+
+/// How to write to the control characteristic: with a response where it takes
+/// one (what every deck got before), without where that is all it offers.
+fn control_write_type(properties: CharPropFlags) -> WriteType {
+    if properties.contains(CharPropFlags::WRITE)
+        || !properties.contains(CharPropFlags::WRITE_WITHOUT_RESPONSE)
+    {
+        WriteType::WithResponse
+    } else {
+        WriteType::WithoutResponse
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -990,11 +1008,17 @@ async fn subscribe_and_start(
     peripheral: &Peripheral,
     raw_id: &str,
 ) -> Result<bool, String> {
-    let status_characteristics: Vec<Characteristic> = peripheral
+    let fitshow: Vec<Characteristic> = peripheral
         .services()
         .into_iter()
         .filter(|s| has_tag(&s.uuid, SERVICE_TAG))
         .flat_map(|s| s.characteristics)
+        .collect();
+    for c in &fitshow {
+        log::info!("Deck characteristic {}: {:?}", c.uuid, c.properties);
+    }
+    let status_characteristics: Vec<Characteristic> = fitshow
+        .into_iter()
         .filter(|c| has_tag(&c.uuid, STATUS_TAG))
         .collect();
 
@@ -1140,14 +1164,25 @@ pub async fn switch_deck_profile(app: &tauri::AppHandle, raw_id: &str) {
     state.deck_profile_key = Some(key);
 }
 
+/// The saved treadmill after a window's settings sync: the one already saved,
+/// or the window's when none is.
+fn kept_device_id(stored: Option<String>, from_window: Option<String>) -> Option<String> {
+    stored.or(from_window)
+}
+
 #[tauri::command]
 pub async fn sync_orchestrator_config(
     app: tauri::AppHandle,
     config: crate::persistence::AppConfig,
 ) -> Result<(), String> {
-    let saved_id = config.last_device_id.clone();
     let stored = crate::persistence::load_config(&app);
     let mut config = config;
+    // Connecting picks the treadmill, not a window: a window that loaded the
+    // config before the connection switched would put the old one back (a
+    // speed change after leaving SIM_DECK made the next start link SIM_DECK).
+    // Only with none saved, as after restoring settings, does the window's count.
+    config.last_device_id = kept_device_id(stored.last_device_id.clone(), config.last_device_id);
+    let saved_id = config.last_device_id.clone();
     // Points loaded for another treadmill (a window that loaded them before
     // the connection switched) never land on this one: the treadmill in use
     // keeps its own, and the window reloads them.
@@ -1206,6 +1241,34 @@ pub(crate) fn apply_manual_intent(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_window_sync_keeps_the_saved_treadmill() {
+        let id = |s: &str| Some(s.to_string());
+        // A dashboard still holding SIM_DECK doesn't take the real deck's place.
+        assert_eq!(kept_device_id(id("deck"), id("SIM_DECK")), id("deck"));
+        assert_eq!(kept_device_id(id("deck"), None), id("deck"));
+        // Nothing saved (settings just restored): the window's treadmill.
+        assert_eq!(kept_device_id(None, id("deck")), id("deck"));
+        assert_eq!(kept_device_id(None, None), None);
+    }
+
+    #[test]
+    fn control_writes_use_what_the_characteristic_offers() {
+        use CharPropFlags as P;
+        // The FitShow deck seen on a Mac: FFF2 takes only unacknowledged writes.
+        assert_eq!(
+            control_write_type(P::WRITE_WITHOUT_RESPONSE),
+            WriteType::WithoutResponse
+        );
+        assert_eq!(control_write_type(P::WRITE), WriteType::WithResponse);
+        assert_eq!(
+            control_write_type(P::WRITE | P::WRITE_WITHOUT_RESPONSE),
+            WriteType::WithResponse
+        );
+        // Properties unknown: as before.
+        assert_eq!(control_write_type(P::empty()), WriteType::WithResponse);
+    }
 
     fn frame(status: MachineStatus, speed_kmh: f32, incline: u8) -> Telemetry {
         Telemetry {

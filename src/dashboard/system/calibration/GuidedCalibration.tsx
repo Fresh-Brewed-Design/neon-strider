@@ -424,9 +424,12 @@ function RunPanel({
   // GAIT_SYNC's footsteps take the same keys once the belt is measured.
   const keysListening = listening || (run.steps !== null && run.steps.phase !== "measured");
   const sendTap = tap.run;
+  // The OS's global tap shortcut (Alt+Space, ⌃⌥Space).
+  const tapKey = useAppSnapshot()?.platform.shortcuts.calibration_tap ?? "Alt+Space";
 
-  // Space taps while the dashboard has focus; Alt+Space reaches Rust's input
-  // hook from any window, so the two never count one press twice.
+  // Space taps while the dashboard has focus; Alt+Space (⌃⌥Space on macOS)
+  // reaches Rust's input hook from any window, so the two never count one
+  // press twice.
   useEffect(() => {
     if (!keysListening) return;
     const onKey = (e: KeyboardEvent) => {
@@ -496,7 +499,7 @@ function RunPanel({
             TAP
           </button>
           <ActionStatus pending={false} error={tap.error} />
-          <Hint>Space taps in the dashboard, and Alt+Space taps from any window.</Hint>
+          <Hint>Space taps in the dashboard, and {tapKey} taps from any window.</Hint>
           <div
             className="h-1.5 overflow-hidden rounded bg-white/10"
             role="progressbar"

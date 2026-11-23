@@ -90,7 +90,7 @@ export function HudApp() {
               logo={logo}
               dragging={placement.dragging}
               onMinify={canMinify ? () => void minify.send({ type: "hud_set_minified", minified: true }) : undefined}
-              minifyKey={minifyTooltipKey(snapshot.hud.minify_hotkey)}
+              minifyKey={minifyTooltipKey(snapshot.hud.minify_hotkey, snapshot.platform)}
               simulated={snapshot.connection.simulated}
             />
             <HudNote error={relink.error ?? drag.error ?? minify.error} />

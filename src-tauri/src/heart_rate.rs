@@ -481,13 +481,17 @@ mod tests {
         ] {
             let off = describe_failure(step, "The Bluetooth radio is powered off");
             assert!(!off.waiting);
+            let words = crate::platform::WORDS;
             assert_eq!(
                 off.message,
-                "Bluetooth is off. Turn it on in Windows settings."
+                format!("Bluetooth is off. Turn it on in {}.", words.settings)
             );
             let none = describe_failure(step, "No Bluetooth adapters found");
             assert!(!none.waiting);
-            assert_eq!(none.message, "No Bluetooth adapter found on this PC.");
+            assert_eq!(
+                none.message,
+                format!("No Bluetooth adapter found on this {}.", words.computer)
+            );
             assert!(none.log.starts_with(&format!("{} failed: ", step.name())));
         }
     }

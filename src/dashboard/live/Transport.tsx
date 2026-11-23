@@ -11,7 +11,7 @@ import { openLinkDialog } from "../util";
 export function Transport({ s }: { s: AppSnapshot }) {
   const { deck, connection } = s;
   const moving = isMoving(deck);
-  const view = linkView(connection);
+  const view = linkView(connection, s.platform.settings);
   const state = linkState(connection).state;
   const retry = useAction();
   const control = useAction();

@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Bluetooth, BluetoothOff, Link2, Loader2, RefreshCw, SearchX, X } from "lucide-react";
 import { ActionStatus } from "../../components/ActionStatus";
+import { useAppSnapshot } from "../../state/useAppState";
 
 export interface BleDevice {
   id: string;
@@ -45,6 +46,7 @@ export function BleDiscoveryModal({
   onConnect,
 }: BleDiscoveryModalProps) {
   const busy = isScanning || connectingId !== null;
+  const settings = useAppSnapshot()?.platform.settings ?? "Windows settings";
   return (
     <AnimatePresence>
       {show && (
@@ -95,7 +97,7 @@ export function BleDiscoveryModal({
                     <div className="flex flex-col gap-1">
                       <p className="text-[11px] font-bold text-red-400 uppercase tracking-widest">Bluetooth is off</p>
                       <p className="text-[11px] text-white/60 break-words">
-                        {scanError ?? "Turn Bluetooth on in Windows settings, then scan again."}
+                        {scanError ?? `Turn Bluetooth on in ${settings}, then scan again.`}
                       </p>
                     </div>
                   ) : isScanning ? (

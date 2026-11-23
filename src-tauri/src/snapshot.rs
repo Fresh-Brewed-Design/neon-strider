@@ -264,6 +264,7 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         heart_rate: crate::heart_rate::HeartRateSnapshot::default(),
         guided_task: crate::guided_task::GuidedTaskSnapshot::default(),
         pc_walk_share: PcWalkShare::default(),
+        platform: crate::platform::snapshot(),
     }
 }
 

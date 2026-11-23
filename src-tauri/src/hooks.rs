@@ -78,6 +78,20 @@ pub(crate) fn note_input() {
     LAST_INPUT_MS.store(epoch_ms().saturating_add(1), Ordering::Relaxed);
 }
 
+/// Record that the last input was `ago`, for an OS that reports the session's
+/// idle time rather than each input (macOS, `platform`).
+#[cfg(target_os = "macos")]
+pub(crate) fn note_input_ago(ago: std::time::Duration) {
+    LAST_INPUT_MS.store(input_at(epoch_ms(), ago), Ordering::Relaxed);
+}
+
+/// The stored form (epoch ms plus one) of an input `ago` before `now_ms`.
+#[cfg_attr(not(target_os = "macos"), cfg(test))]
+fn input_at(now_ms: u64, ago: std::time::Duration) -> u64 {
+    let ago_ms = u64::try_from(ago.as_millis()).unwrap_or(u64::MAX);
+    now_ms.saturating_sub(ago_ms).saturating_add(1)
+}
+
 /// How long before `now_ms` (epoch ms) the last keyboard or mouse input was;
 /// `None` if there has been none since the app started.
 pub(crate) fn input_idle_ms(now_ms: u64) -> Option<u64> {
@@ -222,6 +236,22 @@ mod tests {
         assert_eq!(idle_since(4_001, 5_000), Some(1_000));
         // A clock that went backwards reads as no idle time.
         assert_eq!(idle_since(9_001, 5_000), Some(0));
+    }
+
+    #[test]
+    fn idle_time_reported_by_the_os_reads_back_the_same() {
+        use std::time::Duration;
+        let now = 1_000_000;
+        assert_eq!(idle_since(input_at(now, Duration::ZERO), now), Some(0));
+        assert_eq!(
+            idle_since(input_at(now, Duration::from_millis(4_500)), now),
+            Some(4_500)
+        );
+        // Idle for longer than the epoch has run still reads as input "seen".
+        assert_eq!(
+            idle_since(input_at(10, Duration::from_secs(60)), 10),
+            Some(10)
+        );
     }
 
     #[test]

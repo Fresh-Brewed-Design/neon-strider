@@ -5,7 +5,8 @@ FitShow protocol. It lives in the system tray, puts an always-on-top HUD in a co
 screen, runs saved walking programs, keeps your history, and uploads walks to Strava in the
 background.
 
-Windows only. Built and tested with a **Jogwell Ares 11 Elite** (FitShow protocol). Other
+Windows. A macOS build (a menu bar app) builds from source; see [docs/macos.md](docs/macos.md).
+Built and tested with a **Jogwell Ares 11 Elite** (FitShow protocol). Other
 FitShow-based decks (the ones that advertise BLE service `FFF0`) should work, but haven't been
 tried.
 
@@ -127,6 +128,8 @@ app's database.
 | Alt + End | End the running program, or rerun the last one |
 | Alt + Insert | Shrink the HUD to a strip, or show the whole HUD again (the HUD page can switch it off or use Alt + Pause or Alt + Scroll Lock) |
 
+On a Mac the shortcuts are ⌃⌥ plus a key; see [docs/macos.md](docs/macos.md).
+
 ## Your data
 
 Everything stays on your PC unless you connect Strava.
@@ -151,7 +154,7 @@ Everything stays on your PC unless you connect Strava.
 ## Building from source
 
 Requirements: Node 20+, Rust stable, and the [Tauri 2 prerequisites](https://tauri.app/start/prerequisites/)
-for Windows.
+for Windows (or macOS: see [docs/macos.md](docs/macos.md)).
 
 ```bash
 npm install

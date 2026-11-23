@@ -32,7 +32,8 @@ concurrency:
 
 jobs:
   check:
-    # The app is Windows-only (low-level hooks, Credential Manager, WebView2).
+    # Windows is the main platform: everything runs here, including the
+    # OS-independent checks (formatting, typecheck, lint, bindings).
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -95,6 +96,45 @@ jobs:
             echo "src/ipc/bindings is out of date: run cargo test in src-tauri and commit the result (regenerate, don't hand-merge)."
             exit 1
           fi
+
+      - name: Clippy (all targets, warnings are errors)
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+  macos:
+    # The macOS build (src/platform/macos.rs, the Keychain, the menu bar app):
+    # its Rust tests and clippy, on Apple Silicon. The OS-independent checks
+    # run once, in the Windows job.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: 1.100.0
+          components: clippy
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: src-tauri
+          shared-key: ci-macos
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      # The Tauri build embeds the built frontend (dist/).
+      - name: Frontend build
+        run: npx vite build
+
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test
 
       - name: Clippy (all targets, warnings are errors)
         working-directory: src-tauri

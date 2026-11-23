@@ -17,6 +17,7 @@ import type { MaintenanceSnapshot } from "./MaintenanceSnapshot";
 import type { NeuralSnapshot } from "./NeuralSnapshot";
 import type { OdometerSnapshot } from "./OdometerSnapshot";
 import type { PcWalkShare } from "./PcWalkShare";
+import type { PlatformSnapshot } from "./PlatformSnapshot";
 import type { Program } from "./Program";
 import type { SeatedSnapshot } from "./SeatedSnapshot";
 import type { SessionSnapshot } from "./SessionSnapshot";
@@ -108,4 +109,9 @@ guided_task: GuidedTaskSnapshot,
  * Today's active PC seconds (keyboard or mouse input within the last
  * minute), how many of them the belt was running, and that share.
  */
-pc_walk_share: PcWalkShare, };
+pc_walk_share: PcWalkShare, 
+/**
+ * The OS, its OS-only features and how it writes the shortcuts, so the
+ * windows word things the OS's way and hide what it lacks.
+ */
+platform: PlatformSnapshot, };

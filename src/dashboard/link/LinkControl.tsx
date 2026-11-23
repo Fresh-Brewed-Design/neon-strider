@@ -21,7 +21,8 @@ function linkFailure(e: unknown): LinkError {
 
 /** Device link status plus the connect flow, at the foot of the rail. */
 export function LinkControl() {
-  const conn = useAppSnapshot()?.connection;
+  const snapshot = useAppSnapshot();
+  const conn = snapshot?.connection;
   const [open, setOpen] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
@@ -79,7 +80,7 @@ export function LinkControl() {
     }
   };
 
-  const view = conn ? linkView(conn) : null;
+  const view = conn ? linkView(conn, snapshot?.platform.settings) : null;
   const adapterOff =
     scanError?.kind === "adapter_off" ||
     scanError?.kind === "adapter_missing" ||

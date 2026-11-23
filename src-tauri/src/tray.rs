@@ -213,21 +213,45 @@ const ICON_OFFLINE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tray-offli
 const ICON_IDLE_DOT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tray-idle-dot.png"));
 const ICON_RUNNING_DOT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tray-running-dot.png"));
 const ICON_OFFLINE_DOT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tray-offline-dot.png"));
+// The macOS menu bar's template variants (tray_art::template).
+const TEMPLATE_IDLE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tray-template-idle.png"));
+const TEMPLATE_RUNNING: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/tray-template-running.png"));
+const TEMPLATE_OFFLINE: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/tray-template-offline.png"));
+const TEMPLATE_IDLE_DOT: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/tray-template-idle-dot.png"));
+const TEMPLATE_RUNNING_DOT: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/tray-template-running-dot.png"));
+const TEMPLATE_OFFLINE_DOT: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/tray-template-offline-dot.png"));
 
 /// The tray image for a state, without the update dot.
 pub fn icon(state: TrayState) -> Option<tauri::image::Image<'static>> {
     art(TrayArt { state, dot: false })
 }
 
-/// The tray image for a state, with or without the update dot.
+/// The tray image for a state, with or without the update dot: the colour
+/// art, or the template art where the OS tints the icon itself
+/// (`platform::TRAY_ICON_TEMPLATE`, the macOS menu bar).
 pub fn art(art: TrayArt) -> Option<tauri::image::Image<'static>> {
-    let bytes = match (art.state, art.dot) {
-        (TrayState::Running, false) => ICON_RUNNING,
-        (TrayState::Idle, false) => ICON_IDLE,
-        (TrayState::Offline, false) => ICON_OFFLINE,
-        (TrayState::Running, true) => ICON_RUNNING_DOT,
-        (TrayState::Idle, true) => ICON_IDLE_DOT,
-        (TrayState::Offline, true) => ICON_OFFLINE_DOT,
+    art_for(art, crate::platform::TRAY_ICON_TEMPLATE)
+}
+
+fn art_for(art: TrayArt, template: bool) -> Option<tauri::image::Image<'static>> {
+    let bytes = match (template, art.state, art.dot) {
+        (false, TrayState::Running, false) => ICON_RUNNING,
+        (false, TrayState::Idle, false) => ICON_IDLE,
+        (false, TrayState::Offline, false) => ICON_OFFLINE,
+        (false, TrayState::Running, true) => ICON_RUNNING_DOT,
+        (false, TrayState::Idle, true) => ICON_IDLE_DOT,
+        (false, TrayState::Offline, true) => ICON_OFFLINE_DOT,
+        (true, TrayState::Running, false) => TEMPLATE_RUNNING,
+        (true, TrayState::Idle, false) => TEMPLATE_IDLE,
+        (true, TrayState::Offline, false) => TEMPLATE_OFFLINE,
+        (true, TrayState::Running, true) => TEMPLATE_RUNNING_DOT,
+        (true, TrayState::Idle, true) => TEMPLATE_IDLE_DOT,
+        (true, TrayState::Offline, true) => TEMPLATE_OFFLINE_DOT,
     };
     tauri::image::Image::from_bytes(bytes).ok()
 }
@@ -258,7 +282,8 @@ impl Updater {
             }
         }
         if let Some(image) = image {
-            if let Err(e) = tray.set_icon(art(image)) {
+            let template = crate::platform::TRAY_ICON_TEMPLATE;
+            if let Err(e) = tray.set_icon_with_as_template(art(image), template) {
                 log::debug!("Tray icon not updated: {}", e);
             }
         }
@@ -548,6 +573,56 @@ mod tests {
         tray_art::update_dot(&mut clear, w, h);
         assert_eq!(at(&clear, 26, 6)[3], 255);
         assert_eq!(at(&clear, 0, 31), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn template_variants_decode_and_differ() {
+        let all: Vec<_> = [TrayState::Running, TrayState::Idle, TrayState::Offline]
+            .into_iter()
+            .flat_map(|state| [false, true].map(|dot| TrayArt { state, dot }))
+            .map(|a| art_for(a, true).expect("decodes").rgba().to_vec())
+            .collect();
+        for (i, a) in all.iter().enumerate() {
+            assert_eq!(a.len(), 32 * 32 * 4);
+            // Black throughout: macOS tints by alpha alone.
+            assert!(a.chunks(4).all(|p| p[..3] == [0, 0, 0]));
+            for b in &all[i + 1..] {
+                assert_ne!(a, b);
+            }
+        }
+    }
+
+    #[test]
+    fn template_art_keeps_the_chevrons_and_drops_the_tile() {
+        let tile = [6u8, 10, 16, 255];
+        let chevron = [0x00, 0xf3, 0xff, 255];
+        let belt = [0xff, 0x2b, 0xd6, 255];
+        let mut px = [tile, chevron, belt, [0x00, 0xf3, 0xff, 128]].concat();
+        let mut running = px.clone();
+        tray_art::template(&mut px, false, 1.0);
+        assert_eq!(
+            px,
+            [[0, 0, 0, 0], [0, 0, 0, 255], [0, 0, 0, 0], [0, 0, 0, 128]].concat()
+        );
+        // Running adds the belt line.
+        tray_art::template(&mut running, true, 1.0);
+        assert_eq!(running[8..12], [0, 0, 0, 255]);
+        // Offline dims the chevrons.
+        let mut dim = chevron.to_vec();
+        tray_art::template(&mut dim, false, tray_art::TEMPLATE_OFFLINE_ALPHA);
+        assert_eq!(dim, [0, 0, 0, 102]);
+    }
+
+    #[test]
+    fn template_dot_is_solid_with_a_clear_ring() {
+        let (w, h) = (32u32, 32u32);
+        let mut px: Vec<u8> = [0u8, 0, 0, 255].repeat((w * h) as usize);
+        tray_art::template_dot(&mut px, w, h);
+        let alpha = |x: u32, y: u32| px[((y * w + x) * 4 + 3) as usize];
+        assert_eq!(alpha(26, 6), 255);
+        // The ring (between the dot's 3.75 px and 5.25 px radii) is cut clear.
+        assert_eq!(alpha(26, 10), 0);
+        assert_eq!(alpha(0, 31), 255);
     }
 
     #[test]

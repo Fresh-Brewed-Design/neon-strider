@@ -97,6 +97,11 @@ pub struct AppSnapshot {
     /// Today's active PC seconds (keyboard or mouse input within the last
     /// minute), how many of them the belt was running, and that share.
     pub pc_walk_share: PcWalkShare,
+
+    // ---- Platform ----
+    /// The OS, its OS-only features and how it writes the shortcuts, so the
+    /// windows word things the OS's way and hide what it lacks.
+    pub platform: crate::platform::PlatformSnapshot,
 }
 
 /// Strava as the windows see it. Tokens and the client secret never appear here.

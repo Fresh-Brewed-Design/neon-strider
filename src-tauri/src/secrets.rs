@@ -1,5 +1,5 @@
 //! Secrets at rest: the Strava client secret and OAuth tokens live in Windows
-//! Credential Manager, not in the SQLite settings table.
+//! Credential Manager (the Keychain on macOS), not in the SQLite settings table.
 //!
 //! If the credential store fails, a new value is refused (`NOT_SAVED_SECURELY`)
 //! rather than written to the database. A plaintext copy an older build left
@@ -39,8 +39,8 @@ impl Secret {
 
 /// Shown when a secret cannot go into the credential store, for a refused save
 /// and for a plaintext copy left in the database by an older build.
-pub const NOT_SAVED_SECURELY: &str =
-    "The Strava login could not be saved securely in Windows Credential Manager.";
+/// In the OS's own words (`platform::WORDS`): Credential Manager, the Keychain.
+pub const NOT_SAVED_SECURELY: &str = crate::platform::WORDS.login_not_saved;
 
 /// Settings keys whose values must never sit in the database once the
 /// credential store works. The generic settings commands refuse them.
@@ -57,7 +57,7 @@ pub trait SecretStore {
     fn delete(&self, key: &str) -> Result<(), String>;
 }
 
-/// Windows Credential Manager through the `keyring` crate.
+/// Windows Credential Manager (the Keychain on macOS) through the `keyring` crate.
 pub struct KeyringStore;
 
 fn entry(key: &str) -> Result<keyring::Entry, String> {

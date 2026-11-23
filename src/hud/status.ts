@@ -7,7 +7,7 @@ export type LinkTone = "live" | "idle" | "down" | "warn";
 export function linkLabel(s: AppSnapshot): { text: string; tone: LinkTone } {
   const state = linkState(s.connection).state;
   if (!s.connection.connected || state === "no_data") {
-    const v = linkView(s.connection);
+    const v = linkView(s.connection, s.platform.settings);
     return { text: v.hudLabel, tone: v.tone === "problem" ? "down" : "warn" };
   }
   if (s.deck.unknown_status_code !== null) {

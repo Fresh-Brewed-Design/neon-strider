@@ -461,9 +461,10 @@ pub fn describe(e: &tauri_plugin_updater::Error) -> String {
         | E::SignatureUtf8(_)
         | E::SignedVersionMismatch { .. }
         | E::MissingSignedVersion => SIGNATURE.to_string(),
-        E::TargetNotFound(_) | E::TargetsNotFound(_) => {
-            "The newest release has no Windows installer yet. Try again later.".to_string()
-        }
+        E::TargetNotFound(_) | E::TargetsNotFound(_) => format!(
+            "The newest release has no {} yet. Try again later.",
+            crate::platform::WORDS.release_download
+        ),
         E::Io(err) => format!("The installer couldn't start: {}.", err),
         other => format!("The update failed: {}.", other),
     }
@@ -883,7 +884,7 @@ async fn save_running_program(app: &AppHandle) {
 
 /// Install the offered update: download and verify it, save its notes for
 /// "What's new" and the running program, then run the installer, which closes
-/// the app and opens the new version. The belt is never paused or stopped.
+/// the app and opens the new version (on macOS: replace the app, then relaunch). The belt is never paused or stopped.
 /// Returns at once; progress is in the snapshot.
 pub fn install(app: &AppHandle) -> Result<(), String> {
     start_install(app, false)
@@ -954,10 +955,19 @@ fn start_install(app: &AppHandle, auto: bool) -> Result<(), String> {
         if auto && !still_idle_for_auto(&app).await {
             return;
         }
-        // On success this starts the installer and exits the process.
-        if let Err(e) = update.install(bytes) {
-            let _ = persistence::delete_setting(&app, KEY_WHATS_NEW);
-            fail_install(describe(&e), auto);
+        // On Windows this starts the installer, which exits the app and opens
+        // the new version. On macOS it puts the new app in place of this one
+        // and returns, so the app opens it itself.
+        match update.install(bytes) {
+            Ok(()) => {
+                log::info!("Update v{} installed; relaunching", offer.version);
+                crate::allow_exit();
+                app.restart();
+            }
+            Err(e) => {
+                let _ = persistence::delete_setting(&app, KEY_WHATS_NEW);
+                fail_install(describe(&e), auto);
+            }
         }
     });
     Ok(())
@@ -1413,7 +1423,8 @@ mod tests {
         );
         assert_eq!(describe(&E::MissingSignedVersion), SIGNATURE);
         assert_eq!(describe(&E::SignatureUtf8("x".to_string())), SIGNATURE);
-        assert!(describe(&E::TargetNotFound("windows-x86_64".to_string())).contains("Windows"));
+        assert!(describe(&E::TargetNotFound("windows-x86_64".to_string()))
+            .contains(crate::platform::WORDS.release_download));
 
         assert!(notes_warning_for(Some(403)).contains("limit"));
         assert!(notes_warning_for(None).contains("didn't load"));

@@ -2,9 +2,9 @@
 //! is still on a screen, which monitor the HUD should use, and the HUD strip's
 //! geometry. No Tauri types, so every rule here is unit-tested.
 //!
-//! All coordinates are PHYSICAL pixels in the Windows virtual desktop, where the
-//! primary monitor's top-left is (0, 0) and monitors left of or above it have
-//! negative coordinates.
+//! All coordinates are desktop units (`crate::display`): PHYSICAL pixels in the
+//! Windows virtual desktop, points on macOS. The primary monitor's top-left is
+//! (0, 0) and monitors left of or above it have negative coordinates.
 
 use serde::{Deserialize, Serialize};
 
@@ -153,6 +153,30 @@ pub fn resolve_dashboard_position(
     let (w, h) = physical_size(logical_size, m.scale);
     let rect = Rect::new(saved.x, saved.y, w, h);
     rect.is_inside(&m.work).then_some((rect.x, rect.y))
+}
+
+/// Where the dashboard drops down from the menu bar icon (macOS), outer
+/// top-left: centred under the icon's `icon_x`, `gap` below the work area's
+/// top (the menu bar's bottom), and kept `margin` inside the work area of the
+/// display the icon is on (the one whose bounds hold `icon_x` at its top, else
+/// the primary). `size` is in desktop units. `None` with no displays.
+pub fn below_menu_bar_icon(
+    icon_x: i32,
+    size: (i32, i32),
+    gap: i32,
+    margin: i32,
+    monitors: &[MonitorGeom],
+) -> Option<(i32, i32)> {
+    let m = monitors
+        .iter()
+        .find(|m| m.bounds.x <= icon_x && icon_x < m.bounds.right() && m.work.y > m.bounds.y)
+        .or_else(|| monitors.iter().find(|m| m.is_primary))
+        .or_else(|| monitors.first())?;
+    let work = m.work;
+    let left = work.x + margin;
+    let right = (work.right() - margin - size.0).max(left);
+    let x = (icon_x - size.0 / 2).clamp(left, right);
+    Some((x, work.y + gap))
 }
 
 /// The monitor the HUD was put on: its name and, since names can change after a
@@ -508,6 +532,49 @@ mod tests {
     use super::*;
 
     const DASH: (f64, f64) = (760.0, 600.0);
+
+    /// A Mac display in points: a 25-point menu bar above the work area.
+    fn mac(name: &str, primary: bool, b: Rect) -> MonitorGeom {
+        MonitorGeom {
+            name: Some(name.to_string()),
+            is_primary: primary,
+            bounds: b,
+            work: Rect::new(b.x, b.y + 25, b.w, b.h - 25),
+            scale: 1.0,
+        }
+    }
+
+    #[test]
+    fn the_dashboard_drops_down_centred_under_the_menu_bar_icon() {
+        let built_in = mac("Built-in", true, Rect::new(0, 0, 1512, 982));
+        let size = (760, 600);
+        assert_eq!(
+            below_menu_bar_icon(1000, size, 6, 8, std::slice::from_ref(&built_in)),
+            Some((620, 31))
+        );
+        // Near the right edge it stays inside the work area.
+        assert_eq!(
+            below_menu_bar_icon(1490, size, 6, 8, std::slice::from_ref(&built_in)),
+            Some((744, 31))
+        );
+        // Near the left edge too.
+        assert_eq!(
+            below_menu_bar_icon(40, size, 6, 8, std::slice::from_ref(&built_in)),
+            Some((8, 31))
+        );
+        // On a second display, under that display's menu bar.
+        let external = mac("Studio", false, Rect::new(1512, -300, 2560, 1440));
+        assert_eq!(
+            below_menu_bar_icon(3900, size, 6, 8, &[built_in.clone(), external]),
+            Some((3304, -269))
+        );
+        // An icon on no display falls back to the primary's work area.
+        assert_eq!(
+            below_menu_bar_icon(-500, size, 6, 8, &[built_in]),
+            Some((8, 31))
+        );
+        assert_eq!(below_menu_bar_icon(0, size, 6, 8, &[]), None);
+    }
 
     fn mon(name: &str, primary: bool, b: Rect, taskbar: i32, scale: f64) -> MonitorGeom {
         MonitorGeom {

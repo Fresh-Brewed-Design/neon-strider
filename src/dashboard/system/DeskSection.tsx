@@ -18,6 +18,7 @@ function WalkAwaySettings() {
   const idleAction = useAction();
   if (!s) return null;
   const w = s.walkaway;
+  const mac = s.platform.os === "macos";
   const save = (patch: { lock_enabled?: boolean; idle_enabled?: boolean; idle_minutes?: number }) =>
     dispatch({
       type: "walkaway_set_config",
@@ -31,11 +32,15 @@ function WalkAwaySettings() {
     <>
       <div>
         <Toggle
-          label="Pause when I lock the PC"
+          label={`Pause when I lock the ${s.platform.computer}`}
           tone="yellow"
           checked={w.lock_enabled}
           onChange={(lock_enabled) => void lockAction.run(() => save({ lock_enabled }))}
-          description="Locking Windows (Win+L) pauses a moving belt and any running program."
+          description={
+            mac
+              ? "Locking the Mac (⌃⌘Q) pauses a moving belt and any running program."
+              : "Locking Windows (Win+L) pauses a moving belt and any running program."
+          }
           hint="The session is kept and the belt never restarts by itself: the HUD asks to resume or end."
         />
         <ActionStatus pending={lockAction.pending} error={lockAction.error} className="mt-1" />
@@ -165,6 +170,7 @@ export function DeskSection() {
   const s = useAppSnapshot();
   if (!s) return null;
   const { seated, calls, programs } = s;
+  const pc = s.platform.computer;
 
   // The card's buttons as Rust resolves them. Sending `null` goes back to the
   // default (the first three saved programs).
@@ -200,19 +206,19 @@ export function DeskSection() {
         tone="yellow"
         checked={seated.enabled}
         onChange={(enabled) => saveSeated({ enabled })}
-        description="After a stretch of PC use without walking, a HUD card offers a walk or a program."
+        description={`After a stretch of ${pc} use without walking, a HUD card offers a walk or a program.`}
         hint="A program picked on the card waits until the treadmill connects. Only the time of the last input is kept, never which keys."
       />
       {seated.enabled && (
         <>
           <NumberField
             label="Remind after"
-            unit="minutes of PC use"
+            unit={`minutes of ${pc} use`}
             min={L.seated_minutes.min}
             max={L.seated_minutes.max}
             step={5}
             value={seated.minutes}
-            hint={`${L.seated_minutes.min} to ${L.seated_minutes.max}. Walking for 2 minutes, or being away from the PC for 15, starts the count again.`}
+            hint={`${L.seated_minutes.min} to ${L.seated_minutes.max}. Walking for 2 minutes, or being away from the ${pc} for 15, starts the count again.`}
             onCommit={(minutes) => saveSeated({ minutes })}
           />
           <div>
@@ -274,37 +280,42 @@ export function DeskSection() {
 
       <LightsOutSetting />
 
-      <div className="border-t border-white/10" />
-
-      <Toggle
-        label="Slow down on calls"
-        tone="yellow"
-        checked={calls.enabled}
-        onChange={(enabled) => saveCalls({ enabled })}
-        description="While an app uses the microphone, a running belt eases to the quiet speed until 10 seconds after the call."
-        hint="The belt never speeds up for a call, and a speed changed during the call stays."
-      />
-      {calls.enabled && (
+      {/* Slow down on calls needs the OS's list of apps using the microphone (`platform.microphone`). */}
+      {s.platform.microphone && (
         <>
-          <NumberField
-            label="Quiet speed"
-            unit="km/h"
-            min={L.calls_quiet_kmh.min}
-            max={L.calls_quiet_kmh.max}
-            step={0.1}
-            value={calls.quiet_kmh}
-            hint="A running program is eased too, for the current step only; the saved program is not changed."
-            snap={(kmh) => roundSpeed(snapToDeck(kmh, s.deck))}
-            onCommit={(quiet_kmh) => saveCalls({ quiet_kmh: Math.round(quiet_kmh * 100) / 100 })}
+          <div className="border-t border-white/10" />
+
+          <Toggle
+            label="Slow down on calls"
+            tone="yellow"
+            checked={calls.enabled}
+            onChange={(enabled) => saveCalls({ enabled })}
+            description="While an app uses the microphone, a running belt eases to the quiet speed until 10 seconds after the call."
+            hint="The belt never speeds up for a call, and a speed changed during the call stays."
           />
-          <Hint aria-live="polite">
-            {calls.quiet_active
-              ? "On a call: the belt is at the quiet speed."
-              : calls.mic_in_use
-                ? "Microphone in use."
-                : "Microphone is free."}{" "}
-            This uses the list Windows keeps of apps using the microphone; no audio is recorded or heard.
-          </Hint>
+          {calls.enabled && (
+            <>
+              <NumberField
+                label="Quiet speed"
+                unit="km/h"
+                min={L.calls_quiet_kmh.min}
+                max={L.calls_quiet_kmh.max}
+                step={0.1}
+                value={calls.quiet_kmh}
+                hint="A running program is eased too, for the current step only; the saved program is not changed."
+                snap={(kmh) => roundSpeed(snapToDeck(kmh, s.deck))}
+                onCommit={(quiet_kmh) => saveCalls({ quiet_kmh: Math.round(quiet_kmh * 100) / 100 })}
+              />
+              <Hint aria-live="polite">
+                {calls.quiet_active
+                  ? "On a call: the belt is at the quiet speed."
+                  : calls.mic_in_use
+                    ? "Microphone in use."
+                    : "Microphone is free."}{" "}
+                This uses the list Windows keeps of apps using the microphone; no audio is recorded or heard.
+              </Hint>
+            </>
+          )}
         </>
       )}
     </Section>
