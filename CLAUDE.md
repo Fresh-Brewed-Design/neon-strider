@@ -7,7 +7,7 @@ an always-on-top HUD overlay, saved programs, session history, and Strava export
 
 - **Tauri 2** (Rust backend) + **React 19** + **TypeScript** + **Vite 7**
 - **Tailwind CSS 4**, **framer-motion**, **lucide-react**, **sonner**; Orbitron bundled via `@fontsource/orbitron`
-- **ts-rs** generates TypeScript types for the IPC layer into `src/ipc/bindings/` (run `cargo test`); the same test run writes `SETTING_LIMITS.ts` there from `limits.rs`, the one source for the ranges dashboard fields offer, and `DEFAULT_APP_CONFIG.ts` from `AppConfig::default()` (`defaults.rs`), the one source for the settings the dashboard shows before Rust's saved ones load.
+- **ts-rs** generates TypeScript types for the IPC layer into `src/ipc/bindings/` (run `cargo test`); the same test run writes `SETTING_LIMITS.ts` there from `limits.rs`, the one source for the ranges dashboard fields offer, and `DEFAULT_APP_CONFIG.ts` from `AppConfig::default()` (`defaults.rs`), the one source for the settings the dashboard shows before Rust's saved ones load. `TEMPLATE_FIELDS.ts` (from `strava_template.rs`) is the Strava template field list the template help text shows.
   They are marked generated in `.gitattributes`. Regenerate, don't hand-merge: on a conflict there,
   take either side and run `cargo test` in `src-tauri/`. CI exports them afresh and fails if the
   committed files differ (changed, missing or stale).
@@ -33,7 +33,7 @@ and placed by `dashboard.rs` and `hud.rs` (`display.rs` turns Tauri's monitors i
 geometry); `hooks.rs` holds what the global input hooks record and the Alt shortcuts they fire.
 Strava is Rust-owned too (`strava.rs` plus its `strava/` submodules: `settings`, `live`, `auth`,
 `api`, `upload`, `worker` for the background auto-sync, and `fallback` for the manual-upload TCX;
-`strava_plan.rs` pure logic, `strava_template.rs` title/description templates):
+`strava_plan.rs` pure logic, `strava_template.rs` title/description templates, whose fields cover every walk stat and collapse with their label and one separator when a walk has no value; `sessions.program_name`, migration 15, holds the programs a walk ran):
 windows dispatch `strava_*` commands and read `snapshot.strava`; tokens never reach JS. The client secret and
 tokens live in Windows Credential Manager (`secrets.rs`): a save the store refuses fails with
 `NOT_SAVED_SECURELY` instead of going to the database; an older build's plaintext DB copy migrates

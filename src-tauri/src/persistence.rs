@@ -26,7 +26,7 @@ const BUSY_TIMEOUT: Duration = Duration::from_millis(5000);
 const SESSION_COLS: &str = "id, start_time, end_time, duration_seconds, distance_meters, \
      raw_distance_meters, calories, steps, raw_steps, avg_speed, raw_avg_speed, avg_incline, \
      strava_id, neural_heat, neural_ticks, last_hardware_time, hardware_time_offset, \
-     avg_heart_rate, max_heart_rate";
+     avg_heart_rate, max_heart_rate, program_name";
 
 /// Settings key: JSON array of the widgets pinned to the HUD.
 pub const KEY_PINNED_ELEMENTS: &str = "pinned_elements";
@@ -978,6 +978,16 @@ fn migration_14_today_slots(tx: &Transaction) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// Migration 15: the program a walk ran (issue #260), for the Strava template's
+/// `{program}` field. NULL for a walk without a program and for every walk
+/// saved before, so older walks read as before.
+fn migration_15_session_program(tx: &Transaction) -> rusqlite::Result<()> {
+    if !has_column(tx, "sessions", "program_name")? {
+        tx.execute_batch("ALTER TABLE sessions ADD COLUMN program_name TEXT DEFAULT NULL")?;
+    }
+    Ok(())
+}
+
 type Migration = fn(&Transaction) -> rusqlite::Result<()>;
 
 /// Append new migrations at the end; never reorder or edit a shipped one.
@@ -997,6 +1007,7 @@ const MIGRATIONS: &[Migration] = &[
     migration_12_pc_walk_share,
     migration_13_key_presses,
     migration_14_today_slots,
+    migration_15_session_program,
 ];
 
 fn schema_version(conn: &Connection) -> rusqlite::Result<u32> {
@@ -1473,6 +1484,11 @@ pub struct Session {
     /// Highest heart rate in the samples; `None` without any.
     #[serde(default)]
     pub max_heart_rate: Option<u16>,
+    /// The programs run during the walk, in run order and joined with " + ";
+    /// `None` for a walk without one. An update with `None` keeps the saved
+    /// name, so a reconnect without the program never forgets it.
+    #[serde(default)]
+    pub program_name: Option<String>,
 }
 
 /// One telemetry reading during a session, as stored in `samples`.
@@ -1537,7 +1553,8 @@ fn update_session(conn: &Connection, id: i64, data: &Session, now: i64) -> rusql
                 hardware_time_offset = ?14,
                 avg_heart_rate = (SELECT CAST(ROUND(AVG(heart_rate)) AS INTEGER)
                                   FROM samples WHERE session_id = ?15),
-                max_heart_rate = (SELECT MAX(heart_rate) FROM samples WHERE session_id = ?15)
+                max_heart_rate = (SELECT MAX(heart_rate) FROM samples WHERE session_id = ?15),
+                program_name = COALESCE(?16, program_name)
              WHERE id = ?15",
         params![
             now,
@@ -1554,7 +1571,8 @@ fn update_session(conn: &Connection, id: i64, data: &Session, now: i64) -> rusql
             data.neural_ticks,
             data.last_hardware_time,
             data.hardware_time_offset,
-            id
+            id,
+            data.program_name
         ],
     )
     .map(|_| ())
@@ -1618,6 +1636,7 @@ fn session_from_row(row: &rusqlite::Row) -> rusqlite::Result<Session> {
         hardware_time_offset: row.get::<_, Option<i64>>(16)?.unwrap_or(0),
         avg_heart_rate: row.get(17)?,
         max_heart_rate: row.get(18)?,
+        program_name: row.get(19)?,
     })
 }
 
@@ -2704,6 +2723,7 @@ mod db_tests {
             // Ignored: the update works them out from the samples.
             avg_heart_rate: Some(1),
             max_heart_rate: Some(1),
+            program_name: None,
         }
     }
 
@@ -2753,6 +2773,46 @@ mod db_tests {
     }
 
     #[test]
+    fn migration_15_leaves_old_walks_without_a_program_and_an_update_keeps_the_saved_one() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        for (i, m) in MIGRATIONS[..12].iter().enumerate() {
+            let tx = conn.transaction().unwrap();
+            m(&tx).unwrap();
+            tx.execute_batch(&format!("PRAGMA user_version = {}", i + 1))
+                .unwrap();
+            tx.commit().unwrap();
+        }
+        conn.execute_batch("INSERT INTO sessions (id, start_time, end_time) VALUES (1, 0, 0);")
+            .unwrap();
+        assert_eq!(migrate(&mut conn).unwrap(), latest());
+        // Running it again (a half-applied file) changes nothing.
+        let tx = conn.transaction().unwrap();
+        migration_15_session_program(&tx).unwrap();
+        tx.commit().unwrap();
+        assert_eq!(saved_session(&conn, 1).program_name, None);
+
+        let mut row = walk_row();
+        row.program_name = Some("Brisk".to_string());
+        update_session(&conn, 1, &row, 5000).unwrap();
+        assert_eq!(
+            saved_session(&conn, 1).program_name.as_deref(),
+            Some("Brisk")
+        );
+        // A flush after a reconnect that has no program keeps the saved name.
+        update_session(&conn, 1, &walk_row(), 6000).unwrap();
+        assert_eq!(
+            saved_session(&conn, 1).program_name.as_deref(),
+            Some("Brisk")
+        );
+        row.program_name = Some("Brisk + VO2 max".to_string());
+        update_session(&conn, 1, &row, 7000).unwrap();
+        let back = saved_session(&conn, 1);
+        assert_eq!(back.program_name.as_deref(), Some("Brisk + VO2 max"));
+        let json = serde_json::to_value(&back).unwrap();
+        assert_eq!(json["program_name"], "Brisk + VO2 max");
+    }
+
+    #[test]
     fn a_walk_without_a_sensor_saves_no_heart_rate() {
         let mut conn = Connection::open_in_memory().unwrap();
         migrate(&mut conn).unwrap();
@@ -2779,6 +2839,7 @@ mod db_tests {
             &[(session, samples)],
             crate::strava_plan::Naming::Walk,
             &crate::strava_template::Templates::default(),
+            None,
         );
         let crate::strava_plan::Payload::Tcx(tcx) = plan.payload else {
             panic!("expected a TCX")
@@ -3794,6 +3855,7 @@ mod averages_tests {
             hardware_time_offset: 0,
             avg_heart_rate: None,
             max_heart_rate: None,
+            program_name: None,
         }
     }
 

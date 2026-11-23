@@ -244,6 +244,8 @@ pub struct SessionState {
     pub raw_distance_meters: f64,
     pub moving_seconds: f64,
     pub incline_pct_seconds: f64,
+    /// The programs run during the session (`programs::with_program_name`).
+    pub program_name: Option<String>,
 }
 
 pub struct OrchestratorState {
@@ -1059,6 +1061,7 @@ impl OrchestratorState {
             // Worked out from the samples when the row is written.
             avg_heart_rate: None,
             max_heart_rate: None,
+            program_name: self.session.program_name.clone(),
         }
     }
 
@@ -1141,7 +1144,9 @@ impl OrchestratorState {
         s.calories = deck_calories;
         s.raw_distance_meters = deck_distance_m;
         s.moving_seconds = prior_secs;
-        s.incline_pct_seconds = resumed.map_or(0.0, |r| r.avg_incline as f64) * prior_secs;
+        s.incline_pct_seconds = resumed.as_ref().map_or(0.0, |r| r.avg_incline as f64) * prior_secs;
+        // A program run before the reconnect stays the walk's.
+        s.program_name = resumed.and_then(|r| r.program_name);
         s.last_physics_update = Some(now);
         s.last_sample_time = Some(now);
         // Write the synced totals promptly.
@@ -1195,6 +1200,12 @@ impl OrchestratorState {
         let Some(session_id) = self.session.active_session_id else {
             return;
         };
+        if let Some(run) = &self.program {
+            self.session.program_name = crate::programs::with_program_name(
+                self.session.program_name.as_deref(),
+                &run.program.name,
+            );
+        }
         let sample = persistence::Sample {
             timestamp: None,
             speed: self.to_physical_speed(self.hardware_speed),
@@ -3302,6 +3313,7 @@ mod tests {
             hardware_time_offset: 0,
             avg_heart_rate: None,
             max_heart_rate: None,
+            program_name: None,
         }
     }
 

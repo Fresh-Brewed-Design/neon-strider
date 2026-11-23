@@ -411,6 +411,26 @@ pub fn today_timeline() -> Option<TodayTimeline> {
         .and_then(|st| timeline(&st.tally, today, minute))
 }
 
+/// The share on a local day, for the Strava template's `{pc_walked}`: today's
+/// live counts, or the day's saved ones. None for a day with under 10
+/// minutes of PC time or no row. Reads the database for an earlier day.
+pub fn share_on(app: &AppHandle, day: NaiveDate) -> Option<u32> {
+    if day == local_today() {
+        if let Some(pct) = snapshot().share_pct {
+            return Some(pct);
+        }
+    }
+    let saved = persistence::pc_walk_share_on(app, &day.format("%Y-%m-%d").to_string());
+    match saved {
+        Ok(Some((active_s, walked_s, _))) => share_pct(active_s, walked_s),
+        Ok(None) => None,
+        Err(e) => {
+            log::debug!("PC time walked for {} not read: {}", day, e);
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
