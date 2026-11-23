@@ -6,7 +6,8 @@ import Toybox.System;
 // Keep these in step with src-tauri/src/wrist_link.rs.
 const SERVICE_UUID = BluetoothLowEnergy.stringToUuid("00b165d6-40c2-4f94-8df9-0f69431f21af");
 const STATE_UUID = BluetoothLowEnergy.stringToUuid("00b165d6-40c2-4f94-8df9-0f69431f21b0");
-// The standard Running Speed and Cadence service GHOST_POD always advertises.
+// The standard Running Speed and Cadence service. The PC served it as GHOST_POD
+// until #297; the match is kept for app versions from before.
 const RSC_UUID = BluetoothLowEnergy.stringToUuid("00001814-0000-1000-8000-00805f9b34fb");
 // The PC's WRIST_LINK beacon: manufacturer data for company 0xFFFF (the
 // Bluetooth SIG's "no company" ID) starting "NSTR". Keep in step with

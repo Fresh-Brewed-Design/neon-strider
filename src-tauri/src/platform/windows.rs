@@ -799,7 +799,7 @@ mod mic {
 }
 
 // ---------------------------------------------------------------------------
-// Bluetooth peripheral (GHOST_POD)
+// Bluetooth peripheral (WRIST_LINK)
 // ---------------------------------------------------------------------------
 //
 // A WinRT GATT server (`GattServiceProvider`). It needs an adapter with the
@@ -881,7 +881,7 @@ mod peripheral {
                 "Bluetooth is off or the adapter is missing.".to_string()
             }
             BluetoothError::ResourceInUse => {
-                "Another app is already serving a foot pod on this PC.".to_string()
+                "Another app is already serving this Bluetooth service on this PC.".to_string()
             }
             BluetoothError::DisabledByPolicy => {
                 "A Windows policy turns Bluetooth sensors off on this PC.".to_string()
@@ -893,7 +893,7 @@ mod peripheral {
             BluetoothError::ConsentRequired => {
                 "Windows needs permission to use Bluetooth.".to_string()
             }
-            other => format!("Bluetooth refused the pod (error {}).", other.0),
+            other => format!("Bluetooth refused the service (error {}).", other.0),
         }
     }
 
@@ -955,8 +955,8 @@ mod peripheral {
     }
 
     /// Log a central the first time it shows up, and watch its session so
-    /// its disconnect is logged too. `what` is what it did ("read of 2a54 on
-    /// RSC").
+    /// its disconnect is logged too. `what` is what it did ("read of ...21b0 on
+    /// WRIST_LINK").
     fn note_central(session: &GattSession, what: &str) {
         let address = address_of(session);
         let mut guard = centrals();
@@ -965,7 +965,7 @@ mod peripheral {
             return;
         }
         log::info!(
-            "GHOST_POD: central {} connected (first seen: {}; max PDU {} bytes)",
+            "Peripheral: central {} connected (first seen: {}; max PDU {} bytes)",
             address,
             what,
             session.MaxPduSize().unwrap_or(0)
@@ -976,7 +976,7 @@ mod peripheral {
                 let args = args.ok()?;
                 if args.Status()? == GattSessionStatus::Closed {
                     log::info!(
-                        "GHOST_POD: central {} disconnected ({})",
+                        "Peripheral: central {} disconnected ({})",
                         addr,
                         bt_error_name(args.Error()?)
                     );
@@ -989,7 +989,7 @@ mod peripheral {
         ));
         if let Err(e) = watched {
             log::warn!(
-                "GHOST_POD: can't watch central {}: {}",
+                "Peripheral: can't watch central {}: {}",
                 address,
                 e.message()
             );
@@ -997,8 +997,8 @@ mod peripheral {
         map.insert(address, session.clone());
     }
 
-    /// What the adapter can advertise, for the log: a second advertisement
-    /// next to the foot pod's depends on it.
+    /// What the adapter can advertise, for the log: whether a service's
+    /// advertisement fits depends on it.
     pub(super) fn adapter_caps(adapter: &BluetoothAdapter) -> String {
         let yes = |r: windows::core::Result<bool>| match r {
             Ok(true) => "yes",
@@ -1030,7 +1030,7 @@ mod peripheral {
             );
         }
         if server().is_empty() {
-            log::info!("GHOST_POD: adapter: {}", adapter_caps(&adapter));
+            log::info!("Peripheral: adapter: {}", adapter_caps(&adapter));
         }
         values().get_or_insert_with(HashMap::new);
         let mut chars = Vec::new();
@@ -1041,7 +1041,7 @@ mod peripheral {
                 let beacon = service.beacon.as_ref().and_then(|b| {
                     start_beacon(service.name, b)
                         .map_err(|why| {
-                            log::warn!("GHOST_POD: {} beacon not started: {}", service.name, why)
+                            log::warn!("Peripheral: {} beacon not started: {}", service.name, why)
                         })
                         .ok()
                 });
@@ -1083,7 +1083,7 @@ mod peripheral {
         let err = created.Error().map_err(win)?;
         if err != BluetoothError::Success {
             log::warn!(
-                "GHOST_POD: {} ({}) not created: {}",
+                "Peripheral: {} ({}) not created: {}",
                 name,
                 uuid_text(uuid),
                 bt_error_name(err)
@@ -1106,7 +1106,7 @@ mod peripheral {
                     let status = args.Status()?;
                     let error = args.Error()?;
                     log::info!(
-                        "GHOST_POD: {} ({}) advertisement {} ({})",
+                        "Peripheral: {} ({}) advertisement {} ({})",
                         name,
                         uuid_text(uuid),
                         status_name(status),
@@ -1139,7 +1139,7 @@ mod peripheral {
         params.SetIsDiscoverable(true).map_err(win)?;
         params.SetIsConnectable(service.advertise).map_err(win)?;
         log::info!(
-            "GHOST_POD: {} ({}) starting: {}",
+            "Peripheral: {} ({}) starting: {}",
             name,
             uuid_text(uuid),
             if service.advertise {
@@ -1155,7 +1155,7 @@ mod peripheral {
         // event, so its state right after the start goes in the log too.
         if let Ok(now) = provider.AdvertisementStatus() {
             log::info!(
-                "GHOST_POD: {} ({}) status after start: {}",
+                "Peripheral: {} ({}) status after start: {}",
                 name,
                 uuid_text(uuid),
                 status_name(now)
@@ -1212,7 +1212,7 @@ mod peripheral {
                       args: Ref<BluetoothLEAdvertisementPublisherStatusChangedEventArgs>| {
                     let args = args.ok()?;
                     log::info!(
-                        "GHOST_POD: {} beacon {} ({})",
+                        "Peripheral: {} beacon {} ({})",
                         name,
                         publisher_status_name(args.Status()?),
                         bt_error_name(args.Error()?)
@@ -1222,7 +1222,7 @@ mod peripheral {
             ))
             .map_err(win)?;
         log::info!(
-            "GHOST_POD: {} beacon starting: legacy advertisement, PC's address, manufacturer data {:04x} {} ({} of 31 bytes with the flags)",
+            "Peripheral: {} beacon starting: legacy advertisement, PC's address, manufacturer data {:04x} {} ({} of 31 bytes with the flags)",
             name,
             beacon.company,
             hex(&beacon.data),
@@ -1289,7 +1289,7 @@ mod peripheral {
                         .as_ref()
                         .and_then(|map| map.get(&uuid).cloned())
                         .unwrap_or_default();
-                    log::info!("GHOST_POD: {}", what);
+                    log::info!("Peripheral: {}", what);
                     request.RespondWithValue(&buffer(&value)?)?;
                     deferral.Complete()?;
                     Ok(())
@@ -1312,7 +1312,7 @@ mod peripheral {
                         }
                     }
                     log::info!(
-                        "GHOST_POD: {} {}{}",
+                        "Peripheral: {} {}{}",
                         count,
                         what,
                         if who.is_empty() {
@@ -1367,7 +1367,7 @@ mod peripheral {
             .flat_map(|p| p.chars.iter())
             .find(|(u, _)| *u == uuid)
         else {
-            return Err(format!("No characteristic {} on the pod.", uuid_text(uuid)));
+            return Err(format!("No characteristic {} is served.", uuid_text(uuid)));
         };
         // Not awaited: Windows delivers it to each subscriber by itself.
         let _op = ch
@@ -1391,20 +1391,20 @@ mod peripheral {
     fn stop_one(p: &Provided) {
         if let Some(beacon) = &p.beacon {
             match beacon.Stop() {
-                Ok(()) => log::info!("GHOST_POD: {} beacon stopped", p.name),
-                Err(e) => log::warn!("GHOST_POD: {} beacon stop failed: {}", p.name, e.message()),
+                Ok(()) => log::info!("Peripheral: {} beacon stopped", p.name),
+                Err(e) => log::warn!("Peripheral: {} beacon stop failed: {}", p.name, e.message()),
             }
         }
         if let Err(e) = p.provider.StopAdvertising() {
             log::warn!(
-                "GHOST_POD: {} ({}) stop advertising failed: {}",
+                "Peripheral: {} ({}) stop advertising failed: {}",
                 p.name,
                 uuid_text(p.service),
                 e.message()
             );
         }
         forget_values(&p.chars);
-        log::info!("GHOST_POD: {} ({}) stopped", p.name, uuid_text(p.service));
+        log::info!("Peripheral: {} ({}) stopped", p.name, uuid_text(p.service));
     }
 
     pub fn peripheral_remove(service: u128) {
@@ -1428,7 +1428,7 @@ mod peripheral {
         if !all.is_empty() {
             *values() = None;
             *centrals() = None;
-            log::info!("GHOST_POD: all services stopped");
+            log::info!("Peripheral: all services stopped");
         }
     }
 }
@@ -1567,7 +1567,7 @@ mod tests {
     /// On this PC's real adapter: two services on providers of their own, one
     /// advertised and one only served; the served one never aborts, and
     /// removing it leaves the first advertising. It uses UUIDs the app never
-    /// serves, so it doesn't clash with a running app's foot pod. Run with
+    /// serves, so it doesn't clash with a running app's WRIST_LINK. Run with
     /// `cargo test peripheral_providers_are_independent -- --ignored --nocapture`.
     #[test]
     #[ignore = "needs a Bluetooth adapter with the peripheral role"]
@@ -1579,7 +1579,7 @@ mod tests {
         use std::time::Duration;
 
         // Cycling Speed and Cadence: a 16-bit UUID (it fits the advertisement
-        // next to the PC's name, as the foot pod's does) that the app never serves.
+        // next to the PC's name) that the app never serves.
         const ADVERTISED: u128 = crate::platform::sig_uuid(0x1816);
         const SERVED: u128 = 0x5e1f7e57_0000_4000_8000_00000000b001;
         let svc = |name, uuid: u128, advertise| PeripheralService {

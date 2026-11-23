@@ -23,7 +23,6 @@ mod display;
 pub mod echo;
 pub mod engine;
 pub mod export;
-pub mod ghost_pod;
 pub mod guided_task;
 pub mod heart_rate;
 mod hooks;
@@ -291,8 +290,8 @@ async fn start_backend(app: tauri::AppHandle) {
     strava::spawn_worker(app.clone());
     update::init(&app);
     update::spawn(app.clone());
-    ghost_pod::init(&app);
-    ghost_pod::spawn(app.clone());
+    wrist_link::init(&app);
+    wrist_link::spawn(app.clone());
     heart_rate::init(&app);
     heart_rate::spawn(app.clone());
 

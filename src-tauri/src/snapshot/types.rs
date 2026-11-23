@@ -82,8 +82,9 @@ pub struct AppSnapshot {
     /// The guided calibration (GROUND_TRUTH): its limits, the first-connect
     /// offer, any run and any guided walk.
     pub calibration: crate::calibration::CalibrationSnapshot,
-    /// Labs: GHOST_POD, the PC as a foot pod for a watch (off by default).
-    pub ghost_pod: crate::ghost_pod::GhostPodSnapshot,
+    /// Labs: WRIST_LINK, the service the watch's data field reads the belt
+    /// from (off by default).
+    pub wrist_link: crate::wrist_link::WristLinkSnapshot,
 
     // ---- HEART_LINK ----
     pub heart_rate: crate::heart_rate::HeartRateSnapshot,
@@ -915,19 +916,9 @@ pub enum Command {
         kmh: Option<f32>,
     },
 
-    // ---- GHOST_POD and WRIST_LINK (Labs) ----
-    /// Labs: GHOST_POD on (`on`) or off. On, the PC advertises as a Bluetooth
-    /// foot pod and sends the belt speed to a paired watch once a second.
-    GhostPodSet {
-        on: bool,
-    },
-    /// Labs: GHOST_POD's power switch. On, the pod also serves running power
-    /// (the Cycling Power service) while GHOST_POD is on.
-    GhostPodPowerSet {
-        on: bool,
-    },
-    /// Labs: WRIST_LINK on (`on`) or off. On, the PC also serves the service
-    /// the watch's Connect IQ data field reads the belt from. Needs GHOST_POD.
+    // ---- WRIST_LINK (Labs) ----
+    /// Labs: WRIST_LINK on (`on`) or off. On, the PC serves the service the
+    /// watch's Connect IQ data field reads the belt from.
     WristLinkSet {
         on: bool,
     },
@@ -1230,8 +1221,8 @@ mod tests {
         assert_eq!(c, Command::UpdateAutoInstall { on: false });
         let c: Command = serde_json::from_str(r#"{"type":"traffic_record","on":true}"#).unwrap();
         assert_eq!(c, Command::TrafficRecord { on: true });
-        let c: Command = serde_json::from_str(r#"{"type":"ghost_pod_set","on":true}"#).unwrap();
-        assert_eq!(c, Command::GhostPodSet { on: true });
+        let c: Command = serde_json::from_str(r#"{"type":"wrist_link_set","on":true}"#).unwrap();
+        assert_eq!(c, Command::WristLinkSet { on: true });
         let c: Command = serde_json::from_str(r#"{"type":"heart_rate_scan"}"#).unwrap();
         assert_eq!(c, Command::HeartRateScan);
         let c: Command =
@@ -1263,9 +1254,7 @@ mod tests {
         );
         let c: Command = serde_json::from_str(r#"{"type":"guided_task_cancel"}"#).unwrap();
         assert_eq!(c, Command::GuidedTaskCancel);
-        let c: Command =
-            serde_json::from_str(r#"{"type":"ghost_pod_power_set","on":true}"#).unwrap();
-        assert_eq!(c, Command::GhostPodPowerSet { on: true });
+        assert!(serde_json::from_str::<Command>(r#"{"type":"ghost_pod_set","on":true}"#).is_err());
         let c: Command = serde_json::from_str(r#"{"type":"traffic_open_folder"}"#).unwrap();
         assert_eq!(c, Command::TrafficOpenFolder);
 

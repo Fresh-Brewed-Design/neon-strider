@@ -251,22 +251,12 @@ export const snapshot: AppSnapshot = {
   guided_task: { pinned: false, tasks: [], unpin_in_s: null },
   // 2h 10m walked of 5h 40m at the PC today.
   pc_walk_share: { active_s: 20_400, walked_s: 7_800, share_pct: 38 },
-  ghost_pod: {
+  wrist_link: {
     enabled: false,
-    status: "off",
-    label: "OFFLINE",
-    message: "Switch GHOST_POD on to let a watch read the belt as a foot pod.",
+    serving: false,
     watches: 0,
-    speed_kmh: 0,
-    power_enabled: false,
-    power_watches: 0,
-    power_w: 0,
-    wrist_link: {
-      enabled: false,
-      serving: false,
-      watches: 0,
-      message: "Switch WRIST_LINK on to let the watch's data field read the belt.",
-    },
+    failed: false,
+    message: "Switch WRIST_LINK on to let the watch's data field read the belt.",
   },
   heart_rate: {
     sensor: null,
