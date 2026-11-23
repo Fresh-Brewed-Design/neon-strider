@@ -417,6 +417,11 @@ pub struct OrchestratorState {
     /// The deck byte kept on a running belt after a calibration change
     /// (`CurveHold`).
     pub(crate) curve_hold: Option<CurveHold>,
+    /// Easy start: every belt start eases up from the slowest speed
+    /// (`easy_start.rs`). The switch is loaded at startup (on unless switched
+    /// off); off here so the engine's own tests run without it.
+    pub easy_start_enabled: bool,
+    pub(crate) easy_start: crate::easy_start::EasyStart,
 
     /// Tests only: the simulated instant `now()` reads instead of the real
     /// clock, so ticked time and the engine's own clock reads agree.
@@ -496,6 +501,8 @@ impl Default for OrchestratorState {
             deck_set_incline: None,
             resend_target: false,
             curve_hold: None,
+            easy_start_enabled: false,
+            easy_start: Default::default(),
             #[cfg(test)]
             test_now: None,
         }
@@ -1691,7 +1698,7 @@ impl OrchestratorState {
 
     /// The slowest running hardware speed: the min speed setting, or the
     /// deck's floor once DECK_PROFILE has seen it, whichever is higher.
-    fn floor_hw_speed(&self) -> f32 {
+    pub(crate) fn floor_hw_speed(&self) -> f32 {
         match self.deck_profile.floor() {
             Some(f) => self.min_speed.max(f as f32 / 10.0),
             None => self.min_speed,
@@ -2202,6 +2209,7 @@ impl ProtocolEngine {
     ) -> Option<Packet> {
         state.check_start_watch(now);
         state.release_hold_if_moving();
+        state.track_easy_start(now);
         self.drive_stop(state, now);
         self.sync_with_deck(state, now);
         self.notice_deck_changes(state, now);
@@ -2489,6 +2497,8 @@ impl ProtocolEngine {
                 );
                 // New calibration points never move the belt by themselves.
                 let h_speed = state.held_speed_byte().unwrap_or(h_speed);
+                // Easy start holds a belt that just started below the target.
+                let h_speed = state.easy_start_byte(h_speed, now);
                 // A byte DECK_PROFILE knows the deck changes or refuses goes
                 // out as the one it runs. The byte last sent is compared the
                 // same way: after the deck took another byte for it, it is

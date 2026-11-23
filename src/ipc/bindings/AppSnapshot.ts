@@ -5,6 +5,7 @@ import type { CallsSnapshot } from "./CallsSnapshot";
 import type { ConnectionSnapshot } from "./ConnectionSnapshot";
 import type { DeckSnapshot } from "./DeckSnapshot";
 import type { DeskSync } from "./DeskSync";
+import type { EasyStartSnapshot } from "./EasyStartSnapshot";
 import type { EyeBreakSnapshot } from "./EyeBreakSnapshot";
 import type { FitToDeckOffer } from "./FitToDeckOffer";
 import type { GuidedTaskSnapshot } from "./GuidedTaskSnapshot";
@@ -83,6 +84,10 @@ walkaway: WalkAwaySnapshot,
  * Lights out: stop the belt when the PC's display turns off.
  */
 lights_out: LightsOutSnapshot, 
+/**
+ * Every belt start eases up from the slowest speed (on by default).
+ */
+easy_start: EasyStartSnapshot, 
 /**
  * Auto-update: the running version, any update on offer and its notes.
  */
