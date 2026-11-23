@@ -473,6 +473,11 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             blocking(move || crate::wrist_link::set_enabled(&app, on)).await
         }
 
+        // ---- Typing by speed (Labs) ----
+        Command::TypingSpeedSet { on } => {
+            blocking(move || crate::typing_speed::set_enabled(&app, on)).await
+        }
+
         // ---- HEART_LINK ----
         Command::HeartRateScan => crate::heart_rate::scan().await,
         Command::HeartRatePick { id, name } => {

@@ -304,11 +304,13 @@ fn tick_each_second(
     state: &mut OrchestratorState,
     now: Instant,
 ) -> Option<crate::programs::ProgramToast> {
+    state.typing_speed_enabled = crate::typing_speed::enabled();
     crate::hooks::set_key_counting(state.neural_monitor_wanted());
     let keys = crate::hooks::take_key_count();
     let now_ms = crate::util::now_ms_u64();
     let quiet = crate::snapshot::calls::quiet_active();
     state.update_neural_flow(keys, quiet, now, now_ms);
+    state.count_typing_minute(keys);
     state.heart_bpm = crate::heart_rate::snapshot().bpm;
     state.max_heart_rate = u32::from(crate::heart_rate::max_heart_rate());
     state.zone_incline_trim = crate::heart_rate::zone_incline_trim();

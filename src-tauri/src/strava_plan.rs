@@ -1276,6 +1276,7 @@ mod tests {
             raw_steps: 0.0,
             raw_speed: speed,
             heart_rate: None,
+            key_presses: None,
         }
     }
 
