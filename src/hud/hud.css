@@ -571,9 +571,11 @@ body,
   color: var(--hud-dim);
 }
 
-/* STEP_MAP's next step under the running one: whole parts wrap, never mid-part. */
+/* STEP_MAP's next step under the running one: whole parts wrap, never mid-part.
+   A part wider than the module (NEXT // REST 3/5 at 225 % text size) wraps inside itself instead of overflowing:
+   it keeps its whole width while it fits, and max-width stops it past the module. */
 .hud-next { display: flex; flex-wrap: wrap; column-gap: 0.35em; line-height: 1.35; color: color-mix(in srgb, var(--hud-yellow) 70%, var(--hud-dim)); }
-.hud-next-part { white-space: nowrap; }
+.hud-next-part { max-width: 100%; overflow-wrap: anywhere; }
 
 .hud-programs {
   display: grid;
