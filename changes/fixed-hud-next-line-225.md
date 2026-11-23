@@ -1,0 +1,1 @@
+- The HUD next-step line (NEXT // ...) wraps inside the program section at 200 and 225 % text size instead of running past its edge.
