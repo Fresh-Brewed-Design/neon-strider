@@ -598,7 +598,10 @@ body,
   flex-wrap: wrap;
   gap: 6px;
 }
-.hud-auto-actions .hud-btn { flex: 1 1 0; min-width: max-content; }
+/* A button keeps its words whole while the row has room, but never grows past the row: at 225 %
+   text size "end program" is wider than the 93px column, so its line wraps inside the button. */
+.hud-auto-actions .hud-btn { flex: 1 1 0; min-width: min(max-content, 100%); }
+.hud-auto-actions .hud-btn-sub { white-space: normal; text-align: center; }
 
 /* A program waiting for GO (its next step would start a still belt): a
    yellow edge, a headline that can't be missed, and a filled, glowing GO. */
