@@ -28,6 +28,7 @@ import { pcWalkShare } from "./pcwalk";
 import { platform } from "./platform";
 import { programs } from "./programs";
 import { seated } from "./seated";
+import { speedDrift } from "./speeddrift";
 import { stasis } from "./stasis";
 import { strava } from "./strava";
 import { strideFit } from "./stridefit";
@@ -72,4 +73,5 @@ export const SCENARIOS: Scenario[] = [
   hrCool,
   pcWalkShare,
   platform,
+  speedDrift,
 ];

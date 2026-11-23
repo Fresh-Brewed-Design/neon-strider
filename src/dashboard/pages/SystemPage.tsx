@@ -8,6 +8,7 @@ import { Section } from "../system/fields";
 import { MaintenanceSection } from "../system/MaintenanceSection";
 import { NeuralSection } from "../system/NeuralSection";
 import { SessionsSection } from "../system/SessionsSection";
+import { SpeedDriftSection } from "../system/SpeedDriftSection";
 import { StartupSection } from "../system/StartupSection";
 import { StravaSection } from "../system/strava/StravaSection";
 import { TreadmillSection } from "../system/TreadmillSection";
@@ -22,6 +23,7 @@ const SECTIONS = [
   { id: "sys-strava", label: "Strava" },
   { id: "sys-heart", label: "Heart rate" },
   { id: "sys-neural", label: "Neural flow" },
+  { id: "sys-drift", label: "Speed drift" },
   { id: "sys-sessions", label: "Sessions" },
   { id: "sys-desk", label: "Desk" },
   { id: "sys-maintenance", label: "Maintenance" },
@@ -70,6 +72,7 @@ export function SystemPage() {
         <StravaSection />
         <HeartRateSection />
         <NeuralSection />
+        <SpeedDriftSection />
         <SessionsSection />
         <DeskSection />
         <MaintenanceSection />
