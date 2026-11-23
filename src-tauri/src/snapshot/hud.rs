@@ -387,6 +387,7 @@ mod tests {
             "CONTROLS",
             "ODOMETER",
             "HEART_RATE",
+            "PC_WALK_SHARE",
         ];
         for name in legacy {
             let w: HudWidget = serde_json::from_str(&format!("\"{}\"", name)).unwrap();
@@ -394,7 +395,7 @@ mod tests {
         }
 
         let all = parse_widgets(&format!("[\"{}\"]", legacy.join("\",\"")));
-        assert_eq!(all.len(), 12);
+        assert_eq!(all.len(), 13);
         assert_eq!(
             widgets_to_json(&all),
             format!("[\"{}\"]", legacy.join("\",\""))

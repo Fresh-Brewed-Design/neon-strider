@@ -937,6 +937,22 @@ fn cool_down_pulse_v11(raw: &str) -> Option<String> {
     serde_json::to_string(&list).ok()
 }
 
+/// Migration 12: PC time walked. Each desk day keeps its active PC seconds (input
+/// within the last minute) and how many of them the belt was running, so a
+/// restart (auto-update reinstalls the app several times a day) carries on
+/// with today's counts. Days recorded before have 0 for both.
+fn migration_12_pc_walk_share(tx: &Transaction) -> rusqlite::Result<()> {
+    for column in ["active_s", "walked_s"] {
+        if !has_column(tx, "desk_days", column)? {
+            tx.execute_batch(&format!(
+                "ALTER TABLE desk_days ADD COLUMN {} INTEGER NOT NULL DEFAULT 0",
+                column
+            ))?;
+        }
+    }
+    Ok(())
+}
+
 type Migration = fn(&Transaction) -> rusqlite::Result<()>;
 
 /// Append new migrations at the end; never reorder or edit a shipped one.
@@ -953,6 +969,7 @@ const MIGRATIONS: &[Migration] = &[
     migration_9_points_per_treadmill,
     migration_10_step_kinds,
     migration_11_cool_down_pulse,
+    migration_12_pc_walk_share,
 ];
 
 fn schema_version(conn: &Connection) -> rusqlite::Result<u32> {
@@ -1996,6 +2013,52 @@ pub fn desk_days_since(app: &tauri::AppHandle, since_day: &str) -> Result<Vec<St
     })
 }
 
+/// Save the PC walk share counts for `day` (local `YYYY-MM-DD`). Creates the desk
+/// day if DESK_SYNC hasn't yet, keeping its first input time when it has. A
+/// count never goes down, so a late or repeated write can't undo a newer one.
+pub fn save_pc_walk_share(
+    app: &tauri::AppHandle,
+    day: &str,
+    input_ms: i64,
+    active_s: u32,
+    walked_s: u32,
+) -> Result<(), String> {
+    with_conn(app, |conn| {
+        upsert_pc_walk_share(conn, day, input_ms, active_s, walked_s)
+    })
+}
+
+fn upsert_pc_walk_share(
+    conn: &Connection,
+    day: &str,
+    input_ms: i64,
+    active_s: u32,
+    walked_s: u32,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO desk_days (day, first_input_ms, active_s, walked_s) VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(day) DO UPDATE SET
+            active_s = MAX(active_s, excluded.active_s),
+            walked_s = MAX(walked_s, excluded.walked_s)",
+        params![day, input_ms, active_s, walked_s],
+    )
+    .map(|_| ())
+}
+
+/// The PC walk share's saved counts for `day` as (active, walked) seconds; None when
+/// the day has no row.
+pub fn pc_walk_share_on(app: &tauri::AppHandle, day: &str) -> Result<Option<(u32, u32)>, String> {
+    with_conn(app, |conn| pc_walk_share_row(conn, day))
+}
+
+fn pc_walk_share_row(conn: &Connection, day: &str) -> rusqlite::Result<Option<(u32, u32)>> {
+    let mut stmt = conn.prepare("SELECT active_s, walked_s FROM desk_days WHERE day = ?1")?;
+    let mut rows = stmt.query_map(params![day], |row| {
+        Ok((row.get::<_, u32>(0)?, row.get::<_, u32>(1)?))
+    })?;
+    rows.next().transpose()
+}
+
 /// `start_time` (epoch ms) of one session, if it exists.
 pub fn session_start_ms(app: &tauri::AppHandle, id: i64) -> Option<i64> {
     with_conn(app, |conn| {
@@ -2365,6 +2428,59 @@ mod db_tests {
             )
             .unwrap();
         assert_eq!((row.avg_heart_rate, row.max_heart_rate), (None, None));
+    }
+
+    #[test]
+    fn migration_12_gives_old_desk_days_zero_pc_walk_share_and_counts_never_go_down() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        for (i, m) in MIGRATIONS[..11].iter().enumerate() {
+            let tx = conn.transaction().unwrap();
+            m(&tx).unwrap();
+            tx.execute_batch(&format!("PRAGMA user_version = {}", i + 1))
+                .unwrap();
+            tx.commit().unwrap();
+        }
+        conn.execute(
+            "INSERT INTO desk_days (day, first_input_ms) VALUES ('2026-11-20', 5)",
+            [],
+        )
+        .unwrap();
+        assert_eq!(migrate(&mut conn).unwrap(), latest());
+        // Running it again (a half-applied file) changes nothing.
+        let tx = conn.transaction().unwrap();
+        migration_12_pc_walk_share(&tx).unwrap();
+        tx.commit().unwrap();
+        assert_eq!(
+            pc_walk_share_row(&conn, "2026-11-20").unwrap(),
+            Some((0, 0))
+        );
+        assert_eq!(pc_walk_share_row(&conn, "2026-11-21").unwrap(), None);
+
+        // A new day gets its row; an existing one keeps its first input time.
+        upsert_pc_walk_share(&conn, "2026-11-21", 9, 600, 240).unwrap();
+        upsert_pc_walk_share(&conn, "2026-11-20", 99, 3_000, 1_200).unwrap();
+        assert_eq!(
+            pc_walk_share_row(&conn, "2026-11-21").unwrap(),
+            Some((600, 240))
+        );
+        assert_eq!(
+            pc_walk_share_row(&conn, "2026-11-20").unwrap(),
+            Some((3_000, 1_200))
+        );
+        let first: i64 = conn
+            .query_row(
+                "SELECT first_input_ms FROM desk_days WHERE day = '2026-11-20'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(first, 5);
+        // An older write landing late leaves the newer counts.
+        upsert_pc_walk_share(&conn, "2026-11-21", 9, 540, 200).unwrap();
+        assert_eq!(
+            pc_walk_share_row(&conn, "2026-11-21").unwrap(),
+            Some((600, 240))
+        );
     }
 
     fn hr_sample(heart_rate: Option<u16>) -> Sample {

@@ -1,10 +1,12 @@
 //! Secrets at rest: the Strava client secret and OAuth tokens live in Windows
 //! Credential Manager, not in the SQLite settings table.
 //!
-//! If the credential store is unavailable the app keeps working from the
-//! settings table (and logs a warning). Secret values are never logged: every
-//! log line here goes through `warn`, which only takes the key name and the
-//! error text.
+//! If the credential store fails, a new value is refused (`NOT_SAVED_SECURELY`)
+//! rather than written to the database. A plaintext copy an older build left
+//! in the settings table keeps working (and is kept up to date) until the
+//! store works again; `backup.rs` strips those keys from every backup. Secret
+//! values are never logged: every log line here goes through `warn`, which only
+//! takes the key name and the error text.
 
 use crate::persistence;
 use tauri::AppHandle;
@@ -34,6 +36,11 @@ impl Secret {
         }
     }
 }
+
+/// Shown when a secret cannot go into the credential store, for a refused save
+/// and for a plaintext copy left in the database by an older build.
+pub const NOT_SAVED_SECURELY: &str =
+    "The Strava login could not be saved securely in Windows Credential Manager.";
 
 /// Settings keys whose values must never sit in the database once the
 /// credential store works. The generic settings commands refuse them.
@@ -101,8 +108,8 @@ pub enum MigrationStep {
 }
 
 /// A database value that is still present is always the newest one: a value
-/// is only ever written there when the store failed, and every successful
-/// store write deletes the database copy. So a differing store value is stale.
+/// is only ever written there by an older build (or kept up to date while the
+/// store fails), and every successful store write deletes the database copy. So a differing store value is stale.
 fn decide_migration(db: Option<&str>, store: &StoreRead) -> MigrationStep {
     let Some(db) = db.filter(|v| !v.is_empty()) else {
         return MigrationStep::Nothing;
@@ -111,6 +118,27 @@ fn decide_migration(db: Option<&str>, store: &StoreRead) -> MigrationStep {
         StoreRead::Unavailable => MigrationStep::KeepInDatabase,
         StoreRead::Value(v) if v == db => MigrationStep::ClearDatabase,
         StoreRead::Value(_) | StoreRead::Missing => MigrationStep::CopyVerifyThenClear,
+    }
+}
+
+/// What a save does once the credential store write has been tried.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SaveStep {
+    /// The store holds the value; drop any database copy.
+    ClearDatabase,
+    /// The store failed but an older build's plaintext copy is in use: update
+    /// it so the login keeps working (a refreshed token replaces the old one).
+    UpdateDatabase,
+    /// The store failed and nothing is in the database: never start a
+    /// plaintext copy.
+    Refuse,
+}
+
+fn decide_save(stored: bool, db_has_copy: bool) -> SaveStep {
+    match (stored, db_has_copy) {
+        (true, _) => SaveStep::ClearDatabase,
+        (false, true) => SaveStep::UpdateDatabase,
+        (false, false) => SaveStep::Refuse,
     }
 }
 
@@ -178,21 +206,20 @@ fn set_with(
     key: &str,
     value: &str,
 ) -> Result<(), String> {
-    match write_verified(store, key, value) {
-        Ok(()) => {
+    let stored = write_verified(store, key, value);
+    if let Err(e) = &stored {
+        warn("credential store write failed", key, e);
+    }
+    let db_has_copy = db.read(key).is_some_and(|v| !v.is_empty());
+    match decide_save(stored.is_ok(), db_has_copy) {
+        SaveStep::ClearDatabase => {
             if let Err(e) = db.delete(key) {
                 warn("could not remove the database copy", key, &e);
             }
             Ok(())
         }
-        Err(e) => {
-            warn(
-                "credential store write failed, keeping it in the database",
-                key,
-                &e,
-            );
-            db.write(key, value)
-        }
+        SaveStep::UpdateDatabase => db.write(key, value),
+        SaveStep::Refuse => Err(NOT_SAVED_SECURELY.to_string()),
     }
 }
 
@@ -233,14 +260,29 @@ fn migrate_with(store: &dyn SecretStore, db: &dyn DbSlot, key: &str) {
     }
 }
 
+/// True while any secret is held in the settings table (an older build's
+/// plaintext copy the store could not take).
+fn held_in_database_with(db: &dyn DbSlot) -> bool {
+    Secret::ALL
+        .iter()
+        .any(|s| db.read(s.key()).is_some_and(|v| !v.is_empty()))
+}
+
+/// True while a plaintext copy of the client secret or the login sits in the
+/// settings table.
+pub fn held_in_database(app: &AppHandle) -> bool {
+    held_in_database_with(&SettingsTable(app))
+}
+
 /// The secret's value: the database fallback copy if there is one, else the
 /// credential store.
 pub fn get(app: &AppHandle, secret: Secret) -> Option<String> {
     get_with(&KeyringStore, &SettingsTable(app), secret.key())
 }
 
-/// Store the secret in Credential Manager (verified), or in the settings table
-/// when the store does not work.
+/// Store the secret in Credential Manager (verified). When the store fails,
+/// only an existing plaintext copy is updated; otherwise the save is refused
+/// with `NOT_SAVED_SECURELY`.
 pub fn set(app: &AppHandle, secret: Secret, value: &str) -> Result<(), String> {
     set_with(&KeyringStore, &SettingsTable(app), secret.key(), value)
 }
@@ -348,13 +390,7 @@ mod tests {
 
     #[test]
     fn unavailable_store_keeps_database_value_and_still_reads() {
-        let (store, db) = (
-            MemStore {
-                broken: true,
-                ..Default::default()
-            },
-            MemDb::default(),
-        );
+        let (store, db) = (broken(), MemDb::default());
         db.write(K, "s3cret").unwrap();
         migrate_with(&store, &db, K);
         assert_eq!(db.read(K).as_deref(), Some("s3cret"));
@@ -384,18 +420,63 @@ mod tests {
         assert_eq!(db.read(K), None);
     }
 
+    fn broken() -> MemStore {
+        MemStore {
+            broken: true,
+            ..Default::default()
+        }
+    }
+
     #[test]
-    fn set_falls_back_to_database_when_store_is_down() {
-        let (store, db) = (
-            MemStore {
-                broken: true,
-                ..Default::default()
-            },
-            MemDb::default(),
+    fn save_decision_table() {
+        use SaveStep::*;
+        assert_eq!(decide_save(true, false), ClearDatabase);
+        assert_eq!(decide_save(true, true), ClearDatabase);
+        assert_eq!(decide_save(false, true), UpdateDatabase);
+        assert_eq!(decide_save(false, false), Refuse);
+    }
+
+    #[test]
+    fn set_refuses_when_store_is_down_and_writes_nothing() {
+        let (store, db) = (broken(), MemDb::default());
+        let err = set_with(&store, &db, K, "new").unwrap_err();
+        assert_eq!(err, NOT_SAVED_SECURELY);
+        assert_eq!(db.read(K), None);
+        assert!(!held_in_database_with(&db));
+    }
+
+    #[test]
+    fn set_refuses_when_store_read_back_differs() {
+        let store = MemStore {
+            lossy: true,
+            ..Default::default()
+        };
+        let db = MemDb::default();
+        assert_eq!(
+            set_with(&store, &db, K, "new").unwrap_err(),
+            NOT_SAVED_SECURELY
         );
+        assert_eq!(db.read(K), None);
+    }
+
+    #[test]
+    fn set_keeps_an_existing_database_copy_current_when_store_is_down() {
+        let (store, db) = (broken(), MemDb::default());
+        db.write(K, "old").unwrap();
         set_with(&store, &db, K, "new").unwrap();
         assert_eq!(db.read(K).as_deref(), Some("new"));
         assert_eq!(get_with(&store, &db, K).as_deref(), Some("new"));
+        assert!(held_in_database_with(&db));
+    }
+
+    #[test]
+    fn held_in_database_ignores_blank_and_other_keys() {
+        let db = MemDb::default();
+        db.write("stravaClientId", "123").unwrap();
+        db.write("stravaAuth", "").unwrap();
+        assert!(!held_in_database_with(&db));
+        db.write("stravaAuth", "{}").unwrap();
+        assert!(held_in_database_with(&db));
     }
 
     #[test]

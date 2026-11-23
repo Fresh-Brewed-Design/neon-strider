@@ -8,8 +8,10 @@ import { targetAccent, targetRange, ZONE_ACCENT, zoneRange } from "../widgets/zo
 import { HudNote } from "./HudNote";
 import { isMoving, startFailure } from "../state/linkStatus";
 import { SmallButton } from "./SmallButton";
-import { engageLabel } from "./status";
+import { engageLabel, engageSub, engageTitle } from "./status";
 import { useHudSend } from "./useHudSend";
+import { useRelink } from "./useRelink";
+import { linkState } from "../state/linkStatus";
 
 /** One pinned stat, read through the shared widget registry. */
 export function StatCell({ id, snapshot }: { id: HudWidget; snapshot: AppSnapshot }) {
@@ -19,6 +21,7 @@ export function StatCell({ id, snapshot }: { id: HudWidget; snapshot: AppSnapsho
   const spark = def.spark?.(snapshot);
   const zone = def.zone?.(snapshot);
   const target = def.target?.(snapshot);
+  const detail = def.detail?.(snapshot);
   return (
     <div className={`hud-stat accent-${def.accent}`}>
       <span className="hud-label">{def.label}</span>
@@ -29,6 +32,7 @@ export function StatCell({ id, snapshot }: { id: HudWidget; snapshot: AppSnapsho
       {spark && <Sparkline data={spark} className="hud-spark" />}
       {zone && <ZoneLine zone={zone} />}
       {target && <TargetLine target={target} />}
+      {detail && <span className="hud-sub hud-stat-detail">{detail}</span>}
     </div>
   );
 }
@@ -130,16 +134,28 @@ export function StrideFitLine({ snapshot }: { snapshot: AppSnapshot }) {
 }
 
 /** Engage / Stasis: one `toggle_start` to Rust, the same press as the shortcut. */
-export function EngageButton({ snapshot, send }: { snapshot: AppSnapshot; send: (c: Command) => Promise<boolean> }) {
+export function EngageButton({
+  snapshot,
+  send,
+  sub = false,
+}: {
+  snapshot: AppSnapshot;
+  send: (c: Command) => Promise<boolean>;
+  /** The panel adds a plain line under the codename; the strips are too short for it. */
+  sub?: boolean;
+}) {
   const moving = isMoving(snapshot.deck);
   return (
     <button
       type="button"
-      className={`hud-btn hud-btn-main ${moving ? "accent-magenta" : "accent-cyan"}`}
+      className={`hud-btn hud-btn-main${sub ? " hud-btn-stack" : ""} ${moving ? "accent-magenta" : "accent-cyan"}`}
       disabled={!snapshot.connection.connected}
+      title={engageTitle(snapshot)}
       onClick={() => void send({ type: "toggle_start" })}
     >
       {engageLabel(snapshot)}
+      {sub && " "}
+      {sub && <span className="hud-btn-sub">{engageSub(snapshot)}</span>}
     </button>
   );
 }
@@ -153,14 +169,16 @@ export function Controls({ snapshot }: { snapshot: AppSnapshot }) {
   return (
     <div className="hud-module">
       <div className="hud-transport">
-        <EngageButton snapshot={snapshot} send={send} />
+        <EngageButton snapshot={snapshot} send={send} sub />
         <button
           type="button"
-          className="hud-btn hud-btn-stop accent-magenta"
+          className="hud-btn hud-btn-stop hud-btn-stack accent-magenta"
           disabled={!connection.connected || deck.status === "Stopped" || deck.status === "Stopping"}
+          title="Stop the belt and end the session."
           onClick={() => send({ type: "stop" })}
         >
-          DUMP
+          DUMP{" "}
+          <span className="hud-btn-sub">end walk</span>
         </button>
       </div>
       <div className="hud-steppers">
@@ -189,6 +207,7 @@ export function Controls({ snapshot }: { snapshot: AppSnapshot }) {
 /** The running program's controls, or one button per saved program. */
 export function ProgramsModule({ snapshot }: { snapshot: AppSnapshot }) {
   const { send, error } = useHudSend();
+  const relink = useRelink(snapshot.connection);
   const a = snapshot.active_program;
   if (a) {
     // Waiting for GO: the next step would start a still belt, so nothing moves
@@ -224,12 +243,18 @@ export function ProgramsModule({ snapshot }: { snapshot: AppSnapshot }) {
         <div className="hud-auto-actions">
           <SmallButton
             className={wait ? "hud-btn-go" : undefined}
+            sub={a.paused ? "resume" : "pause"}
+            title={a.paused ? "Resume the program." : "Pause the program."}
             onClick={() => send({ type: a.paused ? "program_resume" : "program_pause" })}
           >
             {a.paused ? "GO" : "HOLD"}
           </SmallButton>
-          <SmallButton onClick={() => send({ type: "program_skip" })}>SKIP</SmallButton>
-          <SmallButton onClick={() => send({ type: "program_end" })}>END</SmallButton>
+          <SmallButton sub="next step" title="Skip to the next step." onClick={() => send({ type: "program_skip" })}>
+            SKIP
+          </SmallButton>
+          <SmallButton sub="end program" title="End the program." onClick={() => send({ type: "program_end" })}>
+            END
+          </SmallButton>
         </div>
         <HudNote error={error} />
       </div>
@@ -240,6 +265,7 @@ export function ProgramsModule({ snapshot }: { snapshot: AppSnapshot }) {
   return (
     <div className="hud-module accent-yellow">
       <span className="hud-label">RUN PROGRAM</span>
+      {!snapshot.connection.connected && <OfflineLine connection={snapshot.connection} relink={relink} />}
       <div className="hud-programs">
         {snapshot.programs.slice(0, 6).map((p) => (
           <button
@@ -254,7 +280,26 @@ export function ProgramsModule({ snapshot }: { snapshot: AppSnapshot }) {
           </button>
         ))}
       </div>
-      <HudNote error={error} />
+      <HudNote error={error ?? relink.error} />
     </div>
   );
 }
+
+/** Why the program buttons are off while no treadmill is linked, with the same
+ *  relink the header's link label does. It only links; it never starts the belt. */
+function OfflineLine({ connection, relink }: { connection: AppSnapshot["connection"]; relink: ReturnType<typeof useRelink> }) {
+  const state = linkState(connection).state;
+  const linking = state === "connecting" || state === "scanning";
+  const pending = relink.view?.text != null;
+  return (
+    <div className="hud-offline" data-testid="hud-offline">
+      <span className="hud-sub">{linking ? "Connecting to the treadmill." : "Treadmill not connected."}</span>
+      {(relink.view?.clickable || pending) && (
+        <button type="button" className="hud-btn hud-btn-sm" disabled={pending} onClick={relink.relink}>
+          {pending ? "LINKING…" : "CONNECT"}
+        </button>
+      )}
+    </div>
+  );
+}
+

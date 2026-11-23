@@ -35,7 +35,10 @@ Strava is Rust-owned too (`strava.rs` plus its `strava/` submodules: `settings`,
 `api`, `upload`, `worker` for the background auto-sync, and `fallback` for the manual-upload TCX;
 `strava_plan.rs` pure logic, `strava_template.rs` title/description templates):
 windows dispatch `strava_*` commands and read `snapshot.strava`; tokens never reach JS. The client secret and
-tokens live in Windows Credential Manager (`secrets.rs`; plaintext DB values migrate at startup).
+tokens live in Windows Credential Manager (`secrets.rs`): a save the store refuses fails with
+`NOT_SAVED_SECURELY` instead of going to the database; an older build's plaintext DB copy migrates
+at startup, keeps working while the store fails (`snapshot.strava.login_storage` says so) and is
+stripped from every backup (`backup.rs`).
 Auto-update is Rust-owned too (`update.rs`, `tauri-plugin-updater`; no window has updater
 permissions and the CSP stays closed): it checks `latest.json` on the newest GitHub release 30 s
 after startup and hourly or on `update_check`, joins the notes of every
@@ -76,6 +79,7 @@ Guided tasks (`guided_task.rs`): a window asks Rust to hold the dashboard open a
 GROUND_TRUTH (`calibration.rs`, always on in System, Calibration): RUN (a press) sets the belt to a target speed, then the user taps as the belt mark passes (`calibration_tap`, Space in the dashboard, or Alt+Space through `hooks.rs` while a run listens, `calibration::tap_listening`). Rust timestamps each tap; `calibration/tap.rs` is the pure maths (median gap, outliers dropped against it, done once enough gaps agree). After a run is measured, GAIT_SYNC (`calibration/steps.rs`) times footsteps with the same inputs: stride is the measured belt speed over the cadence, saved by itself with the factor kept, through the same save and UNDO as a belt run. A point counts its footstep runs apart from its belt runs (`stride_runs`, 0 for a stride never measured), so the first measured stride replaces a borrowed one. The guided walk (`calibration/guide.rs`) asks the top speed, times the deck's slowest speed and that one, then checks midpoints (the nearest speed the deck runs when DECK_PROFILE says it skips halfway) and splits a span only when the measured error there is over 2 %; every speed waits for RUN, and a point saved mid-run keeps the deck at the run's speed. The target list and RUN ALL are the advanced way in (ADVANCED // TARGET_LIST); GROUND_TRUTH is the only calibration UI, and a row shows the factor Rust applies when a stored one is outside the limits. A treadmill that connects with no belt length and no points gets "Calibrate this treadmill" (`calibration.offer`); SKIP is kept per treadmill (`calibrationOfferSkipped:<id>`). Tapping only reads the deck. The belt loop length is a setting per treadmill (`beltLoop:<id>`, switched with DECK_PROFILE; the old app-wide `beltLength` is no longer read, and `save_config` deletes it), and so are the points (`calibrationPoints:<id>`, `calibration/fresh.rs`; migration 9 gave the old app-wide points to the treadmill saved then, and points saved with none known go to the first one to connect). `AppConfig.calibration_treadmill` says whose points a config carries, and `sync_orchestrator_config` refuses another treadmill's. START FRESH (`calibration_start_fresh`) sets the treadmill's points aside (`calibrationPointsAside:<id>`) so the walk starts from none; while a set is aside (`calibration.aside_count`) RESTORE brings it back (ending any walk) and KEEP NEW deletes it. STRIDE_FIT (`calibration/stride_fit.rs`, `strideFit:<id>`, set by feel with `stride_fit_set`, held to the deck's speed range, `snapshot.deck.stride_fit_kmh`, none until set) is the fastest speed the user's stride still fits the deck; the program editor flags a step above it and changes nothing, the Live speed slider marks it, and the HUD shows an ABOVE STRIDE_FIT line while the belt runs faster (`snapshot.deck.above_stride_fit`, `stride_fit::above`: running, and the lower of reading and target above it in tenths). FIT_TO_DECK (`programs/fit_to_deck.rs`, #225) offers a seeded program still as seeded (its note kept, steps and repeat equal to `seed_programs`, which migrations 4, 7 and 8 match) with a step above STRIDE_FIT (`snapshot.fit_to_deck`, Rust's words): after the user confirms, `program_fit_to_deck` sets those steps to the fit speed with the grade that keeps their ACSM walking VO2, held to the deck's top incline (the confirm text says what effort that costs); it never starts the program. No sourced rule ties deck length to stride (#223), so nothing works it out from the belt loop or strides.
 ECHO (`echo.rs`, the History row's ECHO button) turns a saved walk into a program: `echo_steps` is the pure split of the samples into steady stretches (limits beside each constant), and the named command `program_from_session` (it returns the new program, so it is not a `Command`) saves it through `save_program` and `change_programs` as `ECHO // <date>`, never started.
 Neural flow (typing-aware pace) is pure logic in `neural.rs`; key-press counting is switched by Rust (`neural_monitor_wanted`, 1 Hz tick), not by a window.
+PC time walked (`pc_walk_share.rs`, declared from `snapshot.rs`; the `PC_WALK_SHARE` stat, WALKED on the HUD) counts each desk-loop second with input in the last minute (DESK_SYNC's `ACTIVE_INPUT`) as active PC time, and as walked while the connected belt is Running; the counts are per local day in `desk_days` (migration 12), saved at most once a minute and loaded at startup, and `snapshot.pc_walk_share` gives the share once there are 10 minutes of PC time. It only reads the belt; there are no bests or targets, and the Live page shows it only when a stat tile is free.
 Status is visible, not silent. `link.rs` (treadmill link state, plain-English BLE errors) and
 `strava_status.rs` (Strava activity/steps, `describe()` turns Strava's JSON errors into one
 sentence) feed `snapshot.connection.link` and `snapshot.strava.activity`; countdowns are `*_s`
@@ -125,6 +129,11 @@ HEART_LINK (`heart_rate.rs`: pure Heart Rate Measurement decoding and snapshot t
   `snapshot/commands.rs`) over a new `#[tauri::command]`. Variants, their match arms and the
   `AppSnapshot` fields are grouped by feature under `// ---- ... ----` markers: add to the end of
   your feature's group, or start a new group; settings and sessions still use named commands via `invoke` (plus `strava_tcx_preview`, a query).
+  Each window may call only the app commands its capability allows: `build.rs` declares every
+  `#[tauri::command]` in `APP_COMMANDS` (add a new one there too), the dashboard's
+  `capabilities/default.json` allows the ones it calls, and the HUD's `capabilities/hud.json`
+  only `dispatch`, `get_snapshot` and `set_hud_hit_region`. `src/ipc/capabilities.test.ts`
+  fails if a window invokes a command its capability does not allow.
 
 ## Platform
 
@@ -184,15 +193,18 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?idle`: the belt stopped
 - `?lightsout`: LIGHTS_OUT on; on the HUD preview its toast
 - `?link=scanning|connecting|reconnecting|nodata|bt-off|failed`: each treadmill link state
+- `?loginstorage`: the Strava login kept in the database because Windows Credential Manager failed, with its note under the account
 - `?maxhr=178`: a max heart rate of 178 bpm set in System -> Heart rate (program heart zones use it)
 - `?minified`: the running strip; with `?program=resting|paused`, `?noprogram` or `?idle`; with `?hrspark=...`, `?hrzone=...` or `?heart=on|waiting` it shows PULSE_RATE
 - `?minifykey=off|pause|scroll_lock`: the minify hotkey switched off, or set to Alt+Pause or Alt+Scroll Lock
 - `?neural=active`: Neural flow easing the belt off while typing
 - `?nohistory`: History empty: no walks, an empty week, DESK_SYNC and WALL_CLOCK
 - `?noprogram`: no program running
+- `?noprograms`: no saved programs (Programs shows its empty state)
 - `?nostrava`: no Strava credentials or account
 - `?offline`: no treadmill saved yet
 - `?onemonitor`: a single display
+- `?pcwalk`: the WALKED stat pinned on the HUD at 38 % (2h 10m of 5h 40m); `=early` 6 minutes of PC time (`--`), `=long` 10h 05m of 11h 50m, `=none` no PC time today
 - `?program=ready|hold|still|resting|paused|interval`: a program waiting for GO after a rest, after a 0 km/h step (its steps have no kind), or after a reconnect found the belt still; mid-rest; paused by the user; or Interval walk on its 3rd brisk round (`INTERVAL 3/5`); each shows STEP_MAP on the Live page and the next step on the HUD
 - `?reconnect`: the Strava login needs a fresh grant
 - `?reject`: every command fails
@@ -228,6 +240,7 @@ PR adds a release note file `changes/<new|changed|fixed>-<slug>.md` (see `change
 which the release folds into CHANGELOG.md. All work goes to `main` through PRs. CI runs on
 PRs and on `main` after each merge; the run on `main` saves the compiled Rust dependencies
 (`shared-key: ci`) and PR runs restore them, so a PR compiles only this crate.
+`audit.yml` runs `cargo audit` and `npm audit` weekly (ignores, with reasons, in `src-tauri/.cargo/audit.toml`).
 `build-roadmap-issue.yml` builds a roadmap issue when Fresh Brewed Design labels one of its own issues
 `roadmap:next`: Claude opens a PR that closes it (secret `CLAUDE_CODE_OAUTH_TOKEN`). Only its
 account (user ID 3596382) can start it, as both the issue's author and whoever added the label.

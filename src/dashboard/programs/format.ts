@@ -84,11 +84,11 @@ export function waitHeadline(w: ProgramWait): string {
 export function waitReason(w: ProgramWait): string {
   switch (w) {
     case "rest_complete":
-      return "The rest is over. The belt starts when you press GO.";
+      return "Rest over. GO starts the belt.";
     case "hold_complete":
-      return "The next step walks. The belt starts when you press GO.";
+      return "Hold over. GO starts the belt.";
     case "belt_still":
-      return "The belt was found still after a reconnect. Press GO to carry on.";
+      return "Belt found still. GO carries on.";
   }
 }
 

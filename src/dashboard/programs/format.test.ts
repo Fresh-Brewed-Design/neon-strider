@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ActiveProgram, Program } from "../../ipc";
-import { describeActive, describePlan, waitHeadline } from "./format";
+import { describeActive, describePlan, waitHeadline, waitReason } from "./format";
 
 const workday: Program = {
   id: 2,
@@ -49,6 +49,14 @@ describe("waiting for GO", () => {
     expect(waitHeadline("rest_complete")).toBe("REST COMPLETE // PRESS GO");
     expect(waitHeadline("hold_complete")).toBe("HOLD COMPLETE // PRESS GO");
     expect(waitHeadline("belt_still")).toBe("BELT STILL // PRESS GO");
+  });
+
+  // jsdom has no layout, so the 760x600 fit is measured in the dashboard preview
+  // (?program=ready|hold|still). This keeps each reason to the one line it has beside the buttons.
+  it("keeps each reason short enough for one line on the program card", () => {
+    for (const w of ["rest_complete", "hold_complete", "belt_still"] as const) {
+      expect(waitReason(w).length).toBeLessThanOrEqual(34);
+    }
   });
 
   it("describes the walk that is waiting, not one that is under way", () => {

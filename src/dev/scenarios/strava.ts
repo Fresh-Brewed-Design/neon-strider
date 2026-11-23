@@ -2,7 +2,8 @@
 // previews each Strava state; ?nostrava has no credentials or account;
 // ?reconnect is a login from before shoes and the duplicate check, so it needs
 // a fresh grant; ?saved marks a walk as saved for Strava; ?savefail makes
-// saving one fail.
+// saving one fail; ?loginstorage is a login an older build kept in the
+// database because Windows Credential Manager failed.
 import type { StravaSnapshot } from "../../ipc";
 import { DEFAULT_DESCRIPTION, DEFAULT_ROLLUP_TITLE, DEFAULT_TITLE, later, params, publish, snapshot } from "../mockState";
 import { lastId, sessions } from "./history";
@@ -22,6 +23,7 @@ const stravaFlag = params.get("strava");
 const INACTIVE_MESSAGE =
   "Strava turned off the API app because its owner needs a Strava subscription. Subscribe and reactivate the app at strava.com/settings/api, or use Save for Strava.";
 const OFFLINE_MESSAGE = "Can't reach Strava. Check your internet connection.";
+const LOGIN_STORAGE_MESSAGE = "The Strava login could not be saved securely in Windows Credential Manager.";
 const PAUSED: Partial<StravaSnapshot> = {
   activity: { state: "paused", reason: INACTIVE_MESSAGE },
   last_result: {
@@ -65,6 +67,7 @@ function stravaSync(message: string) {
 export const strava: Scenario = {
   apply() {
     if (params.has("nostrava")) Object.assign(snapshot.strava, { has_credentials: false, connected: false, athlete_name: null, auto_sync: false, last_result: null });
+    if (params.has("loginstorage")) snapshot.strava.login_storage = LOGIN_STORAGE_MESSAGE;
     if (params.has("reconnect")) Object.assign(snapshot.strava, { needs_reconnect: true, gear: [], gear_id: null });
     if (stravaFlag) Object.assign(snapshot.strava, STRAVA_SCENARIOS[stravaFlag]);
   },

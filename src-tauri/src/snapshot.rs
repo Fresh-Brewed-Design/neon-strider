@@ -11,7 +11,7 @@
 //! - `emitter`: collecting the snapshot and pushing it to the windows
 //!
 //! The feature modules that contribute a part of the snapshot or act on it
-//! (calls, desk, desk_sync, eyebreak, hud_drag, lights_out, maintenance, odometer, seated,
+//! (calls, desk, desk_sync, eyebreak, hud_drag, lights_out, maintenance, odometer, pc_walk_share, seated,
 //! tray, tray_menu,
 //! walkaway, wall_clock, weekly) are declared here rather than in `lib.rs`, so this module owns
 //! their wiring.
@@ -32,6 +32,8 @@ pub mod lights_out;
 pub mod maintenance;
 #[path = "odometer.rs"]
 pub mod odometer;
+#[path = "pc_walk_share.rs"]
+pub mod pc_walk_share;
 #[path = "seated.rs"]
 pub mod seated;
 #[path = "tray.rs"]
@@ -59,6 +61,7 @@ pub use hud::{hud_config, on_setting_written, refresh_monitors, toggle_minified}
 pub use lights_out::LightsOutSnapshot;
 pub use maintenance::{MaintenanceBasis, MaintenanceSnapshot};
 pub use odometer::OdometerSnapshot;
+pub use pc_walk_share::PcWalkShare;
 pub use seated::SeatedSnapshot;
 pub use types::*;
 pub use walkaway::WalkAwaySnapshot;
@@ -227,7 +230,7 @@ fn neural_snapshot(state: &OrchestratorState) -> NeuralSnapshot {
 }
 
 /// Build a snapshot from state. Pure (no Tauri, no locks, no I/O) so it can be
-/// unit-tested. `desk_sync`, `wall_clock`, `walkaway`, `update`, `traffic`, `lights_out`, `wrist_link`,
+/// unit-tested. `desk_sync`, `wall_clock`, `pc_walk_share`, `walkaway`, `update`, `traffic`, `lights_out`, `wrist_link`,
 /// `calibration`, `guided_task` and `hud_view` are left at their defaults: they depend on the clock or shared
 /// state, so the emitter fills them in.
 pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSnapshot {
@@ -260,6 +263,7 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         wrist_link: crate::wrist_link::WristLinkSnapshot::default(),
         heart_rate: crate::heart_rate::HeartRateSnapshot::default(),
         guided_task: crate::guided_task::GuidedTaskSnapshot::default(),
+        pc_walk_share: PcWalkShare::default(),
     }
 }
 
@@ -307,6 +311,7 @@ pub fn init(app: &AppHandle) {
     maintenance::init(app);
     weekly::init(app);
     desk_sync::init(app);
+    pc_walk_share::init(app);
     odometer::init(app);
     desk::init(app);
     crate::calibration::init(app);
@@ -363,6 +368,7 @@ mod tests {
             saved_session_ids: Vec::new(),
             last_result: None,
             needs_reconnect: false,
+            login_storage: None,
             gear: Vec::new(),
             gear_id: None,
             gear_loading: false,

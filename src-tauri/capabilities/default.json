@@ -1,12 +1,32 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Dashboard window: events, and dragging by its header",
+  "description": "Dashboard window: events, dragging by its header, and the app commands it calls",
   "windows": [
     "main"
   ],
   "permissions": [
     "core:event:default",
-    "core:window:allow-start-dragging"
+    "core:window:allow-start-dragging",
+    "allow-connect-bluetooth-device",
+    "allow-delete-session",
+    "allow-dispatch",
+    "allow-export-sessions-csv",
+    "allow-get-db-setting",
+    "allow-get-launch-at-login",
+    "allow-get-rust-config",
+    "allow-get-samples",
+    "allow-get-sessions",
+    "allow-get-snapshot",
+    "allow-open-log-folder",
+    "allow-program-from-session",
+    "allow-scan-bluetooth-devices",
+    "allow-send-bluetooth-command",
+    "allow-set-db-setting",
+    "allow-set-launch-at-login",
+    "allow-strava-save-for-strava",
+    "allow-strava-tcx-preview",
+    "allow-strava-template-preview",
+    "allow-sync-orchestrator-config"
   ]
 }
