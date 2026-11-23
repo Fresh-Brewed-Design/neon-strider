@@ -1,4 +1,0 @@
-- Strava title and description templates have a field for every walk stat: `{max_speed}`, `{max_incline}`, `{climb_m}`, `{avg_heart_rate}`, `{max_heart_rate}`, `{program}`, `{pc_walked}` and `{end_time}` join the fields you had.
-- A field with no value for a walk, such as heart rate without a watch, drops out of the text with its label and one separator. A line left empty drops out too.
-- System, Strava lists every template field with what it shows.
-- Walks now save the program they ran, for the `{program}` field. Walks from before show no program.
