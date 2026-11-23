@@ -1,0 +1,1 @@
+- The program buttons in the HUD (HOLD, SKIP, END) now stay inside the panel at every Windows text size. END used to run past the edge at 225 %.
