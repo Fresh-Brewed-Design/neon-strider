@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.55.1 (2026-11-23)
+
+### Changed
+
+- GHOST_POD and its power switch are gone from System -> Labs. WRIST_LINK stays and now starts by its own switch.
+
 ## 1.55.0 (2026-11-22)
 
 ### New

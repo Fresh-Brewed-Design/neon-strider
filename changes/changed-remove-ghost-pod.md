@@ -1,1 +1,0 @@
-- GHOST_POD and its power switch are gone from System -> Labs. WRIST_LINK stays and now starts by its own switch.
