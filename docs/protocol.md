@@ -87,7 +87,10 @@ Another deck may use a different byte. To check what yours sends:
    - `no status frames for N s` / `status frames arriving again`: whether
      frames stop while the screen is off. After 10 s of silence the app also
      drops the link and reconnects (`No status frames for N s on a link that
-     reads as up`), which sends the deck nothing.
+     reads as up`), which sends the deck nothing. A write Windows refuses
+     because it closed the link (`HRESULT(0x80000013)`, "The object has been
+     closed.") drops it at once the same way (`Windows closed the treadmill
+     link; dropping it to reconnect.`).
    - `Engage: no answer from the deck in 8 s`: the status, unknown code and
      time since the last frame when Engage gave up.
 

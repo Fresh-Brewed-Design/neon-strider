@@ -536,6 +536,16 @@ pub(crate) fn silent_for(since: Option<Instant>, now: Instant) -> Option<Duratio
     (quiet > NO_DATA_AFTER).then_some(quiet)
 }
 
+/// A write error that means the link's GATT session is gone for good: Windows
+/// closed the device object (RO_E_CLOSED, `HRESULT(0x80000013)`, "The object
+/// has been closed."). Every later write on that link fails the same way
+/// while it can still read as connected, so the worker drops it at once and
+/// reconnects instead of writing into it until the silent-link rule fires.
+/// Pure.
+pub(crate) fn write_lost_link(raw: &str) -> bool {
+    raw.contains("0x80000013") || raw.to_ascii_lowercase().contains("object has been closed")
+}
+
 /// Once a second from the protocol worker: log when status frames stop
 /// arriving on a live link, and when they come back. Returns how long the
 /// link has been silent once that is past `NO_DATA_AFTER`: the deck answers
@@ -736,6 +746,20 @@ pub fn connect_dialog_at_ms() -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_closed_object_write_means_the_link_is_lost() {
+        assert!(write_lost_link(crate::sim::CLOSED_WRITE));
+        assert!(write_lost_link("The object has been closed."));
+        assert!(!write_lost_link(
+            r#"Error { code: HRESULT(0x800704C7), message: "The operation was canceled by the user." }"#
+        ));
+        assert!(!write_lost_link(&timed_out(
+            "Write",
+            std::time::Duration::from_secs(2)
+        )));
+        assert!(!write_lost_link("Simulated deck not linked"));
+    }
 
     #[test]
     fn retry_delay_is_fast_then_doubles_to_a_cap() {
