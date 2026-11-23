@@ -358,6 +358,11 @@ pub struct OrchestratorState {
     /// Bumped on every speed the user sets by hand (not programs, not quiet
     /// mode): Neural flow takes it as the new base.
     pub speed_hand_epoch: u64,
+    /// `speed_hand_epoch` as of the last frame that wasn't Paused. While the
+    /// deck reports Paused, only a speed set by hand since then may resume a
+    /// manual walk (`ProtocolEngine::control_packet`): a rise from Neural flow,
+    /// a call's restore or a new floor, before or during the pause, never does.
+    pub(crate) hand_epoch_before_pause: u64,
     /// When Neural flow last changed the target, so the protocol worker
     /// doesn't toast the deck's speed change that follows.
     pub neural_changed_at: Option<Instant>,
@@ -475,6 +480,7 @@ impl Default for OrchestratorState {
             neural_sensitivity: crate::neural::NeuralSensitivity::Medium,
             neural: crate::neural::NeuralFlow::default(),
             speed_hand_epoch: 0,
+            hand_epoch_before_pause: 0,
             neural_changed_at: None,
             start_requested_at: None,
             start_blocked: false,
@@ -918,6 +924,9 @@ impl OrchestratorState {
     pub(crate) fn take_status(&mut self, t: &protocol::Telemetry) {
         if t.status_known {
             self.last_status = t.status;
+            if t.status != MachineStatus::Paused {
+                self.hand_epoch_before_pause = self.speed_hand_epoch;
+            }
             self.unknown_status_code = None;
             self.deck_standby = t.status_code == protocol::STATUS_STANDBY;
             return;
@@ -2486,10 +2495,17 @@ impl ProtocolEngine {
             // the deck is paused at the treadmill must not resume it.
             // Nor while DECK_SWEEP runs: a sweep step that lands just after a
             // pause at the treadmill never resumes the belt.
+            // Nor for a manual walk's rise nobody pressed (issue #311): the
+            // target and `last_physical_speed` lag the deck by up to a poll, so
+            // a Neural flow recovery or a call's restore in the same moment as
+            // a pause at the treadmill, or a higher floor saved while paused,
+            // looks like a rise. Only a speed set by hand since the deck last
+            // reported a status other than Paused counts.
             MachineStatus::Paused
                 if target_speed > self.last_physical_speed + STILL_KMH
                     && has_target
                     && source != TargetSource::Program
+                    && state.speed_hand_epoch != state.hand_epoch_before_pause
                     && !state.start_blocked
                     && !state.hold_auto_start
                     && !start_unanswered

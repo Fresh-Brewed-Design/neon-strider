@@ -8,7 +8,9 @@ interface Entry {
   detail: string;
 }
 
-describe("feature-inventory", () => {
+// Every call scans the whole repo, and the "filters" test runs two full scans; that took about 4.5 s and hit the 5 s default
+// when the PC was busy (installer builds running). 30 s is far above a loaded run and still ends a hung scan.
+describe("feature-inventory", { timeout: 30_000 }, () => {
   it("finds the SESSION SAVED toast", () => {
     const toasts: Entry[] = fi.hudToasts();
     const saved = toasts.find((t) => t.detail.includes("SESSION SAVED"));
