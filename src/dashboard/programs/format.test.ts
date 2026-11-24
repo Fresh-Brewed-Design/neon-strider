@@ -120,7 +120,7 @@ describe("step kinds", () => {
 
 describe("T-MINUS", () => {
   const now = new Date(2026, 10, 24, 15, 17, 0);
-  const NBSP = " ";
+  const NBSP = String.fromCharCode(160);
   const finite: ActiveProgram = { ...active, name: "Brisk", repeat_every_minutes: null, cycle: 1, program_seconds_remaining: 23 * 60 + 10 };
 
   it("shows the time left and the end on the PC clock", () => {

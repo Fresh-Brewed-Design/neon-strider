@@ -2,6 +2,8 @@ import { render } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { AppSnapshot } from "../ipc";
 
+const NBSP = String.fromCharCode(160);
+
 let current: AppSnapshot | null = null;
 vi.mock("../state/useAppState", () => ({ useAppSnapshot: () => current }));
 
@@ -33,14 +35,14 @@ describe("HUD T-MINUS", () => {
   it("shows the whole program's time left and end under the step line", () => {
     current = withLeft(1390);
     const { container } = render(<HudApp />);
-    expect(tMinus(container)).toMatch(/^T-MINUS 23:10 · ENDS \S+/);
+    expect(tMinus(container)?.startsWith(`T-MINUS${NBSP}23:10 · ENDS${NBSP}`)).toBe(true);
     expect(container.querySelector(".hud-run-status")?.textContent).toContain("left");
   });
 
   it("shows only the time left while paused", () => {
     current = withLeft(1390, true);
     const { container } = render(<HudApp />);
-    expect(tMinus(container)).toBe("T-MINUS 23:10");
+    expect(tMinus(container)).toBe(`T-MINUS${NBSP}23:10`);
   });
 
   it("shows nothing for a repeating program", () => {

@@ -2,6 +2,8 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppSnapshot } from "../../ipc";
 
+const NBSP = String.fromCharCode(160);
+
 let current: AppSnapshot | null = null;
 vi.mock("../../state/useAppState", () => ({
   useAppSnapshot: () => current,
@@ -38,14 +40,14 @@ describe("ActiveProgramCard T-MINUS", () => {
     current!.active_program = { ...current!.active_program!, paused: false, wait: null, program_seconds_remaining: 1390 };
     render(<ActiveProgramCard />);
     const line = screen.getByTestId("program-time-left");
-    expect(line.textContent).toMatch(/^T-MINUS 23:10 · ENDS \S+/);
+    expect(line.textContent?.startsWith(`T-MINUS${NBSP}23:10 · ENDS${NBSP}`)).toBe(true);
     expect(screen.getByText(/cycle 3/)).toBeInTheDocument();
   });
 
   it("shows only the time left while paused", () => {
     current!.active_program = { ...current!.active_program!, paused: true, wait: null, program_seconds_remaining: 1390 };
     render(<ActiveProgramCard />);
-    expect(screen.getByTestId("program-time-left").textContent).toBe("T-MINUS 23:10");
+    expect(screen.getByTestId("program-time-left").textContent).toBe(`T-MINUS${NBSP}23:10`);
   });
 
   it("shows nothing when the program has no fixed end", () => {
