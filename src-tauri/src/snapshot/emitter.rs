@@ -1,6 +1,7 @@
 //! Collecting the live state into an `AppSnapshot`, and the loop that pushes
 //! it to the windows as `app-state`.
 
+use super::frame::{self, Delivery, Due, Frame, Windows};
 use super::{
     build_snapshot, calls, daily_base, desk_sync, eyebreak, hud, lights_out, maintenance, odometer,
     pc_walk_share, refresh_daily_base, seated, stasis, tray, tray_menu, walkaway, weekly,
@@ -10,7 +11,7 @@ use crate::bluetooth::{self, ORCHESTRATOR};
 use crate::programs::{self, SavedRun};
 use crate::strava;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter as _, Manager};
+use tauri::{AppHandle, Emitter as _, EventTarget, Manager};
 
 /// How often the snapshot is rebuilt and compared with the last one sent.
 /// A quarter second is quicker than the eye notices a lag after a press, and
@@ -20,6 +21,11 @@ const TICK: Duration = Duration::from_millis(250);
 /// A window that missed an event catches up within 2 s; countdowns in the
 /// snapshot are whole seconds, which the windows tick on their own between beats.
 const HEARTBEAT: Duration = Duration::from_secs(2);
+/// Every shown window gets the whole snapshot at least this often, cold
+/// parts included. Only a window that missed a frame needs it (one whose
+/// listener came up just after its first fetch), so it catches up within
+/// 10 s; a full frame (20-40 KB) that often costs next to nothing.
+const FULL_REFRESH: Duration = Duration::from_secs(10);
 /// The link state goes through btleplug, so it is polled less often.
 /// Link changes are shown within a second, which is quick enough.
 const CONNECTION_POLL: Duration = Duration::from_secs(1);
@@ -46,83 +52,109 @@ pub(super) async fn read_connection() -> (bool, Option<String>) {
 }
 
 pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppSnapshot {
-    let state = ORCHESTRATOR.lock().await;
-    let (link, last_error) = crate::link::current(connected, state.is_connecting);
-    let connection = ConnectionSnapshot {
-        simulated: connected && crate::bluetooth::is_simulated_id(device_id.as_deref()),
-        connected,
-        connecting: state.is_connecting,
-        device_id,
-        has_saved_device: crate::link::has_saved_device(),
-        link,
-        last_error,
-        start_pending: state.start_requested_at.is_some(),
-        start_result: crate::link::start_result(),
-        connect_dialog_at_ms: crate::link::connect_dialog_at_ms(),
-    };
-    // A stopped session's leftover numbers are already in the saved totals.
-    let live_open = state.session.active_session_id.is_some();
-    let (live_m, live_s) = if live_open {
-        (
-            state.session.distance_meters,
-            state.session.duration_seconds.max(0),
-        )
-    } else {
-        (0.0, 0)
-    };
-    let deck_silent = state
-        .last_frame_at
-        .is_some_and(|t| t.elapsed() >= stasis::SILENCE);
+    // The parts that read only their own module's state, gathered before the
+    // belt lock (#274): the larger ones (programs aside) are cloned here, so the
+    // worker and the status listener never wait on them.
     let hud = hud::hud_config();
     let hud_monitors = hud::monitors(&hud);
     let (daily_base_m, live_counts_today) = daily_base();
-    let mut snapshot = build_snapshot(
-        &state,
-        SnapshotParts {
-            connection,
-            hud,
-            hud_monitors,
-            daily_base_m,
-            live_counts_today,
-            max_incline_level: state.max_incline,
-            strava: strava::snapshot(),
-            maintenance: maintenance::snapshot(live_m, live_s),
-            weekly: weekly::snapshot(),
-            seated: seated::snapshot(&state.programs),
-            eye_break: eyebreak::snapshot(),
-            calls: calls::snapshot(),
-            odometer: odometer::snapshot(live_m, live_s, live_open),
-        },
-    );
+    let strava = strava::snapshot();
+    let weekly = weekly::snapshot();
+    let eye_break = eyebreak::snapshot();
+    let calls = calls::snapshot();
     let now_ms = crate::util::now_ms_u64();
+    let wall_clock = desk_sync::wall_clock();
+    let pc_walk_share = pc_walk_share::snapshot();
+    let speed_drift_config = crate::speed_drift::config();
+    let today_timeline = pc_walk_share::today_timeline();
+    let walkaway = walkaway::snapshot(now_ms);
+    let update = crate::update::snapshot(now_ms);
+    let traffic = crate::traffic::snapshot();
+    let lights_out = lights_out::snapshot();
+    let wrist_link = crate::wrist_link::snapshot();
+    let typing_speed = crate::typing_speed::snapshot();
+    let mut heart_rate = crate::heart_rate::snapshot();
+    let guided_task = crate::guided_task::snapshot();
+    let has_saved_device = crate::link::has_saved_device();
+    let start_result = crate::link::start_result();
+    let connect_dialog_at_ms = crate::link::connect_dialog_at_ms();
+
+    let (mut snapshot, deck_silent) = {
+        let state = ORCHESTRATOR.lock().await;
+        let (link, last_error) = crate::link::current(connected, state.is_connecting);
+        let connection = ConnectionSnapshot {
+            simulated: connected && crate::bluetooth::is_simulated_id(device_id.as_deref()),
+            connected,
+            connecting: state.is_connecting,
+            device_id,
+            has_saved_device,
+            link,
+            last_error,
+            start_pending: state.start_requested_at.is_some(),
+            start_result,
+            connect_dialog_at_ms,
+        };
+        // A stopped session's leftover numbers are already in the saved totals.
+        let live_open = state.session.active_session_id.is_some();
+        let (live_m, live_s) = if live_open {
+            (
+                state.session.distance_meters,
+                state.session.duration_seconds.max(0),
+            )
+        } else {
+            (0.0, 0)
+        };
+        let deck_silent = state
+            .last_frame_at
+            .is_some_and(|t| t.elapsed() >= stasis::SILENCE);
+        let mut snapshot = build_snapshot(
+            &state,
+            SnapshotParts {
+                connection,
+                hud,
+                hud_monitors,
+                daily_base_m,
+                live_counts_today,
+                max_incline_level: state.max_incline,
+                strava,
+                maintenance: maintenance::snapshot(live_m, live_s),
+                weekly,
+                seated: seated::snapshot(&state.programs),
+                eye_break,
+                calls,
+                odometer: odometer::snapshot(live_m, live_s, live_open),
+            },
+        );
+        snapshot.speed_drift = state.speed_drift_snapshot(&speed_drift_config, now_ms);
+        snapshot.calibration = crate::calibration::snapshot(&state);
+        // The zone shows on PULSE_RATE only with a sensor picked: without one
+        // there is no reading to place in it and the zone trims nothing.
+        heart_rate.zone = match heart_rate.sensor {
+            Some(_) => state.zone_band(heart_rate.bpm),
+            None => None,
+        };
+        // A cool-down's pulse target the same way: with no sensor the step ends
+        // on its minutes, and there is nothing to show against it.
+        heart_rate.cool_down = match heart_rate.sensor {
+            Some(_) => state.pulse_target(heart_rate.bpm),
+            None => None,
+        };
+        (snapshot, deck_silent)
+    };
     snapshot.desk_sync = desk_sync::snapshot(snapshot.session.daily_distance_m);
-    snapshot.wall_clock = desk_sync::wall_clock();
-    snapshot.pc_walk_share = pc_walk_share::snapshot();
-    snapshot.speed_drift = state.speed_drift_snapshot(&crate::speed_drift::config(), now_ms);
-    snapshot.today_timeline = pc_walk_share::today_timeline();
-    snapshot.walkaway = walkaway::snapshot(now_ms);
-    snapshot.update = crate::update::snapshot(now_ms);
-    snapshot.traffic = crate::traffic::snapshot();
-    snapshot.lights_out = lights_out::snapshot();
-    snapshot.calibration = crate::calibration::snapshot(&state);
+    snapshot.wall_clock = wall_clock;
+    snapshot.pc_walk_share = pc_walk_share;
+    snapshot.today_timeline = today_timeline;
+    snapshot.walkaway = walkaway;
+    snapshot.update = update;
+    snapshot.traffic = traffic;
+    snapshot.lights_out = lights_out;
     // The first-connect offer only shows while the treadmill is connected.
     snapshot.calibration.offer &= snapshot.connection.connected;
-    snapshot.wrist_link = crate::wrist_link::snapshot();
-    snapshot.typing_speed = crate::typing_speed::snapshot();
-    snapshot.heart_rate = crate::heart_rate::snapshot();
-    // The zone shows on PULSE_RATE only with a sensor picked: without one
-    // there is no reading to place in it and the zone trims nothing.
-    snapshot.heart_rate.zone = match snapshot.heart_rate.sensor {
-        Some(_) => state.zone_band(snapshot.heart_rate.bpm),
-        None => None,
-    };
-    // A cool-down's pulse target the same way: with no sensor the step ends
-    // on its minutes, and there is nothing to show against it.
-    snapshot.heart_rate.cool_down = match snapshot.heart_rate.sensor {
-        Some(_) => state.pulse_target(snapshot.heart_rate.bpm),
-        None => None,
-    };
-    snapshot.guided_task = crate::guided_task::snapshot();
+    snapshot.wrist_link = wrist_link;
+    snapshot.typing_speed = typing_speed;
+    snapshot.heart_rate = heart_rate;
+    snapshot.guided_task = guided_task;
     // Recomputed every tick, so the end of the grace after a stop reaches the
     // HUD with the next on-change emit (within a tick).
     snapshot.hud_view = stasis::view(&snapshot, deck_silent, Instant::now());
@@ -134,7 +166,9 @@ struct Loop {
     app: AppHandle,
     last_sent: Option<AppSnapshot>,
     last_emit: Instant,
-    last_windows: usize,
+    last_full: Instant,
+    /// Which windows hold the frames sent so far.
+    windows: Windows,
     connection: Option<(Instant, bool, Option<String>)>,
     last_daily_refresh: Instant,
     last_active_id: Option<i64>,
@@ -154,7 +188,8 @@ impl Loop {
             app,
             last_sent: None,
             last_emit: Instant::now(),
-            last_windows: 0,
+            last_full: Instant::now(),
+            windows: Windows::default(),
             connection: None,
             last_daily_refresh: Instant::now(),
             last_active_id: None,
@@ -293,25 +328,71 @@ impl Loop {
         self.card_up = card;
     }
 
-    /// Send the snapshot when it changed, when a window appeared (it has no
-    /// state yet), or when the heartbeat is due.
-    fn emit(&mut self, snapshot: AppSnapshot) {
-        let windows = self.app.webview_windows().len();
-        if windows == 0 {
-            self.last_windows = 0;
-            return;
+    /// Each window and whether it shows. Asked off the async threads: on
+    /// Windows the answer comes from the main thread.
+    async fn shown_windows(&self) -> Vec<(String, bool)> {
+        let windows: Vec<_> = self.app.webview_windows().into_iter().collect();
+        if windows.is_empty() {
+            return Vec::new();
         }
-        let new_window = windows > self.last_windows;
-        self.last_windows = windows;
+        tauri::async_runtime::spawn_blocking(move || {
+            windows
+                .into_iter()
+                .map(|(label, w)| {
+                    // Unknown counts as shown: a frame too many beats a window left stale.
+                    let shown = w.is_visible().unwrap_or(true);
+                    (label, shown)
+                })
+                .collect()
+        })
+        .await
+        .unwrap_or_default()
+    }
 
+    /// Send each shown window what it lacks (#274): the hot parts when the
+    /// snapshot changed or the heartbeat is due, everything when a cold part
+    /// changed, the window just showed or appeared, or the full refresh is
+    /// due. Hidden windows get nothing.
+    fn emit(&mut self, snapshot: AppSnapshot, windows: &[(String, bool)]) {
         let changed = self.last_sent.as_ref() != Some(&snapshot);
-        if new_window || changed || self.last_emit.elapsed() >= HEARTBEAT {
-            if let Err(e) = self.app.emit(EVENT_APP_STATE, &snapshot) {
-                log::warn!("emit failed: {}", e);
+        let due = Due {
+            changed,
+            cold_changed: changed
+                && self
+                    .last_sent
+                    .as_ref()
+                    .is_none_or(|last| !frame::cold_equal(last, &snapshot)),
+            heartbeat: self.last_emit.elapsed() >= HEARTBEAT,
+            refresh: self.last_full.elapsed() >= FULL_REFRESH,
+        };
+        let plan = self.windows.plan(windows, due);
+        let mut sent = false;
+        for (label, send) in plan {
+            let full = match send {
+                Delivery::Nothing => continue,
+                Delivery::Hot => false,
+                Delivery::Full => true,
+            };
+            let frame = Frame {
+                snapshot: &snapshot,
+                full,
+            };
+            let target = EventTarget::webview_window(label.as_str());
+            if let Err(e) = self.app.emit_to(target, EVENT_APP_STATE, frame) {
+                log::warn!("emit to {} failed: {}", label, e);
+                self.windows.lost(&label);
             }
-            self.last_emit = Instant::now();
-            self.last_sent = Some(snapshot);
+            sent = true;
         }
+        if sent {
+            self.last_emit = Instant::now();
+        }
+        if due.refresh {
+            self.last_full = Instant::now();
+        }
+        // Every window still in sync now holds this snapshot: it was sent
+        // what changed, or nothing changed.
+        self.last_sent = Some(snapshot);
     }
 
     async fn tick(&mut self) {
@@ -329,13 +410,15 @@ impl Loop {
         let now_ms = crate::util::now_ms_u64();
         self.tray.apply(&self.app, &snapshot, now_ms);
         self.tray_menu.apply(&self.app, &snapshot, now_ms);
-        self.emit(snapshot);
+        let windows = self.shown_windows().await;
+        self.emit(snapshot, &windows);
     }
 }
 
-/// Push `app-state` to all windows when the snapshot changes (checked every
-/// 250 ms) and at least every 2 s as a heartbeat. Windows that mount after an
-/// emit pick the state up with `get_snapshot` or the next heartbeat.
+/// Push `app-state` to the shown windows when the snapshot changes (checked
+/// every 250 ms) and at least every 2 s as a heartbeat, the cold parts only
+/// when they change (`frame.rs`). Windows that mount after an emit pick the
+/// state up with `get_snapshot` or the full frame sent when they show.
 pub fn spawn_emitter(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let mut ticker = tokio::time::interval(TICK);

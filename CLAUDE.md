@@ -24,8 +24,10 @@ shortcut), `TargetSource` (which intent won), `PacketKind` (what a packet is, fo
 `protocol::Control` (byte 2 of a control packet).
 `snapshot.rs` builds one `AppSnapshot` and emits it as `app-state` (on change, 2 s heartbeat);
 `dispatch` takes one typed `Command`. It is split into `snapshot/`: `types` (snapshot and command
-types), `hud` (HUD config and display list), `commands` (what each command does) and `emitter`
-(collecting and pushing the snapshot). The tray icon opens the dashboard; its right-click menu
+types), `hud` (HUD config and display list), `commands` (what each command does), `emitter`
+(collecting and pushing the snapshot) and `frame` (what each window is sent: the hot parts on
+every send, the cold ones in `COLD_KEYS` only when they change or the window just showed, and
+nothing to a hidden window; `src/state/mergeAppState.ts` keeps the cold parts between full frames). The tray icon opens the dashboard; its right-click menu
 (`snapshot/tray_menu.rs`: a pure model built from the snapshot, updated in place by the emitter)
 sends the HUD's own `Command`s for the belt and programs, so it adds no path that moves the belt,
 and Hide HUD hides the HUD window until shown again or a card appears; the windows are created

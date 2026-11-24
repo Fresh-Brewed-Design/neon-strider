@@ -336,7 +336,7 @@ export const PREVIEW_CONFIG: RustConfig = {
 export function publish() {
   snapshot.hud_view = hudView();
   snapshot.update.dot = updateDot();
-  void emit("app-state", structuredClone(snapshot));
+  void emit("app-state", { full: true, ...structuredClone(snapshot) });
 }
 
 // The HUD during stasis, as `snapshot/stasis.rs` decides it: the whole panel
