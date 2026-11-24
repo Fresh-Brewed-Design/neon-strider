@@ -1,0 +1,1 @@
+- The step numbers in the program editor line up with their kind menus at a large Windows text size.
