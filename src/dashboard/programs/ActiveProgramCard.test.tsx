@@ -32,3 +32,25 @@ describe("ActiveProgramCard step line", () => {
     expect(screen.getByText(/left/)).not.toHaveTextContent("km/h");
   });
 });
+
+describe("ActiveProgramCard T-MINUS", () => {
+  it("shows the whole program's time left and end under the step line", () => {
+    current!.active_program = { ...current!.active_program!, paused: false, wait: null, program_seconds_remaining: 1390 };
+    render(<ActiveProgramCard />);
+    const line = screen.getByTestId("program-time-left");
+    expect(line.textContent).toMatch(/^T-MINUS 23:10 · ENDS \S+/);
+    expect(screen.getByText(/cycle 3/)).toBeInTheDocument();
+  });
+
+  it("shows only the time left while paused", () => {
+    current!.active_program = { ...current!.active_program!, paused: true, wait: null, program_seconds_remaining: 1390 };
+    render(<ActiveProgramCard />);
+    expect(screen.getByTestId("program-time-left").textContent).toBe("T-MINUS 23:10");
+  });
+
+  it("shows nothing when the program has no fixed end", () => {
+    current!.active_program = { ...current!.active_program!, program_seconds_remaining: null };
+    render(<ActiveProgramCard />);
+    expect(screen.queryByTestId("program-time-left")).toBeNull();
+  });
+});
