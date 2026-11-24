@@ -1,27 +1,24 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ActionStatus } from "../../components/ActionStatus";
 import { errorText, useAction } from "../../components/useAction";
 import { dispatch, type EchoProgram, type SavedFile } from "../../ipc";
 import { SessionRepository } from "../../services/db/repositories/sessionRepository";
-import type { Session } from "../../services/db/schema";
 import { mergeSessions, type MergedSession } from "../../services/sessionMerge";
 import { useAppState } from "../../state/useAppState";
 import { useTreadmillStore } from "../../store/treadmillStore";
 import { Calendar } from "../history/Calendar";
 import { DeskSyncPanel } from "../history/DeskSync";
-import { groupByDay, metersByDay, RANGES, totals, visibleSessions, type Range } from "../history/sessions";
+import { groupByDay, RANGES, visibleSessions, type Range } from "../history/sessions";
 import { SessionRow } from "../history/SessionRow";
 import { TotalsPanel, WeeklyPanel } from "../history/Summary";
 import { TcxModal } from "../history/TcxModal";
 import { TodayPanel } from "../history/Today";
+import { monthName, useHistoryWalks } from "../history/useHistoryWalks";
 import { useSessionUploads } from "../history/useSessionUploads";
 import { WallClockPanel } from "../history/WallClock";
 import { GhostButton, Label, Page, Panel } from "../ui";
 import { cx } from "../util";
-
-/** Walks loaded at once: three a day for a year fill the 53-week calendar, and 1000 rows stay quick. */
-const LOAD_LIMIT = 1000;
 
 export function HistoryPage() {
   const refreshTrigger = useTreadmillStore((s) => s.historyRefreshTrigger);
@@ -35,8 +32,6 @@ export function HistoryPage() {
   const todayTimeline = useAppState((s) => s.today_timeline);
   const savedIds = useAppState((s) => s.strava.saved_session_ids) ?? [];
 
-  const [raw, setRaw] = useState<Session[] | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [reloads, setReloads] = useState(0);
   const [range, setRange] = useState<Range>("7d");
   const [day, setDay] = useState<string | null>(null);
@@ -46,28 +41,13 @@ export function HistoryPage() {
   const reload = useCallback(() => setReloads((n) => n + 1), []);
   const uploads = useSessionUploads(reload);
 
-  useEffect(() => {
-    let alive = true;
-    SessionRepository.getSessions(LOAD_LIMIT)
-      .then((rows) => {
-        if (!alive) return;
-        setRaw(rows);
-        setLoadError(null);
-      })
-      .catch((e) => {
-        console.error("[history] load failed", e);
-        if (alive) setLoadError(String(e));
-      });
-    return () => {
-      alive = false;
-    };
-  }, [refreshTrigger, reloads]);
+  const walks = useHistoryWalks(range, day, `${refreshTrigger}:${reloads}:${thresholdMinutes}`);
+  const { raw, stats, loadError, older } = walks;
 
   // Newest first.
   const sessions = useMemo(() => (raw ? mergeSessions(raw, thresholdMinutes).reverse() : null), [raw, thresholdMinutes]);
-  const byDay = useMemo(() => metersByDay(sessions ?? []), [sessions]);
+  const byDay = useMemo(() => new Map((stats?.meters_by_day ?? []).map((d) => [d.day, d.meters])), [stats]);
   const visible = useMemo(() => visibleSessions(sessions ?? [], range, day), [sessions, range, day]);
-  const sum = useMemo(() => totals(visible), [visible]);
   const groups = useMemo(() => groupByDay(visible), [visible]);
 
   const inspect = async (session: MergedSession, row: number) => {
@@ -149,7 +129,14 @@ export function HistoryPage() {
         {deskSync && <DeskSyncPanel sync={deskSync} />}
         {todayTimeline && <TodayPanel timeline={todayTimeline} />}
         {wallClock && <WallClockPanel clock={wallClock} />}
-        <TotalsPanel meters={sum.meters} seconds={sum.seconds} kcal={sum.kcal} count={visible.length} />
+        {stats && (
+          <TotalsPanel
+            meters={stats.totals.meters}
+            seconds={stats.totals.seconds}
+            kcal={stats.totals.kcal}
+            count={stats.totals.sessions}
+          />
+        )}
 
         <Panel className="p-3">
           <div className="mb-2 flex items-center justify-between">
@@ -174,11 +161,11 @@ export function HistoryPage() {
 
         {loadError ? (
           <p className="py-6 text-center font-mono text-xs text-red-400">Could not load sessions: {loadError}</p>
-        ) : !sessions ? (
+        ) : !sessions || walks.dayLoading ? (
           <p className="py-6 text-center font-mono text-xs text-white/40">Loading sessions…</p>
         ) : groups.length === 0 ? (
           <p className="py-6 text-center font-mono text-xs text-white/40">
-            {sessions.length === 0
+            {sessions.length === 0 && stats?.oldest_start_ms == null
               ? "No sessions recorded yet. Every walk shows up in History."
               : "No sessions in this time frame."}
           </p>
@@ -218,6 +205,26 @@ export function HistoryPage() {
               })}
             </section>
           ))
+        )}
+
+        {sessions && (walks.olderToLoad || older.pending || older.done || older.error) && (
+          <div data-testid="history-older" className="flex flex-col items-start gap-1.5 pt-1">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              {walks.olderToLoad && (
+                <GhostButton onClick={walks.loadOlder} disabled={older.pending}>
+                  Load older walks
+                </GhostButton>
+              )}
+              <span className="font-mono text-[11px] text-white/40">
+                Walks listed back to {monthName(walks.loadedFrom)}.
+              </span>
+            </div>
+            <ActionStatus
+              pending={older.pending && "Loading older walks…"}
+              error={older.error && `Could not load older walks: ${older.error}`}
+              done={older.done}
+            />
+          </div>
         )}
       </div>
 

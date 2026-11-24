@@ -45,6 +45,12 @@ use chrono::TimeZone;
 use serde::Serialize;
 use tauri::AppHandle;
 
+/// Minutes between two walks that still join them into one, shared with
+/// History's grouping.
+pub fn merge_minutes(app: &AppHandle) -> u32 {
+    settings::merge_minutes(app)
+}
+
 /// Write the TCX for these walks (or the latest one not on Strava, when
 /// `session_ids` is None) to `Downloads\Neon Strider`, open Strava's upload
 /// page and show the file.

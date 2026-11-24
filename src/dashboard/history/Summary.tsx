@@ -53,7 +53,7 @@ function SummaryStat({ label, value, unit }: { label: string; value: string; uni
   );
 }
 
-/** Totals of the sessions currently listed. */
+/** Totals of every saved walk in the time frame or day, summed by Rust. */
 export function TotalsPanel({
   meters,
   seconds,
