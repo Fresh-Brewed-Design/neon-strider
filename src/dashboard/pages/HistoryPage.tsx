@@ -22,6 +22,8 @@ import { cx } from "../util";
 
 /** Walks loaded at once: three a day for a year fill the 53-week calendar, and 1000 rows stay quick. */
 const LOAD_LIMIT = 1000;
+/** Until the first snapshot: one constant, so it never reads as a change. */
+const NO_IDS: number[] = [];
 
 export function HistoryPage() {
   const refreshTrigger = useTreadmillStore((s) => s.historyRefreshTrigger);
@@ -33,7 +35,7 @@ export function HistoryPage() {
   const deskSync = useAppState((s) => s.desk_sync);
   const wallClock = useAppState((s) => s.wall_clock);
   const todayTimeline = useAppState((s) => s.today_timeline);
-  const savedIds = useAppState((s) => s.strava.saved_session_ids) ?? [];
+  const savedIds = useAppState((s) => s.strava.saved_session_ids) ?? NO_IDS;
 
   const [raw, setRaw] = useState<Session[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
