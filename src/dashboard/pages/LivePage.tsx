@@ -22,6 +22,14 @@ const SPEED_PRESETS = [1.5, 2.5, 3, 4, 5, 6];
 
 const LIVE_STATS = STAT_WIDGETS.filter((w) => w.id !== "VELOCITY" && w.id !== "INCLINE");
 
+/**
+ * A tile's codename shrinks with the tile (12 px down to 11 px) so a single long word such as
+ * DISPLACEMENT fits a narrow tile at a large Windows text size; the break inside a word stays only
+ * as a last resort below that floor.
+ */
+export const CODENAME_FIT =
+  "min-w-0 text-[length:clamp(11px,7.5cqw,12px)] tracking-[0.12em] [overflow-wrap:anywhere]";
+
 /** Stat tiles the Live page fits under the controls: three rows of three. */
 const LIVE_STAT_CELLS = 9;
 
@@ -204,9 +212,9 @@ export function LivePage() {
           <StepMap a={s.active_program} />
         ) : (
           // At most three tiles a row (each a third of the row, less the two 0.5rem gaps), as at
-          // 100 %; under 7rem a tile (a codename and its value) would clip, so a large Windows
+          // 100 %; under 8.5rem a tile (DISPLACEMENT at 11 px and the pin) would not fit, so a large Windows
           // text size gives fewer, wider tiles.
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(max(7rem,calc((100%_-_1rem)/3)),1fr))] gap-2">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(max(8.5rem,calc((100%_-_1rem)/3)),1fr))] gap-2">
             {stats.map((w) => {
               const { value, unit } = w.read(s);
               const spark = w.spark?.(s);
@@ -218,9 +226,9 @@ export function LivePage() {
               // the height it has without one. It is the last stat, so its row
               // always has a free tile to take.
               return (
-                <Panel key={w.id} className={cx("flex flex-col gap-0.5 px-3 py-1.5", spark && "col-span-2")}>
+                <Panel key={w.id} className={cx("@container flex flex-col gap-0.5 px-3 py-1.5", spark && "col-span-2")}>
                   <div className="flex items-start justify-between gap-1">
-                    <Label className="min-w-0 tracking-[0.12em] [overflow-wrap:anywhere]">
+                    <Label className={CODENAME_FIT}>
                       <Codename text={w.codename} />
                     </Label>
                     {zone && <ZoneReadout zone={zone} />}
