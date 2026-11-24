@@ -47,9 +47,9 @@ describe("PC_WALK_SHARE widget", () => {
     pc_walk_share: { active_s, walked_s, share_pct },
   });
 
-  it("is a stat widget called PC TIME WALKED, shown as WALKED", () => {
+  it("is a stat widget called DESK TIME WALKED, shown as WALKED", () => {
     expect(statWidget("PC_WALK_SHARE")?.label).toBe("WALKED");
-    expect(widgetName("PC_WALK_SHARE")).toBe("PC TIME WALKED");
+    expect(widgetName("PC_WALK_SHARE")).toBe("DESK TIME WALKED");
   });
 
   it("shows Rust's whole percent, or dashes while there is too little PC time", () => {

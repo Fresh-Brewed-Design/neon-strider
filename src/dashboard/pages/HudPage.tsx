@@ -3,17 +3,15 @@ import {
   dispatch,
   type HudAnchor,
   type HudIdleMode,
-  type HudMinifyHotkey,
   type HudMonitor,
   type HudWidget,
-  type PlatformSnapshot,
+  type ShortcutsSnapshot,
 } from "../../ipc";
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { useAppSnapshot } from "../../state/useAppState";
-import { MINIFY_KEYS, minifyKeyText } from "../../hud/minifyHotkey";
+import { shortcutLabel } from "../../hud/shortcutLabel";
 import { MODULE_WIDGETS, STAT_WIDGETS, widgetName } from "../../widgets/registry";
-import { Toggle } from "../system/fields";
 import { Codename, GhostButton, Hint, Label, OptionPicker, Page, Panel, Waiting } from "../ui";
 import { cx, send } from "../util";
 
@@ -162,39 +160,15 @@ function IdleModePicker({ mode }: { mode: HudIdleMode }) {
   );
 }
 
-/**
- * The hotkey that minifies the HUD: on or off, and on Windows which key (Alt
- * with Insert, Pause or Scroll Lock). Off, the key is kept for next time. On
- * macOS it is always ⌃⌥M (`platform.minify_key_choice` off).
- */
-function MinifyHotkeyPicker({ hotkey, platform }: { hotkey: HudMinifyHotkey; platform: PlatformSnapshot }) {
-  const set = useAction();
-  const save = (next: HudMinifyHotkey) => void set.run(() => dispatch({ type: "hud_set_minify_hotkey", hotkey: next }));
-  const keyText = minifyKeyText(hotkey.key, platform);
+/** The minify shortcut, changed with the rest in System -> Shortcuts. */
+function MinifyShortcutNote({ shortcuts }: { shortcuts: ShortcutsSnapshot }) {
+  const key = shortcutLabel(shortcuts, "toggle_minified");
   return (
-    <div className="flex flex-col gap-1.5">
-      <Toggle
-        label="Minify hotkey"
-        checked={hotkey.enabled}
-        onChange={(enabled) => save({ ...hotkey, enabled })}
-        description={
-          hotkey.enabled
-            ? `${keyText} shrinks the HUD to a strip and brings it back.`
-            : `Other apps get ${keyText}.`
-        }
-      />
-      {hotkey.enabled && platform.minify_key_choice && (
-        <OptionPicker
-          label="Minify hotkey"
-          className="flex flex-col gap-1"
-          options={MINIFY_KEYS.map((k) => ({ value: k.key, label: minifyKeyText(k.key, platform) }))}
-          value={hotkey.key}
-          disabled={set.pending}
-          onChange={(key) => save({ ...hotkey, key })}
-          optionClassName={rowOption}
-        />
-      )}
-      <ActionStatus pending={set.pending} error={set.error} />
+    <div className="flex flex-col gap-1">
+      <Label>Minify shortcut</Label>
+      <Hint>
+        {key ? `${key} shrinks the HUD to a strip and brings it back.` : "Off."} Change it in System, Shortcuts.
+      </Hint>
     </div>
   );
 }
@@ -282,7 +256,7 @@ export function HudPage() {
             <PlacementRow anchor={anchor} custom={s.hud.custom !== null} />
             <MonitorPicker monitors={s.hud_monitors} selected={monitor} />
             <IdleModePicker mode={s.hud.idle_mode} />
-            <MinifyHotkeyPicker hotkey={s.hud.minify_hotkey} platform={s.platform} />
+            <MinifyShortcutNote shortcuts={s.shortcuts} />
             <Hint>
               Clicks pass through the HUD except on its panel. Speed and tilt pop-ups stay hidden while VEL or TILT is on
               the HUD.

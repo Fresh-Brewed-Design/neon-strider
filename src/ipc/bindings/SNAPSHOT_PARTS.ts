@@ -17,4 +17,5 @@ export const COLD_KEYS = [
   "typing_speed",
   "today_timeline",
   "platform",
+  "shortcuts",
 ] as const satisfies readonly (keyof AppSnapshot)[];

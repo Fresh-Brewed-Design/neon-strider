@@ -6,6 +6,7 @@ import { useAppSnapshot } from "../../state/useAppState";
 import { Hint } from "../ui";
 import { Section, Toggle } from "./fields";
 import { ghostPodPill, ghostPodPowerReading, ghostPodReading, ghostPodTone } from "./ghostPod";
+import { InputMonitoringNote } from "./PermissionsSection";
 import { TypingSpeedTable } from "./TypingSpeedTable";
 
 /**
@@ -131,6 +132,7 @@ export function LabsSection() {
             className="mt-1"
           />
         )}
+        {typing.enabled && <InputMonitoringNote />}
         {typing.enabled && <TypingSpeedTable data={typing} />}
       </div>
     </Section>

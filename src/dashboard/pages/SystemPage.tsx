@@ -7,7 +7,9 @@ import { LabsSection } from "../system/LabsSection";
 import { Section } from "../system/fields";
 import { MaintenanceSection } from "../system/MaintenanceSection";
 import { NeuralSection } from "../system/NeuralSection";
+import { PermissionsSection } from "../system/PermissionsSection";
 import { SessionsSection } from "../system/SessionsSection";
+import { ShortcutsSection } from "../system/ShortcutsSection";
 import { SpeedDriftSection } from "../system/SpeedDriftSection";
 import { StartupSection } from "../system/StartupSection";
 import { StravaSection } from "../system/strava/StravaSection";
@@ -26,8 +28,11 @@ const SECTIONS = [
   { id: "sys-drift", label: "Speed drift" },
   { id: "sys-sessions", label: "Sessions" },
   { id: "sys-desk", label: "Desk" },
+  { id: "sys-shortcuts", label: "Shortcuts" },
   { id: "sys-maintenance", label: "Maintenance" },
   { id: "sys-startup", label: "Startup" },
+  // Only where the OS asks for permissions (macOS).
+  { id: "sys-permissions", label: "Permissions", withPermissions: true },
   { id: "sys-updates", label: "Updates" },
   { id: "sys-labs", label: "Labs" },
   { id: "sys-diagnostics", label: "Diagnostics" },
@@ -36,12 +41,13 @@ const SECTIONS = [
 /** Sticky links to each section, since the page is long. */
 export function SectionIndex() {
   const updateDot = useAppState((s) => showUpdateBadge(s.update)) ?? false;
+  const hasPermissions = useAppState((s) => s.platform.permissions.length > 0) ?? false;
   return (
     <nav
       aria-label="System sections"
       className="sticky top-0 z-10 -mx-5 mb-3 flex flex-wrap gap-x-1 gap-y-0.5 border-b border-white/10 bg-[#050505]/95 px-5 py-2 backdrop-blur"
     >
-      {SECTIONS.map((s) => (
+      {SECTIONS.filter((s) => !("withPermissions" in s) || hasPermissions).map((s) => (
         <button
           key={s.id}
           type="button"
@@ -75,8 +81,10 @@ export function SystemPage() {
         <SpeedDriftSection />
         <SessionsSection />
         <DeskSection />
+        <ShortcutsSection />
         <MaintenanceSection />
         <StartupSection />
+        <PermissionsSection />
         <UpdatesSection />
         <LabsSection />
         <DiagnosticsSection />

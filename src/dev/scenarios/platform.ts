@@ -1,6 +1,7 @@
 // ?mac: the app running on macOS: its words ("this Mac", System Settings), its
-// ⌃⌥ shortcuts, and the features it doesn't have yet hidden (slow down on
-// calls, the minify key choice).
+// ⌃⌥ shortcuts (scenarios/shortcuts.ts), and System -> Permissions with
+// Bluetooth allowed and Input Monitoring not asked yet; `=denied` with Input
+// Monitoring turned off.
 import { params, snapshot } from "../mockState";
 import type { Scenario } from "./types";
 
@@ -11,18 +12,14 @@ export const platform: Scenario = {
       os: "macos",
       computer: "Mac",
       settings: "System Settings",
-      microphone: false,
-      minify_key_choice: false,
-      shortcuts: {
-        speed_up: "⌃⌥=",
-        speed_down: "⌃⌥-",
-        incline_up: "⌃⌥↑",
-        incline_down: "⌃⌥↓",
-        toggle_start: "⌃⌥↩",
-        toggle_program: "⌃⌥P",
-        toggle_minified: "⌃⌥M",
-        calibration_tap: "⌃⌥Space",
-      },
+      microphone: true,
+      permissions: [
+        { kind: "bluetooth", state: "allowed" },
+        { kind: "input_monitoring", state: params.get("mac") === "denied" ? "denied" : "not_asked" },
+      ],
     };
+  },
+  commands: {
+    open_permission_settings: () => {},
   },
 };

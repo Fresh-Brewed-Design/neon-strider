@@ -312,7 +312,9 @@ export function DeskSection() {
                   : calls.mic_in_use
                     ? "Microphone in use."
                     : "Microphone is free."}{" "}
-                This uses the list Windows keeps of apps using the microphone; no audio is recorded or heard.
+                {s.platform.os === "macos"
+                  ? "This asks macOS which apps are taking microphone input; no audio is recorded or heard."
+                  : "This uses the list Windows keeps of apps using the microphone; no audio is recorded or heard."}
               </Hint>
             </>
           )}

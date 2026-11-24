@@ -64,7 +64,7 @@ export const TEMPLATE_FIELDS: TemplateField[] = [
   },
   {
     "name": "pc_walked",
-    "about": "Share of the day's PC time walked, in %.",
+    "about": "Share of the day's desk time walked, in %.",
     "sample": "38"
   },
   {

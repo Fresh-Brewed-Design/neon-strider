@@ -30,6 +30,7 @@ import { GuidePanel, TopSpeedQuestion } from "./GuidePanel";
 import { appliedScale } from "./math";
 import { StepPanel } from "./StepPanel";
 import { StrideFit } from "./StrideFit";
+import { shortcutLabel } from "../../../hud/shortcutLabel";
 
 /** Which way a run belongs to a walk: RUN ALL's sweep, the guided walk, or neither. */
 type Walk = "sweep" | "guide" | null;
@@ -424,8 +425,9 @@ function RunPanel({
   // GAIT_SYNC's footsteps take the same keys once the belt is measured.
   const keysListening = listening || (run.steps !== null && run.steps.phase !== "measured");
   const sendTap = tap.run;
-  // The OS's global tap shortcut (Alt+Space, ⌃⌥Space).
-  const tapKey = useAppSnapshot()?.platform.shortcuts.calibration_tap ?? "Alt+Space";
+  // The global tap shortcut (Alt+Space, ⌃⌥Space unless changed); none while switched off.
+  const shortcuts = useAppSnapshot()?.shortcuts;
+  const tapKey = shortcuts ? shortcutLabel(shortcuts, "calibration_tap") : null;
 
   // Space taps while the dashboard has focus; Alt+Space (⌃⌥Space on macOS)
   // reaches Rust's input hook from any window, so the two never count one
@@ -499,7 +501,9 @@ function RunPanel({
             TAP
           </button>
           <ActionStatus pending={false} error={tap.error} />
-          <Hint>Space taps in the dashboard, and {tapKey} taps from any window.</Hint>
+          <Hint>
+            {tapKey ? `Space taps in the dashboard, and ${tapKey} taps from any window.` : "Space taps in the dashboard."}
+          </Hint>
           <div
             className="h-1.5 overflow-hidden rounded bg-white/10"
             role="progressbar"

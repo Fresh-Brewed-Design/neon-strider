@@ -5,7 +5,7 @@ import { EyeBreakCard, MaintenanceCard, SeatedCard, UpdateCard, WalkAwayCard, We
 import { useEyeBreakTones } from "./eyeBreakTones";
 import { HudHeader } from "./HudHeader";
 import { HudNote } from "./HudNote";
-import { minifyTooltipKey } from "./minifyHotkey";
+import { shortcutLabel } from "./shortcutLabel";
 import { Controls, EasyStopLine, NeuralLine, ProgramsModule, SpeedDriftLine, StatCell, StrideFitLine } from "./HudPanel";
 import { RunStripRow, StripRow } from "./HudStrip";
 import { linkLabel } from "./status";
@@ -90,7 +90,7 @@ export function HudApp() {
               logo={logo}
               dragging={placement.dragging}
               onMinify={canMinify ? () => void minify.send({ type: "hud_set_minified", minified: true }) : undefined}
-              minifyKey={minifyTooltipKey(snapshot.hud.minify_hotkey, snapshot.platform)}
+              minifyKey={shortcutLabel(snapshot.shortcuts, "toggle_minified")}
               simulated={snapshot.connection.simulated}
             />
             <HudNote error={relink.error ?? drag.error ?? minify.error} />

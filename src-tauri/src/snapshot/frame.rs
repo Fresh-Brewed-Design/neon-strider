@@ -64,7 +64,7 @@ snapshot_parts! {
     ],
     cold: [
         programs, fit_to_deck, fit_to_time, hud, hud_monitors, strava, weekly, desk_sync,
-        wall_clock, lights_out, update, typing_speed, today_timeline, platform,
+        wall_clock, lights_out, update, typing_speed, today_timeline, platform, shortcuts,
     ],
 }
 

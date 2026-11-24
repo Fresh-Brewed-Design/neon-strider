@@ -101,7 +101,8 @@ export const STAT_WIDGETS: StatWidget[] = [
   {
     id: "PC_WALK_SHARE",
     label: "WALKED",
-    codename: "PC TIME WALKED",
+    // Desk time, like DESK_SYNC's desk days: the computer in use, on any OS.
+    codename: "DESK TIME WALKED",
     accent: "green",
     read: (s) => pcWalkShareReading(s),
     detail: (s) => pcWalkShareDetail(s),

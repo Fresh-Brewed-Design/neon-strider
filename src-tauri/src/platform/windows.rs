@@ -7,14 +7,15 @@
 
 #![warn(unsafe_op_in_unsafe_fn)]
 
+use super::keys;
 use crate::hooks::Shortcut;
-use crate::snapshot::HudMinifyKey;
-use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
+use crate::shortcuts::{Bindings, KeyCombo};
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU32, Ordering};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, VIRTUAL_KEY, VK_CONTROL, VK_LBUTTON, VK_LMENU, VK_LWIN, VK_RBUTTON, VK_RMENU,
-    VK_RWIN,
+    VK_RWIN, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, DispatchMessageW, GetMessageW, GetWindowLongPtrW, SetWindowsHookExW,
@@ -26,7 +27,6 @@ pub const DESKTOP_IN_POINTS: bool = false;
 pub const MENU_BAR_APP: bool = false;
 pub const TRAY_ICON_TEMPLATE: bool = false;
 pub const MICROPHONE: bool = true;
-pub const MINIFY_KEY_CHOICE: bool = true;
 
 pub const WORDS: super::Words = super::Words {
     computer: "PC",
@@ -41,6 +41,41 @@ pub fn app_started(_app: &tauri::AppHandle) {}
 
 /// A tray popup needs nothing beyond what the window builder sets.
 pub fn prepare_popup_window(_window: &tauri::WebviewWindow) {}
+
+/// No permission to ask for here: Windows lets desktop apps use Bluetooth and
+/// see input without asking.
+pub fn permissions() -> Vec<super::Permission> {
+    Vec::new()
+}
+
+pub fn open_permission_settings(_kind: super::PermissionKind) -> Result<(), String> {
+    Err("There is no permission to change on this computer.".to_string())
+}
+
+/// The autostart entry (`tauri-plugin-autostart`), passing `--autostart`.
+#[cfg_attr(
+    debug_assertions,
+    expect(dead_code, reason = "dev builds never launch at login")
+)]
+pub fn launch_at_login(app: &tauri::AppHandle) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch().is_enabled().map_err(|e| e.to_string())
+}
+
+#[cfg_attr(
+    debug_assertions,
+    expect(dead_code, reason = "dev builds never launch at login")
+)]
+pub fn set_launch_at_login(app: &tauri::AppHandle, enabled: bool) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let launcher = app.autolaunch();
+    if enabled {
+        launcher.enable().map_err(|e| e.to_string())?;
+    } else {
+        launcher.disable().map_err(|e| e.to_string())?;
+    }
+    launcher.is_enabled().map_err(|e| e.to_string())
+}
 
 // ---------------------------------------------------------------------------
 // Input hooks
@@ -117,56 +152,26 @@ pub fn remember_hud_window(window: &tauri::WebviewWindow) {
     }
 }
 
-const VK_VOLUME_DOWN: u16 = 0xAE;
-const VK_VOLUME_UP: u16 = 0xAF;
-const VK_PRIOR: u16 = 0x21;
-const VK_NEXT: u16 = 0x22;
-const VK_END: u16 = 0x23;
-const VK_HOME: u16 = 0x24;
-const VK_INSERT: u16 = 0x2D;
-const VK_PAUSE: u16 = 0x13;
-const VK_SCROLL: u16 = 0x91;
-const VK_SPACE: u16 = 0x20;
-const VK_OEM_PLUS: u16 = 0xBB;
-const VK_OEM_MINUS: u16 = 0xBD;
+/// The shortcuts' keys as the hook compares them (`keys::windows_table`):
+/// read with atomic loads on every key press, written when they change.
+static SHORTCUT_TABLE: [AtomicU32; keys::SLOTS] = [const { AtomicU32::new(0) }; keys::SLOTS];
 
-/// The key code for a minify hotkey choice.
-fn minify_vk(key: HudMinifyKey) -> u16 {
-    match key {
-        HudMinifyKey::Insert => VK_INSERT,
-        HudMinifyKey::Pause => VK_PAUSE,
-        HudMinifyKey::ScrollLock => VK_SCROLL,
+pub fn set_shortcuts(bindings: &Bindings) {
+    for (slot, code) in SHORTCUT_TABLE.iter().zip(keys::windows_table(bindings)) {
+        slot.store(code, Ordering::Relaxed);
     }
 }
 
-/// The Alt shortcut a key press is, if any: Alt with volume up or down (or
-/// `=` and `-`) for speed, Page Up and Page Down for incline, Home to start or
-/// pause, End to run or end the last program, the minify key (`minify`, the
-/// HUD setting; `None` while it is off) to minify or expand the HUD, and
-/// Space for a GROUND_TRUTH tap while a tap run listens (`tapping`); at any
-/// other time Alt+Space is left to Windows (the window menu).
-fn shortcut_for_key(
-    vk: u16,
-    alt_down: bool,
-    tapping: bool,
-    minify: Option<HudMinifyKey>,
-) -> Option<Shortcut> {
-    if !alt_down {
-        return None;
-    }
-    if minify.map(minify_vk) == Some(vk) {
-        return Some(Shortcut::ToggleMinified);
-    }
-    match vk {
-        VK_VOLUME_UP | VK_OEM_PLUS => Some(Shortcut::SpeedUp),
-        VK_VOLUME_DOWN | VK_OEM_MINUS => Some(Shortcut::SpeedDown),
-        VK_PRIOR => Some(Shortcut::InclineUp),
-        VK_NEXT => Some(Shortcut::InclineDown),
-        VK_HOME => Some(Shortcut::ToggleStart),
-        VK_END => Some(Shortcut::ToggleProgram),
-        VK_SPACE if tapping => Some(Shortcut::CalibrationTap),
-        _ => None,
-    }
+/// The hook sees every key, so no key is ever taken by another app.
+pub fn taken_shortcuts() -> Vec<KeyCombo> {
+    Vec::new()
+}
+
+/// The shortcut a key press (`keys::windows_code`) is in `table`, if any. The
+/// GROUND_TRUTH tap only while a tap run listens (`tapping`); at any other
+/// time its keys go to the app in front (Alt+Space opens the window menu).
+fn shortcut_for_press(table: &[u32], pressed: u32, tapping: bool) -> Option<Shortcut> {
+    keys::windows_match(table, pressed).filter(|s| *s != Shortcut::CalibrationTap || tapping)
 }
 
 /// A key that can count as typing, before the held modifiers are checked:
@@ -209,14 +214,18 @@ unsafe extern "system" fn keyboard_proc(ncode: i32, wparam: WPARAM, lparam: LPAR
         // The hook flag alone misses Alt in some apps; the key state catches it.
         let alt_down =
             (key.flags.0 & LLKHF_ALTDOWN.0) != 0 || key_held(VK_LMENU) || key_held(VK_RMENU);
-        let shortcut = shortcut_for_key(
+        let pressed = keys::windows_code(
             key.vkCode as u16,
+            key_held(VK_CONTROL),
             alt_down,
-            crate::hooks::tap_listening(),
-            crate::hooks::minify_key(),
-        )
-        // A dev build passes it on while the release app runs (see `hooks`).
-        .filter(|_| !crate::hooks::shortcuts_left_to_release());
+            key_held(VK_SHIFT),
+            key_held(VK_LWIN) || key_held(VK_RWIN),
+        );
+        let table: [u32; keys::SLOTS] =
+            std::array::from_fn(|i| SHORTCUT_TABLE[i].load(Ordering::Relaxed));
+        let shortcut = shortcut_for_press(&table, pressed, crate::hooks::tap_listening())
+            // A dev build passes it on while the release app runs (see `hooks`).
+            .filter(|_| !crate::hooks::shortcuts_left_to_release());
 
         if let Some(s) = shortcut {
             crate::hooks::shortcut_pressed(s);
@@ -1464,15 +1473,15 @@ mod tests {
         assert!(!display_state_is_off(2), "dimmed");
     }
 
-    const MINIFY_KEYS: [HudMinifyKey; 3] = [
-        HudMinifyKey::Insert,
-        HudMinifyKey::Pause,
-        HudMinifyKey::ScrollLock,
-    ];
+    fn table(minify: Option<&str>) -> [u32; keys::SLOTS] {
+        keys::windows_table(&keys::defaults(super::super::Os::Windows, minify))
+    }
 
     #[test]
-    fn alt_shortcuts_map_to_their_actions() {
-        let alt = |vk| shortcut_for_key(vk, true, false, Some(HudMinifyKey::Insert));
+    fn the_default_alt_shortcuts_map_to_their_actions() {
+        let t = table(Some("Insert"));
+        let alt =
+            |vk| shortcut_for_press(&t, keys::windows_code(vk, false, true, false, false), false);
         assert_eq!(alt(0xAF), Some(Shortcut::SpeedUp));
         assert_eq!(alt(0xBB), Some(Shortcut::SpeedUp));
         assert_eq!(alt(0xAE), Some(Shortcut::SpeedDown));
@@ -1484,58 +1493,34 @@ mod tests {
         assert_eq!(alt(0x2D), Some(Shortcut::ToggleMinified));
         // Alt+Space is a GROUND_TRUTH tap only while a tap run listens; plain
         // Space never is (the dashboard takes it itself when focused).
-        assert_eq!(alt(0x20), None);
+        let alt_space = keys::windows_code(0x20, false, true, false, false);
+        assert_eq!(shortcut_for_press(&t, alt_space, false), None);
         assert_eq!(
-            shortcut_for_key(0x20, true, true, None),
+            shortcut_for_press(&t, alt_space, true),
             Some(Shortcut::CalibrationTap)
         );
-        assert_eq!(shortcut_for_key(0x20, false, true, None), None);
+        let space = keys::windows_code(0x20, false, false, false, false);
+        assert_eq!(shortcut_for_press(&t, space, true), None);
         // Other keys with Alt, and the same keys without it, are not shortcuts.
         for vk in [0x41u16, 0x25, 0x09, 0x0D, 0x70] {
             assert_eq!(alt(vk), None, "{vk:#x}");
         }
         for vk in [0xAFu16, 0xAE, 0x21, 0x22, 0x23, 0x24, 0x2D, 0xBB, 0xBD] {
-            assert_eq!(
-                shortcut_for_key(vk, false, true, Some(HudMinifyKey::Insert)),
-                None,
-                "{vk:#x}"
-            );
+            let bare = keys::windows_code(vk, false, false, false, false);
+            assert_eq!(shortcut_for_press(&t, bare, true), None, "{vk:#x}");
         }
     }
 
     #[test]
-    fn the_minify_hotkey_uses_the_chosen_key_or_none() {
-        for key in MINIFY_KEYS {
-            let vk = minify_vk(key);
-            assert_eq!(
-                shortcut_for_key(vk, true, false, Some(key)),
-                Some(Shortcut::ToggleMinified),
-                "{key:?}"
-            );
-            // Without Alt it is just the key.
-            assert_eq!(shortcut_for_key(vk, false, false, Some(key)), None);
-            // Off, or another key chosen: the press goes to the app in front.
-            assert_eq!(shortcut_for_key(vk, true, false, None), None, "{key:?}");
-            for other in MINIFY_KEYS.into_iter().filter(|k| *k != key) {
-                assert_eq!(shortcut_for_key(vk, true, false, Some(other)), None);
-            }
-        }
-        assert_eq!(minify_vk(HudMinifyKey::Insert), 0x2D);
-        assert_eq!(minify_vk(HudMinifyKey::Pause), 0x13);
-        assert_eq!(minify_vk(HudMinifyKey::ScrollLock), 0x91);
-    }
-
-    #[test]
-    fn no_minify_key_is_another_shortcut() {
-        // With the hotkey off, none of its keys does anything with Alt, even
-        // while a tap run listens: so no choice can take another shortcut's key.
-        for key in MINIFY_KEYS {
-            assert_eq!(
-                shortcut_for_key(minify_vk(key), true, true, None),
-                None,
-                "{key:?}"
-            );
-        }
+    fn a_minify_key_switched_off_goes_to_the_app_in_front() {
+        let alt_insert = keys::windows_code(0x2D, false, true, false, false);
+        assert_eq!(shortcut_for_press(&table(None), alt_insert, true), None);
+        let alt_pause = keys::windows_code(0x13, false, true, false, false);
+        assert_eq!(
+            shortcut_for_press(&table(Some("Pause")), alt_pause, false),
+            Some(Shortcut::ToggleMinified)
+        );
+        assert_eq!(shortcut_for_press(&[0; keys::SLOTS], alt_pause, true), None);
     }
 
     #[test]

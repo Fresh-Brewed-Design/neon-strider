@@ -6,7 +6,7 @@ import { statWidget } from "../widgets/registry";
 import { Sparkline } from "../widgets/Sparkline";
 import { HudNote } from "./HudNote";
 import { EngageButton } from "./HudPanel";
-import { hotkeyTitle } from "./minifyHotkey";
+import { hotkeyTitle } from "./shortcutLabel";
 import { useHudSend } from "./useHudSend";
 
 /** Four corners pointing out: show the whole HUD. */
@@ -170,7 +170,7 @@ export function RunStripRow({ snapshot }: { snapshot: AppSnapshot }) {
           type="button"
           className="hud-btn hud-btn-expand"
           aria-label="Show the whole HUD"
-          title={hotkeyTitle("Show the whole HUD", snapshot.hud.minify_hotkey, snapshot.platform)}
+          title={hotkeyTitle("Show the whole HUD", snapshot.shortcuts)}
           onClick={() => void send({ type: "hud_set_minified", minified: false })}
         >
           <ExpandIcon />
