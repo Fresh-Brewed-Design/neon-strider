@@ -13,7 +13,7 @@ export const easyStop: Scenario = {
       easing: true,
       stop_in_s: 12,
       to_kmh: 0.6,
-      message: "Slowing to 0.6 km/h, then stopping. DUMP again stops the belt at once.",
+      message: "Slowing to 0.6 km/h, then stopping.",
     });
     Object.assign(snapshot.deck, { status: "Running", speed_kmh: 2.4, target_speed_kmh: 4.5 });
     snapshot.active_program = null;

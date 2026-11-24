@@ -5,7 +5,7 @@ import type { AppSnapshot } from "../ipc";
 const { snapshot: mock } = await import("../dev/mockBackend");
 const { Controls, EasyStopLine } = await import("./HudPanel");
 
-const MESSAGE = "Slowing to 0.6 km/h, then stopping. DUMP again stops the belt at once.";
+const MESSAGE = "Slowing to 0.6 km/h, then stopping.";
 
 /** The mock's snapshot with the belt easing down, or not. */
 function snap(easing: boolean): AppSnapshot {

@@ -274,7 +274,7 @@ impl OrchestratorState {
             snap.stop_in_s = Some(left.as_secs_f32().ceil() as u32);
             snap.to_kmh = Some(to_kmh);
             snap.message = Some(format!(
-                "Slowing to {to_kmh:.1} km/h, then stopping. DUMP again stops the belt at once."
+                "Slowing to {to_kmh:.1} km/h, then stopping."
             ));
         }
         snap
@@ -363,6 +363,6 @@ mod tests {
         let snap = s.easy_stop_snapshot();
         assert!(snap.easing);
         assert_eq!(snap.stop_in_s, Some(RAMP.as_secs() as u32));
-        assert!(snap.message.is_some_and(|m| m.contains("DUMP again")));
+        assert!(snap.message.is_some_and(|m| m.ends_with("then stopping.")));
     }
 }
