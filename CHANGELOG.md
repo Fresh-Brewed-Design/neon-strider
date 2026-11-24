@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.67.4 (2026-11-24)
+
+### Fixed
+
+- Longer stat names on the Live page wrap after an underscore at 100 % text size, so each part stays whole.
+
 ## 1.67.3 (2026-11-24)
 
 ### Fixed

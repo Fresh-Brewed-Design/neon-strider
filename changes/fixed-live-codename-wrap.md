@@ -1,1 +1,0 @@
-- Longer stat names on the Live page wrap after an underscore at 100 % text size, so each part stays whole.
