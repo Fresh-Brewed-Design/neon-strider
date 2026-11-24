@@ -1,1 +1,0 @@
-- Scroll the mouse wheel over the speed or incline value on the HUD or the Live page to nudge it up or down.

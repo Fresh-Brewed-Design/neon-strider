@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.68.0 (2026-11-24)
+
+### New
+
+- Scroll the mouse wheel over the speed or incline value on the HUD or the Live page to nudge it up or down.
+
 ## 1.67.5 (2026-11-24)
 
 ### Fixed
