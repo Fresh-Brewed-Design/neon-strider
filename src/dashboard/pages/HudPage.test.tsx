@@ -65,7 +65,7 @@ describe("HUD page pickers with the keyboard", () => {
     await act(async () => fireEvent.keyDown(primary, { key: "ArrowDown" }));
     await act(async () => fireEvent.click(primary));
     expect(dispatched()).toEqual([
-      { command: { type: "hud_set_monitor", monitor: "\\.\DISPLAY2" } },
+      { command: { type: "hud_set_monitor", monitor: mock.hud_monitors[1].name } },
       { command: { type: "hud_set_monitor", monitor: null } },
     ]);
   });
