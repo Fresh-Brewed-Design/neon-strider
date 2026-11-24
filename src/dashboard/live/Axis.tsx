@@ -59,8 +59,11 @@ export function Axis({
   note,
   pin,
   mark = null,
+  wheelHint,
 }: {
   pin: { widget: HudWidget; pinned: boolean };
+  /** Tooltip on the readout, where the mouse wheel nudges the value. */
+  wheelHint?: string;
   title: string;
   tone: "cyan" | "magenta";
   actual: number;
@@ -102,7 +105,7 @@ export function Axis({
 
       <div className="flex items-center gap-2">
         <Nudge label={`${title} down`} disabled={disabled} onClick={() => onNudge(false)} icon={<Minus size={16} />} />
-        <div ref={wheel} title={`Scroll to change ${title.toLowerCase() === "tilt" ? "incline" : "speed"}.`} className="flex min-w-0 flex-1 items-end justify-center gap-2">
+        <div ref={wheel} title={wheelHint} className="flex min-w-0 flex-1 items-end justify-center gap-2">
           <SegmentedDisplay
             value={actual}
             length={2}
