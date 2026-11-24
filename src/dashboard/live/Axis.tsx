@@ -95,9 +95,9 @@ export function Axis({
 
   return (
     <Panel className="flex flex-col gap-2 p-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-x-2">
         <Label>{title}</Label>
-        <span className="flex items-center gap-1 font-mono text-xs uppercase tracking-[0.15em] text-white/60">
+        <span className="flex flex-wrap items-center gap-1 font-mono text-xs uppercase tracking-[0.15em] text-white/60">
           target <span className={cx("font-digital text-xs", TONE_TEXT[tone])}>{value.toFixed(1)}</span> {unit}
           <PinToggle widget={pin.widget} pinned={pin.pinned} />
         </span>
@@ -121,7 +121,7 @@ export function Axis({
         <StylizedSlider min={min} max={max} step={step} value={value} onChange={set} color={tone} mark={mark} />
       </div>
 
-      <div className="flex gap-1">
+      <div className="flex flex-wrap gap-1">
         {presets
           // A preset the deck skips is left out.
           .filter((p) => p >= min - 1e-6 && p <= max + 1e-6 && Math.abs(snap(p) - p) < 1e-6)

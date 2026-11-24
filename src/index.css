@@ -82,3 +82,162 @@
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 243, 255, 0.45);
 }
+
+/* ---- Dashboard at larger Windows text sizes ----
+   WebView2 applies the Windows text size as a page zoom, so the fixed 760 x 600 window lays
+   out 760 / scale CSS px wide: 507 at 150 %, 380 at 200 %, 338 at 225 %. The dashboard root
+   is the size reference (a container) for the rules below, so they follow that zoom in the
+   app and in the preview's ?textscale= alike. At 100 % none of them apply. */
+.dash-root {
+  container: dash / size;
+}
+
+.dash-compact-only {
+  display: none;
+}
+
+/* The pages are laid out for the 600 px beside the 160 px rail at 100 % (760 px). Any text
+   size that takes the window under 740 px (above about 102 %) gives the rail's width to the
+   page: the rail shows icons only, each with its name as a tooltip and accessible name. */
+@container dash (max-width: 739px) {
+  .dash-rail {
+    width: 3.25rem;
+    overflow-x: hidden;
+    overflow-y: auto;
+    /* A scrollbar would take a third of the 52 px rail; the wheel still scrolls it. */
+    scrollbar-width: none;
+  }
+  .dash-rail-logo {
+    display: flex;
+    justify-content: center;
+    gap: 0.15em;
+    padding: 0.75rem 0;
+  }
+  .dash-rail-logo > div {
+    letter-spacing: 0;
+  }
+  .dash-rail-list {
+    padding-inline: 0.375rem;
+  }
+  .dash-rail-item {
+    flex-wrap: wrap;
+    justify-content: center;
+    padding-inline: 0;
+  }
+  .dash-rail-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .dash-rail-dot {
+    position: absolute;
+    top: 0.3rem;
+    right: 0.3rem;
+  }
+  .dash-rail-foot {
+    padding: 0.375rem;
+  }
+  .dash-wide-only {
+    display: none;
+  }
+  .dash-compact-only:not(:empty) {
+    display: block;
+  }
+}
+
+/* Under 340 px tall (200 % and up) the rail's wordmark gives its room to the page links. */
+@container dash (max-height: 339px) {
+  .dash-rail-logo {
+    display: none;
+  }
+}
+
+/* Under 400 px tall (above 150 %) a page's header would hold a third of the height or more
+   above its scrolling content, so the header scrolls away with the page instead. */
+@container dash (max-height: 399px) {
+  .dash-page {
+    overflow-y: auto;
+  }
+  .dash-page-body {
+    flex: none;
+    overflow: visible;
+  }
+}
+
+/* STEP_MAP's step rows: the fixed time, speed, incline and zone columns take 25.5rem, so
+   under 30rem the step's name would get under 4.5rem. There (a large Windows text size) each
+   row wraps its cells onto as many lines as it needs instead. */
+.step-map-list {
+  container-type: inline-size;
+}
+@container (max-width: 30rem) {
+  .step-map-row {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 0.75rem;
+  }
+  .step-map-row > span {
+    overflow: visible;
+    white-space: normal;
+  }
+  .step-map-row > span:empty {
+    display: none;
+  }
+}
+
+/* The program editor's step rows: seven columns with 16rem of them fixed, so under 28rem the
+   three number fields would get about 4rem each, too narrow for their column names. There (a
+   large Windows text size) a step shows its number, kind and buttons on one line and its
+   number fields, each with its own name, on the next. */
+.program-step-cell-label {
+  display: none;
+}
+.program-steps {
+  container-type: inline-size;
+}
+@container (max-width: 28rem) {
+  .program-step-head {
+    display: none;
+  }
+  .program-step-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+  }
+  /* Fills the first line beside the number and the two 2rem buttons (7.6rem with the gaps),
+     so the number fields start the next one. */
+  .program-step-row > .program-step-kind {
+    flex: 1 1 calc(100% - 7.6rem);
+    width: auto;
+    min-width: 0;
+  }
+  /* The row's flex-end baseline suits the number fields (their inputs line up whatever their
+     label wraps to); the number and the buttons beside the kind centre on it instead. */
+  .program-step-row > :not(.program-step-cell) {
+    align-self: center;
+  }
+  .program-step-row > .program-step-cell {
+    order: 2;
+    flex: 1 1 0;
+  }
+  .program-step-cell-label {
+    display: block;
+    /* The label's usual 0.2em tracking makes MINUTES wider than its third of the row. */
+    letter-spacing: 0.05em;
+  }
+}
+
+/* The HUD page: the widget lists need about 15rem beside the 14rem placement column, so
+   under 30rem (a large Windows text size) the placement column goes under the lists. */
+.hud-page {
+  container-type: inline-size;
+}
+@container (max-width: 30rem) {
+  .hud-page-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

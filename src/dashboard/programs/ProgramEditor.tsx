@@ -50,6 +50,16 @@ function Field({ label, children, className }: { label: string; children: ReactN
   );
 }
 
+/** One of a step's number fields; its name shows beside it only when the column names can't (narrow). */
+function StepCell({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="program-step-cell flex min-w-0 flex-col gap-1">
+      <Label className="program-step-cell-label">{label}</Label>
+      {children}
+    </div>
+  );
+}
+
 /** Create or edit a program. Rust checks the ranges when it saves. */
 export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () => void }) {
   const [d, setD] = useState(initial);
@@ -124,8 +134,10 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
         />
       </Field>
 
-      <div className="flex flex-col gap-2">
-        <div className="grid grid-cols-[2rem_7rem_1fr_1fr_1fr_2rem_2rem] items-end gap-2">
+      {/* Narrow (a large Windows text size), each step wraps its fields under its kind, each
+          with its own name, in place of the column names (index.css, .program-steps). */}
+      <div className="program-steps flex flex-col gap-2">
+        <div className="program-step-head grid grid-cols-[2rem_7rem_1fr_1fr_1fr_2rem_2rem] items-end gap-2">
           <span />
           <Label>Kind</Label>
           <Label>Minutes</Label>
@@ -136,10 +148,10 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
         </div>
         {d.steps.map((s, i) => (
           <div key={i} className="flex flex-col gap-1.5">
-          <div className="grid grid-cols-[2rem_7rem_1fr_1fr_1fr_2rem_2rem] items-center gap-2">
-            <span className="font-digital text-xs text-white/60">{i + 1}</span>
+          <div className="program-step-row grid grid-cols-[2rem_7rem_1fr_1fr_1fr_2rem_2rem] items-center gap-2">
+            <span className="w-8 font-digital text-xs text-white/60">{i + 1}</span>
             <select
-              className={cx(input, "px-1")}
+              className={cx(input, "program-step-kind px-1")}
               aria-label={`Step ${i + 1} kind`}
               value={s.kind ?? ""}
               onChange={(e) => patchStep(i, kindPatch(s, e.target.value === "" ? null : (e.target.value as StepKind), d.zoneUnit, maxBpm))}
@@ -151,28 +163,37 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
                 </option>
               ))}
             </select>
-            <input
-              className={input}
-              inputMode="decimal"
-              value={s.open ? "" : s.minutes}
-              placeholder={s.open ? "until ended" : ""}
-              disabled={s.open}
-              onChange={(e) => patchStep(i, { minutes: e.target.value })}
-            />
-            <input
-              className={input}
-              inputMode="decimal"
-              value={s.speed}
-              onChange={(e) => patchStep(i, { speed: e.target.value })}
-              onBlur={() => patchStep(i, { speed: snapSpeedText(s.speed) })}
-            />
-            <input
-              className={input}
-              inputMode="decimal"
-              value={s.incline}
-              onChange={(e) => patchStep(i, { incline: e.target.value })}
-              onBlur={() => patchStep(i, { incline: snapInclineText(s.incline) })}
-            />
+            <StepCell label="Minutes">
+              <input
+                className={input}
+                inputMode="decimal"
+                aria-label={`Step ${i + 1} minutes`}
+                value={s.open ? "" : s.minutes}
+                placeholder={s.open ? "until ended" : ""}
+                disabled={s.open}
+                onChange={(e) => patchStep(i, { minutes: e.target.value })}
+              />
+            </StepCell>
+            <StepCell label="Speed km/h">
+              <input
+                className={input}
+                inputMode="decimal"
+                aria-label={`Step ${i + 1} speed in km/h`}
+                value={s.speed}
+                onChange={(e) => patchStep(i, { speed: e.target.value })}
+                onBlur={() => patchStep(i, { speed: snapSpeedText(s.speed) })}
+              />
+            </StepCell>
+            <StepCell label="Incline %">
+              <input
+                className={input}
+                inputMode="decimal"
+                aria-label={`Step ${i + 1} incline in %`}
+                value={s.incline}
+                onChange={(e) => patchStep(i, { incline: e.target.value })}
+                onBlur={() => patchStep(i, { incline: snapInclineText(s.incline) })}
+              />
+            </StepCell>
             <GhostButton
               aria-label={`Heart zone on step ${i + 1}`}
               aria-pressed={s.zone}
@@ -237,7 +258,7 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
 
       {(anyZone || anyPulse) && (
         <div className="flex flex-col gap-1.5">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <Label>{anyZone ? "Heart zones in" : "Pulse target in"}</Label>
             <ChoiceGroup
               label="Heart zone unit"
@@ -274,8 +295,8 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
           />
           <span className={cx(d.repeat && "opacity-40")}>Keep the last step going until I end it</span>
         </label>
-        <div className="flex items-center gap-2 whitespace-nowrap font-mono text-xs text-white/70">
-          <label className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 font-mono text-xs text-white/70">
+          <label className="flex items-center gap-2 whitespace-nowrap">
             <input
               type="checkbox"
               checked={d.repeat}

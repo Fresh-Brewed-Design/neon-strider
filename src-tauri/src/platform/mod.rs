@@ -14,7 +14,7 @@
 //! - Idle time: how long since the last keyboard or mouse input anywhere in
 //!   the session (auto-install of updates).
 //! - Bluetooth peripheral: GATT services the app serves to other devices,
-//!   such as a watch (WRIST_LINK, `crate::wrist_link`), one provider each. The treadmill link is a
+//!   such as a watch (GHOST_POD, `crate::ghost_pod`), one provider each. The treadmill link is a
 //!   central and goes through btleplug instead.
 //!
 //! - Desktop units: the one coordinate space the HUD's placement, its hit
@@ -293,7 +293,7 @@ pub struct PeripheralCharacteristic {
 /// connected to them) alone.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PeripheralService {
-    /// The name the log uses (`WRIST_LINK`).
+    /// The name the log uses (`RSC`, `POWER`).
     pub name: &'static str,
     pub uuid: u128,
     /// Put the service's UUID in the advertisement. Off, the service is still
@@ -317,7 +317,7 @@ pub struct PeripheralBeacon {
 
 impl PeripheralBeacon {
     #[cfg_attr(
-        not(any(windows, test)),
+        not(windows),
         expect(dead_code, reason = "only Windows serves beacons so far (#33)")
     )]
     /// Bytes on air: the flags Windows adds (3) plus this section's length,

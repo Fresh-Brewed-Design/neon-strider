@@ -170,8 +170,8 @@ export function GuidedCalibration() {
           const removable = listed !== null && !row.point && !(run && row === runRow);
           return (
           <div key={row.targetKmh} className="hacker-panel rounded-lg border-white/5 bg-white/[0.02] p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
                 <Readout label="DECK_VELOCITY" value={`${row.targetKmh.toFixed(1)} km/h`} className="text-neon-cyan" />
                 {row.point ? (
                   <>

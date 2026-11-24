@@ -1,6 +1,6 @@
 // The dashboard's shared building blocks: page frame, panel, label, buttons and the option picker.
 
-import { useRef, type ButtonHTMLAttributes, type HTMLAttributes, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useRef, type ButtonHTMLAttributes, type HTMLAttributes, type KeyboardEvent, type ReactNode } from "react";
 import { cx, type Tone } from "./util";
 
 const TONE_BUTTON: Record<Tone, string> = {
@@ -23,8 +23,9 @@ export function Page({
   children: ReactNode;
 }) {
   return (
-    <section className="flex h-full min-h-0 flex-col">
-      <header className="flex shrink-0 items-end justify-between gap-3 px-5 pb-2 pt-3" data-tauri-drag-region>
+    <section className="dash-page flex h-full min-h-0 flex-col">
+      {/* The actions wrap under the title when both don't fit (a large Windows text size). */}
+      <header className="flex shrink-0 flex-wrap items-end justify-between gap-3 px-5 pb-2 pt-3" data-tauri-drag-region>
         <div data-tauri-drag-region>
           <div className="font-mono text-xs tracking-[0.25em] text-white/60" data-tauri-drag-region>
             {codename}
@@ -33,9 +34,9 @@ export function Page({
             {title}
           </h1>
         </div>
-        {actions && <div className="flex items-center gap-2">{actions}</div>}
+        {actions && <div className="flex min-w-0 flex-wrap items-center gap-2">{actions}</div>}
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">{children}</div>
+      <div className="dash-page-body min-h-0 flex-1 overflow-y-auto px-5 pb-5">{children}</div>
     </section>
   );
 }
@@ -50,6 +51,21 @@ export function Label({ children, className }: { children: ReactNode; className?
       {children}
     </span>
   );
+}
+
+/** A codename that may break after its underscores when its row is narrow (a large Windows text size). */
+export function Codename({ text }: { text: string }) {
+  const parts = text.split("_");
+  return parts.map((part, i) => (
+    <Fragment key={i}>
+      {part}
+      {i < parts.length - 1 && (
+        <>
+          _<wbr />
+        </>
+      )}
+    </Fragment>
+  ));
 }
 
 /** Small grey explanation under or beside a control. */

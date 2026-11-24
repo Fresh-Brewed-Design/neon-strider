@@ -41,9 +41,9 @@ function GearPicker({ strava }: { strava: StravaSnapshot }) {
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <Label>Shoes</Label>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <select
             aria-label="Shoes for every upload"
             disabled={!strava.connected}

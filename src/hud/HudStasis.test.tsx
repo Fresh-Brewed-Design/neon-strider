@@ -164,6 +164,20 @@ describe("HUD minified", () => {
     expect(screen.queryByRole("button", { name: "Minify the HUD" })).not.toBeInTheDocument();
   });
 
+  it("hides the dot of a program segment that ends a line", () => {
+    // jsdom has no layout: put the last two segments on a second row.
+    const top = vi.spyOn(HTMLElement.prototype, "offsetTop", "get").mockImplementation(function (this: HTMLElement) {
+      return this.textContent?.startsWith("04:12") || this.textContent?.startsWith("cycle") ? 20 : 0;
+    });
+    try {
+      const { container } = show(minified());
+      const segs = [...container.querySelectorAll(".hud-run-seg")];
+      expect(segs.map((e) => e.hasAttribute("data-wrapped"))).toEqual([false, true, false, false]);
+    } finally {
+      top.mockRestore();
+    }
+  });
+
   it("leaves the program line out when no program runs", () => {
     show(minified((s) => (s.active_program = null)));
     expect(screen.queryByText("PROGRAM")).not.toBeInTheDocument();

@@ -112,10 +112,10 @@ export function Account({
     const needsReconnect = result !== null && !result.ok && result.hint === "reconnect";
     return (
       <div className="flex flex-col gap-1">
-        <div className="flex items-center justify-between gap-3 rounded border border-neon-magenta/30 bg-neon-magenta/5 px-3 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 rounded border border-neon-magenta/30 bg-neon-magenta/5 px-3 py-2">
           <span className="flex min-w-0 items-center gap-2 font-mono text-xs font-bold uppercase tracking-[0.12em] text-neon-magenta">
             <ShieldCheck size={14} className="shrink-0" />
-            <span className="truncate">Account linked{strava.athlete_name ? ` · ${strava.athlete_name}` : ""}</span>
+            <span className="min-w-0 [overflow-wrap:anywhere]">Account linked{strava.athlete_name ? ` · ${strava.athlete_name}` : ""}</span>
           </span>
           <GhostButton
             disabled={disconnect.pending}

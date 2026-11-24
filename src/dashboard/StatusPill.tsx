@@ -22,6 +22,7 @@ export function StatusPill({
   icon,
   bare = false,
   className,
+  labelClassName,
 }: {
   tone: StatusTone;
   label: string;
@@ -31,6 +32,8 @@ export function StatusPill({
   /** No border: for use inside a button that already has its own frame. */
   bare?: boolean;
   className?: string;
+  /** Extra classes for the label text (the rail hides it when it shows icons only). */
+  labelClassName?: string;
 }) {
   const t = TONE[tone];
   const Icon = icon === "bluetooth" ? Bluetooth : t.Icon;
@@ -45,7 +48,7 @@ export function StatusPill({
       )}
     >
       <Icon size={12} className={cx("shrink-0", tone === "working" && "animate-spin")} />
-      <span className="truncate">{label}</span>
+      <span className={cx("truncate", labelClassName)}>{label}</span>
     </span>
   );
 }
