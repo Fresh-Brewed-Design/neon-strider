@@ -1,0 +1,1 @@
+- The dashboard and HUD redraw less often while you walk: a snapshot that changes one value no longer redraws every panel, so History and the other pages stay lighter on the PC.
