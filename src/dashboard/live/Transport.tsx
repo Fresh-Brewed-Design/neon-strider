@@ -29,7 +29,7 @@ export function Transport({ s }: { s: AppSnapshot }) {
       <Panel className="flex flex-col gap-1 px-4 py-1.5">
         <div className="flex min-h-7 items-center gap-3">
           <StatusPill tone={view.tone} label={view.label} title={view.title} className="shrink-0" />
-          <span className="min-w-0 flex-1 break-words font-mono text-[11px] leading-snug text-white/60">
+          <span className="min-w-0 flex-1 break-words font-mono text-xs leading-snug text-white/60">
             {view.headline}
           </span>
           {view.canRetry && state === "reconnecting" ? (

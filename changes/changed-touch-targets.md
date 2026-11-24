@@ -1,0 +1,1 @@
+- Bigger buttons and clearer text for a walking desk: the live speed and incline presets are taller, the HUD's step buttons are 36 px, and small text is 12 px in a brighter grey.

@@ -129,7 +129,7 @@ export function HistoryPage() {
                 }}
                 className={cx(
                   "px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.12em] transition-colors",
-                  !day && range === r.id ? "bg-neon-cyan/15 text-neon-cyan" : "text-white/45 hover:bg-white/5 hover:text-white",
+                  !day && range === r.id ? "bg-neon-cyan/15 text-neon-cyan" : "text-white/60 hover:bg-white/5 hover:text-white",
                 )}
               >
                 {r.label}
@@ -154,7 +154,7 @@ export function HistoryPage() {
         <Panel className="p-3">
           <div className="mb-2 flex items-center justify-between">
             <Label>Past year</Label>
-            <span className="font-mono text-[11px] text-white/40">Click a day to show only its sessions</span>
+            <span className="font-mono text-xs text-white/60">Click a day to show only its sessions</span>
           </div>
           <Calendar metersByDay={byDay} selected={day} onSelect={setDay} />
         </Panel>
@@ -175,9 +175,9 @@ export function HistoryPage() {
         {loadError ? (
           <p className="py-6 text-center font-mono text-xs text-red-400">Could not load sessions: {loadError}</p>
         ) : !sessions ? (
-          <p className="py-6 text-center font-mono text-xs text-white/40">Loading sessions…</p>
+          <p className="py-6 text-center font-mono text-xs text-white/60">Loading sessions…</p>
         ) : groups.length === 0 ? (
-          <p className="py-6 text-center font-mono text-xs text-white/40">
+          <p className="py-6 text-center font-mono text-xs text-white/60">
             {sessions.length === 0
               ? "No sessions recorded yet. Every walk shows up in History."
               : "No sessions in this time frame."}

@@ -53,7 +53,7 @@ export function UpdatesSection() {
       title="Updates"
       description="Neon Strider checks GitHub for a signed new version at start and every hour."
       status={
-        <span className="shrink-0 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-white/50">
+        <span className="shrink-0 font-mono text-xs font-bold uppercase tracking-[0.18em] text-white/60">
           {offer && u.status.state !== "up_to_date" ? (
             <span className="text-neon-magenta">UPDATE READY // v{offer.version}</span>
           ) : (

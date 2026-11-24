@@ -85,7 +85,7 @@ export function DeckProfile() {
                 </>
               )}
               {!profile.sweep && !running && (
-                <span className="text-[11px] text-white/50">Start the belt to sweep its speeds or incline levels.</span>
+                <span className="text-xs text-white/60">Start the belt to sweep its speeds or incline levels.</span>
               )}
             </div>
             <ActionStatus pending={sweep.pending} error={sweep.error && `Could not sweep: ${sweep.error}`} className="mt-1" />

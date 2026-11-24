@@ -221,10 +221,10 @@ export function LivePage() {
                   <div className="flex items-center gap-3">
                     <span className={cx("shrink-0 font-digital text-base tracking-wider", TONE_TEXT[w.accent])}>
                       {value}
-                      {unit && <span className="ml-1 font-mono text-[11px] text-white/40">{unit}</span>}
+                      {unit && <span className="ml-1 font-mono text-xs text-white/60">{unit}</span>}
                     </span>
                     {spark && <Sparkline data={spark} className={cx("block h-5 min-w-0 flex-1", TONE_TEXT[w.accent])} />}
-                    {detail && <span className="min-w-0 font-mono text-[11px] leading-none text-white/50">{detail}</span>}
+                    {detail && <span className="min-w-0 font-mono text-xs leading-none text-white/60">{detail}</span>}
                   </div>
                 </Panel>
               );

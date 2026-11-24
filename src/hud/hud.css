@@ -13,7 +13,7 @@
   --hud-yellow: #fff300;
   --hud-green: #34d399;
   --hud-ink: #e8fbff;
-  --hud-dim: rgba(232, 251, 255, 0.55);
+  --hud-dim: rgba(232, 251, 255, 0.6);
   --hud-bg: rgba(4, 8, 12, 0.92);
   --hud-line: rgba(0, 243, 255, 0.28);
   --hud-font-display: "Orbitron", "Bahnschrift", "Segoe UI", sans-serif;
@@ -274,7 +274,7 @@ body,
   flex-shrink: 0;
   margin-left: auto;
   width: 32px;
-  height: 30px;
+  height: 32px;
   padding: 0;
   display: inline-flex;
   align-items: center;
@@ -284,7 +284,7 @@ body,
 
 .hud-strip .hud-btn-main {
   flex: 0 0 auto;
-  height: 30px;
+  height: 32px;
   min-width: 96px;
   padding: 0 10px;
 }
@@ -393,7 +393,7 @@ body,
 
 .hud-run-strip .hud-btn-expand { margin-left: 0; }
 .hud-run-strip .hud-btn-main { flex: 1 1 auto; min-width: max-content; padding: 0 10px; }
-.hud-run-strip .hud-btn-stop { flex-shrink: 0; height: 30px; }
+.hud-run-strip .hud-btn-stop { flex-shrink: 0; height: 32px; }
 .hud-run-strip .hud-note { margin-top: 0; }
 
 /* ---- Stats ---------------------------------------------------------- */
@@ -498,7 +498,7 @@ body,
 
 .hud-unit {
   font-family: var(--hud-font-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
   letter-spacing: 0.12em;
   color: var(--hud-dim);
@@ -569,7 +569,7 @@ body,
 .hud-auto-readout .hud-value { display: block; white-space: normal; overflow-wrap: anywhere; line-height: 1.2; }
 
 .hud-sub {
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.06em;
   color: var(--hud-dim);
 }
@@ -668,7 +668,7 @@ body,
 
 .hud-btn-main { flex: 1; height: 36px; }
 .hud-btn-stop { width: 72px; height: 36px; }
-.hud-btn-sm   { height: 28px; padding: 0 12px; }
+.hud-btn-sm   { height: 32px; padding: 0 12px; }
 
 /* A codename with its plain-words line under it (the panel's belt and program buttons). */
 .hud-btn.hud-btn-stack {
@@ -684,12 +684,13 @@ body,
 }
 .hud-btn-sub {
   font-family: var(--hud-font-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
   letter-spacing: 0.02em;
   line-height: 1.2;
   color: var(--hud-dim);
-  white-space: nowrap;
+  white-space: normal;
+  text-align: center;
 }
 
 /* The program list's reason for being off: one line and a Connect button. */
@@ -701,7 +702,7 @@ body,
      "- 12.0 +" has to fit about 93px (225 % text size). */
   flex: 0 1 32px;
   min-width: 24px;
-  height: 30px;
+  height: 36px;
   border: none;
   font-size: 18px;
   letter-spacing: 0;

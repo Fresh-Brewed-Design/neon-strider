@@ -20,11 +20,11 @@ export function DeskSyncPanel({ sync }: { sync: DeskSync }) {
         <Label>DESK_SYNC</Label>
         <div className="flex items-baseline gap-1">
           <span className="font-digital text-xl text-neon-cyan">{sync.walked}</span>
-          <span className="font-mono text-xs text-white/40">/ {sync.desk_days}</span>
+          <span className="font-mono text-xs text-white/60">/ {sync.desk_days}</span>
         </div>
       </div>
       <p
-        className="min-w-0 flex-1 font-mono text-[11px] leading-snug text-white/60"
+        className="min-w-0 flex-1 font-mono text-xs leading-snug text-white/60"
         title="A desk day is a day you used the PC. Days away from the PC don't count."
       >
         {deskSyncText(sync)}

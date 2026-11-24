@@ -36,7 +36,7 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
           <div className="flex min-w-0 items-baseline gap-2" data-testid="program-label-line">
             <Label className="text-neon-yellow/70">{a.paused ? "Program paused" : "Program running"}</Label>
             {a.phase === "walking" && (
-              <span className="shrink-0 whitespace-nowrap font-mono text-xs text-white/40">
+              <span className="shrink-0 whitespace-nowrap font-mono text-xs text-white/60">
                 {a.speed_kmh.toFixed(1)}{" "}km/h · {a.incline_pct.toFixed(1)}%
               </span>
             )}

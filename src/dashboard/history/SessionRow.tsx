@@ -27,7 +27,7 @@ function Stat({ value, unit, tone }: { value: ReactNode; unit: string; tone?: st
   return (
     <span className="flex items-baseline gap-1 whitespace-nowrap">
       <span className={cx("font-digital text-sm", tone ?? "text-white/90")}>{value}</span>
-      {unit && <span className="font-mono text-[11px] text-white/40">{unit}</span>}
+      {unit && <span className="font-mono text-xs text-white/60">{unit}</span>}
     </span>
   );
 }
@@ -130,7 +130,7 @@ export function SessionRow({
           {expanded ? (
             <ChevronDown size={14} className="shrink-0 text-neon-cyan" />
           ) : (
-            <ChevronRight size={14} className="shrink-0 text-white/40" />
+            <ChevronRight size={14} className="shrink-0 text-white/60" />
           )}
           <span className="shrink-0 whitespace-nowrap font-mono text-xs text-white/60">{time}</span>
           {/* Wraps to a second line rather than overlapping when the row is narrow. */}
@@ -143,7 +143,7 @@ export function SessionRow({
           {s.mergedIds.length > 1 && (
             <span
               title={`${s.mergedIds.length} sessions joined into one walk`}
-              className="shrink-0 rounded border border-white/15 px-1.5 font-mono text-[11px] text-white/50"
+              className="shrink-0 rounded border border-white/15 px-1.5 font-mono text-xs text-white/60"
             >
               ×{s.mergedIds.length}
             </span>
@@ -274,7 +274,7 @@ export function SessionRow({
       {expanded && (
         <div className="border-t border-white/10 px-3 pb-3 pt-3">
           <SessionScope session={s} />
-          <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 font-mono text-[11px] text-white/50">
+          <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 font-mono text-xs text-white/60">
             {s.steps > 0 && <div>Steps <span className="text-neon-magenta">{Math.floor(s.steps)}</span></div>}
             {s.avg_incline > 0 && <div>Avg incline <span className="text-white/80">{s.avg_incline.toFixed(1)}%</span></div>}
             {s.avg_heart_rate !== null && (

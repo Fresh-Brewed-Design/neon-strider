@@ -160,7 +160,7 @@ export function SyncActions({
       )}
       <ActionStatus error={apiSettings.error} />
       {showResult && <LastResult result={result} />}
-      {result === null && !busy && <p className="font-mono text-[11px] text-white/40">Nothing uploaded yet.</p>}
+      {result === null && !busy && <p className="font-mono text-xs text-white/60">Nothing uploaded yet.</p>}
     </div>
   );
 }

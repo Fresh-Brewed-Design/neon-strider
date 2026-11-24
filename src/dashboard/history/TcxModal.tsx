@@ -45,7 +45,7 @@ export function TcxModal({ session, tcx, onClose }: { session: MergedSession; tc
         <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
           <div>
             <h2 className="font-digital text-sm font-bold tracking-[0.12em] text-white">TCX preview</h2>
-            <p className="font-mono text-[11px] text-white/45">
+            <p className="font-mono text-xs text-white/60">
               {start.toLocaleDateString()} {start.toLocaleTimeString()}
             </p>
           </div>
@@ -67,7 +67,7 @@ export function TcxModal({ session, tcx, onClose }: { session: MergedSession; tc
             </div>
           ))}
         </dl>
-        <pre className="min-h-0 flex-1 select-text overflow-auto whitespace-pre-wrap break-all p-4 font-mono text-[11px] leading-relaxed text-white/60">
+        <pre className="min-h-0 flex-1 select-text overflow-auto whitespace-pre-wrap break-all p-4 font-mono text-xs leading-relaxed text-white/60">
           {tcx}
         </pre>
       </div>

@@ -9,7 +9,7 @@ import { cx, TONE_TEXT } from "../util";
  */
 export function TargetReadout({ target }: { target: PulseTarget }) {
   const accent = targetAccent(target);
-  const tone = accent ? TONE_TEXT[accent] : "text-white/50";
+  const tone = accent ? TONE_TEXT[accent] : "text-white/60";
   return (
     <span
       className="ml-auto min-w-0 text-right font-mono text-[11px] leading-snug tracking-[0.08em] [overflow-wrap:anywhere]"
@@ -18,7 +18,7 @@ export function TargetReadout({ target }: { target: PulseTarget }) {
     >
       <span className={cx("font-bold", tone)}>{target.label}</span>
       <span className="ml-2 text-white/60">
-        {targetRange(target)} <span className="text-white/40">BPM</span>
+        {targetRange(target)} <span className="text-white/60">BPM</span>
       </span>
       <span className="sr-only">{target.message}</span>
     </span>
