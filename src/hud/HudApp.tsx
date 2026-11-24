@@ -6,7 +6,16 @@ import { useEyeBreakTones } from "./eyeBreakTones";
 import { HudHeader } from "./HudHeader";
 import { HudNote } from "./HudNote";
 import { shortcutLabel } from "./shortcutLabel";
-import { Controls, EasyStopLine, NeuralLine, ProgramsModule, SpeedDriftLine, StatCell, StrideFitLine } from "./HudPanel";
+import {
+  Controls,
+  EasyStopLine,
+  NeuralLine,
+  PresentingLine,
+  ProgramsModule,
+  SpeedDriftLine,
+  StatCell,
+  StrideFitLine,
+} from "./HudPanel";
 import { RunStripRow, StripRow } from "./HudStrip";
 import { linkLabel } from "./status";
 import { ToastCard } from "./ToastCard";
@@ -53,7 +62,8 @@ export function HudApp() {
   );
   const stats = widgets.filter((w) => statWidget(w) !== undefined);
   const hasPanel = snapshot !== null && widgets.length > 0 && view !== "hidden";
-  const maintenanceDue = snapshot?.maintenance.due ?? false;
+  // Rust holds the cards that can wait while presenting (`presenting.holding`).
+  const maintenanceDue = snapshot?.maintenance.hud_card ?? false;
   const weeklyCard = snapshot?.weekly.show_card ?? false;
   const seatedCard = snapshot?.seated.show_card ?? false;
   const eyeBreakCard = (snapshot?.eye_break.phase ?? "idle") !== "idle";
@@ -107,6 +117,7 @@ export function HudApp() {
                 <SpeedDriftLine snapshot={snapshot} />
                 <EasyStopLine snapshot={snapshot} />
                 <StrideFitLine snapshot={snapshot} />
+                <PresentingLine snapshot={snapshot} />
                 {widgets.includes("CONTROLS") && <Controls snapshot={snapshot} />}
                 {widgets.includes("PROGRAMS") && <ProgramsModule snapshot={snapshot} />}
               </>

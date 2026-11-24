@@ -15,6 +15,7 @@ function setMaintenance(patch: Partial<MaintenanceSnapshot>) {
   );
   m.progress = frac;
   m.due = frac >= 1;
+  m.hud_card = m.due;
 }
 
 export const maintenance: Scenario = {

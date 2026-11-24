@@ -206,7 +206,8 @@ body,
 .hud-neural,
 .hud-stride,
 .hud-drift,
-.hud-easystop {
+.hud-easystop,
+.hud-presenting {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -219,7 +220,8 @@ body,
 .hud-neural .hud-label,
 .hud-stride .hud-label,
 .hud-drift .hud-label,
-.hud-easystop .hud-label {
+.hud-easystop .hud-label,
+.hud-presenting .hud-label {
   color: var(--accent);
   letter-spacing: 0.14em;
   overflow-wrap: anywhere;
