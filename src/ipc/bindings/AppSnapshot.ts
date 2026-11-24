@@ -10,6 +10,7 @@ import type { EasyStopSnapshot } from "./EasyStopSnapshot";
 import type { EyeBreakSnapshot } from "./EyeBreakSnapshot";
 import type { FitToDeckOffer } from "./FitToDeckOffer";
 import type { FitToTimeOption } from "./FitToTimeOption";
+import type { GhostPodSnapshot } from "./GhostPodSnapshot";
 import type { GuidedTaskSnapshot } from "./GuidedTaskSnapshot";
 import type { HeartRateSnapshot } from "./HeartRateSnapshot";
 import type { HudConfig } from "./HudConfig";
@@ -33,7 +34,6 @@ import type { UpdateSnapshot } from "./UpdateSnapshot";
 import type { WalkAwaySnapshot } from "./WalkAwaySnapshot";
 import type { WallClock } from "./WallClock";
 import type { WeeklySummary } from "./WeeklySummary";
-import type { WristLinkSnapshot } from "./WristLinkSnapshot";
 
 export type AppSnapshot = { connection: ConnectionSnapshot, deck: DeckSnapshot, session: SessionSnapshot, programs: Array<Program>, active_program: ActiveProgram | null, 
 /**
@@ -122,10 +122,9 @@ traffic: TrafficSnapshot,
  */
 calibration: CalibrationSnapshot, 
 /**
- * Labs: WRIST_LINK, the service the watch's data field reads the belt
- * from (off by default).
+ * Labs: GHOST_POD, the PC as a foot pod for a watch (off by default).
  */
-wrist_link: WristLinkSnapshot, 
+ghost_pod: GhostPodSnapshot, 
 /**
  * Labs: typing by speed, key presses per minute in each speed band over
  * recent walks (off by default).

@@ -16,6 +16,7 @@ import { echo } from "./echo";
 import { engage } from "./engage";
 import { eyeBreak } from "./eyebreak";
 import { fitToTime } from "./fittotime";
+import { ghostPod } from "./ghostpod";
 import { guided } from "./guided";
 import { heartRate } from "./heart";
 import { history } from "./history";
@@ -43,7 +44,6 @@ import { update } from "./update";
 import { walkaway } from "./walkaway";
 import { wallClock } from "./wallclock";
 import { weekly } from "./weekly";
-import { wristLink } from "./wristlink";
 
 export const SCENARIOS: Scenario[] = [
   hud,
@@ -65,7 +65,7 @@ export const SCENARIOS: Scenario[] = [
   stasis,
   traffic,
   calibration,
-  wristLink,
+  ghostPod,
   heartRate,
   maintenance,
   history,

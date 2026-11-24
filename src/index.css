@@ -215,6 +215,11 @@
     width: auto;
     min-width: 0;
   }
+  /* The row's flex-end baseline suits the number fields (their inputs line up whatever their
+     label wraps to); the number and the buttons beside the kind centre on it instead. */
+  .program-step-row > :not(.program-step-cell) {
+    align-self: center;
+  }
   .program-step-row > .program-step-cell {
     order: 2;
     flex: 1 1 0;
