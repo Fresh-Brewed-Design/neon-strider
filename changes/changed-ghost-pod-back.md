@@ -1,0 +1,2 @@
+- GHOST_POD is back in System → Labs, so your watch can read the belt as a foot pod again. Its switches start off.
+- WRIST_LINK and its watch data field are gone.
