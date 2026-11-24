@@ -273,9 +273,7 @@ impl OrchestratorState {
             snap.easing = true;
             snap.stop_in_s = Some(left.as_secs_f32().ceil() as u32);
             snap.to_kmh = Some(to_kmh);
-            snap.message = Some(format!(
-                "Slowing to {to_kmh:.1} km/h, then stopping."
-            ));
+            snap.message = Some(format!("Slowing to {to_kmh:.1} km/h, then stopping."));
         }
         snap
     }
