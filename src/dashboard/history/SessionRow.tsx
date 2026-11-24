@@ -313,9 +313,11 @@ export function SessionRow({
               </ActionStatus>
             </div>
           </div>
+          {live && (
+            <p className="mt-1 font-mono text-[11px] text-white/55">Save for Strava and ECHO wait for the walk to end.</p>
+          )}
         </div>
       )}
     </Panel>
-
   );
 }
