@@ -120,3 +120,23 @@ export function describeActive(a: ActiveProgram): string {
   if (a.wait) return `Next: walk${step}${clock ? ` · ${clock}` : ""}${cycle}`;
   return `Walk${step}${left ? ` · ${left}` : ""}${cycle}`;
 }
+
+/** The PC clock `seconds` after `now`, in the user's time format with no seconds: "15:40" or "3:40 PM". */
+export function finishClock(seconds: number, now: Date, locale?: string): string {
+  const end = new Date(now.getTime() + seconds * 1000);
+  return new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" }).format(end);
+}
+
+/**
+ * T-MINUS, the whole program's time left and when it ends: "T-MINUS 23:10 · ENDS 15:40".
+ * Paused, the end drifts, so only the time left shows. Null when Rust gives no end (a
+ * repeating program, or a step to come with no fixed length).
+ */
+export function describeTimeLeft(a: ActiveProgram, now: Date = new Date(), locale?: string): string | null {
+  const left = a.program_seconds_remaining;
+  if (left == null) return null;
+  // No-break spaces keep each part whole when a narrow HUD wraps the line.
+  const tMinus = `T-MINUS${NBSP}${formatClock(left)}`;
+  if (a.paused) return tMinus;
+  return `${tMinus} · ENDS${NBSP}${finishClock(left, now, locale)}`;
+}

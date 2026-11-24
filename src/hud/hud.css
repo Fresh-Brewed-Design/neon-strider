@@ -583,6 +583,8 @@ body,
 .hud-next { display: flex; flex-wrap: wrap; column-gap: 0.35em; line-height: 1.35; color: color-mix(in srgb, var(--hud-yellow) 70%, var(--hud-dim)); }
 .hud-next-part { max-width: 100%; overflow-wrap: anywhere; }
 .hud-run-status { letter-spacing: 0.01em; }
+/* T-MINUS: the whole program's time left and end; no-break spaces keep each part whole. */
+.hud-t-minus { letter-spacing: 0.01em; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; color: color-mix(in srgb, var(--hud-yellow) 70%, var(--hud-dim)); }
 
 .hud-programs {
   display: grid;
