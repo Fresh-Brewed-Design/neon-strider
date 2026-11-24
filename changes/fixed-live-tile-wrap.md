@@ -1,2 +1,2 @@
-- Live page stat tiles at a large Windows text size shrink a long single-word name to fit instead of breaking it inside the word.
-- The PC TIME WALKED tile keeps each duration on one line instead of splitting "5h 40m" across two.
+- At a large Windows text size, a long one-word stat name on the Live page shrinks to fit its tile.
+- The PC TIME WALKED tile keeps each duration, such as 5h 40m, on one line.
