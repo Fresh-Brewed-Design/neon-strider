@@ -2,8 +2,21 @@
 
 Neon Strider runs on macOS 13 (Ventura) or later as a menu bar app
 ([#33](https://github.com/Fresh-Brewed-Design/neon-strider/issues/33)): it builds, runs and
-controls the treadmill, and feels like a Mac app. There is no macOS download yet; build it from
-source (below).
+controls the treadmill, and feels like a Mac app. Every release has a universal disk image (Apple
+Silicon and Intel), and installed copies update themselves; see Installing below, or build it
+from source.
+
+## Installing
+
+1. Download `Neon Strider_<version>_universal.dmg` from the
+   [GitHub Releases](https://github.com/Fresh-Brewed-Design/neon-strider/releases) page, open it
+   and drag Neon Strider to Applications.
+2. Open it. The app is ad-hoc signed, not notarized, so the first time macOS refuses: open System
+   Settings, Privacy & Security, and choose Open Anyway (on macOS 14 and earlier, right-click the
+   app and choose Open also works).
+3. Updates install themselves like on Windows: the new app replaces the old one in Applications
+   and reopens (System, Updates). Because an ad-hoc signature changes with each version, macOS
+   may ask for Bluetooth and Input Monitoring again after an update.
 
 ## What it does on a Mac
 
@@ -102,7 +115,15 @@ macOS asks for Bluetooth again after each new build.
   (app and dmg targets, macOS 13 minimum, ad-hoc signing).
 - CI runs the Rust tests and clippy on a Mac (`macos` job in `ci.yml`).
 
-## Next
+## Releases
 
-**Release:** a universal (Apple Silicon and Intel) disk image built after the Windows installer,
-with `latest.json` gaining the macOS entries, so Mac installs update themselves.
+`release.yml`'s `macos` job runs after the Windows job and adds to the same release: a universal
+build (`--target universal-apple-darwin`), its disk image, and the signed updater bundle
+(`.app.tar.gz` and `.sig`). tauri-action reads the `latest.json` the Windows job uploaded and adds
+`darwin-aarch64` and `darwin-x86_64`, both pointing at the universal bundle; running after the
+Windows job keeps the two from writing it at once. A failed Mac build leaves the Windows release
+as it is.
+
+Notarizing (no Gatekeeper prompt, and permissions that survive updates) needs an Apple Developer
+ID; with one, `signingIdentity` in `tauri.macos.conf.json` and the notarization secrets are the
+only changes.

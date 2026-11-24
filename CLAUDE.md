@@ -286,7 +286,12 @@ Claude Code from npm first, because the action's own installer does not run on W
 
 The GitHub release body is the version's CHANGELOG section (`release-version.mjs` writes it to
 a file and auto-release passes it on; a hand-pushed `v*` tag reads it from CHANGELOG.md), then
-the SmartScreen note below an `<!-- installer-note -->` marker, which the app cuts off. The
+the download notes (Windows SmartScreen, Mac Gatekeeper) below an `<!-- installer-note -->`
+marker, which the app cuts off. The Windows job publishes the release; the `macos` job runs
+after it and adds a universal `.dmg` and the signed `.app.tar.gz` updater bundle to the same
+release, with tauri-action adding `darwin-aarch64` and `darwin-x86_64` to the `latest.json` the
+Windows job wrote (after it, so the two never write it at once; it reuses the Windows job's body,
+since `latest.json`'s notes are the body). The
 release build signs the installer with the updater key and tauri-action uploads `latest.json`
 plus the `.sig`: `release.yml` turns on `createUpdaterArtifacts` with
 `--config src-tauri/tauri.release.conf.json` and reads the key from the

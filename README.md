@@ -1,11 +1,11 @@
 # Neon Strider
 
-A Windows desktop controller for Bluetooth walking pads and treadmills that speak the
-FitShow protocol. It lives in the system tray, puts an always-on-top HUD in a corner of your
+A Windows and Mac desktop controller for Bluetooth walking pads and treadmills that speak the
+FitShow protocol. It lives in the system tray (the menu bar on a Mac), puts an always-on-top HUD in a corner of your
 screen, runs saved walking programs, keeps your history, and uploads walks to Strava in the
 background.
 
-Windows. A macOS build (a menu bar app) builds from source; see [docs/macos.md](docs/macos.md).
+Windows 10 or 11, and macOS 13 or later (see [docs/macos.md](docs/macos.md) for the Mac).
 Built and tested with a **Jogwell Ares 11 Elite** (FitShow protocol). Other
 FitShow-based decks (the ones that advertise BLE service `FFF0`) should work, but haven't been
 tried.
@@ -73,14 +73,26 @@ The dashboard pages and HUD cards, captured from the mocked preview (no treadmil
 
 ## Install
 
-1. Download `Neon Strider_<version>_x64-setup.exe` from the
-   [GitHub Releases](../../releases) page.
+Both come from the [GitHub Releases](../../releases) page, and update themselves once installed.
+
+**Windows** (10 or 11, with Bluetooth LE):
+
+1. Download `Neon Strider_<version>_x64-setup.exe`.
 2. Run it. It installs for your user only, no admin prompt. The installer isn't code-signed,
    so Windows SmartScreen will warn: choose **More info**, then **Run anyway**.
 3. Neon Strider starts as a tray icon. Left-click it for the dashboard; right-click to quit.
 4. Optional: **System → Startup → Start with Windows**.
 
-Requires Windows 10 or 11 with Bluetooth LE.
+**Mac** (macOS 13 or later; Apple Silicon or Intel):
+
+1. Download `Neon Strider_<version>_universal.dmg`, open it and drag Neon Strider to
+   Applications.
+2. Open it. It isn't notarized yet, so the first time macOS won't: open **System Settings →
+   Privacy & Security** and choose **Open Anyway** (on macOS 14 and earlier, right-click the app
+   and choose **Open** also works).
+3. Neon Strider lives in the menu bar: click its icon for the dashboard. macOS asks for Bluetooth
+   the first time it scans.
+4. Optional: **System → Startup → Launch at login**.
 
 ## First run
 
@@ -136,10 +148,11 @@ On a Mac the shortcuts are ⌃⌥ plus a key; see [docs/macos.md](docs/macos.md)
 
 ## Your data
 
-Everything stays on your PC unless you connect Strava.
+Everything stays on your computer unless you connect Strava.
 
-- **History and settings:** `%APPDATA%\com.freshbreweddesign.neonstrider\treadmill.db` (SQLite).
-- **Strava secret and login:** Windows Credential Manager, under
+- **History and settings:** `%APPDATA%\com.freshbreweddesign.neonstrider\treadmill.db` (SQLite);
+  on a Mac, `~/Library/Application Support/com.freshbreweddesign.neonstrider/treadmill.db`.
+- **Strava secret and login:** Windows Credential Manager (the Keychain on a Mac), under
   `com.freshbreweddesign.neonstrider`.
 - **Backups:** `%APPDATA%\com.freshbreweddesign.neonstrider\backups\`. One copy a day, the newest 14
   kept, plus a copy taken before any database upgrade.

@@ -1,0 +1,1 @@
+- Neon Strider is now on the Mac: every release has a disk image for macOS 13 or later (Apple Silicon and Intel), and installed copies update themselves. It isn't notarized yet, so the first time you open it, choose Open Anyway in System Settings, Privacy & Security.
