@@ -21,6 +21,7 @@ function running(steps: ProgramStep[], over: Partial<ActiveProgram> = {}): Activ
     incline_pct: steps[0]?.incline_pct ?? 0,
     steps,
     repeat_every_minutes: null,
+    program_seconds_remaining: null,
     ...over,
   };
 }

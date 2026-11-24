@@ -23,6 +23,7 @@ const active: ActiveProgram = {
   incline_pct: 5,
   steps: workday.steps,
   repeat_every_minutes: 30,
+  program_seconds_remaining: null,
 };
 
 describe("describePlan", () => {

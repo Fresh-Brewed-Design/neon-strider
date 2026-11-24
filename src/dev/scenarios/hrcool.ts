@@ -70,6 +70,8 @@ export const hrCool: Scenario = {
       incline_pct: step.incline_pct,
       kind: kindSpot(COOL_WALK.steps, 1),
       pulse_to_bpm: f.held ? 114 : undefined,
+      // A cool-down the pulse may keep going has no known end.
+      program_seconds_remaining: f.bpm === null && !f.held ? 95 : null,
     };
     Object.assign(snapshot.deck, { status: "Running", speed_kmh: 3, raw_speed_kmh: 3, target_speed_kmh: 3 });
     // Pinned on the HUD after DAILY_TOTAL, so it pairs up in the stat grid.

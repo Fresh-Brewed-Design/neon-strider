@@ -433,6 +433,11 @@ pub struct ActiveProgram {
     /// the saved program in `programs` can differ from what runs.
     pub steps: Vec<ProgramStep>,
     pub repeat_every_minutes: Option<f32>,
+    /// T-MINUS: whole seconds until the whole run ends (this phase's time
+    /// left plus every later step), from `program_left_s`. None when the
+    /// program repeats or a step still to come has no fixed end. Holds while
+    /// paused, as the step timer does.
+    pub program_seconds_remaining: Option<u32>,
 }
 
 /// What the treadmill was doing when the program took over.
@@ -586,6 +591,46 @@ impl ProgramRun {
 // ---------------------------------------------------------------------------
 // Pure helpers
 // ---------------------------------------------------------------------------
+
+/// T-MINUS: whole seconds until a run of `program` ends, `elapsed_s` into
+/// step `step_index` (or its rest): what is left of this phase plus every
+/// later step. None when the program repeats (it cycles until ended) or
+/// when the end can't be known: a step with no minutes, a cool-down the
+/// pulse may keep going (`pulse_reading`: a fresh heart rate reading, with
+/// none its minutes end it), or a walking step after a 0 km/h step, which
+/// waits for GO. Pure: the run's own copy (FIT_TO_TIME's scaled one) in,
+/// so a paused run, whose `elapsed_s` holds, gives the same answer.
+pub(crate) fn program_left_s(
+    program: &Program,
+    phase: ProgramPhase,
+    step_index: usize,
+    elapsed_s: f64,
+    pulse_reading: bool,
+) -> Option<u32> {
+    if program.repeat_every_minutes.is_some() || phase == ProgramPhase::Resting {
+        return None;
+    }
+    let steps = program.steps.get(step_index..)?;
+    let mut left = 0.0;
+    let mut before: Option<&ProgramStep> = None;
+    for step in steps {
+        if step.pulse_end.is_some() && pulse_reading {
+            return None;
+        }
+        if before.is_some_and(|b| b.speed_kmh < MOVING_KMH) && step.speed_kmh >= MOVING_KMH {
+            return None;
+        }
+        let len = step.duration_minutes? as f64 * 60.0;
+        left += if before.is_none() {
+            (len - elapsed_s).max(0.0)
+        } else {
+            len
+        };
+        before = Some(step);
+    }
+    before?;
+    Some(left.ceil() as u32)
+}
 
 fn total_minutes(program: &Program) -> f32 {
     program
@@ -2005,6 +2050,14 @@ impl OrchestratorState {
             pulse_to_bpm,
             steps: run.program.steps.clone(),
             repeat_every_minutes: run.program.repeat_every_minutes,
+            program_seconds_remaining: program_left_s(
+                &run.program,
+                run.phase,
+                run.step_index,
+                run.elapsed_s,
+                self.heart_bpm.is_some(),
+            )
+            .filter(|_| pulse_to_bpm.is_none()),
         })
     }
 
@@ -5499,5 +5552,164 @@ mod tests {
         let new = r#"{"duration_minutes":3.0,"speed_kmh":3.0,"incline_pct":0.0,"kind":"cool_down","pulse_end":{"below_pct":60.0}}"#;
         let step: ProgramStep = serde_json::from_str(new).unwrap();
         assert_eq!(step.pulse_end, Some(PulseEnd { below_pct: 60.0 }));
+    }
+
+    // ---- T-MINUS: whole-program time left ----
+
+    fn timed(minutes: Option<f32>, kmh: f32) -> ProgramStep {
+        ProgramStep {
+            duration_minutes: minutes,
+            speed_kmh: kmh,
+            incline_pct: 0.0,
+            zone: None,
+            kind: None,
+            pulse_end: None,
+        }
+    }
+
+    fn of_steps(steps: Vec<ProgramStep>, repeat: Option<f32>) -> Program {
+        Program {
+            id: 9,
+            name: "T".to_string(),
+            steps,
+            repeat_every_minutes: repeat,
+            note: None,
+        }
+    }
+
+    #[test]
+    fn t_minus_adds_this_step_and_every_later_one() {
+        let p = of_steps(
+            vec![
+                timed(Some(5.0), 4.0),
+                timed(Some(20.0), 5.0),
+                timed(Some(5.0), 3.0),
+            ],
+            None,
+        );
+        let left = |i, e| program_left_s(&p, ProgramPhase::Walking, i, e, false);
+        assert_eq!(left(0, 0.0), Some(1800));
+        // Mid-step: what is left of it (rounded up like the step's own) plus
+        // the rest.
+        assert_eq!(left(1, 252.4), Some(1200 - 252 + 300));
+        assert_eq!(left(2, 299.5), Some(1));
+        // An overrun step counts as done.
+        assert_eq!(left(2, 400.0), Some(0));
+    }
+
+    #[test]
+    fn t_minus_counts_a_rest_step_in_a_finite_program() {
+        // A REST step (or a 0 km/h one last) is timed like any other.
+        let mut rest = timed(Some(3.0), 4.0);
+        rest.kind = Some(StepKind::Rest);
+        let p = of_steps(
+            vec![timed(Some(4.0), 6.0), rest, timed(Some(2.0), 0.0)],
+            None,
+        );
+        assert_eq!(
+            program_left_s(&p, ProgramPhase::Walking, 0, 60.0, false),
+            Some(180 + 180 + 120)
+        );
+    }
+
+    #[test]
+    fn t_minus_is_none_for_a_repeating_program() {
+        let p = of_steps(vec![timed(Some(5.0), 3.0)], Some(30.0));
+        assert_eq!(
+            program_left_s(&p, ProgramPhase::Walking, 0, 0.0, false),
+            None
+        );
+        assert_eq!(
+            program_left_s(&p, ProgramPhase::Resting, 0, 0.0, false),
+            None
+        );
+    }
+
+    #[test]
+    fn t_minus_is_none_with_an_open_ended_step_ahead() {
+        let open = of_steps(vec![timed(Some(5.0), 4.0), timed(None, 3.0)], None);
+        assert_eq!(
+            program_left_s(&open, ProgramPhase::Walking, 0, 0.0, false),
+            None
+        );
+        assert_eq!(
+            program_left_s(&open, ProgramPhase::Walking, 1, 0.0, false),
+            None
+        );
+
+        // A walking step after a 0 km/h one waits for GO.
+        let hold = of_steps(
+            vec![
+                timed(Some(5.0), 4.0),
+                timed(Some(2.0), 0.0),
+                timed(Some(5.0), 4.0),
+            ],
+            None,
+        );
+        assert_eq!(
+            program_left_s(&hold, ProgramPhase::Walking, 0, 0.0, false),
+            None
+        );
+        assert_eq!(
+            program_left_s(&hold, ProgramPhase::Walking, 1, 0.0, false),
+            None
+        );
+        // Past the hold, the end is known again.
+        assert_eq!(
+            program_left_s(&hold, ProgramPhase::Walking, 2, 60.0, false),
+            Some(240)
+        );
+
+        // A cool-down the pulse may keep going: open only with a reading,
+        // since with none its minutes end it.
+        let mut cool = timed(Some(3.0), 3.0);
+        cool.pulse_end = Some(PulseEnd::default_target());
+        let p = of_steps(vec![timed(Some(5.0), 4.0), cool], None);
+        assert_eq!(
+            program_left_s(&p, ProgramPhase::Walking, 0, 0.0, true),
+            None
+        );
+        assert_eq!(
+            program_left_s(&p, ProgramPhase::Walking, 0, 0.0, false),
+            Some(480)
+        );
+    }
+
+    #[test]
+    fn t_minus_on_the_snapshot_holds_while_paused() {
+        let mut s = state();
+        s.programs = seed_programs();
+        moving(&mut s, 3.0, 0);
+        let t0 = Instant::now();
+        s.set_test_now(t0);
+        s.run_program(5, t0).unwrap(); // Brisk, 30 minutes.
+        let left = |s: &OrchestratorState| s.active_program().unwrap().program_seconds_remaining;
+        assert_eq!(left(&s), Some(1800));
+        run_ticks(&mut s, t0, 0, 60);
+        assert_eq!(left(&s), Some(1740));
+
+        s.pause_program(t0 + secs(60)).unwrap();
+        run_ticks(&mut s, t0, 60, 180);
+        assert!(s.active_program().unwrap().paused);
+        assert_eq!(left(&s), Some(1740), "a pause holds the countdown");
+
+        // Workday repeats: no end to count to.
+        s.end_program(false, t0 + secs(180));
+        s.run_program(2, t0 + secs(180)).unwrap();
+        assert_eq!(left(&s), None);
+    }
+
+    #[test]
+    fn t_minus_counts_the_fitted_copy() {
+        let mut s = state();
+        s.programs = seed_programs();
+        moving(&mut s, 3.0, 0);
+        let t0 = Instant::now();
+        s.set_test_now(t0);
+        s.run_program_fitted(7, Some(20), t0).unwrap(); // Interval walk fitted to 20 min.
+        assert_eq!(
+            s.active_program().unwrap().program_seconds_remaining,
+            Some(1200)
+        );
     }
 }
