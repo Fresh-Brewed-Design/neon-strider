@@ -49,6 +49,7 @@ pub mod weekly;
 
 pub(crate) mod commands;
 mod emitter;
+mod frame;
 mod hud;
 mod stasis;
 mod types;
@@ -400,6 +401,11 @@ mod tests {
             due: false,
             progress: 0.0,
         }
+    }
+
+    /// A snapshot from a default engine, for the frame tests.
+    pub(super) fn sample_snapshot() -> AppSnapshot {
+        snap(&OrchestratorState::default(), 0.0, 15)
     }
 
     fn snap(state: &OrchestratorState, base: f64, max_incline: u8) -> AppSnapshot {

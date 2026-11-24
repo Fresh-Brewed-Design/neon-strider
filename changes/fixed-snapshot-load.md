@@ -1,0 +1,2 @@
+- The dashboard and HUD stay responsive while the database is slow: saving and loading walks no longer holds up the treadmill link.
+- Smoother dashboard and HUD, with less CPU used while walking: settings, programs and other rarely changing parts are only sent to the windows when they change, and a hidden window gets nothing until it shows.

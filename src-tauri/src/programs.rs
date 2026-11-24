@@ -2284,15 +2284,7 @@ pub fn persist_active_run(
     current: Option<SavedRun>,
     last: &mut Option<(Option<SavedRun>, Instant)>,
 ) {
-    let due = match (last.as_ref(), current.as_ref()) {
-        (None, _) => true,
-        (Some((None, _)), None) => false,
-        (Some((Some(p), at)), Some(c)) => {
-            p.shape() != c.shape() || at.elapsed() >= ACTIVE_RUN_SAVE_EVERY
-        }
-        _ => true,
-    };
-    if !due {
+    if !active_run_save_due(last.as_ref(), current.as_ref()) {
         return;
     }
     let value = match &current {
@@ -2303,6 +2295,22 @@ pub fn persist_active_run(
         log::warn!("Could not save the running program: {}", e);
     }
     *last = Some((current, Instant::now()));
+}
+
+/// Whether `persist_active_run` would write: checked first, so the emitter
+/// only leaves the async threads for a write that happens.
+pub fn active_run_save_due(
+    last: Option<&(Option<SavedRun>, Instant)>,
+    current: Option<&SavedRun>,
+) -> bool {
+    match (last, current) {
+        (None, _) => true,
+        (Some((None, _)), None) => false,
+        (Some((Some(p), at)), Some(c)) => {
+            p.shape() != c.shape() || at.elapsed() >= ACTIVE_RUN_SAVE_EVERY
+        }
+        _ => true,
+    }
 }
 
 // The programs a walk ran (`sessions.program_name`).

@@ -339,6 +339,12 @@ pub struct OrchestratorState {
     /// The resume-vs-new-session decision for this connection is made (it
     /// needs the deck's first telemetry). Reset on disconnect.
     pub session_evaluated_on_connect: bool,
+    /// A session row being written (or looked up) outside the belt lock
+    /// (#273): the ticket of that opening. While it is set no other path opens
+    /// a session, so one walk never gets two rows. Cleared on disconnect.
+    pub(crate) session_opening: Option<u64>,
+    /// The last ticket handed out by `claim_session_open`.
+    pub(crate) session_open_seq: u64,
     /// When the deck entered its current pause; `None` while not paused.
     pub paused_since: Option<Instant>,
     /// The long-pause save already happened for this pause.
@@ -481,6 +487,8 @@ impl Default for OrchestratorState {
             awaiting_first_packet: true,
             last_frame_at: None,
             session_evaluated_on_connect: false,
+            session_opening: None,
+            session_open_seq: 0,
             paused_since: None,
             pause_saved: false,
             stop_requested: false,
@@ -539,6 +547,70 @@ impl Default for OrchestratorState {
 fn resumable(s: &Session, deck_time_s: u16, now_ms: i64, local_midnight_ms: i64) -> bool {
     let workout_began = now_ms - deck_time_s as i64 * 1000 - RESUME_SLACK_MS;
     s.strava_id.is_none() && s.start_time >= local_midnight_ms && s.end_time >= workout_began
+}
+
+/// The deck's live totals from the frame that asked for the connect decision.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ConnectTotals {
+    pub time_s: u16,
+    /// Uncalibrated, as the deck reports it.
+    pub distance_m: f64,
+    pub steps: f64,
+    pub calories: f32,
+}
+
+/// The session a connect onto a running deck continues or opens
+/// (`connect_session_row`).
+#[derive(Debug, Clone)]
+pub struct ConnectRow {
+    pub id: i64,
+    /// The latest saved session when it can be the deck's walk.
+    pub latest: Option<Session>,
+    /// The row was created for this connect (not a resumed session).
+    pub created: bool,
+    /// The resumed session's saved heart rate, read here so the half under
+    /// the belt lock needs no database (#273); empty for a new row.
+    pub heart_rate: persistence::HeartRateTotals,
+}
+
+/// The database half of the connect decision, run without the belt lock
+/// (blocking): the latest session if the deck's running workout can be it,
+/// else a new row.
+pub fn connect_session_row(app: &tauri::AppHandle, deck_time: u16) -> Result<ConnectRow, String> {
+    let now_ms = crate::util::now_ms();
+    let midnight_ms = persistence::local_midnight_ms(chrono::Local::now());
+    let latest = persistence::get_latest_session(app)
+        .filter(|s| resumable(s, deck_time, now_ms, midnight_ms));
+    if let Some(id) = latest.as_ref().and_then(|s| s.id) {
+        log::info!(
+            "Connect: resuming session {} onto active deck (t={}s).",
+            id,
+            deck_time
+        );
+        // The heart rate so far, read once here; every later flush adds on.
+        let heart_rate = persistence::db_heart_rate_totals(app, id).unwrap_or_else(|e| {
+            log::warn!("Session {}: saved heart rate not read: {}", id, e);
+            Default::default()
+        });
+        return Ok(ConnectRow {
+            id,
+            latest,
+            created: false,
+            heart_rate,
+        });
+    }
+    let id = persistence::db_create_session(app)?;
+    log::info!(
+        "Connect: active deck (t={}s), no prior session — new session {}.",
+        deck_time,
+        id
+    );
+    Ok(ConnectRow {
+        id,
+        latest,
+        created: true,
+        heart_rate: Default::default(),
+    })
 }
 
 /// Gross energy (kcal) burned walking for `dt_s` seconds at a calibrated
@@ -926,7 +998,43 @@ impl OrchestratorState {
     }
 
     pub fn should_start_session(&self) -> bool {
+        self.session_opening.is_none() && self.session_wanted()
+    }
+
+    /// The belt moves with no session open: a walk wants one.
+    fn session_wanted(&self) -> bool {
         self.session.active_session_id.is_none() && self.last_status.is_moving()
+    }
+
+    /// Take the session opening for a row written outside the belt lock; no
+    /// other path opens a session until `finish_session_open` (or a new
+    /// connection) gives it back.
+    pub fn claim_session_open(&mut self) -> u64 {
+        self.session_open_seq += 1;
+        self.session_opening = Some(self.session_open_seq);
+        self.session_open_seq
+    }
+
+    /// Give the opening back (also when writing the row failed). False when
+    /// `ticket` is no longer the current one (a new connection came in while
+    /// the row was written).
+    pub fn release_session_open(&mut self, ticket: u64) -> bool {
+        if self.session_opening != Some(ticket) {
+            return false;
+        }
+        self.session_opening = None;
+        true
+    }
+
+    /// The row a moving belt asked for is written: start the session on it
+    /// if the belt still wants one. False when the row is not used (the belt
+    /// stopped meanwhile, or the connection changed), so the caller drops it.
+    pub fn finish_session_open(&mut self, ticket: u64, session_id: i64) -> bool {
+        if !self.release_session_open(ticket) || !self.session_wanted() {
+            return false;
+        }
+        self.start_session(session_id);
+        true
     }
 
     pub fn should_stop_session(&self) -> bool {
@@ -1087,84 +1195,77 @@ impl OrchestratorState {
     /// same walk (see [`resumable`]), or a new one opened, and its totals are
     /// synced to what the deck reports. An idle deck (timer about 0) leaves the
     /// new session to `should_start_session` once walking starts.
-    pub fn evaluate_session_on_connect(
-        &mut self,
-        app: &tauri::AppHandle,
-        deck_time: u16,
-        deck_distance_m: f64,
-        deck_steps: f64,
-        deck_calories: f32,
-    ) {
+    ///
+    /// This is the half under the belt lock: a ticket when the database must
+    /// be asked (`connect_session_row`, without the lock), then
+    /// `finish_session_on_connect` with its answer.
+    pub fn begin_session_on_connect(&mut self, deck_time: u16) -> Option<u64> {
         if self.session_evaluated_on_connect {
-            return;
+            return None;
         }
         self.session_evaluated_on_connect = true;
 
-        // A reconnect that kept the session: nothing to decide.
-        if self.session.active_session_id.is_some() {
-            return;
+        // A reconnect that kept the session (or one already opening): nothing
+        // to decide.
+        if self.session.active_session_id.is_some() || self.session_opening.is_some() {
+            return None;
         }
         if deck_time <= RESUME_MARGIN_S {
             log::info!(
                 "Connect: deck idle (t={}s) — fresh session pending.",
                 deck_time
             );
-            return;
+            return None;
         }
+        Some(self.claim_session_open())
+    }
 
-        let now_ms = crate::util::now_ms();
-        let midnight_ms = persistence::local_midnight_ms(chrono::Local::now());
-        let latest = persistence::get_latest_session(app)
-            .filter(|s| resumable(s, deck_time, now_ms, midnight_ms));
-        let sid = match latest.as_ref().and_then(|s| s.id) {
-            Some(id) => {
-                log::info!(
-                    "Connect: resuming session {} onto active deck (t={}s).",
-                    id,
-                    deck_time
-                );
-                id
+    /// Take the connect decision's row (`connect_session_row`) and sync the
+    /// session to the deck's totals from the frame that asked for it. Returns
+    /// the id of a row it created but could not use (a new connection came in
+    /// meanwhile), for the caller to drop.
+    pub fn finish_session_on_connect(
+        &mut self,
+        ticket: u64,
+        row: Result<ConnectRow, String>,
+        deck: ConnectTotals,
+    ) -> Option<i64> {
+        let current = self.release_session_open(ticket);
+        let row = match row {
+            Ok(row) => row,
+            Err(e) => {
+                log::error!("Connect: failed to create session: {}", e);
+                return None;
             }
-            None => match persistence::db_create_session(app) {
-                Ok(id) => {
-                    log::info!(
-                        "Connect: active deck (t={}s), no prior session — new session {}.",
-                        deck_time,
-                        id
-                    );
-                    id
-                }
-                Err(e) => {
-                    log::error!("Connect: failed to create session: {}", e);
-                    return;
-                }
-            },
         };
+        if !current || self.session.active_session_id.is_some() {
+            return row.created.then_some(row.id);
+        }
+        let sid = row.id;
+        let latest = row.latest.clone();
 
         let now = self.now();
         // The deck reports uncalibrated distance; scale it like live distance.
-        let distance_meters = deck_distance_m * self.distance_calibration_ratio(latest.as_ref());
+        let distance_meters = deck.distance_m * self.distance_calibration_ratio(latest.as_ref());
         // Carry the resumed session's incline average forward instead of
         // restarting it from whatever is walked after the reconnect.
         let resumed = latest.filter(|s| s.id == Some(sid));
         // The heart rate so far, read once here; every later flush adds on.
-        let heart_rate = match &resumed {
-            Some(_) => persistence::db_heart_rate_totals(app, sid).unwrap_or_else(|e| {
-                log::warn!("Session {}: saved heart rate not read: {}", sid, e);
-                Default::default()
-            }),
-            None => Default::default(),
+        let heart_rate = if resumed.is_some() {
+            row.heart_rate
+        } else {
+            Default::default()
         };
         let prior_secs = resumed
             .as_ref()
             .map_or(0.0, |s| s.duration_seconds.max(0) as f64);
         let s = &mut self.session;
         s.active_session_id = Some(sid);
-        s.duration_seconds = deck_time as i64;
+        s.duration_seconds = deck.time_s as i64;
         s.distance_meters = distance_meters;
-        s.steps = deck_steps;
-        s.calories = deck_calories;
-        s.raw_distance_meters = deck_distance_m;
+        s.steps = deck.steps;
+        s.calories = deck.calories;
+        s.raw_distance_meters = deck.distance_m;
         s.moving_seconds = prior_secs;
         s.incline_pct_seconds = resumed.as_ref().map_or(0.0, |r| r.avg_incline as f64) * prior_secs;
         // A program run before the reconnect stays the walk's.
@@ -1174,22 +1275,14 @@ impl OrchestratorState {
         s.last_sample_time = Some(now);
         // Write the synced totals promptly.
         s.last_db_flush = None;
+        None
     }
 
-    /// After each telemetry frame: open, sample, checkpoint and close the
-    /// session as the deck's state requires.
+    /// After each telemetry frame: sample, checkpoint and close the session as
+    /// the deck's state requires. Opening one writes a row, so the caller does
+    /// that after letting go of the belt lock (`bluetooth::open_session_if_due`).
     pub fn manage_session_lifecycle(&mut self, app: &tauri::AppHandle) {
         let now = self.now();
-
-        if self.should_start_session() {
-            match persistence::db_create_session(app) {
-                Ok(new_id) => {
-                    self.start_session(new_id);
-                    log::info!("HEADLESS START: Created Session {}", new_id);
-                }
-                Err(e) => log::error!("Failed to create session: {}", e),
-            }
-        }
 
         if self.should_record_sample() {
             self.record_sample(app, now);
@@ -1819,6 +1912,9 @@ impl OrchestratorState {
     pub fn reset_connection(&mut self) {
         self.awaiting_first_packet = true;
         self.session_evaluated_on_connect = false;
+        // An opening still writing its row belongs to the old link; its row is
+        // dropped when it lands (`finish_session_open`).
+        self.session_opening = None;
         // A stop in flight is void without a link.
         self.stop_requested = false;
         self.start_requested_at = None;
@@ -3347,6 +3443,178 @@ mod tests {
             max_heart_rate: None,
             program_name: None,
         }
+    }
+
+    /// A belt the deck reports as running, with no session open.
+    fn belt_running() -> OrchestratorState {
+        OrchestratorState {
+            last_status: MachineStatus::Running,
+            ..reported()
+        }
+    }
+
+    const TOTALS: ConnectTotals = ConnectTotals {
+        time_s: 600,
+        distance_m: 500.0,
+        steps: 700.0,
+        calories: 30.0,
+    };
+
+    #[test]
+    fn a_claimed_opening_keeps_every_other_path_from_opening_a_session() {
+        let mut state = belt_running();
+        assert!(state.should_start_session());
+        let ticket = state.claim_session_open();
+        // The worker loop and the status listener both ask; neither opens.
+        assert!(!state.should_start_session());
+        assert!(state.finish_session_open(ticket, 41));
+        assert_eq!(state.session.active_session_id, Some(41));
+        assert!(!state.should_start_session());
+    }
+
+    #[test]
+    fn a_row_that_lands_after_the_belt_stopped_is_not_used() {
+        let mut state = belt_running();
+        let ticket = state.claim_session_open();
+        state.last_status = MachineStatus::Stopped;
+        assert!(!state.finish_session_open(ticket, 41));
+        assert_eq!(state.session.active_session_id, None);
+        // The opening is free again for the next walk.
+        state.last_status = MachineStatus::Running;
+        assert!(state.should_start_session());
+    }
+
+    #[test]
+    fn a_row_from_before_a_reconnect_is_not_used() {
+        let mut state = belt_running();
+        let old = state.claim_session_open();
+        state.reset_connection();
+        state.last_status = MachineStatus::Running;
+        let new = state.claim_session_open();
+        assert!(!state.finish_session_open(old, 41), "the old link's row");
+        assert!(!state.should_start_session(), "the new opening still holds");
+        assert!(state.finish_session_open(new, 42));
+        assert_eq!(state.session.active_session_id, Some(42));
+    }
+
+    #[test]
+    fn a_failed_row_write_frees_the_opening() {
+        let mut state = belt_running();
+        let ticket = state.claim_session_open();
+        assert!(state.release_session_open(ticket));
+        assert!(state.should_start_session());
+    }
+
+    #[test]
+    fn the_connect_decision_asks_the_database_once_and_only_for_a_running_deck() {
+        let mut idle = belt_running();
+        assert_eq!(idle.begin_session_on_connect(RESUME_MARGIN_S), None);
+        // Left to `should_start_session` once walking starts.
+        assert!(idle.should_start_session());
+
+        let mut state = belt_running();
+        let ticket = state
+            .begin_session_on_connect(600)
+            .expect("asks the database");
+        assert!(!state.should_start_session(), "held while it is asked");
+        assert_eq!(
+            state.begin_session_on_connect(600),
+            None,
+            "once per connection"
+        );
+        let row = ConnectRow {
+            id: 7,
+            latest: None,
+            created: true,
+            heart_rate: Default::default(),
+        };
+        assert_eq!(
+            state.finish_session_on_connect(ticket, Ok(row), TOTALS),
+            None
+        );
+        assert_eq!(state.session.active_session_id, Some(7));
+        assert_eq!(state.session.duration_seconds, 600);
+        assert_eq!(state.session.raw_distance_meters, 500.0);
+        assert_eq!(state.session.steps, 700.0);
+
+        let mut kept = belt_running();
+        kept.session.active_session_id = Some(3);
+        assert_eq!(kept.begin_session_on_connect(600), None, "a kept session");
+    }
+
+    const HR_SO_FAR: persistence::HeartRateTotals = persistence::HeartRateTotals {
+        sum: 1_200,
+        count: 10,
+        max: Some(131),
+    };
+
+    #[test]
+    fn the_connect_decision_resumes_the_saved_walk() {
+        let mut state = belt_running();
+        let ticket = state.begin_session_on_connect(600).unwrap();
+        let mut prior = saved(0, 0, None);
+        prior.id = Some(5);
+        prior.duration_seconds = 300;
+        prior.program_name = Some("Brisk".to_string());
+        let row = ConnectRow {
+            id: 5,
+            latest: Some(prior),
+            created: false,
+            heart_rate: HR_SO_FAR,
+        };
+        assert_eq!(
+            state.finish_session_on_connect(ticket, Ok(row), TOTALS),
+            None
+        );
+        assert_eq!(state.session.active_session_id, Some(5));
+        assert_eq!(state.session.moving_seconds, 300.0);
+        assert_eq!(state.session.program_name.as_deref(), Some("Brisk"));
+        assert_eq!(
+            state.session.heart_rate, HR_SO_FAR,
+            "the saved heart rate carries on"
+        );
+    }
+
+    #[test]
+    fn a_connect_row_from_before_a_reconnect_is_dropped_only_when_new() {
+        let mut state = belt_running();
+        let ticket = state.begin_session_on_connect(600).unwrap();
+        state.reset_connection();
+        let created = ConnectRow {
+            id: 8,
+            latest: None,
+            created: true,
+            heart_rate: Default::default(),
+        };
+        assert_eq!(
+            state.finish_session_on_connect(ticket, Ok(created), TOTALS),
+            Some(8)
+        );
+        assert_eq!(state.session.active_session_id, None);
+
+        let mut state = belt_running();
+        let ticket = state.begin_session_on_connect(600).unwrap();
+        state.reset_connection();
+        let resumed = ConnectRow {
+            id: 5,
+            latest: None,
+            created: false,
+            heart_rate: Default::default(),
+        };
+        // A saved walk is never deleted.
+        assert_eq!(
+            state.finish_session_on_connect(ticket, Ok(resumed), TOTALS),
+            None
+        );
+
+        let mut state = belt_running();
+        let ticket = state.begin_session_on_connect(600).unwrap();
+        let failed = state.finish_session_on_connect(ticket, Err("disk".into()), TOTALS);
+        assert_eq!(failed, None);
+        assert!(
+            state.should_start_session(),
+            "a failed write frees the opening"
+        );
     }
 
     #[test]

@@ -1,12 +1,12 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { AppSnapshot } from "../ipc";
+import type { AppStateFrame } from "../ipc";
 import { shareUnchanged } from "./shareUnchanged";
 
-// Capture the `app-state` listener so the tests can publish snapshots themselves.
-const ipc = vi.hoisted(() => ({ emit: null as ((s: AppSnapshot) => void) | null }));
+// Capture the `app-state` listener so the tests can publish frames themselves.
+const ipc = vi.hoisted(() => ({ emit: null as ((f: AppStateFrame) => void) | null }));
 vi.mock("../ipc", () => ({
-  onAppState: (cb: (s: AppSnapshot) => void) => {
+  onAppState: (cb: (f: AppStateFrame) => void) => {
     ipc.emit = cb;
     return Promise.resolve(() => {});
   },
@@ -74,8 +74,10 @@ describe("shareUnchanged", () => {
 });
 
 describe("useAppState with a heartbeat", () => {
+  // Full frames, as Rust sends a window that just showed.
   const snap = (elapsed: number, weeklyTotal = 300) =>
     ({
+      full: true,
       session: { active_id: 7 },
       live: { elapsed_s: elapsed, speed_kmh: 3.2 },
       weekly: { total_m: weeklyTotal, days: [{ m: 100 }] },
@@ -83,7 +85,7 @@ describe("useAppState with a heartbeat", () => {
       wall_clock: { minutes: 12 },
       today_timeline: { spans: [{ from: 1, to: 2 }] },
       strava: { saved_session_ids: [4, 5] },
-    }) as unknown as AppSnapshot;
+    }) as unknown as AppStateFrame;
 
   // The fake snapshot's own shape, for reading it back.
   type Fake = ReturnType<typeof snap> & { live: { elapsed_s: number }; weekly: { total_m: number } };

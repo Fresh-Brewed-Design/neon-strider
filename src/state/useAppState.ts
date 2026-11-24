@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { getSnapshot, onAppState, type AppSnapshot } from "../ipc";
+import { mergeAppState } from "./mergeAppState";
 import { shareUnchanged } from "./shareUnchanged";
 
 // One subscription per window. Rust owns the state; every window just mirrors
@@ -20,7 +21,10 @@ function publish(next: AppSnapshot) {
 function start() {
   if (started) return;
   started = true;
-  onAppState(publish).catch((e) => console.error("[state] subscribe failed", e));
+  onAppState((frame) => {
+    const next = mergeAppState(current, frame);
+    if (next) publish(next);
+  }).catch((e) => console.error("[state] subscribe failed", e));
   // The first event can be up to a heartbeat away; fetch once so the window
   // paints immediately. An event that lands first wins.
   getSnapshot()
