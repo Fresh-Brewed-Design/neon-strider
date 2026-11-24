@@ -49,9 +49,38 @@ function MarkUploaded({ pending, onClick, className }: { pending: boolean; onCli
   );
 }
 
+function TextAction({
+  icon,
+  label,
+  pending = false,
+  disabled = false,
+  active = false,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  pending?: boolean;
+  disabled?: boolean;
+  active?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <GhostButton
+      aria-label={label}
+      title={label}
+      disabled={disabled || pending}
+      onClick={onClick}
+      className={cx("flex items-center gap-1.5 border border-white/10", active && "text-neon-cyan!")}
+    >
+      {pending ? <Loader2 size={13} className="animate-spin" /> : icon}
+      {label}
+    </GhostButton>
+  );
+}
+
 /**
- * One (possibly merged) session: its totals, Strava upload and save buttons,
- * and when expanded, the speed and incline chart and details.
+ * One (possibly merged) session: its totals, Strava upload and delete icons,
+ * and when expanded, the speed and incline chart, details, and the save, preview and ECHO buttons.
  */
 export function SessionRow({
   session: s,
@@ -111,6 +140,16 @@ export function SessionRow({
     if (p) setEchoId(p.id);
   };
   const showSavedLine = saved && !uploaded;
+  const uploadLabel = uploaded
+    ? "Uploaded to Strava"
+    : live
+      ? "Still recording. Upload once the walk has ended."
+      : uploadState === "uploading"
+        ? (step ?? "Uploading to Strava…")
+        : uploadState === "error"
+          ? `${error ?? "Upload failed."} Click to try again.`
+          : "Upload to Strava";
+  const markHere = expanded && save.done && showSavedLine;
   const time = new Date(s.start_time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const wpm = s.neural_ticks > 0 ? Math.round((s.neural_heat / s.neural_ticks) * 2.4) : 0;
   const rawDelta =
@@ -153,18 +192,8 @@ export function SessionRow({
         <div className="flex shrink-0 items-center">
           {stravaLinked && (
             <GhostButton
-              aria-label={uploaded ? "Uploaded to Strava" : "Upload to Strava"}
-              title={
-                uploaded
-                  ? "Uploaded to Strava"
-                  : live
-                    ? "Still recording. Upload once the walk has ended."
-                    : uploadState === "uploading"
-                      ? (step ?? "Uploading to Strava…")
-                      : uploadState === "error"
-                        ? `${error ?? "Upload failed."} Click to try again.`
-                        : "Upload to Strava"
-              }
+              aria-label={uploadLabel}
+              title={uploadLabel}
               disabled={uploaded || live || uploadState === "uploading"}
               onClick={onUpload}
               className={cx(
@@ -184,40 +213,9 @@ export function SessionRow({
               )}
             </GhostButton>
           )}
-          {!uploaded && (
-            <GhostButton
-              aria-label="Save for Strava"
-              title={
-                live
-                  ? "Still recording. Save once the walk has ended."
-                  : "Save the session as a TCX file for Strava's upload page, which works without a linked account."
-              }
-              disabled={live || save.pending}
-              onClick={() =>
-                void save.run(onSave, {
-                  done: (f) => `Saved ${f.file_name}. Drop it on the Strava page that just opened.`,
-                })
-              }
-              className={cx("px-2!", saved && "text-neon-cyan!")}
-            >
-              {save.pending ? <Loader2 size={15} className="animate-spin" /> : <FileDown size={15} />}
-            </GhostButton>
-          )}
-          <GhostButton
-            aria-label="ECHO"
-            title={live ? "ECHO waits for the walk to end." : "ECHO saves a History walk as a new program."}
-            disabled={live || echo.pending}
-            onClick={() => void runEcho()}
-            className="px-2!"
-          >
-            {echo.pending ? <Loader2 size={15} className="animate-spin" /> : <Repeat size={15} />}
-          </GhostButton>
-          <GhostButton aria-label="Preview TCX" title="Preview the TCX file" onClick={onInspect} className="px-2!">
-            <FileSearch size={15} />
-          </GhostButton>
           <GhostButton
             aria-label="Delete session"
-            title="Delete"
+            title="Delete session"
             onClick={onDelete}
             className="px-2! hover:bg-red-500/10! hover:text-red-400!"
           >
@@ -226,17 +224,7 @@ export function SessionRow({
         </div>
       </div>
 
-      {(error ||
-        note ||
-        save.pending ||
-        save.error ||
-        save.done ||
-        showSavedLine ||
-        mark.error ||
-        folder.error ||
-        echo.pending ||
-        echo.error ||
-        echo.done) && (
+      {(error || note || (showSavedLine && !markHere && !save.pending) || (mark.error && !markHere)) && (
         <div className="flex flex-col gap-1 border-t border-white/5 px-3 py-1.5">
           {uploadState !== "uploading" && error && (
             <ActionStatus error={error}>
@@ -246,28 +234,13 @@ export function SessionRow({
           {!error && note && (
             <ActionStatus error={note.ok ? null : note.text} done={note.ok ? note.text : null} />
           )}
-          <ActionStatus pending={save.pending && "Writing the file…"} error={save.error} done={save.done}>
-            {save.done && <InlineAction onClick={() => void folder.run(onOpenFolder)}>Open folder</InlineAction>}
-          </ActionStatus>
-          {showSavedLine && !save.done && !save.pending && (
+          {showSavedLine && !markHere && !save.pending && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] text-white/55">
               <span>Saved for Strava. After uploading the file to Strava:</span>
               <MarkUploaded pending={mark.pending} onClick={() => void mark.run(onMarkUploaded)} />
             </div>
           )}
-          {save.done && showSavedLine && (
-            <MarkUploaded
-              pending={mark.pending}
-              onClick={() => void mark.run(onMarkUploaded)}
-              className="w-fit font-mono text-[11px]"
-            />
-          )}
-          <ActionStatus error={mark.error ?? folder.error} />
-          <ActionStatus pending={echo.pending && "Building the ECHO program…"} error={echo.error} done={echo.done}>
-            {echo.done && echoId !== null && (
-              <InlineAction onClick={() => onOpenProgram(echoId)}>Open in Programs</InlineAction>
-            )}
-          </ActionStatus>
+          {!markHere && <ActionStatus error={mark.error} />}
         </div>
       )}
 
@@ -296,6 +269,53 @@ export function SessionRow({
             {wpm > 0 && <div>Typing <span className="text-white/80">{wpm} WPM</span></div>}
             {uploaded && <div className="text-emerald-400">On Strava</div>}
           </dl>
+          <div className="mt-3 flex flex-wrap items-start gap-x-4 gap-y-2 border-t border-white/5 pt-3">
+            {!uploaded && (
+              <div className="flex max-w-full flex-col items-start gap-1">
+                <TextAction
+                  icon={<FileDown size={13} />}
+                  label="Save for Strava"
+                  pending={save.pending}
+                  disabled={live}
+                  active={saved}
+                  onClick={() =>
+                    void save.run(onSave, {
+                      done: (f) => `Saved ${f.file_name}. Drop it on the Strava page that just opened.`,
+                    })
+                  }
+                />
+                <ActionStatus pending={save.pending && "Writing the file…"} error={save.error} done={save.done}>
+                  {save.done && <InlineAction onClick={() => void folder.run(onOpenFolder)}>Open folder</InlineAction>}
+                </ActionStatus>
+                {markHere && (
+                  <MarkUploaded
+                    pending={mark.pending}
+                    onClick={() => void mark.run(onMarkUploaded)}
+                    className="w-fit font-mono text-[11px]"
+                  />
+                )}
+                <ActionStatus error={folder.error ?? (markHere ? mark.error : null)} />
+              </div>
+            )}
+            <TextAction icon={<FileSearch size={13} />} label="Preview TCX" onClick={onInspect} />
+            <div className="flex max-w-full flex-col items-start gap-1">
+              <TextAction
+                icon={<Repeat size={13} />}
+                label="ECHO"
+                pending={echo.pending}
+                disabled={live}
+                onClick={() => void runEcho()}
+              />
+              <ActionStatus pending={echo.pending && "Building the ECHO program…"} error={echo.error} done={echo.done}>
+                {echo.done && echoId !== null && (
+                  <InlineAction onClick={() => onOpenProgram(echoId)}>Open in Programs</InlineAction>
+                )}
+              </ActionStatus>
+            </div>
+          </div>
+          {live && (
+            <p className="mt-1 font-mono text-[11px] text-white/55">Save for Strava and ECHO wait for the walk to end.</p>
+          )}
         </div>
       )}
     </Panel>

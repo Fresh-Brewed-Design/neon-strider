@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { getSnapshot, onAppState, type AppSnapshot } from "../ipc";
 import { mergeAppState } from "./mergeAppState";
+import { shareUnchanged } from "./shareUnchanged";
 
 // One subscription per window. Rust owns the state; every window just mirrors
 // the latest snapshot, so windows never need to talk to each other.
@@ -9,7 +10,11 @@ let started = false;
 const listeners = new Set<() => void>();
 
 function publish(next: AppSnapshot) {
-  current = next;
+  // Unchanged parts keep their reference, so a heartbeat only re-renders
+  // what it changed; an identical snapshot notifies nobody.
+  const shared = shareUnchanged(current, next);
+  if (shared === current) return;
+  current = shared;
   listeners.forEach((l) => l());
 }
 
@@ -43,8 +48,10 @@ export function useAppSnapshot(): AppSnapshot | null {
 }
 
 /**
- * Select a primitive (or otherwise referentially stable) value from the
- * snapshot; the component re-renders only when that value changes.
+ * Select a value from the snapshot; the component re-renders only when that
+ * value changes. Objects and arrays keep their reference while their contents
+ * stay the same, so selecting one is fine; a selector must not build a new
+ * object, and a fallback for a null snapshot should be a module constant.
  */
 export function useAppState<T>(selector: (s: AppSnapshot) => T): T | null {
   return useSyncExternalStore(subscribe, () => (current ? selector(current) : null));

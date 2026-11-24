@@ -246,6 +246,10 @@ pub struct SessionState {
     pub incline_pct_seconds: f64,
     /// The programs run during the session (`programs::with_program_name`).
     pub program_name: Option<String>,
+    /// Heart rate over the session's samples, kept as they are recorded so a
+    /// flush writes the average and maximum without rescanning them. Seeded
+    /// from the saved samples when a walk is resumed.
+    pub heart_rate: persistence::HeartRateTotals,
 }
 
 pub struct OrchestratorState {
@@ -564,6 +568,9 @@ pub struct ConnectRow {
     pub latest: Option<Session>,
     /// The row was created for this connect (not a resumed session).
     pub created: bool,
+    /// The resumed session's saved heart rate, read here so the half under
+    /// the belt lock needs no database (#273); empty for a new row.
+    pub heart_rate: persistence::HeartRateTotals,
 }
 
 /// The database half of the connect decision, run without the belt lock
@@ -580,10 +587,16 @@ pub fn connect_session_row(app: &tauri::AppHandle, deck_time: u16) -> Result<Con
             id,
             deck_time
         );
+        // The heart rate so far, read once here; every later flush adds on.
+        let heart_rate = persistence::db_heart_rate_totals(app, id).unwrap_or_else(|e| {
+            log::warn!("Session {}: saved heart rate not read: {}", id, e);
+            Default::default()
+        });
         return Ok(ConnectRow {
             id,
             latest,
             created: false,
+            heart_rate,
         });
     }
     let id = persistence::db_create_session(app)?;
@@ -596,6 +609,7 @@ pub fn connect_session_row(app: &tauri::AppHandle, deck_time: u16) -> Result<Con
         id,
         latest,
         created: true,
+        heart_rate: Default::default(),
     })
 }
 
@@ -1167,9 +1181,8 @@ impl OrchestratorState {
             neural_ticks: 0,
             last_hardware_time: self.hardware_time as i64,
             hardware_time_offset: self.session.hardware_time_offset.unwrap_or(0) as i64,
-            // Worked out from the samples when the row is written.
-            avg_heart_rate: None,
-            max_heart_rate: None,
+            avg_heart_rate: self.session.heart_rate.avg(),
+            max_heart_rate: self.session.heart_rate.max,
             program_name: self.session.program_name.clone(),
         }
     }
@@ -1229,7 +1242,7 @@ impl OrchestratorState {
             return row.created.then_some(row.id);
         }
         let sid = row.id;
-        let latest = row.latest;
+        let latest = row.latest.clone();
 
         let now = self.now();
         // The deck reports uncalibrated distance; scale it like live distance.
@@ -1237,6 +1250,12 @@ impl OrchestratorState {
         // Carry the resumed session's incline average forward instead of
         // restarting it from whatever is walked after the reconnect.
         let resumed = latest.filter(|s| s.id == Some(sid));
+        // The heart rate so far, read once here; every later flush adds on.
+        let heart_rate = if resumed.is_some() {
+            row.heart_rate
+        } else {
+            Default::default()
+        };
         let prior_secs = resumed
             .as_ref()
             .map_or(0.0, |s| s.duration_seconds.max(0) as f64);
@@ -1251,6 +1270,7 @@ impl OrchestratorState {
         s.incline_pct_seconds = resumed.as_ref().map_or(0.0, |r| r.avg_incline as f64) * prior_secs;
         // A program run before the reconnect stays the walk's.
         s.program_name = resumed.and_then(|r| r.program_name);
+        s.heart_rate = heart_rate;
         s.last_physics_update = Some(now);
         s.last_sample_time = Some(now);
         // Write the synced totals promptly.
@@ -1318,6 +1338,8 @@ impl OrchestratorState {
             // Labs, typing by speed: a minute's count lands on the next sample.
             key_presses: self.typing_minute_done.take(),
         };
+        // Before the record below, as the sample is written before the flush.
+        self.session.heart_rate.add(sample.heart_rate);
         let flush = self
             .session
             .last_db_flush
@@ -3504,6 +3526,7 @@ mod tests {
             id: 7,
             latest: None,
             created: true,
+            heart_rate: Default::default(),
         };
         assert_eq!(
             state.finish_session_on_connect(ticket, Ok(row), TOTALS),
@@ -3519,6 +3542,12 @@ mod tests {
         assert_eq!(kept.begin_session_on_connect(600), None, "a kept session");
     }
 
+    const HR_SO_FAR: persistence::HeartRateTotals = persistence::HeartRateTotals {
+        sum: 1_200,
+        count: 10,
+        max: Some(131),
+    };
+
     #[test]
     fn the_connect_decision_resumes_the_saved_walk() {
         let mut state = belt_running();
@@ -3531,6 +3560,7 @@ mod tests {
             id: 5,
             latest: Some(prior),
             created: false,
+            heart_rate: HR_SO_FAR,
         };
         assert_eq!(
             state.finish_session_on_connect(ticket, Ok(row), TOTALS),
@@ -3539,6 +3569,10 @@ mod tests {
         assert_eq!(state.session.active_session_id, Some(5));
         assert_eq!(state.session.moving_seconds, 300.0);
         assert_eq!(state.session.program_name.as_deref(), Some("Brisk"));
+        assert_eq!(
+            state.session.heart_rate, HR_SO_FAR,
+            "the saved heart rate carries on"
+        );
     }
 
     #[test]
@@ -3550,6 +3584,7 @@ mod tests {
             id: 8,
             latest: None,
             created: true,
+            heart_rate: Default::default(),
         };
         assert_eq!(
             state.finish_session_on_connect(ticket, Ok(created), TOTALS),
@@ -3564,6 +3599,7 @@ mod tests {
             id: 5,
             latest: None,
             created: false,
+            heart_rate: Default::default(),
         };
         // A saved walk is never deleted.
         assert_eq!(
@@ -3614,6 +3650,30 @@ mod tests {
             now,
             midnight
         ));
+    }
+
+    #[test]
+    fn session_record_writes_the_running_heart_rate() {
+        let mut state = OrchestratorState::default();
+        assert_eq!(state.session_record(1).avg_heart_rate, None);
+        // A resumed walk's saved totals, then two new seconds and a drop.
+        state.session.heart_rate = persistence::HeartRateTotals {
+            sum: 229,
+            count: 2,
+            max: Some(131),
+        };
+        for bpm in [Some(105), None, Some(120)] {
+            state.session.heart_rate.add(bpm);
+        }
+        let row = state.session_record(1);
+        assert_eq!(
+            (row.avg_heart_rate, row.max_heart_rate),
+            (Some(114), Some(131))
+        );
+        // A new session starts from nothing.
+        state.start_session(2);
+        let row = state.session_record(2);
+        assert_eq!((row.avg_heart_rate, row.max_heart_rate), (None, None));
     }
 
     #[test]

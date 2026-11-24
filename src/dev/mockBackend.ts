@@ -24,7 +24,8 @@ const QUERIES: Record<string, Query> = {
   get_snapshot: () => {
     snapshot.hud_view = hudView();
     snapshot.update.dot = updateDot();
-    return snapshot;
+    // A copy, as Rust's is: the window keeps what it got, so it must not change underneath it.
+    return structuredClone(snapshot);
   },
   open_log_folder: () => null,
   get_rust_config: () => PREVIEW_CONFIG,
