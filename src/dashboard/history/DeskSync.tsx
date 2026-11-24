@@ -15,7 +15,7 @@ function dayTitle(date: string, walked: boolean): string {
 /** Walked days among the recent days the PC was used, from Rust's desk-day count. */
 export function DeskSyncPanel({ sync }: { sync: DeskSync }) {
   return (
-    <Panel className="flex items-center gap-3 p-3">
+    <Panel className="flex items-center gap-2 p-3">
       <div className="shrink-0">
         <Label>DESK_SYNC</Label>
         <div className="flex items-baseline gap-1">
@@ -30,7 +30,7 @@ export function DeskSyncPanel({ sync }: { sync: DeskSync }) {
         {deskSyncText(sync)}
       </p>
       {(sync.days.length > 0 || sync.today_open) && (
-        <ul aria-label="Recent desk days" className="flex shrink-0 items-center gap-1">
+        <ul aria-label="Recent desk days" className="flex shrink-0 items-center gap-0.5">
           {sync.days.map((d) => (
             <li
               key={d.date}
