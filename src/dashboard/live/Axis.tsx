@@ -4,6 +4,7 @@ import { ActionStatus } from "../../components/ActionStatus";
 import type { HudWidget } from "../../ipc";
 import { Label, Panel } from "../ui";
 import { cx, TONE_TEXT } from "../util";
+import { useWheelSteps } from "../../hud/useWheelSteps";
 import { PinToggle } from "./PinToggle";
 import { SegmentedDisplay } from "./SegmentedDisplay";
 import type { SliderMark } from "./sliderValue";
@@ -58,8 +59,11 @@ export function Axis({
   note,
   pin,
   mark = null,
+  wheelHint,
 }: {
   pin: { widget: HudWidget; pinned: boolean };
+  /** Tooltip on the readout, where the mouse wheel nudges the value. */
+  wheelHint?: string;
   title: string;
   tone: "cyan" | "magenta";
   actual: number;
@@ -81,6 +85,7 @@ export function Axis({
   mark?: SliderMark | null;
 }) {
   const [value, setDraft] = useDraft(target);
+  const wheel = useWheelSteps<HTMLDivElement>(onNudge, disabled);
   const hex = tone === "cyan" ? "#00f3ff" : "#ff00ff";
   const set = (v: number) => {
     const snapped = snap(v);
@@ -90,9 +95,9 @@ export function Axis({
 
   return (
     <Panel className="flex flex-col gap-2 p-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-x-2">
         <Label>{title}</Label>
-        <span className="flex items-center gap-1 font-mono text-xs uppercase tracking-[0.15em] text-white/60">
+        <span className="flex flex-wrap items-center gap-1 font-mono text-xs uppercase tracking-[0.15em] text-white/60">
           target <span className={cx("font-digital text-xs", TONE_TEXT[tone])}>{value.toFixed(1)}</span> {unit}
           <PinToggle widget={pin.widget} pinned={pin.pinned} />
         </span>
@@ -100,7 +105,7 @@ export function Axis({
 
       <div className="flex items-center gap-2">
         <Nudge label={`${title} down`} disabled={disabled} onClick={() => onNudge(false)} icon={<Minus size={16} />} />
-        <div className="flex min-w-0 flex-1 items-end justify-center gap-2">
+        <div ref={wheel} title={wheelHint} className="flex min-w-0 flex-1 items-end justify-center gap-2">
           <SegmentedDisplay
             value={actual}
             length={2}
@@ -116,7 +121,7 @@ export function Axis({
         <StylizedSlider min={min} max={max} step={step} value={value} onChange={set} color={tone} mark={mark} />
       </div>
 
-      <div className="flex gap-1">
+      <div className="flex flex-wrap gap-1">
         {presets
           // A preset the deck skips is left out.
           .filter((p) => p >= min - 1e-6 && p <= max + 1e-6 && Math.abs(snap(p) - p) < 1e-6)

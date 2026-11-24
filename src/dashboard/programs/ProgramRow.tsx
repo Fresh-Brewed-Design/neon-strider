@@ -43,52 +43,56 @@ export function ProgramRow({
   const note = minutes !== null ? (fitToTime?.note.split("\n") ?? []) : [];
   return (
     <Panel className={cx("flex flex-col gap-1.5 px-4 py-3", running && "border-neon-yellow/40")}>
-      <div className="flex items-center gap-3">
-        <div className="min-w-0 flex-1" title={describePlan(p)}>
+      {/* The text keeps at least 12rem beside the buttons; with less room (a large Windows text
+          size) the buttons wrap under it, so the name never breaks one letter per line. */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="min-w-0 flex-1 basis-48" title={describePlan(p)}>
           <div className="break-words font-digital text-sm font-bold leading-tight tracking-wider text-white">{p.name}</div>
           <div className="font-mono text-xs text-white/60">{describeProgram(p)}</div>
           {p.note && <div className="text-xs leading-snug text-white/60">{p.note}</div>}
           <FitToDeck offer={fitToDeck} />
         </div>
-        <GhostButton aria-label={`Edit ${p.name}`} onClick={onEdit}>
-          <Pencil size={14} />
-        </GhostButton>
-        <GhostButton aria-label={`Delete ${p.name}`} className="hover:text-neon-magenta" onClick={onDelete}>
-          <Trash2 size={14} />
-        </GhostButton>
-        {fitToTime && (
-          <select
-            aria-label={`Length of ${p.name}`}
-            title="Length"
-            className="h-9 w-24 shrink-0 rounded border border-white/15 bg-black/40 px-1.5 font-mono text-xs text-white focus:border-neon-cyan focus:outline-none disabled:opacity-40"
-            value={minutes ?? ""}
-            disabled={running || run.pending}
-            onChange={(e) => {
-              setPicked(e.target.value === "" ? null : Number(e.target.value));
-              run.reset();
-            }}
-          >
-            <option value="">{fitToTime.saved_label}</option>
-            {fitToTime.lengths.map((m) => (
-              <option key={m} value={m}>
-                {m} min
-              </option>
-            ))}
-          </select>
-        )}
-        <NeonButton
-          tone={running ? "yellow" : "cyan"}
-          className="flex h-9 w-24 shrink-0 items-center justify-center gap-1.5"
-          disabled={!connected || running || run.pending}
-          title={connected ? describePlan(p) : "Connect the treadmill first"}
-          onClick={() => void run.run(() => dispatch(runCommand(p.id, minutes)))}
-        >
-          {running ? "Running" : (
-            <>
-              <Play size={14} /> Run
-            </>
+        <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-3">
+          <GhostButton aria-label={`Edit ${p.name}`} onClick={onEdit}>
+            <Pencil size={14} />
+          </GhostButton>
+          <GhostButton aria-label={`Delete ${p.name}`} className="hover:text-neon-magenta" onClick={onDelete}>
+            <Trash2 size={14} />
+          </GhostButton>
+          {fitToTime && (
+            <select
+              aria-label={`Length of ${p.name}`}
+              title="Length"
+              className="h-9 w-24 shrink-0 rounded border border-white/15 bg-black/40 px-1.5 font-mono text-xs text-white focus:border-neon-cyan focus:outline-none disabled:opacity-40"
+              value={minutes ?? ""}
+              disabled={running || run.pending}
+              onChange={(e) => {
+                setPicked(e.target.value === "" ? null : Number(e.target.value));
+                run.reset();
+              }}
+            >
+              <option value="">{fitToTime.saved_label}</option>
+              {fitToTime.lengths.map((m) => (
+                <option key={m} value={m}>
+                  {m} min
+                </option>
+              ))}
+            </select>
           )}
-        </NeonButton>
+          <NeonButton
+            tone={running ? "yellow" : "cyan"}
+            className="flex h-9 w-24 shrink-0 items-center justify-center gap-1.5"
+            disabled={!connected || running || run.pending}
+            title={connected ? describePlan(p) : "Connect the treadmill first"}
+            onClick={() => void run.run(() => dispatch(runCommand(p.id, minutes)))}
+          >
+            {running ? "Running" : (
+              <>
+                <Play size={14} /> Run
+              </>
+            )}
+          </NeonButton>
+        </div>
       </div>
       {note.length > 0 && !running && (
         <div className="font-mono text-xs leading-snug text-white/60" data-testid="fit-to-time-note">

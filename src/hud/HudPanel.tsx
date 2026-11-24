@@ -11,6 +11,7 @@ import { SmallButton } from "./SmallButton";
 import { engageLabel, engageSub, engageTitle } from "./status";
 import { useHudSend } from "./useHudSend";
 import { useRelink } from "./useRelink";
+import { useWheelSteps } from "./useWheelSteps";
 import { linkState } from "../state/linkStatus";
 
 /** One pinned stat, read through the shared widget registry. */
@@ -74,6 +75,7 @@ function Stepper({
   disabled,
   onDown,
   onUp,
+  wheelHint,
 }: {
   label: string;
   value: string;
@@ -81,7 +83,9 @@ function Stepper({
   disabled: boolean;
   onDown: () => void;
   onUp: () => void;
+  wheelHint: string;
 }) {
+  const wheel = useWheelSteps<HTMLSpanElement>((up) => (up ? onUp() : onDown()), disabled);
   return (
     <div className={`hud-stepper accent-${accent}`}>
       <span className="hud-label">{label}</span>
@@ -89,7 +93,7 @@ function Stepper({
         <button type="button" className="hud-btn hud-btn-step" disabled={disabled} onClick={onDown} aria-label={`${label} down`}>
           −
         </button>
-        <span className="hud-stepper-value">{value}</span>
+        <span ref={wheel} className="hud-stepper-value" title={wheelHint}>{value}</span>
         <button type="button" className="hud-btn hud-btn-step" disabled={disabled} onClick={onUp} aria-label={`${label} up`}>
           +
         </button>
@@ -229,6 +233,7 @@ export function Controls({ snapshot }: { snapshot: AppSnapshot }) {
           value={deck.target_speed_kmh.toFixed(1)}
           onDown={() => send({ type: "nudge_speed", up: false })}
           onUp={() => send({ type: "nudge_speed", up: true })}
+          wheelHint="Scroll to change speed."
         />
         <Stepper
           label="TILT"
@@ -237,6 +242,7 @@ export function Controls({ snapshot }: { snapshot: AppSnapshot }) {
           value={deck.target_incline_pct.toFixed(1)}
           onDown={() => send({ type: "nudge_incline", up: false })}
           onUp={() => send({ type: "nudge_incline", up: true })}
+          wheelHint="Scroll to change incline."
         />
       </div>
       <HudNote error={error ?? startFailure(snapshot) ?? deck.target_note} />

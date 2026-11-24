@@ -102,7 +102,7 @@ export function HistoryPage() {
           </GhostButton>
           <OptionPicker
             label="Time frame"
-            className="flex overflow-hidden rounded border border-white/10"
+            className="flex flex-wrap overflow-hidden rounded border border-white/10"
             options={RANGES.map((r) => ({ value: r.id, label: r.label }))}
             value={day ? null : range}
             onChange={(next) => {
@@ -139,14 +139,14 @@ export function HistoryPage() {
         )}
 
         <Panel className="p-3">
-          <div className="mb-2 flex items-center justify-between">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3">
             <Label>Past year</Label>
             <span className="font-mono text-xs text-white/60">Click a day to show only its sessions</span>
           </div>
           <Calendar metersByDay={byDay} selected={day} onSelect={setDay} />
         </Panel>
 
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-x-3">
           <Label>Sessions · {rangeLabel}</Label>
           {day && (
             <button

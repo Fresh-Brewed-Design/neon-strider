@@ -389,10 +389,11 @@ body,
 .hud-run-program .hud-label { flex-shrink: 0; color: var(--accent); }
 /* Beside the label while its widest segment fits there, else under it. */
 .hud-run-program .hud-sub { flex: 1 1 12ch; line-height: 1.35; }
-/* Whole segments wrap, never mid-text; each carries its own trailing dot. */
+/* Whole segments wrap, never mid-text; the dot of a segment that ends a line is hidden (HudStrip). */
 .hud-run-segments { display: flex; flex-wrap: wrap; column-gap: 0.35em; }
 .hud-run-seg { white-space: nowrap; }
 .hud-run-seg-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.hud-run-seg[data-wrapped] .hud-run-dot { visibility: hidden; }
 
 .hud-run-strip .hud-btn-expand { margin-left: 0; }
 .hud-run-strip .hud-btn-main { flex: 1 1 auto; min-width: max-content; padding: 0 10px; }

@@ -59,7 +59,7 @@ snapshot_parts! {
     hot: [
         connection, deck, session, active_program, neural, speed_drift, hud_view,
         maintenance, odometer, seated, eye_break, calls, walkaway, easy_start,
-        easy_stop, traffic, calibration, wrist_link, heart_rate, guided_task,
+        easy_stop, traffic, calibration, ghost_pod, heart_rate, guided_task,
         pc_walk_share,
     ],
     cold: [
