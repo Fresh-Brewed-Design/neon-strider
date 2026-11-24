@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useLayoutEffect, useRef } from "react";
 import type { AppSnapshot, HudWidget } from "../ipc";
 import { describeActive } from "../dashboard/programs/format";
 import { startFailure } from "../state/linkStatus";
@@ -63,15 +63,47 @@ export function StripRow({ snapshot }: { snapshot: AppSnapshot }) {
 
 const RUN_STATS: HudWidget[] = ["VELOCITY", "TIMER", "DISTANCE"];
 
-/**
- * The panel minified by the user (`hud_view` "minified"): speed, time and
- * distance, heart rate with a sensor picked, the program step when one runs,
- * then expand, Engage/Stasis and Dump. It stays until expanded again.
- */
-/** The program line as whole segments; each keeps its trailing dot so a wrap
- *  never starts a line with one. */
+/** The program line as whole segments. */
 function programSegments(name: string, detail: string): string[] {
   return [name, ...detail.split(" · ")];
+}
+
+/**
+ * The program line: whole segments wrap, and a segment's trailing dot is
+ * hidden when the next segment sits on the line below, so no line ends in one.
+ */
+function ProgramLine({ name, detail }: { name: string; detail: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const segs = programSegments(name, detail);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const mark = () => {
+      const items = Array.from(el.querySelectorAll<HTMLElement>(".hud-run-seg"));
+      items.forEach((item, i) => {
+        const next = items[i + 1];
+        item.toggleAttribute("data-wrapped", !!next && next.offsetTop > item.offsetTop);
+      });
+    };
+    mark();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(mark);
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
+  return (
+    <span ref={ref} className="hud-sub hud-run-segments">
+      {segs.map((seg, i) => (
+        <Fragment key={i}>
+          {i > 0 && " "}
+          <span className={i === 0 ? "hud-run-seg hud-run-seg-name" : "hud-run-seg"} title={i === 0 ? name : undefined}>
+            {seg}
+            {i < segs.length - 1 && <span className="hud-run-dot"> ·</span>}
+          </span>
+        </Fragment>
+      ))}
+    </span>
+  );
 }
 
 /**
@@ -98,6 +130,11 @@ function PulseRow({ snapshot }: { snapshot: AppSnapshot }) {
   );
 }
 
+/**
+ * The panel minified by the user (`hud_view` "minified"): speed, time and
+ * distance, heart rate with a sensor picked, the program step when one runs,
+ * then expand, Engage/Stasis and Dump. It stays until expanded again.
+ */
 export function RunStripRow({ snapshot }: { snapshot: AppSnapshot }) {
   const { send, error } = useHudSend();
   const { deck, connection } = snapshot;
@@ -125,16 +162,7 @@ export function RunStripRow({ snapshot }: { snapshot: AppSnapshot }) {
       {a && (
         <div className="hud-run-program accent-yellow">
           <span className="hud-label">{a.paused ? "PAUSED" : "PROGRAM"}</span>
-          <span className="hud-sub hud-run-segments">
-            {programSegments(a.name, describeActive(a)).map((seg, i, all) => (
-              <Fragment key={i}>
-                {i > 0 && " "}
-                <span className={i === 0 ? "hud-run-seg hud-run-seg-name" : "hud-run-seg"} title={i === 0 ? a.name : undefined}>
-                  {i < all.length - 1 ? `${seg} ·` : seg}
-                </span>
-              </Fragment>
-            ))}
-          </span>
+          <ProgramLine name={a.name} detail={describeActive(a)} />
         </div>
       )}
       <div className="hud-strip-row">

@@ -1,0 +1,1 @@
+- The program line on the minified HUD strip no longer ends a line with a dangling dot when it wraps.
