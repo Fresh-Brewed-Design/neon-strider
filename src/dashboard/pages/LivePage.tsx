@@ -15,7 +15,7 @@ import { ActiveProgramCard } from "../programs/ActiveProgramCard";
 import { readPref, writePref } from "../localPrefs";
 import { StatusPill } from "../StatusPill";
 import { MaintenanceBanner } from "../system/MaintenanceBanner";
-import { Label, Page, Panel, Waiting } from "../ui";
+import { Codename, Label, Page, Panel, Waiting } from "../ui";
 import { cx, send, TONE_TEXT } from "../util";
 
 const SPEED_PRESETS = [1.5, 2.5, 3, 4, 5, 6];
@@ -218,7 +218,9 @@ export function LivePage() {
               return (
                 <Panel key={w.id} className={cx("flex flex-col gap-0.5 px-3 py-1.5", spark && "col-span-2")}>
                   <div className="flex items-start justify-between gap-1">
-                    <Label className="min-w-0 tracking-[0.12em] [overflow-wrap:anywhere]">{w.codename}</Label>
+                    <Label className="min-w-0 tracking-[0.12em] [overflow-wrap:anywhere]">
+                      <Codename text={w.codename} />
+                    </Label>
                     {zone && <ZoneReadout zone={zone} />}
                     {target && <TargetReadout target={target} />}
                     <PinToggle widget={w.id} pinned={pinned.has(w.id)} />
