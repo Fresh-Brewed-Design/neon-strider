@@ -1,1 +1,0 @@
-- The save every few seconds during a walk no longer rereads all its heart rate readings, and a walk opened in History loads its samples without sorting them.

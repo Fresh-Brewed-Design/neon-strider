@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.62.0 (2026-11-24)
+
+### Changed
+
+- History rows keep the Strava upload and delete icons. Save for Strava, Preview TCX and ECHO are now text buttons in the expanded row, and every button has a matching label and tooltip.
+- Bigger buttons and clearer text for a walking desk. The Live page's speed and incline presets are taller, the HUD's VEL and TILT buttons are 36 px, and small text is 12 px in a brighter grey.
+
+### Fixed
+
+- The save every few seconds during a walk no longer rereads all its heart rate readings, and a walk opened in History loads its samples without sorting them.
+
 ## 1.61.1 (2026-11-24)
 
 ### Fixed

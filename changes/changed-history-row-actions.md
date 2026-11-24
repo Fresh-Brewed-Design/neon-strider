@@ -1,1 +1,0 @@
-- History rows keep the Strava upload and delete icons. Save for Strava, Preview TCX and ECHO are now text buttons in the expanded row, and every button has a matching label and tooltip.
