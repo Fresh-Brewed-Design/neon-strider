@@ -4,6 +4,7 @@ import { ActionStatus } from "../../components/ActionStatus";
 import type { HudWidget } from "../../ipc";
 import { Label, Panel } from "../ui";
 import { cx, TONE_TEXT } from "../util";
+import { useWheelSteps } from "../../hud/useWheelSteps";
 import { PinToggle } from "./PinToggle";
 import { SegmentedDisplay } from "./SegmentedDisplay";
 import type { SliderMark } from "./sliderValue";
@@ -81,6 +82,7 @@ export function Axis({
   mark?: SliderMark | null;
 }) {
   const [value, setDraft] = useDraft(target);
+  const wheel = useWheelSteps<HTMLDivElement>(onNudge, disabled);
   const hex = tone === "cyan" ? "#00f3ff" : "#ff00ff";
   const set = (v: number) => {
     const snapped = snap(v);
@@ -100,7 +102,7 @@ export function Axis({
 
       <div className="flex items-center gap-2">
         <Nudge label={`${title} down`} disabled={disabled} onClick={() => onNudge(false)} icon={<Minus size={16} />} />
-        <div className="flex min-w-0 flex-1 items-end justify-center gap-2">
+        <div ref={wheel} title={`Scroll to change ${title.toLowerCase() === "tilt" ? "incline" : "speed"}.`} className="flex min-w-0 flex-1 items-end justify-center gap-2">
           <SegmentedDisplay
             value={actual}
             length={2}
