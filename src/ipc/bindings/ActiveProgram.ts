@@ -44,4 +44,11 @@ pulse_to_bpm?: number,
  * save of the running program reaches its next run, not this one, so
  * the saved program in `programs` can differ from what runs.
  */
-steps: Array<ProgramStep>, repeat_every_minutes: number | null, };
+steps: Array<ProgramStep>, repeat_every_minutes: number | null, 
+/**
+ * T-MINUS: whole seconds until the whole run ends (this phase's time
+ * left plus every later step), from `program_left_s`. None when the
+ * program repeats or a step still to come has no fixed end. Holds while
+ * paused, as the step timer does.
+ */
+program_seconds_remaining: number | null, };

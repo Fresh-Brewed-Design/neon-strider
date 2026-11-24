@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ActiveProgram, Program } from "../../ipc";
-import { describeActive, describePlan, waitHeadline, waitReason } from "./format";
+import { describeActive, describePlan, describeTimeLeft, finishClock, waitHeadline, waitReason } from "./format";
 
 const workday: Program = {
   id: 2,
@@ -23,6 +23,7 @@ const active: ActiveProgram = {
   incline_pct: 5,
   steps: workday.steps,
   repeat_every_minutes: 30,
+  program_seconds_remaining: null,
 };
 
 describe("describePlan", () => {
@@ -114,5 +115,41 @@ describe("step kinds", () => {
   it("names a cool-down's pulse target in the plan", () => {
     const p: Program = { ...workday, repeat_every_minutes: null, steps: [{ duration_minutes: 5, speed_kmh: 3, incline_pct: 0, kind: "cool_down", pulse_end: { below_pct: 60 } }] };
     expect(describePlan(p).split("\n")[1]).toBe("COOL_DOWN 5 min at 3.0 km/h, 0% incline, then on until heart rate is down to 60 % of max");
+  });
+});
+
+describe("T-MINUS", () => {
+  const now = new Date(2026, 10, 24, 15, 17, 0);
+  const NBSP = String.fromCharCode(160);
+  const finite: ActiveProgram = { ...active, name: "Brisk", repeat_every_minutes: null, cycle: 1, program_seconds_remaining: 23 * 60 + 10 };
+
+  it("shows the time left and the end on the PC clock", () => {
+    expect(describeTimeLeft(finite, now, "en-GB")).toBe(`T-MINUS 23:10${NBSP}· ENDS${NBSP}15:40`);
+  });
+
+  it("writes the end in the user's time format, with no seconds", () => {
+    expect(finishClock(23 * 60 + 10, now, "en-US")).toMatch(/^3:40\sPM$/);
+    expect(finishClock(23 * 60 + 10, now, "de-DE")).toBe("15:40");
+  });
+
+  it("counts hours past the first", () => {
+    expect(describeTimeLeft({ ...finite, program_seconds_remaining: 3600 + 125 }, now, "en-GB")).toBe(`T-MINUS 1:02:05${NBSP}· ENDS${NBSP}16:19`);
+  });
+
+  it("drops the end while paused, since it drifts", () => {
+    expect(describeTimeLeft({ ...finite, paused: true }, now, "en-GB")).toBe(`T-MINUS 23:10`);
+  });
+
+  it("shows nothing for a program with no fixed end", () => {
+    expect(describeTimeLeft(active, now, "en-GB")).toBeNull();
+  });
+});
+
+describe("T-MINUS wrapping", () => {
+  it("wraps after the dot or after T-MINUS, never inside the end time", () => {
+    const a: ActiveProgram = { ...active, repeat_every_minutes: null, program_seconds_remaining: 1390 };
+    const line = describeTimeLeft(a, new Date(2026, 10, 24, 15, 17, 0), "en-US")!;
+    expect(line.split(" ")).toHaveLength(3);
+    expect(line.split(" ")[2]).toMatch(/^ENDS.3:40.PM$/);
   });
 });

@@ -1,6 +1,6 @@
 import { Fragment } from "react";
 import type { AppSnapshot, Command, HudWidget, PulseTarget, ZoneBand } from "../ipc";
-import { describeActive, describePlan, waitHeadline, waitReason } from "../dashboard/programs/format";
+import { describeActive, describePlan, describeTimeLeft, waitHeadline, waitReason } from "../dashboard/programs/format";
 import { nextStepLine } from "../dashboard/programs/stepMap";
 import { statWidget } from "../widgets/registry";
 import { Sparkline } from "../widgets/Sparkline";
@@ -262,6 +262,7 @@ export function ProgramsModule({ snapshot }: { snapshot: AppSnapshot }) {
     // One line for the step after this one keeps the panel small: a chart would
     // need its own height and still be too small to read at 340 px.
     const next = nextStepLine(a);
+    const timeLeft = describeTimeLeft(a);
     return (
       <div className={`hud-module accent-yellow${wait ? " hud-ready" : ""}`} role={wait ? "alert" : undefined}>
         {wait && <span className="hud-ready-headline">{waitHeadline(wait)}</span>}
@@ -269,6 +270,11 @@ export function ProgramsModule({ snapshot }: { snapshot: AppSnapshot }) {
           <span className="hud-label">{wait ? "READY" : a.paused ? "PAUSED" : "PROGRAM"}</span>
           <span className="hud-value hud-value-sm">{a.name}</span>
           <span className="hud-sub hud-run-status">{describeActive(a)}</span>
+          {timeLeft && (
+            <span className="hud-sub hud-t-minus" data-testid="hud-t-minus">
+              {timeLeft}
+            </span>
+          )}
           {next && (
             <span className="hud-sub hud-next">
               {/* Each part stays whole and keeps its trailing dot; a narrow panel wraps between them. */}

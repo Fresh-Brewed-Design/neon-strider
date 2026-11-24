@@ -3,7 +3,8 @@
 // (REST COMPLETE // PRESS GO). ?program=hold: a walking step after a 0 km/h step waits.
 // ?program=still: the belt was found still after a reconnect. ?program=resting: mid-rest.
 // ?program=paused: paused by the user (plain GO, no wait).
-// ?program=interval: Interval walk on its 3rd brisk round (INTERVAL 3/5, step 6 of 11).
+// ?program=interval: Interval walk on its 3rd brisk round (INTERVAL 3/5, step 6 of 11), with
+// T-MINUS 17:08 to its end.
 import type { ActiveProgram, Program, ProgramStep, StepKindSpot } from "../../ipc";
 import { params, snapshot } from "../mockState";
 import type { Scenario } from "./types";
@@ -16,6 +17,30 @@ export function kindSpot(steps: ProgramStep[], index: number): StepKindSpot | un
   const of = steps.filter((s) => s.kind === kind).length;
   const code = kind.toUpperCase();
   return { kind, nth, of, label: of > 1 ? `${code} ${nth}/${of}` : code };
+}
+
+/** Below this a speed holds the belt still: Rust's `engine::STILL_KMH`. */
+const MOVING_KMH = 0.05;
+
+/**
+ * Rust's `programs::program_left_s` (T-MINUS): `stepLeft` seconds of step
+ * `index` plus every later step. Null when the program repeats, a step to
+ * come has no minutes, a cool-down with a pulse target meets a heart rate
+ * reading, or a walking step follows a 0 km/h one (it waits for GO).
+ */
+export function programLeft(steps: ProgramStep[], repeat: number | null, index: number, stepLeft: number | null, pulseReading = false): number | null {
+  if (repeat != null || stepLeft == null) return null;
+  let left = stepLeft;
+  for (let i = index; i < steps.length; i++) {
+    const st = steps[i];
+    if (st.pulse_end && pulseReading) return null;
+    if (i > index) {
+      if (steps[i - 1].speed_kmh < MOVING_KMH && st.speed_kmh >= MOVING_KMH) return null;
+      if (st.duration_minutes == null) return null;
+      left += st.duration_minutes * 60;
+    }
+  }
+  return left;
 }
 
 /** What Rust reports when a program starts. */
@@ -36,6 +61,7 @@ export function startProgram(p: Program): ActiveProgram {
     kind: kindSpot(p.steps, 0),
     steps: structuredClone(p.steps),
     repeat_every_minutes: p.repeat_every_minutes,
+    program_seconds_remaining: programLeft(p.steps, p.repeat_every_minutes, 0, first.duration_minutes != null ? first.duration_minutes * 60 : null),
   };
 }
 
@@ -62,6 +88,7 @@ const PROGRAM_SCENARIOS: Record<string, Partial<ActiveProgram>> = {
       { duration_minutes: 5, speed_kmh: 3, incline_pct: 5 },
     ],
     repeat_every_minutes: null,
+    program_seconds_remaining: 420,
   },
   still: { paused: true, wait: "belt_still" },
   resting: { phase: "resting", seconds_remaining: 1294 },
@@ -74,7 +101,15 @@ function intervalRound(): ActiveProgram | null {
   if (!p) return null;
   const index = 5;
   const step = p.steps[index];
-  return { ...startProgram(p), step_index: index, seconds_remaining: 128, speed_kmh: step.speed_kmh, incline_pct: step.incline_pct, kind: kindSpot(p.steps, index) };
+  return {
+    ...startProgram(p),
+    step_index: index,
+    seconds_remaining: 128,
+    speed_kmh: step.speed_kmh,
+    incline_pct: step.incline_pct,
+    kind: kindSpot(p.steps, index),
+    program_seconds_remaining: programLeft(p.steps, p.repeat_every_minutes, index, 128),
+  };
 }
 
 export const programs: Scenario = {

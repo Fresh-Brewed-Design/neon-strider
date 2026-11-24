@@ -2,7 +2,7 @@ import { ChartNoAxesColumn, Pause, Play, SkipForward, Square } from "lucide-reac
 import { useAppSnapshot } from "../../state/useAppState";
 import { GhostButton, Label, Panel } from "../ui";
 import { cx, send } from "../util";
-import { describeActive, waitHeadline, waitReason } from "./format";
+import { describeActive, describeTimeLeft, waitHeadline, waitReason } from "./format";
 
 /** The Live page's STEP_MAP switch: whether the step map shows in place of the stats. */
 export interface StepMapToggle {
@@ -20,6 +20,7 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
   if (!a) return null;
   // Waiting for GO: the next step would start a still belt, so nothing moves until GO.
   const wait = a.wait;
+  const timeLeft = describeTimeLeft(a);
 
   return (
     <Panel
@@ -88,6 +89,11 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
       </div>
       <div className="min-w-0 basis-full">
         <div className="font-mono text-xs text-white/60">{describeActive(a)}</div>
+        {timeLeft && (
+          <div className="font-mono text-xs text-neon-yellow/70" data-testid="program-time-left">
+            {timeLeft}
+          </div>
+        )}
         {wait && <div className="font-mono text-xs text-white/70">{waitReason(wait)}</div>}
       </div>
     </Panel>

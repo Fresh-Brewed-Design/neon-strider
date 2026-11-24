@@ -111,6 +111,8 @@ export const snapshot: AppSnapshot = {
     kind: { kind: "walk", nth: 1, of: 1, label: "WALK" },
     steps: [{ duration_minutes: 5, speed_kmh: 3, incline_pct: 5, kind: "walk" }],
     repeat_every_minutes: 30,
+    // Workday repeats, so it has no end to count to (T-MINUS).
+    program_seconds_remaining: null,
   },
   fit_to_deck: [],
   fit_to_time: [],
