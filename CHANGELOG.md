@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.69.0 (2026-11-24)
+
+### New
+
+- A running program with a fixed length shows T-MINUS, the time left in the whole program and the clock time it ends, on the Live page and the HUD.
+
 ## 1.68.0 (2026-11-24)
 
 ### New

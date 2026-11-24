@@ -1,1 +1,0 @@
-- A running program with a fixed length shows T-MINUS, the time left in the whole program and the clock time it ends, on the Live page and the HUD.
