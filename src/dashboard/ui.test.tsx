@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { OptionPicker } from "./ui";
+import { Codename, OptionPicker } from "./ui";
 
 const OPTIONS = [
   { value: "a", label: "Alpha" },
@@ -150,5 +150,14 @@ describe("OptionPicker", () => {
     expect(radio("Alpha")).toHaveAttribute("aria-checked", "true");
     expect(radio("Alpha")).toHaveAttribute("aria-disabled", "true");
     expect(radio("Alpha")).not.toBeDisabled();
+  });
+});
+
+describe("Codename", () => {
+  it("offers a break after each underscore and keeps the text", () => {
+    const { container } = render(<Codename text="LIFETIME_ODOMETER" />);
+    expect(container.textContent).toBe("LIFETIME_ODOMETER");
+    expect(container.querySelectorAll("wbr")).toHaveLength(1);
+    expect(container.querySelector("wbr")?.previousSibling?.textContent).toBe("_");
   });
 });

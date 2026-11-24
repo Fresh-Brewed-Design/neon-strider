@@ -1,4 +1,3 @@
-import { Fragment } from "react";
 import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
 import {
   dispatch,
@@ -15,23 +14,8 @@ import { useAppSnapshot } from "../../state/useAppState";
 import { MINIFY_KEYS, minifyKeyText } from "../../hud/minifyHotkey";
 import { MODULE_WIDGETS, STAT_WIDGETS, widgetName } from "../../widgets/registry";
 import { Toggle } from "../system/fields";
-import { GhostButton, Hint, Label, OptionPicker, Page, Panel, Waiting } from "../ui";
+import { Codename, GhostButton, Hint, Label, OptionPicker, Page, Panel, Waiting } from "../ui";
 import { cx, send } from "../util";
-
-/** A codename that may break after its underscores when its row is narrow (a large Windows text size). */
-function Codename({ text }: { text: string }) {
-  const parts = text.split("_");
-  return parts.map((part, i) => (
-    <Fragment key={i}>
-      {part}
-      {i < parts.length - 1 && (
-        <>
-          _<wbr />
-        </>
-      )}
-    </Fragment>
-  ));
-}
 
 const CORNERS: { anchor: HudAnchor; label: string; className: string }[] = [
   { anchor: "top_left", label: "Top left", className: "left-2 top-2" },

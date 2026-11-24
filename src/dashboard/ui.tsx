@@ -1,6 +1,6 @@
 // The dashboard's shared building blocks: page frame, panel, label, buttons and the option picker.
 
-import { useRef, type ButtonHTMLAttributes, type HTMLAttributes, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useRef, type ButtonHTMLAttributes, type HTMLAttributes, type KeyboardEvent, type ReactNode } from "react";
 import { cx, type Tone } from "./util";
 
 const TONE_BUTTON: Record<Tone, string> = {
@@ -51,6 +51,21 @@ export function Label({ children, className }: { children: ReactNode; className?
       {children}
     </span>
   );
+}
+
+/** A codename that may break after its underscores when its row is narrow (a large Windows text size). */
+export function Codename({ text }: { text: string }) {
+  const parts = text.split("_");
+  return parts.map((part, i) => (
+    <Fragment key={i}>
+      {part}
+      {i < parts.length - 1 && (
+        <>
+          _<wbr />
+        </>
+      )}
+    </Fragment>
+  ));
 }
 
 /** Small grey explanation under or beside a control. */
