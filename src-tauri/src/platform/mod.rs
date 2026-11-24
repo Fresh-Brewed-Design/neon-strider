@@ -317,7 +317,7 @@ pub struct PeripheralBeacon {
 
 impl PeripheralBeacon {
     #[cfg_attr(
-        not(any(windows, test)),
+        not(windows),
         expect(dead_code, reason = "only Windows serves beacons so far (#33)")
     )]
     /// Bytes on air: the flags Windows adds (3) plus this section's length,
