@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.64.0 (2026-11-24)
+
+### New
+
+- Run any program at a length you pick, for example 25 min before a meeting: choose the length beside Run on the Programs page. The first choice runs the program as saved.
+- WARM_UP and COOL_DOWN keep their minutes, and the steps between them stretch or shrink together to fill the rest. A COOL_DOWN that ends on heart rate still walks on until your pulse is down.
+- A program that repeats runs once at the length you pick. A program with no end walks for that length.
+- The saved program stays as it is, and the belt still starts only when you press Run.
+- Each program offers lengths from 5 to 180 min. A program with several steps between WARM_UP and COOL_DOWN runs from a third to three times their minutes, with every step at least 1 min.
+
+## 1.63.0 (2026-11-24)
+
+### Changed
+
+- Arrow keys now move between options in pick-one lists: the HUD page's display, idle and minify key lists, the History time frame, and the choice rows in System and the program editor. Home and End jump to the first and last option, and Tab stops on each list once.
+
+### Fixed
+
+- The dashboard and HUD stay responsive while the database is slow: saving and loading walks no longer holds up the treadmill link.
+- Smoother dashboard and HUD, with less CPU used while walking: settings, programs and other rarely changing parts are only sent to the windows when they change, and a hidden window gets nothing until it shows.
+
+## 1.62.0 (2026-11-24)
+
+### Changed
+
+- History rows keep the Strava upload and delete icons. Save for Strava, Preview TCX and ECHO are now text buttons in the expanded row, and every button has a matching label and tooltip.
+- Bigger buttons and clearer text for a walking desk. The Live page's speed and incline presets are taller, the HUD's VEL and TILT buttons are 36 px, and small text is 12 px in a brighter grey.
+
+### Fixed
+
+- The save every few seconds during a walk no longer rereads all its heart rate readings, and a walk opened in History loads its samples without sorting them.
+
+## 1.61.1 (2026-11-24)
+
+### Fixed
+
+- The dashboard and HUD redraw only the parts that changed while you walk, so the app uses less of the PC.
+
 ## 1.61.0 (2026-11-23)
 
 ### New

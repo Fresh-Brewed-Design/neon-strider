@@ -114,7 +114,7 @@ function MuteChoice({ strava }: { strava: StravaSnapshot }) {
         <Hint>{hint}</Hint>
         {strava.mute_mode === "short" && (
           <label className="flex shrink-0 items-center gap-2">
-            <span className="font-mono text-[11px] text-white/60">Under</span>
+            <span className="font-mono text-xs text-white/60">Under</span>
             <input
               type="number"
               min={SETTING_LIMITS.strava_mute_minutes.min}
@@ -125,7 +125,7 @@ function MuteChoice({ strava }: { strava: StravaSnapshot }) {
               onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
               className={cx(INPUT_CLASS, "w-16")}
             />
-            <span className="font-mono text-[11px] text-white/60">min</span>
+            <span className="font-mono text-xs text-white/60">min</span>
           </label>
         )}
       </div>

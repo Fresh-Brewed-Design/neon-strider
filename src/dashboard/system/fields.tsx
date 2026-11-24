@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
-import { Hint, Label, Panel } from "../ui";
+import { Hint, Label, OptionPicker, Panel } from "../ui";
 import { cx, type Tone } from "../util";
 
 const ACCENT: Record<Tone, string> = {
@@ -47,7 +47,7 @@ export function Section({
           </h2>
           {status}
         </div>
-        {description && <p className="mt-1 font-mono text-xs leading-relaxed text-white/50">{description}</p>}
+        {description && <p className="mt-1 font-mono text-xs leading-relaxed text-white/60">{description}</p>}
         <div className="mt-4 flex flex-col gap-4">{children}</div>
       </Panel>
     </section>
@@ -125,26 +125,19 @@ export function ChoiceGroup<T extends string>({
   tone: "magenta" | "green";
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-2">
-      {options.map((o) => {
-        const active = o.value === value;
-        return (
-          <button
-            key={o.value}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            onClick={() => onChange(o.value)}
-            className={cx(
-              "rounded border px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.12em] transition-colors",
-              active ? CHOICE_ON[tone] : CHOICE_OFF[tone],
-            )}
-          >
-            {o.label}
-          </button>
-        );
-      })}
-    </div>
+    <OptionPicker
+      label={label}
+      options={options}
+      value={value}
+      onChange={onChange}
+      className="flex flex-wrap gap-2"
+      optionClassName={(active) =>
+        cx(
+          "rounded border px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.12em] transition-colors",
+          active ? CHOICE_ON[tone] : CHOICE_OFF[tone],
+        )
+      }
+    />
   );
 }
 
@@ -284,7 +277,7 @@ export function NumberField({
           }}
           className={cx(INPUT_CLASS, "w-24")}
         />
-        {unit && <span className="font-mono text-[11px] text-white/45">{unit}</span>}
+        {unit && <span className="font-mono text-xs text-white/60">{unit}</span>}
       </div>
       <ActionStatus pending={action.pending} error={action.error} className="mt-1" />
       {hint && <Hint className="mt-1">{hint}</Hint>}

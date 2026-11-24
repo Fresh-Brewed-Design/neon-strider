@@ -68,7 +68,7 @@ describe("History beyond the listed months", () => {
   it("lists older months on demand, with the result under the button", async () => {
     backend(() => ({ sessions: OLD, from_ms: OLD_FROM }));
     show();
-    fireEvent.click(await screen.findByRole("button", { name: "All" }));
+    fireEvent.click(await screen.findByRole("radio", { name: "All" }));
     fireEvent.click(await screen.findByRole("button", { name: "Load older walks" }));
     const older = screen.getByTestId("history-older");
     const month = new Date(OLD_FROM).toLocaleDateString([], { month: "long", year: "numeric" });
@@ -83,7 +83,7 @@ describe("History beyond the listed months", () => {
   it("says so when no older walk is saved", async () => {
     backend(() => ({ sessions: [], from_ms: null }));
     show();
-    fireEvent.click(await screen.findByRole("button", { name: "All" }));
+    fireEvent.click(await screen.findByRole("radio", { name: "All" }));
     fireEvent.click(await screen.findByRole("button", { name: "Load older walks" }));
     expect(await screen.findByText("No older walks saved.")).toBeInTheDocument();
   });
@@ -96,7 +96,7 @@ describe("History beyond the listed months", () => {
     unmount();
     backend(() => ({ sessions: [], from_ms: null }), RECENT[0].start_time);
     show();
-    fireEvent.click(await screen.findByRole("button", { name: "All" }));
+    fireEvent.click(await screen.findByRole("radio", { name: "All" }));
     await screen.findByText("1200");
     expect(screen.queryByTestId("history-older")).toBeNull();
   });

@@ -147,7 +147,7 @@ export function DashboardApp() {
             title={pinned ? "Close the dashboard when it loses focus" : "Keep the dashboard open when it loses focus"}
             className={cx(
               "flex w-full items-center gap-2 rounded px-2.5 py-2 text-left transition-colors hover:bg-white/5",
-              pinned ? "text-neon-cyan" : "text-white/50",
+              pinned ? "text-neon-cyan" : "text-white/60",
             )}
           >
             {pinned ? <Pin size={14} /> : <PinOff size={14} />}

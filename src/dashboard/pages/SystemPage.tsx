@@ -46,7 +46,7 @@ export function SectionIndex() {
           key={s.id}
           type="button"
           onClick={() => document.getElementById(s.id)?.scrollIntoView({ behavior: "smooth", block: "start" })}
-          className="flex shrink-0 items-center gap-1.5 rounded px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.12em] text-white/50 transition-colors hover:bg-white/5 hover:text-neon-cyan"
+          className="flex shrink-0 items-center gap-1.5 rounded px-2.5 py-1 font-mono text-xs font-bold uppercase tracking-[0.12em] text-white/60 transition-colors hover:bg-white/5 hover:text-neon-cyan"
         >
           {s.label}
           {s.id === "sys-updates" && updateDot && <UpdateDot />}

@@ -989,6 +989,17 @@ fn migration_15_session_program(tx: &Transaction) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// Migration 16: a `(session_id, timestamp)` index on samples (issue #277).
+/// Reading a walk back orders its samples by time, so the index hands them over
+/// in order instead of sorting them. It also serves every lookup by session
+/// alone, so the single-column index it replaces is dropped.
+fn migration_16_samples_session_time(tx: &Transaction) -> rusqlite::Result<()> {
+    tx.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_samples_session_time ON samples(session_id, timestamp);
+         DROP INDEX IF EXISTS idx_samples_session;",
+    )
+}
+
 type Migration = fn(&Transaction) -> rusqlite::Result<()>;
 
 /// Append new migrations at the end; never reorder or edit a shipped one.
@@ -1009,6 +1020,7 @@ const MIGRATIONS: &[Migration] = &[
     migration_13_key_presses,
     migration_14_today_slots,
     migration_15_session_program,
+    migration_16_samples_session_time,
 ];
 
 fn schema_version(conn: &Connection) -> rusqlite::Result<u32> {
@@ -1478,8 +1490,9 @@ pub struct Session {
     pub last_hardware_time: i64,
     pub hardware_time_offset: i64,
     /// Average heart rate over the samples that have one, in beats per
-    /// minute; `None` for a walk without a sensor. Rust works it out from the
-    /// samples on each save, so a value sent in an update is ignored.
+    /// minute; `None` for a walk without a sensor. The engine keeps it as a
+    /// running [`HeartRateTotals`] over the walk's samples and writes it on
+    /// each save.
     #[serde(default)]
     pub avg_heart_rate: Option<u16>,
     /// Highest heart rate in the samples; `None` without any.
@@ -1526,15 +1539,33 @@ pub fn db_create_session(app: &tauri::AppHandle) -> Result<i64, String> {
     })
 }
 
+/// Delete a session row created for a walk that never used it (the belt
+/// stopped, or the link changed, while the row was written). A row with
+/// samples is kept: it is a walk.
+pub fn db_discard_empty_session(app: &tauri::AppHandle, id: i64) -> Result<(), String> {
+    with_conn(app, |conn| discard_empty_session(conn, id).map(|_| ()))
+}
+
+/// `db_discard_empty_session` on a connection; true when the row went.
+fn discard_empty_session(conn: &Connection, id: i64) -> rusqlite::Result<bool> {
+    let n = conn.execute(
+        "DELETE FROM sessions WHERE id = ?1
+         AND NOT EXISTS (SELECT 1 FROM samples WHERE session_id = ?1)",
+        params![id],
+    )?;
+    Ok(n > 0)
+}
+
 /// Write a session's running totals; `end_time` becomes now.
 pub fn db_update_session(app: &tauri::AppHandle, id: i64, data: Session) -> Result<(), String> {
     let now = crate::util::now_ms();
     with_conn(app, |conn| update_session(conn, id, &data, now))
 }
 
-/// `db_update_session` on a connection. The heart rate average and maximum
-/// come from the session's samples, so a resumed session or a reconnect
-/// never loses the earlier part of the walk.
+/// `db_update_session` on a connection. The heart rate average and maximum are
+/// written as sent: the engine keeps them running over the walk's samples
+/// ([`HeartRateTotals`], seeded from the saved samples when a walk is resumed),
+/// so a flush never rescans every sample.
 fn update_session(conn: &Connection, id: i64, data: &Session, now: i64) -> rusqlite::Result<()> {
     conn.execute(
         "UPDATE sessions SET
@@ -1552,9 +1583,8 @@ fn update_session(conn: &Connection, id: i64, data: &Session, now: i64) -> rusql
                 neural_ticks = ?12,
                 last_hardware_time = ?13,
                 hardware_time_offset = ?14,
-                avg_heart_rate = (SELECT CAST(ROUND(AVG(heart_rate)) AS INTEGER)
-                                  FROM samples WHERE session_id = ?15),
-                max_heart_rate = (SELECT MAX(heart_rate) FROM samples WHERE session_id = ?15),
+                avg_heart_rate = ?17,
+                max_heart_rate = ?18,
                 program_name = COALESCE(?16, program_name)
              WHERE id = ?15",
         params![
@@ -1573,10 +1603,64 @@ fn update_session(conn: &Connection, id: i64, data: &Session, now: i64) -> rusql
             data.last_hardware_time,
             data.hardware_time_offset,
             id,
-            data.program_name
+            data.program_name,
+            data.avg_heart_rate,
+            data.max_heart_rate
         ],
     )
     .map(|_| ())
+}
+
+/// Running heart rate over a walk's samples: the sum and count of the readings
+/// and the highest one. Gives exactly what `ROUND(AVG(heart_rate))` and
+/// `MAX(heart_rate)` over the samples would, without reading them all again.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct HeartRateTotals {
+    pub sum: u64,
+    pub count: u64,
+    pub max: Option<u16>,
+}
+
+impl HeartRateTotals {
+    /// Fold in one sample's reading; a sample without one changes nothing,
+    /// as a NULL is skipped by AVG and MAX.
+    pub fn add(&mut self, bpm: Option<u16>) {
+        let Some(bpm) = bpm else { return };
+        self.sum += bpm as u64;
+        self.count += 1;
+        self.max = Some(self.max.map_or(bpm, |m| m.max(bpm)));
+    }
+
+    /// The average, rounded half away from zero like SQLite's ROUND; `None`
+    /// without any reading.
+    pub fn avg(&self) -> Option<u16> {
+        (self.count > 0).then(|| (self.sum as f64 / self.count as f64).round() as u16)
+    }
+}
+
+/// The heart rate totals of a session's saved samples, read once when a walk
+/// is resumed so the running values carry on from them.
+pub fn db_heart_rate_totals(
+    app: &tauri::AppHandle,
+    session_id: i64,
+) -> Result<HeartRateTotals, String> {
+    with_conn(app, |conn| heart_rate_totals(conn, session_id))
+}
+
+/// `db_heart_rate_totals` on a connection.
+fn heart_rate_totals(conn: &Connection, session_id: i64) -> rusqlite::Result<HeartRateTotals> {
+    conn.query_row(
+        "SELECT COALESCE(SUM(heart_rate), 0), COUNT(heart_rate), MAX(heart_rate)
+         FROM samples WHERE session_id = ?1",
+        params![session_id],
+        |r| {
+            Ok(HeartRateTotals {
+                sum: r.get::<_, i64>(0)?.max(0) as u64,
+                count: r.get::<_, i64>(1)?.max(0) as u64,
+                max: r.get(2)?,
+            })
+        },
+    )
 }
 
 /// Append a sample to a session, stamped now.
@@ -1699,7 +1783,7 @@ pub fn db_sessions_by_ids(app: &tauri::AppHandle, ids: &[i64]) -> Result<Vec<Ses
 
 #[tauri::command]
 pub async fn get_samples(app: tauri::AppHandle, session_id: i64) -> Result<Vec<Sample>, String> {
-    db_get_samples(&app, session_id)
+    crate::util::blocking(move || db_get_samples(&app, session_id)).await
 }
 
 /// A session's samples, oldest first.
@@ -2395,6 +2479,25 @@ mod db_tests {
     }
 
     #[test]
+    fn an_unused_session_row_is_dropped_but_a_walk_is_kept() {
+        let conn = memory_db();
+        conn.execute_batch(
+            "INSERT INTO sessions (id, start_time, end_time) VALUES (1, 1000, 1000), (2, 1000, 1000);
+             INSERT INTO samples (session_id, timestamp, speed, incline) VALUES (2, 1500, 3.5, 0);",
+        )
+        .unwrap();
+        assert!(discard_empty_session(&conn, 1).unwrap());
+        assert!(!discard_empty_session(&conn, 2).unwrap(), "it has samples");
+        let left: Vec<i64> = conn
+            .prepare("SELECT id FROM sessions")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(left, vec![2]);
+    }
+    #[test]
     fn existing_database_is_backed_up_before_migrating_and_not_after() {
         let path = temp_db("premigrate");
         {
@@ -2499,9 +2602,11 @@ mod db_tests {
             assert!(tables.iter().any(|n| n == t), "missing table {}", t);
         }
         let indexes = names(conn, "index");
-        for i in ["idx_samples_session", "idx_sessions_start_time"] {
+        for i in ["idx_samples_session_time", "idx_sessions_start_time"] {
             assert!(indexes.iter().any(|n| n == i), "missing index {}", i);
         }
+        // Covered by the (session_id, timestamp) index.
+        assert!(!indexes.iter().any(|n| n == "idx_samples_session"));
     }
 
     #[test]
@@ -2715,11 +2820,30 @@ mod db_tests {
             neural_ticks: 0,
             last_hardware_time: 0,
             hardware_time_offset: 0,
-            // Ignored: the update works them out from the samples.
-            avg_heart_rate: Some(1),
-            max_heart_rate: Some(1),
+            avg_heart_rate: None,
+            max_heart_rate: None,
             program_name: None,
         }
+    }
+
+    /// A flush as the engine sends it: `walk_row` with the heart rate of the
+    /// running totals.
+    fn flushed_row(totals: &HeartRateTotals) -> Session {
+        let mut row = walk_row();
+        row.avg_heart_rate = totals.avg();
+        row.max_heart_rate = totals.max;
+        row
+    }
+
+    /// The flush query before #277, which rescanned the walk's samples.
+    fn old_flush_heart_rate(conn: &Connection, id: i64) -> (Option<u16>, Option<u16>) {
+        conn.query_row(
+            "SELECT (SELECT CAST(ROUND(AVG(heart_rate)) AS INTEGER) FROM samples WHERE session_id = ?1),
+                    (SELECT MAX(heart_rate) FROM samples WHERE session_id = ?1)",
+            params![id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap()
     }
 
     fn saved_session(conn: &Connection, id: i64) -> Session {
@@ -2738,6 +2862,7 @@ mod db_tests {
         conn.execute_batch("INSERT INTO sessions (id, start_time, end_time) VALUES (1, 0, 0);")
             .unwrap();
         // A dropped reading in the middle stays empty and doesn't pull the average down.
+        let mut totals = HeartRateTotals::default();
         for (t, bpm) in [
             (1000, Some(100)),
             (2000, None),
@@ -2745,6 +2870,7 @@ mod db_tests {
             (4000, Some(124)),
         ] {
             insert_sample(&conn, 1, &hr_sample(bpm), t).unwrap();
+            totals.add(bpm);
         }
         let back: Vec<Option<u16>> = samples_of(&conn, 1)
             .unwrap()
@@ -2753,7 +2879,7 @@ mod db_tests {
             .collect();
         assert_eq!(back, vec![Some(100), None, Some(111), Some(124)]);
 
-        update_session(&conn, 1, &walk_row(), 5000).unwrap();
+        update_session(&conn, 1, &flushed_row(&totals), 5000).unwrap();
         let row = saved_session(&conn, 1);
         // (100 + 111 + 124) / 3 = 111.67, rounded.
         assert_eq!(row.avg_heart_rate, Some(112));
@@ -2761,7 +2887,8 @@ mod db_tests {
 
         // A later flush folds in the newer seconds too.
         insert_sample(&conn, 1, &hr_sample(Some(130)), 6000).unwrap();
-        update_session(&conn, 1, &walk_row(), 7000).unwrap();
+        totals.add(Some(130));
+        update_session(&conn, 1, &flushed_row(&totals), 7000).unwrap();
         let row = saved_session(&conn, 1);
         assert_eq!(row.avg_heart_rate, Some(116));
         assert_eq!(row.max_heart_rate, Some(130));
@@ -2815,7 +2942,9 @@ mod db_tests {
             .unwrap();
         insert_sample(&conn, 1, &hr_sample(None), 1000).unwrap();
         insert_sample(&conn, 1, &hr_sample(None), 2000).unwrap();
-        update_session(&conn, 1, &walk_row(), 3000).unwrap();
+        let totals = heart_rate_totals(&conn, 1).unwrap();
+        assert_eq!(totals, HeartRateTotals::default());
+        update_session(&conn, 1, &flushed_row(&totals), 3000).unwrap();
         let row = saved_session(&conn, 1);
         assert_eq!((row.avg_heart_rate, row.max_heart_rate), (None, None));
         assert_eq!(row.duration_seconds, 4);
@@ -2823,6 +2952,143 @@ mod db_tests {
         let json = serde_json::to_value(&row).unwrap();
         assert!(json["avg_heart_rate"].is_null());
         assert!(json["max_heart_rate"].is_null());
+    }
+
+    #[test]
+    fn running_heart_rate_matches_the_old_flush_query_every_second() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&mut conn).unwrap();
+        conn.execute_batch("INSERT INTO sessions (id, start_time, end_time) VALUES (1, 0, 0);")
+            .unwrap();
+        // Drops, repeats, a new maximum late on and averages that land on .5
+        // (100, 101 -> 100.5), so rounding is checked as well.
+        let mut seed: u32 = 7;
+        let mut rates: Vec<Option<u16>> = vec![None, Some(100), Some(101), None, Some(60)];
+        for _ in 0..400 {
+            seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+            let r = (seed >> 16) % 160;
+            rates.push(if r < 15 { None } else { Some(40 + r as u16) });
+        }
+        rates.push(Some(220));
+        let mut totals = HeartRateTotals::default();
+        for (i, bpm) in rates.iter().enumerate() {
+            insert_sample(&conn, 1, &hr_sample(*bpm), 1000 * (i as i64 + 1)).unwrap();
+            totals.add(*bpm);
+            assert_eq!(
+                (totals.avg(), totals.max),
+                old_flush_heart_rate(&conn, 1),
+                "after sample {}",
+                i
+            );
+            // The resume seed reads back the same totals.
+            assert_eq!(heart_rate_totals(&conn, 1).unwrap(), totals);
+        }
+        update_session(&conn, 1, &flushed_row(&totals), 999_000).unwrap();
+        let row = saved_session(&conn, 1);
+        assert_eq!(
+            (row.avg_heart_rate, row.max_heart_rate),
+            old_flush_heart_rate(&conn, 1)
+        );
+    }
+
+    #[test]
+    fn a_resumed_walk_carries_its_heart_rate_on_from_the_saved_samples() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&mut conn).unwrap();
+        conn.execute_batch(
+            "INSERT INTO sessions (id, start_time, end_time) VALUES (1, 0, 0);
+             INSERT INTO sessions (id, start_time, end_time) VALUES (2, 0, 0);",
+        )
+        .unwrap();
+        // Another walk's samples stay out of this one's totals.
+        insert_sample(&conn, 2, &hr_sample(Some(190)), 500).unwrap();
+        for (t, bpm) in [(1000, Some(98)), (2000, Some(131)), (3000, None)] {
+            insert_sample(&conn, 1, &hr_sample(bpm), t).unwrap();
+        }
+        // The app restarts: the running totals are gone and seeded once.
+        let mut totals = heart_rate_totals(&conn, 1).unwrap();
+        assert_eq!(
+            totals,
+            HeartRateTotals {
+                sum: 229,
+                count: 2,
+                max: Some(131)
+            }
+        );
+        for (t, bpm) in [(4000, Some(105)), (5000, Some(120))] {
+            insert_sample(&conn, 1, &hr_sample(bpm), t).unwrap();
+            totals.add(bpm);
+        }
+        update_session(&conn, 1, &flushed_row(&totals), 6000).unwrap();
+        let row = saved_session(&conn, 1);
+        assert_eq!(
+            (row.avg_heart_rate, row.max_heart_rate),
+            old_flush_heart_rate(&conn, 1)
+        );
+        assert_eq!(
+            (row.avg_heart_rate, row.max_heart_rate),
+            (Some(114), Some(131))
+        );
+    }
+
+    #[test]
+    fn migration_16_swaps_the_samples_index_and_keeps_the_rows() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate_through(&mut conn, 15);
+        assert_eq!(version(&conn), 15);
+        conn.execute_batch(
+            "INSERT INTO sessions (id, start_time, end_time) VALUES (1, 0, 0);
+             INSERT INTO samples (session_id, timestamp, speed, incline, heart_rate) VALUES (1, 3000, 3.0, 0, 110);
+             INSERT INTO samples (session_id, timestamp, speed, incline, heart_rate) VALUES (1, 1000, 3.0, 0, 100);",
+        )
+        .unwrap();
+        assert!(names(&conn, "index")
+            .iter()
+            .any(|n| n == "idx_samples_session"));
+        assert_eq!(migrate(&mut conn).unwrap(), latest());
+        // Running it again (a half-applied file) changes nothing.
+        let tx = conn.transaction().unwrap();
+        migration_16_samples_session_time(&tx).unwrap();
+        tx.commit().unwrap();
+
+        let indexes = names(&conn, "index");
+        assert!(indexes.iter().any(|n| n == "idx_samples_session_time"));
+        assert!(!indexes.iter().any(|n| n == "idx_samples_session"));
+        let times: Vec<Option<i64>> = samples_of(&conn, 1)
+            .unwrap()
+            .iter()
+            .map(|s| s.timestamp)
+            .collect();
+        assert_eq!(times, vec![Some(1000), Some(3000)]);
+        assert_eq!(
+            heart_rate_totals(&conn, 1).unwrap(),
+            HeartRateTotals {
+                sum: 210,
+                count: 2,
+                max: Some(110)
+            }
+        );
+        // Reading a walk back walks the index in order: no sort step.
+        let plan: Vec<String> = conn
+            .prepare(
+                "EXPLAIN QUERY PLAN SELECT timestamp, speed FROM samples
+                 WHERE session_id = 1 ORDER BY timestamp ASC",
+            )
+            .unwrap()
+            .query_map([], |r| r.get::<_, String>(3))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert!(
+            plan.iter().any(|d| d.contains("idx_samples_session_time")),
+            "{:?}",
+            plan
+        );
+        assert!(
+            !plan.iter().any(|d| d.contains("TEMP B-TREE")),
+            "{:?}",
+            plan
+        );
     }
 
     /// The upload path (auto-sync and "Save for Strava" both read the walk
@@ -2851,7 +3117,8 @@ mod db_tests {
             sample.distance = i as f32;
             insert_sample(conn, 1, &sample, 1000 * (i as i64 + 1)).unwrap();
         }
-        update_session(conn, 1, &walk_row(), 10000).unwrap();
+        let totals = heart_rate_totals(conn, 1).unwrap();
+        update_session(conn, 1, &flushed_row(&totals), 10000).unwrap();
     }
 
     #[test]
@@ -3686,10 +3953,13 @@ mod db_tests {
         migrate(&mut conn).unwrap();
         assert_latest_schema(&conn);
         assert_rows_intact(&conn);
-        // The pre-existing index was reused, not duplicated.
-        let n = names(&conn, "index")
+        // The pre-existing single-column index gave way to the
+        // (session_id, timestamp) one.
+        let indexes = names(&conn, "index");
+        assert!(!indexes.iter().any(|n| n == "idx_samples_session"));
+        let n = indexes
             .iter()
-            .filter(|n| n.as_str() == "idx_samples_session")
+            .filter(|n| n.as_str() == "idx_samples_session_time")
             .count();
         assert_eq!(n, 1);
     }

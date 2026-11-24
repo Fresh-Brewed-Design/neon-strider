@@ -26,7 +26,7 @@ export function WhatsNewDialog() {
         <div className="flex shrink-0 items-center gap-3 border-b border-neon-cyan/20 bg-neon-cyan/5 p-4">
           <Sparkles className="shrink-0 text-neon-cyan" size={18} />
           <div className="min-w-0">
-            <div className="font-mono text-[11px] tracking-[0.25em] text-white/40">UPGRADE_COMPLETE // v{whatsNew.version}</div>
+            <div className="font-mono text-xs tracking-[0.25em] text-white/60">UPGRADE_COMPLETE // v{whatsNew.version}</div>
             <h2 id="whats-new-title" className="font-digital text-sm font-bold tracking-[0.12em] text-white">
               What&apos;s new in v{whatsNew.version}
             </h2>

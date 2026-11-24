@@ -155,7 +155,7 @@ export function Account({
           </GhostButton>
         )}
         {!strava.has_credentials && (
-          <span className="font-mono text-[11px] text-white/45">Save your credentials first.</span>
+          <span className="font-mono text-xs text-white/60">Save your credentials first.</span>
         )}
       </div>
       <ActionStatus

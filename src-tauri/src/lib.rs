@@ -326,9 +326,22 @@ async fn run_link_watchdog(app: &tauri::AppHandle) -> ! {
     loop {
         let mut delay = link::RETRY_EVERY;
         if !bluetooth::is_bluetooth_connected().await {
-            let config = persistence::load_config(app);
-            link::set_saved_device(config.last_device_id.is_some());
-            if let Some(id) = config.last_device_id {
+            // Off the async threads: the watchdog shares them with the belt.
+            let app_c = app.clone();
+            let saved =
+                util::blocking(move || Ok(persistence::load_config(&app_c).last_device_id)).await;
+            let last_device_id = match saved {
+                Ok(id) => {
+                    link::set_saved_device(id.is_some());
+                    id
+                }
+                // Tried again on the next round; the saved state shown stays.
+                Err(e) => {
+                    log::warn!("Saved treadmill not read: {}", e);
+                    None
+                }
+            };
+            if let Some(id) = last_device_id {
                 link::count_retry(&id);
                 let linked = bluetooth::connect_bluetooth_device(app.clone(), id)
                     .await

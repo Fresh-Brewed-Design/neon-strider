@@ -2,8 +2,10 @@
 // query and event, and `dispatch` for every command.
 
 import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { listen, type EventTarget, type UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { AppSnapshot } from "./bindings/AppSnapshot";
+import type { COLD_KEYS } from "./bindings/SNAPSHOT_PARTS";
 import type { Command } from "./bindings/Command";
 
 // One line per generated type, sorted by name: add a new one in its place.
@@ -33,6 +35,7 @@ export type { EchoProgram } from "./bindings/EchoProgram";
 export type { WallClock } from "./bindings/WallClock";
 export type { EyeBreakSnapshot } from "./bindings/EyeBreakSnapshot";
 export type { FitToDeckOffer } from "./bindings/FitToDeckOffer";
+export type { FitToTimeOption } from "./bindings/FitToTimeOption";
 export type { GuideCheck } from "./bindings/GuideCheck";
 export type { GuideMark } from "./bindings/GuideMark";
 export type { GuideSpeed } from "./bindings/GuideSpeed";
@@ -115,6 +118,17 @@ export { SETTING_LIMITS } from "./bindings/SETTING_LIMITS";
 export { DEFAULT_APP_CONFIG } from "./bindings/DEFAULT_APP_CONFIG";
 /** Every Strava template field with what it shows and its sample text, written by `cargo test`. */
 export { TEMPLATE_FIELDS } from "./bindings/TEMPLATE_FIELDS";
+/** The snapshot fields an `app-state` frame carries only when `full`, written by `cargo test`. */
+export { COLD_KEYS } from "./bindings/SNAPSHOT_PARTS";
+
+/** A snapshot field that changes rarely (programs, Strava, HUD config, ...). */
+export type ColdKey = (typeof COLD_KEYS)[number];
+
+/**
+ * One `app-state` event (`snapshot/frame.rs`): the whole snapshot when
+ * `full`, otherwise every field but the cold ones, which the window keeps.
+ */
+export type AppStateFrame = ({ full: true } & AppSnapshot) | ({ full: false } & Omit<AppSnapshot, ColdKey>);
 
 export function getSnapshot(): Promise<AppSnapshot> {
   return invoke<AppSnapshot>("get_snapshot");
@@ -124,6 +138,20 @@ export function dispatch(command: Command): Promise<void> {
   return invoke<void>("dispatch", { command });
 }
 
-export function onAppState(cb: (snapshot: AppSnapshot) => void): Promise<UnlistenFn> {
-  return listen<AppSnapshot>("app-state", (event) => cb(event.payload));
+/**
+ * This window as an event target: Rust sends each window its own frames and
+ * none to a hidden one. A page with no Tauri window (the dev previews) hears
+ * every frame.
+ */
+function thisWindow(): EventTarget | undefined {
+  try {
+    return { kind: "WebviewWindow", label: getCurrentWindow().label };
+  } catch {
+    return undefined;
+  }
+}
+
+export function onAppState(cb: (frame: AppStateFrame) => void): Promise<UnlistenFn> {
+  const target = thisWindow();
+  return listen<AppStateFrame>("app-state", (event) => cb(event.payload), target ? { target } : undefined);
 }

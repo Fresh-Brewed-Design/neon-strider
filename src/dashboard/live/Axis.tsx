@@ -92,7 +92,7 @@ export function Axis({
     <Panel className="flex flex-col gap-2 p-3">
       <div className="flex items-center justify-between">
         <Label>{title}</Label>
-        <span className="flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.15em] text-white/45">
+        <span className="flex items-center gap-1 font-mono text-xs uppercase tracking-[0.15em] text-white/60">
           target <span className={cx("font-digital text-xs", TONE_TEXT[tone])}>{value.toFixed(1)}</span> {unit}
           <PinToggle widget={pin.widget} pinned={pin.pinned} />
         </span>
@@ -107,7 +107,7 @@ export function Axis({
             color={hex}
             className={actual >= 9.95 ? "h-9 max-w-full" : "h-12 max-w-full"}
           />
-          <span className="pb-1 font-mono text-xs text-white/40">{unit}</span>
+          <span className="pb-1 font-mono text-xs text-white/60">{unit}</span>
         </div>
         <Nudge label={`${title} up`} disabled={disabled} onClick={() => onNudge(true)} icon={<Plus size={16} />} />
       </div>
@@ -127,12 +127,12 @@ export function Axis({
               disabled={disabled}
               onClick={() => set(p)}
               className={cx(
-                "flex-1 rounded border py-1 font-mono text-[11px] font-bold transition-colors disabled:opacity-30",
+                "flex-1 min-h-8 rounded border py-1 font-mono text-xs font-bold transition-colors disabled:opacity-30",
                 Math.abs(value - p) < step / 2 + 1e-6
                   ? tone === "cyan"
                     ? "border-neon-cyan/60 bg-neon-cyan/15 text-neon-cyan"
                     : "border-neon-magenta/60 bg-neon-magenta/15 text-neon-magenta"
-                  : "border-white/10 text-white/45 hover:border-white/25 hover:text-white",
+                  : "border-white/10 text-white/60 hover:border-white/25 hover:text-white",
               )}
             >
               {formatPreset(p)}

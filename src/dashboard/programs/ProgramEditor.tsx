@@ -137,7 +137,7 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
         {d.steps.map((s, i) => (
           <div key={i} className="flex flex-col gap-1.5">
           <div className="grid grid-cols-[2rem_7rem_1fr_1fr_1fr_2rem_2rem] items-center gap-2">
-            <span className="font-digital text-xs text-white/40">{i + 1}</span>
+            <span className="font-digital text-xs text-white/60">{i + 1}</span>
             <select
               className={cx(input, "px-1")}
               aria-label={`Step ${i + 1} kind`}
@@ -354,7 +354,7 @@ function PulseRow({
           onChange={(e) => onChange({ pulseTarget: e.target.value })}
         />
         <span className={cx(!step.pulse && "opacity-40")}>{unit === "pct" ? "% of max" : "bpm"}</span>
-        {step.pulse && other && <span className="text-white/40">{other}</span>}
+        {step.pulse && other && <span className="text-white/60">{other}</span>}
       </div>
     </div>
   );
@@ -413,7 +413,7 @@ function ZoneRow({
           onChange={(e) => onChange({ zoneHigh: e.target.value })}
         />
         <span>{unitText}</span>
-        {other && <span className="text-white/40">{other}</span>}
+        {other && <span className="text-white/60">{other}</span>}
         {inclineTrim && (
           <span className="flex items-center gap-2">
             <span>trims</span>

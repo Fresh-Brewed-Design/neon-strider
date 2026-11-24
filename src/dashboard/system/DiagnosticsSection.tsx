@@ -93,7 +93,7 @@ export function DiagnosticsSection() {
           {devTools && (
             <div>
               <Label className="mb-1 block">Command cycler</Label>
-              <p className="mb-3 font-mono text-[11px] leading-relaxed text-white/50">
+              <p className="mb-3 font-mono text-xs leading-relaxed text-white/60">
                 Raw commands can start the belt, so step off the treadmill first.
               </p>
               <CommandCycler onSend={sendRaw} />
