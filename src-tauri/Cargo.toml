@@ -60,9 +60,11 @@ windows = { version = "0.61", features = ["Win32_UI_Input_KeyboardAndMouse", "Wi
 # there directly (a few plain C calls).
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSGeometry", "NSThread"] }
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "block2", "NSEvent", "NSGraphics", "NSResponder", "NSWindow"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSGeometry", "NSString", "NSThread"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "block2", "libc", "NSEvent", "NSGraphics", "NSResponder", "NSRunningApplication", "NSWindow"] }
 block2 = "0.6"
+# Open at login as a Login Item (SMAppService, macOS 13+).
+smappservice-rs = "0.1"
 
 [profile.dev]
 incremental = true

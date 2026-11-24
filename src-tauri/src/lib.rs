@@ -42,6 +42,7 @@ pub mod profile_sweep;
 pub mod programs;
 pub mod protocol;
 pub mod secrets;
+pub mod shortcuts;
 pub mod speed_drift;
 // The simulated deck: tests, and the dev builds' "simulated treadmill"
 // choice (`sim_link`). Never in release builds.
@@ -134,24 +135,18 @@ fn dashboard_just_closed() -> bool {
         .is_some_and(|t| t.elapsed() < TRAY_CLICK_DEBOUNCE)
 }
 
+/// Whether the app opens at login (`platform`: the autostart entry on Windows,
+/// a Login Item on macOS).
 #[cfg(not(debug_assertions))]
 #[tauri::command]
 fn get_launch_at_login(app: tauri::AppHandle) -> Result<bool, String> {
-    use tauri_plugin_autostart::ManagerExt;
-    app.autolaunch().is_enabled().map_err(|e| e.to_string())
+    platform::launch_at_login(&app)
 }
 
 #[cfg(not(debug_assertions))]
 #[tauri::command]
 fn set_launch_at_login(app: tauri::AppHandle, enabled: bool) -> Result<bool, String> {
-    use tauri_plugin_autostart::ManagerExt;
-    let launcher = app.autolaunch();
-    if enabled {
-        launcher.enable().map_err(|e| e.to_string())?;
-    } else {
-        launcher.disable().map_err(|e| e.to_string())?;
-    }
-    launcher.is_enabled().map_err(|e| e.to_string())
+    platform::set_launch_at_login(&app, enabled)
 }
 
 /// Dev builds never launch at login: the autostart entry is named after the
@@ -300,6 +295,7 @@ async fn start_backend(app: tauri::AppHandle) {
     .await;
 
     snapshot::init(&app);
+    shortcuts::init(&app);
     strava::init(&app);
     programs::init(&app).await;
     snapshot::spawn_emitter(app.clone());

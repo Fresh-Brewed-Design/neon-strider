@@ -7,17 +7,20 @@
 //! - The HUD's click-through follows AppKit mouse monitors (event-driven, no
 //!   permission needed for mouse events), and the idle time is the session's
 //!   own (`CGEventSourceSecondsSinceLastEventType`).
-//! - The shortcuts are Carbon hot keys (⌃⌥ plus a key, `macos_keys.rs`),
-//!   which need no permission and take the key press from the app in front.
+//! - The shortcuts are Carbon hot keys (⌃⌥ plus a key by default, changed in
+//!   System -> Shortcuts; `keys.rs`), which need no permission and take the
+//!   key press from the app in front.
 //! - Session lock and display sleep are read from CoreGraphics twice a second.
 //! - Only the typing count for Neural flow needs a permission (Input
 //!   Monitoring). It is asked for the first time Neural flow wants the count,
 //!   with the system's own prompt; until it is granted nothing is counted.
 
-use super::macos_keys::{self, HOT_KEYS};
+use super::{keys, macos_keys};
 use crate::hooks::Shortcut;
+use crate::shortcuts::{Bindings, KeyCombo};
 use objc2::rc::Weak;
 use objc2_app_kit::{NSEvent, NSEventMask, NSWindow, NSWindowCollectionBehavior};
+use smappservice_rs::{AppService, ServiceStatus, ServiceType};
 use std::cell::RefCell;
 use std::ffi::c_void;
 use std::ptr::NonNull;
@@ -28,8 +31,7 @@ use std::time::Duration;
 pub const DESKTOP_IN_POINTS: bool = true;
 pub const MENU_BAR_APP: bool = true;
 pub const TRAY_ICON_TEMPLATE: bool = true;
-pub const MICROPHONE: bool = false;
-pub const MINIFY_KEY_CHOICE: bool = false;
+pub const MICROPHONE: bool = true;
 
 pub const WORDS: super::Words = super::Words {
     computer: "Mac",
@@ -124,6 +126,15 @@ mod ffi {
         pub fn CFRunLoopRun();
     }
 
+    /// `kIOHIDRequestTypeListenEvent`.
+    pub const HID_REQUEST_LISTEN_EVENT: u32 = 1;
+
+    #[link(name = "IOKit", kind = "framework")]
+    extern "C" {
+        /// Returns `kIOHIDAccessTypeGranted` (0), `Denied` (1) or `Unknown` (2).
+        pub fn IOHIDCheckAccess(request: u32) -> u32;
+    }
+
     #[repr(C)]
     pub struct EventTypeSpec {
         pub event_class: u32,
@@ -160,6 +171,7 @@ mod ffi {
             user_data: *mut c_void,
             out_ref: *mut *mut c_void,
         ) -> i32;
+        pub fn UnregisterEventHotKey(hot_key: *mut c_void) -> i32;
         pub fn RegisterEventHotKey(
             key_code: u32,
             modifiers: u32,
@@ -191,26 +203,27 @@ pub fn app_started(app: &tauri::AppHandle) {
     if let Err(e) = app.set_activation_policy(tauri::ActivationPolicy::Accessory) {
         log::warn!("Could not hide the Dock icon: {}", e);
     }
-    register_hot_keys();
+    install_hot_key_handler();
 }
 
 // ---------------------------------------------------------------------------
 // Shortcuts (Carbon hot keys)
 // ---------------------------------------------------------------------------
 
-/// A Carbon hot key's modifiers (`Events.h`): Control and Option.
-const HOTKEY_CONTROL: u32 = 1 << 12;
-const HOTKEY_OPTION: u32 = 1 << 11;
 /// The signature in each hot key's id: "NEON".
 const HOT_KEY_SIGNATURE: u32 = u32::from_be_bytes(*b"NEON");
 
-fn register_hot_keys() {
-    // A dev build leaves the shortcuts to the release app: a hot key belongs
-    // to whichever app registered it first, and can't be passed on.
-    if crate::hooks::shortcuts_left_to_release() {
-        log::info!("The release app is running; this dev build leaves it the shortcuts");
-        return;
-    }
+thread_local! {
+    /// The hot keys registered now (main thread, where Carbon calls the
+    /// handler): each one's Carbon ref (null when another app has it) and the
+    /// shortcut it runs. A hot key's id is its place here.
+    static HOT_KEYS: RefCell<Vec<(*mut c_void, Shortcut)>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Keys another app registered first, so they do nothing here.
+static TAKEN: std::sync::Mutex<Vec<KeyCombo>> = std::sync::Mutex::new(Vec::new());
+
+fn install_hot_key_handler() {
     let spec = ffi::EventTypeSpec {
         event_class: ffi::EVENT_CLASS_KEYBOARD,
         event_kind: ffi::EVENT_HOT_KEY_PRESSED,
@@ -229,36 +242,84 @@ fn register_hot_keys() {
     };
     if status != ffi::NO_ERR {
         log::warn!("Shortcuts unavailable: the hot key handler was refused ({status})");
+    }
+}
+
+/// Register `bindings` as the hot keys, replacing the ones before, on the main
+/// thread. None registers nothing (a recording pauses them this way).
+pub fn set_shortcuts(bindings: &Bindings) {
+    let hot_keys = keys::macos_hot_keys(bindings);
+    let Some(app) = crate::app_handle() else {
+        log::warn!("Shortcuts not registered: the app isn't up yet");
         return;
+    };
+    if let Err(e) = app.run_on_main_thread(move || register_hot_keys(hot_keys)) {
+        log::warn!("Shortcuts not registered: {}", e);
     }
-    let mut taken = Vec::new();
-    for (i, key) in HOT_KEYS.iter().enumerate() {
-        let id = ffi::EventHotKeyID {
-            signature: HOT_KEY_SIGNATURE,
-            id: i as u32,
-        };
-        let mut hot_key_ref = std::ptr::null_mut();
-        // SAFETY: plain arguments and an out pointer that lives for the call.
-        // The hot key stays registered for the life of the app.
-        let status = unsafe {
-            ffi::RegisterEventHotKey(
-                u32::from(key.key_code),
-                HOTKEY_CONTROL | HOTKEY_OPTION,
-                id,
-                ffi::GetApplicationEventTarget(),
-                0,
-                &mut hot_key_ref,
-            )
-        };
-        if status != ffi::NO_ERR {
-            taken.push(macos_keys::label(key.shortcut));
+}
+
+pub fn taken_shortcuts() -> Vec<KeyCombo> {
+    TAKEN
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
+}
+
+/// Main thread only.
+fn register_hot_keys(wanted: Vec<keys::HotKey>) {
+    HOT_KEYS.with(|registered| {
+        for (hot_key_ref, _) in registered.borrow_mut().drain(..) {
+            if !hot_key_ref.is_null() {
+                // SAFETY: a ref RegisterEventHotKey returned and not yet released.
+                unsafe { ffi::UnregisterEventHotKey(hot_key_ref) };
+            }
         }
-    }
-    if taken.is_empty() {
-        log::info!("Shortcuts registered (⌃⌥)");
-    } else {
-        log::warn!("Shortcuts taken by another app: {}", taken.join(", "));
-    }
+        let mut taken = Vec::new();
+        // A dev build leaves the shortcuts to the release app: a hot key belongs
+        // to whichever app registered it first, and can't be passed on.
+        if !wanted.is_empty() && crate::hooks::shortcuts_left_to_release() {
+            log::info!("The release app is running; this dev build leaves it the shortcuts");
+        } else {
+            let mut list = registered.borrow_mut();
+            for (i, key) in wanted.iter().enumerate() {
+                let id = ffi::EventHotKeyID {
+                    signature: HOT_KEY_SIGNATURE,
+                    id: i as u32,
+                };
+                let mut hot_key_ref = std::ptr::null_mut();
+                // SAFETY: plain arguments and an out pointer that lives for the
+                // call; the ref is kept until the next registration releases it.
+                let status = unsafe {
+                    ffi::RegisterEventHotKey(
+                        u32::from(key.key_code),
+                        key.modifiers,
+                        id,
+                        ffi::GetApplicationEventTarget(),
+                        0,
+                        &mut hot_key_ref,
+                    )
+                };
+                if status != ffi::NO_ERR {
+                    hot_key_ref = std::ptr::null_mut();
+                    taken.push(key.combo.clone());
+                }
+                list.push((hot_key_ref, key.shortcut));
+            }
+            if !wanted.is_empty() {
+                log::info!("Shortcuts registered ({} keys)", wanted.len() - taken.len());
+            }
+        }
+        if !taken.is_empty() {
+            let labels: Vec<String> = taken
+                .iter()
+                .map(|c| keys::label(super::Os::Macos, c))
+                .collect();
+            log::warn!("Shortcuts another app has: {}", labels.join(", "));
+        }
+        *TAKEN
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = taken;
+    });
 }
 
 extern "C" fn on_hot_key(_call: *mut c_void, event: *mut c_void, _data: *mut c_void) -> i32 {
@@ -280,16 +341,12 @@ extern "C" fn on_hot_key(_call: *mut c_void, event: *mut c_void, _data: *mut c_v
         return ffi::EVENT_NOT_HANDLED;
     }
     crate::hooks::note_input();
-    let Some(key) = HOT_KEYS.get(id.id as usize) else {
+    let Some(shortcut) = HOT_KEYS.with(|r| r.borrow().get(id.id as usize).map(|(_, s)| *s)) else {
         return ffi::EVENT_NOT_HANDLED;
     };
-    let wanted = match key.shortcut {
-        Shortcut::CalibrationTap => crate::hooks::tap_listening(),
-        Shortcut::ToggleMinified => crate::hooks::minify_key().is_some(),
-        _ => true,
-    };
+    let wanted = shortcut != Shortcut::CalibrationTap || crate::hooks::tap_listening();
     if wanted && !crate::hooks::shortcuts_left_to_release() {
-        crate::hooks::shortcut_pressed(key.shortcut);
+        crate::hooks::shortcut_pressed(shortcut);
     }
     ffi::NO_ERR
 }
@@ -493,6 +550,76 @@ pub fn prepare_popup_window(window: &tauri::WebviewWindow) {
     });
 }
 
+// ---------------------------------------------------------------------------
+// Open at login (a Login Item)
+// ---------------------------------------------------------------------------
+
+/// Opening at login is the app itself registered with SMAppService, so it
+/// shows under System Settings, General, Login Items like any Mac app. An
+/// earlier build used a LaunchAgent plist instead; that one moves over.
+#[cfg_attr(
+    debug_assertions,
+    expect(dead_code, reason = "dev builds never launch at login")
+)]
+pub fn launch_at_login(app: &tauri::AppHandle) -> Result<bool, String> {
+    move_launch_agent(app);
+    Ok(login_item().status() == ServiceStatus::Enabled)
+}
+
+#[cfg_attr(
+    debug_assertions,
+    expect(dead_code, reason = "dev builds never launch at login")
+)]
+pub fn set_launch_at_login(app: &tauri::AppHandle, enabled: bool) -> Result<bool, String> {
+    move_launch_agent(app);
+    let item = login_item();
+    if enabled {
+        if item.status() != ServiceStatus::Enabled {
+            item.register()
+                .map_err(|e| format!("macOS refused the Login Item: {e}."))?;
+        }
+        if item.status() == ServiceStatus::RequiresApproval {
+            AppService::open_system_settings_login_items();
+            return Err(
+                "Switch Neon Strider on in System Settings, General, Login Items.".to_string(),
+            );
+        }
+    } else if item.status() != ServiceStatus::NotRegistered {
+        item.unregister()
+            .map_err(|e| format!("macOS kept the Login Item: {e}."))?;
+    }
+    Ok(item.status() == ServiceStatus::Enabled)
+}
+
+fn login_item() -> AppService {
+    AppService::new(ServiceType::MainApp)
+}
+
+/// An earlier build's LaunchAgent plist (`tauri-plugin-autostart`): removed,
+/// and the Login Item registered in its place, so the choice carries over.
+#[cfg_attr(
+    debug_assertions,
+    expect(dead_code, reason = "dev builds never launch at login")
+)]
+fn move_launch_agent(app: &tauri::AppHandle) {
+    use tauri_plugin_autostart::ManagerExt;
+    let agent = app.autolaunch();
+    if !agent.is_enabled().unwrap_or(false) {
+        return;
+    }
+    if let Err(e) = agent.disable() {
+        log::warn!("Could not remove the old LaunchAgent: {}", e);
+        return;
+    }
+    match login_item().register() {
+        Ok(()) => log::info!("Open at login moved from a LaunchAgent to a Login Item"),
+        Err(e) => log::warn!(
+            "Login Item not registered in the LaunchAgent's place: {}",
+            e
+        ),
+    }
+}
+
 /// Mouse events everywhere (global: other apps; local: this app's windows)
 /// keep the HUD's click-through in step with the pointer.
 fn install_mouse_monitors() {
@@ -641,13 +768,272 @@ pub fn display_off() -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Not yet on macOS
+// Permissions
 // ---------------------------------------------------------------------------
 
-/// Not yet: macOS lists which processes use audio input only from 14.2.
-pub fn apps_using_microphone(_own_exe: Option<&str>) -> Vec<String> {
-    Vec::new()
+/// How often the permission states are read again: changing one means a trip
+/// to System Settings, so 2 s is quick enough to see it on return.
+const PERMISSIONS_EVERY: Duration = Duration::from_secs(2);
+
+static PERMISSIONS: std::sync::Mutex<Option<(std::time::Instant, Vec<super::Permission>)>> =
+    std::sync::Mutex::new(None);
+
+pub fn permissions() -> Vec<super::Permission> {
+    let mut cached = PERMISSIONS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some((at, list)) = cached.as_ref() {
+        if at.elapsed() < PERMISSIONS_EVERY {
+            return list.clone();
+        }
+    }
+    let list = vec![
+        super::Permission {
+            kind: super::PermissionKind::Bluetooth,
+            state: bluetooth_permission(),
+        },
+        super::Permission {
+            kind: super::PermissionKind::InputMonitoring,
+            state: input_monitoring_permission(),
+        },
+    ];
+    *cached = Some((std::time::Instant::now(), list.clone()));
+    list
 }
+
+/// `+[CBManager authorization]` (macOS 10.15+): not determined, restricted,
+/// denied, allowed always.
+fn bluetooth_permission() -> super::PermissionState {
+    use super::PermissionState as S;
+    let Some(class) = objc2::runtime::AnyClass::get(c"CBManager") else {
+        return S::NotAsked;
+    };
+    // SAFETY: a class property returning CBManagerAuthorization (NSInteger);
+    // CoreBluetooth is linked by btleplug.
+    let raw: isize = unsafe { objc2::msg_send![class, authorization] };
+    match raw {
+        3 => S::Allowed,
+        1 | 2 => S::Denied,
+        _ => S::NotAsked,
+    }
+}
+
+/// `IOHIDCheckAccess(kIOHIDRequestTypeListenEvent)`: granted, denied or
+/// unknown (never asked), which CoreGraphics' preflight can't tell apart.
+fn input_monitoring_permission() -> super::PermissionState {
+    use super::PermissionState as S;
+    // SAFETY: plain query with a constant argument.
+    match unsafe { ffi::IOHIDCheckAccess(ffi::HID_REQUEST_LISTEN_EVENT) } {
+        0 => S::Allowed,
+        1 => S::Denied,
+        _ => S::NotAsked,
+    }
+}
+
+/// The Privacy & Security pane for `kind`, through its settings URL.
+pub fn open_permission_settings(kind: super::PermissionKind) -> Result<(), String> {
+    let pane = match kind {
+        super::PermissionKind::Bluetooth => "Privacy_Bluetooth",
+        super::PermissionKind::InputMonitoring => "Privacy_ListenEvent",
+    };
+    let url = format!("x-apple.systempreferences:com.apple.preference.security?{pane}");
+    std::process::Command::new("/usr/bin/open")
+        .arg(&url)
+        .status()
+        .map_err(|e| format!("Could not open System Settings: {e}."))
+        .and_then(|s| {
+            s.success()
+                .then_some(())
+                .ok_or_else(|| "Could not open System Settings.".to_string())
+        })
+}
+
+// ---------------------------------------------------------------------------
+// Microphone (Core Audio)
+// ---------------------------------------------------------------------------
+
+/// The apps recording from the microphone right now, by name. macOS 14.2 and
+/// later list each process using audio input; macOS 13 only says whether the
+/// default input device is running for anyone, which reads as one unnamed
+/// app. Only metadata is read: no audio, and no permission is needed.
+pub fn apps_using_microphone(_own_exe: Option<&str>) -> Vec<String> {
+    let own = std::process::id() as i32;
+    match core_audio::input_processes() {
+        Some(processes) => processes
+            .into_iter()
+            .filter(|p| p.pid != own)
+            .map(|p| {
+                app_name(p.pid)
+                    .or(p.bundle_id)
+                    .unwrap_or_else(|| format!("process {}", p.pid))
+            })
+            .collect(),
+        None if core_audio::default_input_running() => vec!["an app".to_string()],
+        None => Vec::new(),
+    }
+}
+
+/// The name the user knows an app by (Microsoft Teams, zoom.us).
+fn app_name(pid: i32) -> Option<String> {
+    let app = objc2_app_kit::NSRunningApplication::runningApplicationWithProcessIdentifier(pid)?;
+    app.localizedName().map(|n| n.to_string())
+}
+
+mod core_audio {
+    use std::ffi::c_void;
+
+    #[repr(C)]
+    struct PropertyAddress {
+        selector: u32,
+        scope: u32,
+        element: u32,
+    }
+
+    const fn code(c: &[u8; 4]) -> u32 {
+        u32::from_be_bytes(*c)
+    }
+
+    /// `kAudioObjectSystemObject`, `kAudioObjectPropertyScopeGlobal`,
+    /// `kAudioObjectPropertyElementMain`.
+    const SYSTEM_OBJECT: u32 = 1;
+    const SCOPE_GLOBAL: u32 = code(b"glob");
+    const ELEMENT_MAIN: u32 = 0;
+    /// `kAudioHardwarePropertyProcessObjectList` (macOS 14.2).
+    const PROCESS_OBJECT_LIST: u32 = code(b"prs#");
+    /// `kAudioProcessPropertyPID`, `kAudioProcessPropertyBundleID`,
+    /// `kAudioProcessPropertyIsRunningInput`.
+    const PROCESS_PID: u32 = code(b"ppid");
+    const PROCESS_BUNDLE_ID: u32 = code(b"pbid");
+    const PROCESS_IS_RUNNING_INPUT: u32 = code(b"piri");
+    /// `kAudioHardwarePropertyDefaultInputDevice`,
+    /// `kAudioDevicePropertyDeviceIsRunningSomewhere`.
+    const DEFAULT_INPUT_DEVICE: u32 = code(b"dIn ");
+    const DEVICE_IS_RUNNING_SOMEWHERE: u32 = code(b"gone");
+
+    #[link(name = "CoreAudio", kind = "framework")]
+    extern "C" {
+        fn AudioObjectHasProperty(object: u32, address: *const PropertyAddress) -> u8;
+        fn AudioObjectGetPropertyDataSize(
+            object: u32,
+            address: *const PropertyAddress,
+            qualifier_size: u32,
+            qualifier: *const c_void,
+            size: *mut u32,
+        ) -> i32;
+        fn AudioObjectGetPropertyData(
+            object: u32,
+            address: *const PropertyAddress,
+            qualifier_size: u32,
+            qualifier: *const c_void,
+            size: *mut u32,
+            data: *mut c_void,
+        ) -> i32;
+    }
+
+    fn address(selector: u32) -> PropertyAddress {
+        PropertyAddress {
+            selector,
+            scope: SCOPE_GLOBAL,
+            element: ELEMENT_MAIN,
+        }
+    }
+
+    /// A fixed-size property (a number or an object id).
+    fn read<T: Copy + Default>(object: u32, selector: u32) -> Option<T> {
+        let mut value = T::default();
+        let mut size = std::mem::size_of::<T>() as u32;
+        // SAFETY: the buffer is a T of the size given; Core Audio writes at
+        // most that many bytes.
+        let status = unsafe {
+            AudioObjectGetPropertyData(
+                object,
+                &address(selector),
+                0,
+                std::ptr::null(),
+                &mut size,
+                (&mut value as *mut T).cast(),
+            )
+        };
+        (status == 0).then_some(value)
+    }
+
+    pub struct InputProcess {
+        pub pid: i32,
+        pub bundle_id: Option<String>,
+    }
+
+    /// The processes taking audio input now; `None` before macOS 14.2.
+    pub fn input_processes() -> Option<Vec<InputProcess>> {
+        let list = address(PROCESS_OBJECT_LIST);
+        // SAFETY: reads whether the system object has the property.
+        if unsafe { AudioObjectHasProperty(SYSTEM_OBJECT, &list) } == 0 {
+            return None;
+        }
+        let mut size = 0u32;
+        // SAFETY: plain size query into a u32.
+        let status = unsafe {
+            AudioObjectGetPropertyDataSize(SYSTEM_OBJECT, &list, 0, std::ptr::null(), &mut size)
+        };
+        if status != 0 {
+            return Some(Vec::new());
+        }
+        let mut ids = vec![0u32; size as usize / std::mem::size_of::<u32>()];
+        let mut bytes = (ids.len() * std::mem::size_of::<u32>()) as u32;
+        // SAFETY: `ids` holds `bytes` bytes of object ids.
+        let status = unsafe {
+            AudioObjectGetPropertyData(
+                SYSTEM_OBJECT,
+                &list,
+                0,
+                std::ptr::null(),
+                &mut bytes,
+                ids.as_mut_ptr().cast(),
+            )
+        };
+        if status != 0 {
+            return Some(Vec::new());
+        }
+        ids.truncate(bytes as usize / std::mem::size_of::<u32>());
+        Some(
+            ids.into_iter()
+                .filter(|&id| read::<u32>(id, PROCESS_IS_RUNNING_INPUT).unwrap_or(0) != 0)
+                .filter_map(|id| {
+                    Some(InputProcess {
+                        pid: read::<i32>(id, PROCESS_PID)?,
+                        bundle_id: bundle_id(id),
+                    })
+                })
+                .collect(),
+        )
+    }
+
+    /// The process's bundle identifier (a CFString the caller releases).
+    fn bundle_id(process: u32) -> Option<String> {
+        let cf = read::<usize>(process, PROCESS_BUNDLE_ID)? as *const c_void;
+        if cf.is_null() {
+            return None;
+        }
+        // SAFETY: a CFStringRef, toll-free bridged to NSString; read, then
+        // released once (Core Audio returned it retained).
+        unsafe {
+            let text = (*cf.cast::<objc2_foundation::NSString>()).to_string();
+            super::ffi::CFRelease(cf);
+            Some(text).filter(|t| !t.is_empty())
+        }
+    }
+
+    /// The default input device is running for some process (macOS 13).
+    pub fn default_input_running() -> bool {
+        read::<u32>(SYSTEM_OBJECT, DEFAULT_INPUT_DEVICE)
+            .filter(|&device| device != 0)
+            .and_then(|device| read::<u32>(device, DEVICE_IS_RUNNING_SOMEWHERE))
+            .is_some_and(|running| running != 0)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Not yet on macOS
+// ---------------------------------------------------------------------------
 
 pub fn peripheral_add(
     _service: &super::PeripheralService,

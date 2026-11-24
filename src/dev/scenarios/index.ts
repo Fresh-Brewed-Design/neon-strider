@@ -32,6 +32,7 @@ import { pcWalkShare } from "./pcwalk";
 import { platform } from "./platform";
 import { programs } from "./programs";
 import { seated } from "./seated";
+import { shortcuts } from "./shortcuts";
 import { speedDrift } from "./speeddrift";
 import { stasis } from "./stasis";
 import { strava } from "./strava";
@@ -84,4 +85,6 @@ export const SCENARIOS: Scenario[] = [
   speedDrift,
   easyStop,
   fitToTime,
+  // After platform: the keys follow ?mac.
+  shortcuts,
 ];

@@ -129,7 +129,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("avg_heart_rate", "Average heart rate in bpm."),
     ("max_heart_rate", "Highest heart rate in bpm."),
     ("program", "Name of the program walked."),
-    ("pc_walked", "Share of the day's PC time walked, in %."),
+    ("pc_walked", "Share of the day's desk time walked, in %."),
     ("walks", "Walks joined into the activity."),
     ("date", "Start date."),
     ("time", "Start time."),

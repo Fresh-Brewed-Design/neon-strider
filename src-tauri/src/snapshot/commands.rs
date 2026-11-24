@@ -180,7 +180,6 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             Ok(())
         }
         Command::HudSetMinified { minified } => set_hud(&app, |cfg| cfg.minified = minified),
-        Command::HudSetMinifyHotkey { hotkey } => set_hud(&app, |cfg| cfg.minify_hotkey = hotkey),
 
         // ---- Strava ----
         Command::StravaSetCredentials {
@@ -532,6 +531,17 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
                 crate::dashboard::on_guided_pin_changed(&app);
             }
             Ok(())
+        }
+        Command::ShortcutsSet { shortcut, keys } => {
+            blocking(move || crate::shortcuts::set(&app, shortcut, keys)).await
+        }
+        Command::ShortcutsReset => blocking(move || crate::shortcuts::reset(&app)).await,
+        Command::ShortcutsRecording { on } => {
+            crate::shortcuts::set_recording(on);
+            Ok(())
+        }
+        Command::OpenPermissionSettings { permission } => {
+            crate::platform::open_permission_settings(permission)
         }
     }
 }

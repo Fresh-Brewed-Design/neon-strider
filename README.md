@@ -118,6 +118,9 @@ app's database.
 
 ## Keyboard shortcuts
 
+The defaults; change any of them in **System → Shortcuts** (record a new key, remove one, or
+switch a shortcut off). Each needs Ctrl, Alt or the Windows key.
+
 | Keys | Action |
 | --- | --- |
 | Alt + Volume Up, or Alt + `=` | Speed up |
@@ -126,7 +129,8 @@ app's database.
 | Alt + Page Down | Incline down |
 | Alt + Home | Start / pause (GO on a paused program) |
 | Alt + End | End the running program, or rerun the last one |
-| Alt + Insert | Shrink the HUD to a strip, or show the whole HUD again (the HUD page can switch it off or use Alt + Pause or Alt + Scroll Lock) |
+| Alt + Insert | Shrink the HUD to a strip, or show the whole HUD again |
+| Alt + Space | GROUND_TRUTH tap, while a tap run listens |
 
 On a Mac the shortcuts are ⌃⌥ plus a key; see [docs/macos.md](docs/macos.md).
 

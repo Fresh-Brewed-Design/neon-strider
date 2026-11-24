@@ -118,6 +118,10 @@ pub struct AppSnapshot {
     /// at the PC, or walking. None on a day with no PC input yet.
     pub today_timeline: Option<super::pc_walk_share::TodayTimeline>,
 
+    // ---- Shortcuts ----
+    /// Each shortcut's keys as the OS writes them, and which another app has.
+    pub shortcuts: crate::shortcuts::ShortcutsSnapshot,
+
     // ---- Platform ----
     /// The OS, its OS-only features and how it writes the shortcuts, so the
     /// windows word things the OS's way and hide what it lacks.
@@ -376,59 +380,9 @@ pub struct HudConfig {
     pub custom: Option<placement::HudCustom>,
     /// What the panel does while the belt is still (paused, stopped or offline).
     pub idle_mode: HudIdleMode,
-    /// Minified by the user (the HUD's minify button or its Alt hotkey): the
+    /// Minified by the user (the HUD's minify button or its shortcut): the
     /// running strip instead of the whole panel, until expanded again.
     pub minified: bool,
-    /// The Alt hotkey that minifies or expands the HUD.
-    pub minify_hotkey: HudMinifyHotkey,
-}
-
-/// The HUD's minify hotkey: on or off, and which key goes with Alt. The key
-/// is kept while it is off, so switching it back on brings the same one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
-#[ts(export, export_to = "../../src/ipc/bindings/")]
-pub struct HudMinifyHotkey {
-    pub enabled: bool,
-    pub key: HudMinifyKey,
-}
-
-impl HudMinifyHotkey {
-    /// On, with Alt+Insert: the hotkey every build had before it was a setting.
-    pub const DEFAULT: HudMinifyHotkey = HudMinifyHotkey {
-        enabled: true,
-        key: HudMinifyKey::Insert,
-    };
-
-    /// The key that fires it now; `None` while it is off.
-    pub fn active_key(self) -> Option<HudMinifyKey> {
-        self.enabled.then_some(self.key)
-    }
-}
-
-impl Default for HudMinifyHotkey {
-    fn default() -> Self {
-        Self::DEFAULT
-    }
-}
-
-/// The keys the minify hotkey can use with Alt. A short fixed list: none of
-/// them is another Neon Strider shortcut (Alt with `=`, `-`, the volume keys,
-/// Page Up, Page Down, Home, End or Space), and none is a common Alt shortcut
-/// in Windows or the usual editors (JetBrains IDEs, VS Code, Office), except
-/// Insert, which JetBrains uses for Generate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, ts_rs::TS)]
-#[serde(rename_all = "snake_case")]
-#[ts(export, export_to = "../../src/ipc/bindings/")]
-pub enum HudMinifyKey {
-    /// Alt+Insert, the default.
-    #[default]
-    Insert,
-    /// Alt+Pause (Pause/Break). Ctrl+Pause and Win+Pause mean something to
-    /// Windows; Alt+Pause does not.
-    Pause,
-    /// Alt+Scroll Lock. Scroll Lock is rarely used, and nothing common binds
-    /// it with Alt.
-    ScrollLock,
 }
 
 /// The HUD setting "When the belt is still".
@@ -659,10 +613,6 @@ pub enum Command {
     /// Minify the HUD to the running strip, or expand it again (persisted).
     HudSetMinified {
         minified: bool,
-    },
-    /// Switch the minify hotkey on or off, or change its key.
-    HudSetMinifyHotkey {
-        hotkey: HudMinifyHotkey,
     },
 
     // ---- Strava ----
@@ -1021,6 +971,27 @@ pub enum Command {
     },
     /// UNPIN: end every guided task's pin now.
     GuidedTaskCancel,
+
+    // ---- Shortcuts ----
+    /// Give a shortcut these keys (up to two; none switches it off).
+    ShortcutsSet {
+        shortcut: crate::hooks::Shortcut,
+        keys: Vec<crate::shortcuts::KeyCombo>,
+    },
+    /// Every shortcut back to this OS's defaults.
+    ShortcutsReset,
+    /// The dashboard is recording a key (`on`): the shortcuts pause meanwhile,
+    /// so the key reaches it.
+    ShortcutsRecording {
+        on: bool,
+    },
+
+    // ---- Platform ----
+    /// Open the OS's settings where `permission` is allowed (macOS: the
+    /// Privacy & Security pane for it).
+    OpenPermissionSettings {
+        permission: crate::platform::PermissionKind,
+    },
 }
 
 #[cfg(test)]

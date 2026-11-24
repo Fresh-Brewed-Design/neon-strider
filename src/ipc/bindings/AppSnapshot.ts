@@ -25,6 +25,7 @@ import type { PlatformSnapshot } from "./PlatformSnapshot";
 import type { Program } from "./Program";
 import type { SeatedSnapshot } from "./SeatedSnapshot";
 import type { SessionSnapshot } from "./SessionSnapshot";
+import type { ShortcutsSnapshot } from "./ShortcutsSnapshot";
 import type { SpeedDriftSnapshot } from "./SpeedDriftSnapshot";
 import type { StravaSnapshot } from "./StravaSnapshot";
 import type { TodayTimeline } from "./TodayTimeline";
@@ -144,6 +145,10 @@ pc_walk_share: PcWalkShare,
  * at the PC, or walking. None on a day with no PC input yet.
  */
 today_timeline: TodayTimeline | null, 
+/**
+ * Each shortcut's keys as the OS writes them, and which another app has.
+ */
+shortcuts: ShortcutsSnapshot, 
 /**
  * The OS, its OS-only features and how it writes the shortcuts, so the
  * windows word things the OS's way and hide what it lacks.

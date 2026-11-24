@@ -146,7 +146,6 @@ export const snapshot: AppSnapshot = {
     custom: null,
     idle_mode: "full",
     minified: false,
-    minify_hotkey: { enabled: true, key: "insert" },
   },
   hud_view: "full",
   hud_monitors: [
@@ -309,18 +308,9 @@ export const snapshot: AppSnapshot = {
     computer: "PC",
     settings: "Windows settings",
     microphone: true,
-    minify_key_choice: true,
-    shortcuts: {
-      speed_up: "Alt+=",
-      speed_down: "Alt+-",
-      incline_up: "Alt+Page Up",
-      incline_down: "Alt+Page Down",
-      toggle_start: "Alt+Home",
-      toggle_program: "Alt+End",
-      toggle_minified: "Alt+Insert",
-      calibration_tap: "Alt+Space",
-    },
+    permissions: [],
   },
+  shortcuts: { list: [], recording: false, changed: false },
 };
 
 export const params = new URLSearchParams(location.search);

@@ -155,6 +155,8 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     snapshot.typing_speed = typing_speed;
     snapshot.heart_rate = heart_rate;
     snapshot.guided_task = guided_task;
+    snapshot.platform.permissions = crate::platform::permissions();
+    snapshot.shortcuts = crate::shortcuts::snapshot();
     // Recomputed every tick, so the end of the grace after a stop reaches the
     // HUD with the next on-change emit (within a tick).
     snapshot.hud_view = stasis::view(&snapshot, deck_silent, Instant::now());

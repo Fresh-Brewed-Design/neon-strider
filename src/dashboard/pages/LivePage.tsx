@@ -27,7 +27,7 @@ const LIVE_STAT_CELLS = 9;
 
 /**
  * The Live page's stats. PULSE_RATE takes two tiles while it has a chart.
- * PC TIME WALKED joins only when a tile is free, so the page stays three rows
+ * DESK TIME WALKED joins only when a tile is free, so the page stays three rows
  * high (760x600 with a program card open has no room for a fourth); the HUD
  * page still offers it.
  */

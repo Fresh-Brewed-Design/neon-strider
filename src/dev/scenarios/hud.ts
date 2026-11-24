@@ -52,9 +52,6 @@ export const hud: Scenario = {
     if (params.has("onemonitor")) snapshot.hud_monitors = snapshot.hud_monitors.slice(0, 1);
     if (params.has("custom")) snapshot.hud.custom = { dx: 400, top: 120 };
     if (params.has("minified")) snapshot.hud.minified = true;
-    const minifyKey = params.get("minifykey");
-    if (minifyKey === "off") snapshot.hud.minify_hotkey = { enabled: false, key: "insert" };
-    else if (minifyKey === "pause" || minifyKey === "scroll_lock") snapshot.hud.minify_hotkey = { enabled: true, key: minifyKey };
   },
   commands: {
     hud_toggle_widget: ({ widget }) => {
@@ -76,6 +73,5 @@ export const hud: Scenario = {
       snapshot.hud.minified = false;
     },
     hud_set_minified: (c) => (snapshot.hud.minified = c.minified),
-    hud_set_minify_hotkey: (c) => (snapshot.hud.minify_hotkey = { ...c.hotkey }),
   },
 };

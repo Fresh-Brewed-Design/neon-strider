@@ -1,4 +1,5 @@
-//! What the global input hooks record, and the Alt shortcuts they fire.
+//! What the global input hooks record, and the shortcuts they fire (their
+//! keys are `crate::shortcuts`).
 //!
 //! The hooks themselves are OS code (`platform`); these are the functions they
 //! call on every key press and mouse move, so nothing here may block: atomics
@@ -9,8 +10,8 @@
 //! where the pointer was.
 
 use crate::engine::DeckAction;
-use crate::snapshot::{HudMinifyHotkey, HudMinifyKey};
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, AtomicUsize, Ordering};
+use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::time::Instant;
 
 /// Typing key presses since the protocol worker last took the count.
@@ -20,43 +21,7 @@ static KEY_COUNTING: AtomicBool = AtomicBool::new(false);
 /// Wall-clock time, so a sleeping PC counts as time away.
 static LAST_INPUT_MS: AtomicU64 = AtomicU64::new(0);
 
-/// The minify hotkey's key, as `minify_code` writes it (0 = off), so the hook
-/// thread reads the HUD setting without a lock. Alt+Insert until the
-/// settings load.
-static MINIFY_KEY: AtomicU8 = AtomicU8::new(MINIFY_INSERT);
-const MINIFY_INSERT: u8 = 1;
-
-fn minify_code(hotkey: HudMinifyHotkey) -> u8 {
-    match hotkey.active_key() {
-        None => 0,
-        Some(HudMinifyKey::Insert) => MINIFY_INSERT,
-        Some(HudMinifyKey::Pause) => 2,
-        Some(HudMinifyKey::ScrollLock) => 3,
-    }
-}
-
-fn minify_key_from(code: u8) -> Option<HudMinifyKey> {
-    match code {
-        MINIFY_INSERT => Some(HudMinifyKey::Insert),
-        2 => Some(HudMinifyKey::Pause),
-        3 => Some(HudMinifyKey::ScrollLock),
-        _ => None,
-    }
-}
-
-/// Follow the HUD setting (`snapshot::hud` calls this on load and change).
-pub(crate) fn set_minify_hotkey(hotkey: HudMinifyHotkey) {
-    MINIFY_KEY.store(minify_code(hotkey), Ordering::Relaxed);
-}
-
-/// The key that, with Alt, minifies or expands the HUD; `None` while the
-/// hotkey is off, so the key press goes to the app in front. An atomic read,
-/// safe on the hook thread.
-pub(crate) fn minify_key() -> Option<HudMinifyKey> {
-    minify_key_from(MINIFY_KEY.load(Ordering::Relaxed))
-}
-
-/// A dev build leaves every Alt shortcut to the release app while it runs.
+/// A dev build leaves every shortcut to the release app while it runs.
 /// Both builds install the same system-wide hooks, and the one installed last
 /// sees a key first and swallows it, so without this a dev build would take
 /// the shortcuts meant for the release app. The hooks stay installed (they
@@ -126,8 +91,8 @@ pub(crate) fn count_key() {
 }
 
 /// The key presses counted since the last call, and start again from zero.
-/// A GROUND_TRUTH tap run is listening, so Alt+Space is a tap. An atomic
-/// read, safe on the hook thread.
+/// A GROUND_TRUTH tap run is listening, so the tap shortcut (Alt+Space by
+/// default) is a tap. An atomic read, safe on the hook thread.
 pub(crate) fn tap_listening() -> bool {
     crate::calibration::tap_listening()
 }
@@ -136,9 +101,12 @@ pub(crate) fn take_key_count() -> u32 {
     u32::try_from(KEY_COUNT.swap(0, Ordering::SeqCst)).unwrap_or(u32::MAX)
 }
 
-/// A global shortcut (Alt plus a key; see `platform` for which, and the HUD
-/// setting `HudMinifyHotkey` for the minify one).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// A global shortcut. Its keys are a setting (`crate::shortcuts`).
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, ts_rs::TS,
+)]
+#[serde(rename_all = "snake_case")]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
 pub enum Shortcut {
     SpeedUp,
     SpeedDown,
@@ -150,12 +118,51 @@ pub enum Shortcut {
     ToggleProgram,
     /// Minify the HUD to the running strip, or expand it again.
     ToggleMinified,
-    /// GROUND_TRUTH: the belt mark passed (Alt+Space, only while a tap run
-    /// listens). Never moves the belt.
+    /// GROUND_TRUTH: the belt mark passed (only while a tap run listens).
+    /// Never moves the belt.
     CalibrationTap,
 }
 
 impl Shortcut {
+    pub const ALL: [Shortcut; 8] = [
+        Shortcut::SpeedUp,
+        Shortcut::SpeedDown,
+        Shortcut::InclineUp,
+        Shortcut::InclineDown,
+        Shortcut::ToggleStart,
+        Shortcut::ToggleProgram,
+        Shortcut::ToggleMinified,
+        Shortcut::CalibrationTap,
+    ];
+
+    /// Its name in messages: "Speed up".
+    pub fn name(self) -> &'static str {
+        match self {
+            Shortcut::SpeedUp => "Speed up",
+            Shortcut::SpeedDown => "Speed down",
+            Shortcut::InclineUp => "Incline up",
+            Shortcut::InclineDown => "Incline down",
+            Shortcut::ToggleStart => "Start or pause",
+            Shortcut::ToggleProgram => "Run or end a program",
+            Shortcut::ToggleMinified => "Minify the HUD",
+            Shortcut::CalibrationTap => "GROUND_TRUTH tap",
+        }
+    }
+
+    /// What it does, after "Alt+Home already ...".
+    pub fn what_it_does(self) -> &'static str {
+        match self {
+            Shortcut::SpeedUp => "speeds the belt up",
+            Shortcut::SpeedDown => "slows the belt down",
+            Shortcut::InclineUp => "raises the incline",
+            Shortcut::InclineDown => "lowers the incline",
+            Shortcut::ToggleStart => "starts or pauses the belt",
+            Shortcut::ToggleProgram => "runs or ends a program",
+            Shortcut::ToggleMinified => "minifies the HUD",
+            Shortcut::CalibrationTap => "taps for GROUND_TRUTH",
+        }
+    }
+
     /// The engine action, or `None` for the program and minify toggles (not
     /// engine actions).
     fn deck_action(self) -> Option<DeckAction> {
@@ -266,29 +273,6 @@ mod tests {
         assert_eq!(Shortcut::ToggleProgram.label(), "toggle-automation");
         assert_eq!(Shortcut::ToggleMinified.deck_action(), None);
         assert_eq!(Shortcut::ToggleMinified.label(), "toggle-minified");
-    }
-
-    #[test]
-    fn the_minify_key_follows_the_setting() {
-        // Shared static: this is the only test that touches it.
-        assert_eq!(minify_key(), Some(HudMinifyKey::Insert));
-        for key in [
-            HudMinifyKey::Insert,
-            HudMinifyKey::Pause,
-            HudMinifyKey::ScrollLock,
-        ] {
-            set_minify_hotkey(HudMinifyHotkey { enabled: true, key });
-            assert_eq!(minify_key(), Some(key));
-            set_minify_hotkey(HudMinifyHotkey {
-                enabled: false,
-                key,
-            });
-            assert_eq!(minify_key(), None);
-        }
-        set_minify_hotkey(HudMinifyHotkey::DEFAULT);
-        assert_eq!(minify_key(), Some(HudMinifyKey::Insert));
-        assert_eq!(minify_key_from(0), None);
-        assert_eq!(minify_key_from(200), None);
     }
 
     #[test]

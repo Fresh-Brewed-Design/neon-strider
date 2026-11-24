@@ -271,6 +271,7 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         typing_speed: crate::typing_speed::TypingSpeedSnapshot::default(),
         heart_rate: crate::heart_rate::HeartRateSnapshot::default(),
         guided_task: crate::guided_task::GuidedTaskSnapshot::default(),
+        shortcuts: crate::shortcuts::ShortcutsSnapshot::default(),
         pc_walk_share: PcWalkShare::default(),
         today_timeline: None,
         platform: crate::platform::snapshot(),

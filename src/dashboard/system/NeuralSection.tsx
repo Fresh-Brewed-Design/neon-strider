@@ -4,6 +4,7 @@ import { useTreadmillStore } from "../../store/treadmillStore";
 import { Hint, Label } from "../ui";
 import { cx } from "../util";
 import { ChoiceGroup, Section, SliderField, Toggle } from "./fields";
+import { InputMonitoringNote } from "./PermissionsSection";
 
 const SENSITIVITY_CHOICES: { value: NeuralSensitivity; label: string; hint: string }[] = [
   { value: "low", label: "Low", hint: "Eases off only during long, fast typing." },
@@ -86,6 +87,7 @@ export function NeuralSection() {
       />
       {enabled && (
         <>
+          <InputMonitoringNote />
           <NeuralLive />
           <SliderField
             label="Slowest speed"

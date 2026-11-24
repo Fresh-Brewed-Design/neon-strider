@@ -21,8 +21,12 @@
 //!   rectangle and the cursor share (`DESKTOP_IN_POINTS`; `crate::display`
 //!   converts at Tauri's edge).
 //!
+//! - Shortcuts: matching key presses to the shortcuts' keys (Windows, in the
+//!   keyboard hook) or registering them as hot keys (macOS).
+//!
 //! `windows.rs` implements it for Windows and `macos.rs` for macOS (with the
-//! pure key tables in `macos_keys.rs`). `other.rs` is the stand-in for every
+//! pure typing rules in `macos_keys.rs`); `keys.rs` is the pure key table and
+//! shortcut rules for every OS. `other.rs` is the stand-in for every
 //! other OS: each feature reports "unsupported" (no input seen, never locked,
 //! microphone free, idle time unknown, no Bluetooth peripheral), so the app
 //! runs without them. A feature one OS lacks is hidden in the UI through
@@ -43,8 +47,19 @@ mod imp;
 #[cfg(any(target_os = "macos", test))]
 mod macos_keys;
 
-use crate::hooks::Shortcut;
+pub mod keys;
+
+use crate::shortcuts::{Bindings, KeyCombo};
 use serde::{Deserialize, Serialize};
+
+/// The OS this build runs on.
+pub const OS: Os = if cfg!(windows) {
+    Os::Windows
+} else if cfg!(target_os = "macos") {
+    Os::Macos
+} else {
+    Os::Other
+};
 
 /// Desktop units are points (macOS), not physical pixels (Windows). AppKit
 /// places windows in points, and Tauri's physical pixels there are points
@@ -99,90 +114,98 @@ pub struct PlatformSnapshot {
     pub settings: String,
     /// Slow down on calls: the apps using the microphone can be listed.
     pub microphone: bool,
-    /// The HUD's minify hotkey can be put on another key (Windows: Insert,
-    /// Pause or Scroll Lock); otherwise only switched on or off.
-    pub minify_key_choice: bool,
-    /// The global shortcuts as this OS writes them (`Alt+Home`, `⌃⌥↩`).
-    pub shortcuts: ShortcutLabels,
+    /// The OS permissions the app needs and where each stands; empty where
+    /// the OS asks for none (Windows). Filled by the snapshot emitter.
+    pub permissions: Vec<Permission>,
 }
 
-/// Each global shortcut's keys as this OS writes them. On Windows the minify
-/// key is the HUD setting's (`toggle_minified` is its default, Insert).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS)]
+/// A permission the OS asks the user for before the app may use something.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
+#[serde(rename_all = "snake_case")]
 #[ts(export, export_to = "../../src/ipc/bindings/")]
-pub struct ShortcutLabels {
-    pub speed_up: String,
-    pub speed_down: String,
-    pub incline_up: String,
-    pub incline_down: String,
-    pub toggle_start: String,
-    pub toggle_program: String,
-    pub toggle_minified: String,
-    pub calibration_tap: String,
+pub enum PermissionKind {
+    /// The treadmill and heart rate sensor.
+    Bluetooth,
+    /// Counting key presses for Neural flow (macOS: Input Monitoring).
+    InputMonitoring,
 }
 
-impl ShortcutLabels {
-    fn from(label: impl Fn(Shortcut) -> String) -> Self {
-        Self {
-            speed_up: label(Shortcut::SpeedUp),
-            speed_down: label(Shortcut::SpeedDown),
-            incline_up: label(Shortcut::InclineUp),
-            incline_down: label(Shortcut::InclineDown),
-            toggle_start: label(Shortcut::ToggleStart),
-            toggle_program: label(Shortcut::ToggleProgram),
-            toggle_minified: label(Shortcut::ToggleMinified),
-            calibration_tap: label(Shortcut::CalibrationTap),
-        }
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
+pub enum PermissionState {
+    Allowed,
+    /// Refused, or turned off later, in the OS's settings.
+    Denied,
+    /// The OS hasn't asked yet: it asks the first time the app needs it.
+    NotAsked,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
+pub struct Permission {
+    pub kind: PermissionKind,
+    pub state: PermissionState,
+}
+
+/// The OS permissions the app needs and where each stands now. Cheap enough
+/// for every snapshot (cached by the OS side).
+pub fn permissions() -> Vec<Permission> {
+    imp::permissions()
+}
+
+/// Open the OS's settings where `kind` is allowed. Errors where there is none.
+pub fn open_permission_settings(kind: PermissionKind) -> Result<(), String> {
+    imp::open_permission_settings(kind)
 }
 
 /// The OS this build runs on, and its features.
 pub fn snapshot() -> PlatformSnapshot {
-    let os = if cfg!(windows) {
-        Os::Windows
-    } else if cfg!(target_os = "macos") {
-        Os::Macos
-    } else {
-        Os::Other
-    };
     PlatformSnapshot {
-        os,
+        os: OS,
         computer: WORDS.computer.to_string(),
         settings: WORDS.settings.to_string(),
         microphone: imp::MICROPHONE,
-        minify_key_choice: imp::MINIFY_KEY_CHOICE,
-        shortcuts: ShortcutLabels::from(shortcut_label),
+        permissions: Vec::new(),
     }
 }
 
-/// A shortcut as this OS writes it. Pure, for every OS's build.
-fn shortcut_label(shortcut: Shortcut) -> String {
-    #[cfg(target_os = "macos")]
-    return macos_keys::label(shortcut);
-    #[cfg(not(target_os = "macos"))]
-    return windows_shortcut_label(shortcut);
+/// Use these keys for the shortcuts from now on (none pauses them all, as
+/// while the dashboard records a key). Windows reads them in its keyboard
+/// hook; macOS registers them as hot keys on the main thread.
+pub fn set_shortcuts(bindings: &Bindings) {
+    imp::set_shortcuts(bindings);
 }
 
-/// The Windows shortcuts, as `windows.rs` maps them (Alt plus a key).
-#[cfg(not(target_os = "macos"))]
-fn windows_shortcut_label(shortcut: Shortcut) -> String {
-    let key = match shortcut {
-        Shortcut::SpeedUp => "=",
-        Shortcut::SpeedDown => "-",
-        Shortcut::InclineUp => "Page Up",
-        Shortcut::InclineDown => "Page Down",
-        Shortcut::ToggleStart => "Home",
-        Shortcut::ToggleProgram => "End",
-        Shortcut::ToggleMinified => "Insert",
-        Shortcut::CalibrationTap => "Space",
-    };
-    format!("Alt+{key}")
+/// Keys another app already holds, so they do nothing here (macOS hot keys;
+/// none elsewhere).
+pub fn taken_shortcuts() -> Vec<KeyCombo> {
+    imp::taken_shortcuts()
 }
 
 /// Once the app is up, on the main thread: OS setup that needs the app
-/// (on macOS: no Dock icon, and the shortcuts).
+/// (on macOS: no Dock icon, and the shortcuts' handler).
 pub fn app_started(app: &tauri::AppHandle) {
     imp::app_started(app);
+}
+
+/// The app opens when the user logs in. Release builds only (`lib.rs`).
+#[cfg_attr(
+    debug_assertions,
+    expect(dead_code, reason = "dev builds never launch at login")
+)]
+pub fn launch_at_login(app: &tauri::AppHandle) -> Result<bool, String> {
+    imp::launch_at_login(app)
+}
+
+/// Switch opening at login; returns whether it is on now. The error is one
+/// plain sentence (on macOS, when System Settings must approve the Login Item).
+#[cfg_attr(
+    debug_assertions,
+    expect(dead_code, reason = "dev builds never launch at login")
+)]
+pub fn set_launch_at_login(app: &tauri::AppHandle, enabled: bool) -> Result<bool, String> {
+    imp::set_launch_at_login(app, enabled)
 }
 
 /// Make the dashboard window behave like the OS's own dropdowns (on macOS:
