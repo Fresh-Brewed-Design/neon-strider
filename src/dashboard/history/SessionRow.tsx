@@ -224,7 +224,7 @@ export function SessionRow({
         </div>
       </div>
 
-      {(error || note || showSavedLine || mark.error) && (
+      {(error || note || (showSavedLine && !markHere && !save.pending) || (mark.error && !markHere)) && (
         <div className="flex flex-col gap-1 border-t border-white/5 px-3 py-1.5">
           {uploadState !== "uploading" && error && (
             <ActionStatus error={error}>
