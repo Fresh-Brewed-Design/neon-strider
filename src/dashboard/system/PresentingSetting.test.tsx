@@ -24,7 +24,7 @@ describe("System -> Desk hold cards while presenting", () => {
   it("shows Rust's switch, on by default, with its one-line hint", () => {
     render(<PresentingSetting />);
     expect(screen.getByRole("switch", { name: NAME })).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByText(/cards that can wait show once you're done/)).toBeInTheDocument();
+    expect(screen.getByText(/Cards that can wait show once the slideshow or full-screen app closes/)).toBeInTheDocument();
   });
 
   it("asks Rust to switch it off", async () => {

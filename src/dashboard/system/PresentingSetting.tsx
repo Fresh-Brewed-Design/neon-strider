@@ -17,7 +17,7 @@ export function PresentingSetting() {
         tone="cyan"
         checked={s.presenting.enabled}
         onChange={(enabled) => void action.run(() => dispatch({ type: "presenting_set_config", enabled }))}
-        description="During a slideshow or full-screen app, cards that can wait show once you're done."
+        description="Cards that can wait show once the slideshow or full-screen app closes."
       />
       <ActionStatus pending={action.pending} error={action.error} className="mt-1" />
     </div>
