@@ -1,0 +1,1 @@
+- Arrow keys now move between options in pick-one lists: the HUD page's display, idle and minify key lists, the History time frame, and the choice rows in System and the program editor. Home and End jump to the first and last option, and Tab stops on each list once.

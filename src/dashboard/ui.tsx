@@ -1,6 +1,6 @@
-// The dashboard's shared building blocks: page frame, panel, label and buttons.
+// The dashboard's shared building blocks: page frame, panel, label, buttons and the option picker.
 
-import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
+import { useRef, type ButtonHTMLAttributes, type HTMLAttributes, type KeyboardEvent, type ReactNode } from "react";
 import { cx, type Tone } from "./util";
 
 const TONE_BUTTON: Record<Tone, string> = {
@@ -99,4 +99,110 @@ export function GhostButton({ className, children, ...rest }: ButtonHTMLAttribut
 /** Shown on pages that need live data before the first snapshot arrives. */
 export function Waiting() {
   return <div className="p-6 font-mono text-xs uppercase tracking-[0.2em] text-white/60">Waiting for core link…</div>;
+}
+
+export type PickerOption<T extends string> = { value: T; label: ReactNode };
+
+/**
+ * Pick one of a few options: a WAI-ARIA radio group. Tab lands on the chosen
+ * option (or the first when none is), the arrow keys move to the next or
+ * previous one and choose it, and Home and End jump to the ends. Each caller
+ * keeps its own look through `className` and `optionClassName`.
+ *
+ * With `activation="manual"` the keys only move focus, and Space, Enter or a
+ * click chooses: for options whose choice does something visible at once,
+ * such as moving the HUD to another display.
+ *
+ * `disabled` marks the options aria-disabled and ignores presses instead of
+ * disabling the buttons, so focus stays put while a choice is being saved.
+ */
+export function OptionPicker<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+  disabled = false,
+  activation = "auto",
+  className,
+  optionClassName,
+}: {
+  /** The group's accessible name. */
+  label: string;
+  options: readonly PickerOption<T>[];
+  /** The chosen option, or null when none is. */
+  value: T | null;
+  onChange: (next: T) => void;
+  disabled?: boolean;
+  /** "auto": moving with the keys chooses. "manual": only Space, Enter or a click does. */
+  activation?: "auto" | "manual";
+  className?: string;
+  optionClassName: (active: boolean) => string;
+}) {
+  const buttons = useRef<(HTMLButtonElement | null)[]>([]);
+  const chosen = options.findIndex((o) => o.value === value);
+  const tabStop = chosen >= 0 ? chosen : 0;
+
+  // A click on the chosen option still reports it (the HUD display picker
+  // uses that to forget a display that is gone); the keys only report a move.
+  const pick = (i: number) => {
+    if (!disabled) onChange(options[i].value);
+  };
+
+  const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>, i: number) => {
+    const last = options.length - 1;
+    let next: number;
+    switch (e.key) {
+      case "ArrowDown":
+      case "ArrowRight":
+        next = i === last ? 0 : i + 1;
+        break;
+      case "ArrowUp":
+      case "ArrowLeft":
+        next = i === 0 ? last : i - 1;
+        break;
+      case "Home":
+        next = 0;
+        break;
+      case "End":
+        next = last;
+        break;
+      case " ":
+      case "Enter":
+        if (activation === "auto") return;
+        e.preventDefault();
+        pick(i);
+        return;
+      default:
+        return;
+    }
+    e.preventDefault();
+    buttons.current[next]?.focus();
+    if (activation === "auto" && next !== i) pick(next);
+  };
+
+  return (
+    <div role="radiogroup" aria-label={label} aria-disabled={disabled || undefined} className={className}>
+      {options.map((o, i) => {
+        const active = i === chosen;
+        return (
+          <button
+            key={o.value}
+            ref={(el) => {
+              buttons.current[i] = el;
+            }}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            aria-disabled={disabled || undefined}
+            tabIndex={i === tabStop ? 0 : -1}
+            onClick={() => pick(i)}
+            onKeyDown={(e) => onKeyDown(e, i)}
+            className={optionClassName(active)}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
