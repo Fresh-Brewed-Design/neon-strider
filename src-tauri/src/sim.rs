@@ -3533,9 +3533,10 @@ mod tests {
                     &mut self.rt,
                     self.linked,
                     now,
-                    Some(0),
-                    false,
-                    false,
+                    crate::snapshot::desk::EyeScreen {
+                        idle_ms: Some(0),
+                        ..Default::default()
+                    },
                 );
             }
         }

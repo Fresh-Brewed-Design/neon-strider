@@ -258,6 +258,14 @@ pub fn display_off() -> bool {
     imp::display_off()
 }
 
+/// Windows says the user is presenting or a full-screen app is in front
+/// (`SHQueryUserNotificationState`), so the HUD may hold back its non-urgent
+/// cards (`snapshot::presenting`). False on other OSes and when Windows can't
+/// say. One quick shell query; the desk loop asks once a second.
+pub fn presenting() -> bool {
+    imp::presenting()
+}
+
 /// The primary mouse button is held down.
 pub fn primary_button_down() -> bool {
     imp::primary_button_down()

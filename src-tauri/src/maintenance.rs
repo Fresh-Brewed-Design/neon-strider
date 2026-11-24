@@ -110,6 +110,9 @@ pub struct MaintenanceSnapshot {
     /// 0 means no time limit.
     pub interval_days: u32,
     pub due: bool,
+    /// The HUD's BELT SERVICE DUE card shows: due, unless the HUD holds its
+    /// cards back while presenting (`presenting::hold_cards`).
+    pub hud_card: bool,
     /// The larger of the usage (per `basis`) and time fractions; 1.0 or more is due.
     pub progress: f32,
 }
@@ -168,6 +171,7 @@ pub fn compute(
         days_since: days.min(u32::MAX as i64) as u32,
         interval_days: cfg.interval_days,
         due: progress >= 1.0,
+        hud_card: progress >= 1.0,
         progress: progress as f32,
     }
 }

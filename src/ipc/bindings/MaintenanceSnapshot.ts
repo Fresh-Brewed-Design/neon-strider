@@ -27,6 +27,11 @@ days_since: number,
  */
 interval_days: number, due: boolean, 
 /**
+ * The HUD's BELT SERVICE DUE card shows: due, unless the HUD holds its
+ * cards back while presenting (`presenting::hold_cards`).
+ */
+hud_card: boolean, 
+/**
  * The larger of the usage (per `basis`) and time fractions; 1.0 or more is due.
  */
 progress: number, };

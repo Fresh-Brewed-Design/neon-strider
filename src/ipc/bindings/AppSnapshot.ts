@@ -22,6 +22,7 @@ import type { NeuralSnapshot } from "./NeuralSnapshot";
 import type { OdometerSnapshot } from "./OdometerSnapshot";
 import type { PcWalkShare } from "./PcWalkShare";
 import type { PlatformSnapshot } from "./PlatformSnapshot";
+import type { PresentingSnapshot } from "./PresentingSnapshot";
 import type { Program } from "./Program";
 import type { SeatedSnapshot } from "./SeatedSnapshot";
 import type { SessionSnapshot } from "./SessionSnapshot";
@@ -100,6 +101,11 @@ walkaway: WalkAwaySnapshot,
  * Lights out: stop the belt when the PC's display turns off.
  */
 lights_out: LightsOutSnapshot, 
+/**
+ * Hold cards while presenting: the switch, whether Windows says the
+ * user is presenting, and whether the HUD holds its cards back now.
+ */
+presenting: PresentingSnapshot, 
 /**
  * Every belt start eases up from the slowest speed (on by default).
  */
