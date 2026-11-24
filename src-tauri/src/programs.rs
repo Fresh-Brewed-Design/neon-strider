@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
 pub mod fit_to_deck;
+pub mod fit_to_time;
 
 pub const KEY_PROGRAMS: &str = "programs";
 const KEY_NEXT_ID: &str = "program_next_id";
@@ -488,6 +489,9 @@ pub struct ProgramRun {
     /// The step's minutes are done and the pulse is keeping it going: when it
     /// ends, no time carries into the next step. Not saved.
     pub pulse_held: bool,
+    /// FIT_TO_TIME (#258): the whole minutes this run was fitted to, so a
+    /// restored run fits the saved program again. None runs it as saved.
+    pub fit_minutes: Option<u32>,
 }
 
 /// What the deck has reported since the run began holding the belt still: a
@@ -1299,12 +1303,27 @@ impl OrchestratorState {
     /// Start a program immediately, replacing any running one without restoring
     /// in between (the replaced run's captured previous state is kept).
     pub fn run_program(&mut self, id: u32, now: Instant) -> Result<(), String> {
-        let program = self
+        self.run_program_fitted(id, None, now)
+    }
+
+    /// `run_program` at a length the user picked (FIT_TO_TIME, #258): the run
+    /// gets a copy of the program fitted to `minutes` by `fit_to_time::fit`,
+    /// and the saved program stays as it is. None runs it as saved.
+    pub fn run_program_fitted(
+        &mut self,
+        id: u32,
+        minutes: Option<u32>,
+        now: Instant,
+    ) -> Result<(), String> {
+        let saved = self
             .programs
             .iter()
             .find(|p| p.id == id)
-            .cloned()
             .ok_or_else(|| "Program not found".to_string())?;
+        let program = match minutes {
+            Some(m) => fit_to_time::fit(saved, m)?,
+            None => saved.clone(),
+        };
         let first = program
             .steps
             .first()
@@ -1334,6 +1353,7 @@ impl OrchestratorState {
             zone_settle_s: 0.0,
             pulse_under_s: 0.0,
             pulse_held: false,
+            fit_minutes: minutes,
         };
         self.set_program_intent_from(&run);
         self.program = Some(run);
@@ -2161,6 +2181,10 @@ pub struct SavedRun {
     pub previous: PreviousState,
     pub rest_warned: bool,
     pub saved_at_ms: i64,
+    /// FIT_TO_TIME's length; absent in runs saved before #258 and in runs
+    /// started as saved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fit_minutes: Option<u32>,
 }
 
 /// What a saved run's shape is, apart from the ticking clock fields.
@@ -2211,6 +2235,7 @@ impl OrchestratorState {
             previous: r.previous,
             rest_warned: r.rest_warned,
             saved_at_ms: now_ms,
+            fit_minutes: r.fit_minutes,
         })
     }
 
@@ -2239,8 +2264,11 @@ impl OrchestratorState {
             .programs
             .iter()
             .find(|p| p.id == saved.program_id)
-            .cloned()
             .ok_or_else(|| "program no longer exists".to_string())?;
+        let program = match saved.fit_minutes {
+            Some(m) => fit_to_time::fit(program, m)?,
+            None => program.clone(),
+        };
         if saved.step_index >= program.steps.len() {
             return Err("program changed since".to_string());
         }
@@ -2268,6 +2296,7 @@ impl OrchestratorState {
             zone_settle_s: 0.0,
             pulse_under_s: 0.0,
             pulse_held: false,
+            fit_minutes: saved.fit_minutes,
         };
         self.set_program_intent_from(&run);
         self.program = Some(run);
@@ -3200,6 +3229,51 @@ mod tests {
             "walk time does not advance while down"
         );
         assert!(after.program_intent.is_some());
+    }
+
+    /// FIT_TO_TIME (#258): the run gets the fitted copy, the saved program
+    /// stays, and a restart fits it again from the saved length.
+    #[test]
+    fn a_fitted_run_keeps_the_saved_program_and_survives_a_restart() {
+        let t0 = Instant::now();
+        let mut before = state();
+        before.last_status = MachineStatus::Running;
+        // Workday: 5 min every 30, fitted to one 25 min walk.
+        before.run_program_fitted(2, Some(25), t0).unwrap();
+        let kept = before.programs.iter().find(|p| p.id == 2).unwrap();
+        assert_eq!(kept.steps[0].duration_minutes, Some(5.0));
+        assert_eq!(kept.repeat_every_minutes, Some(30.0));
+        let a = before.active_program().unwrap();
+        assert_eq!(a.steps[0].duration_minutes, Some(25.0));
+        assert_eq!(a.repeat_every_minutes, None);
+        assert_eq!(a.seconds_remaining, Some(1500));
+        assert_eq!(before.program_last_run_id, Some(2));
+        let saved = saved_from(&before, 1_000_000);
+        assert_eq!(saved.fit_minutes, Some(25));
+
+        let mut after = state();
+        after.restore_run(&saved, 1_000_000 + 30_000, t0).unwrap();
+        let run = after.program.as_ref().unwrap();
+        assert_eq!(run.program.steps[0].duration_minutes, Some(25.0));
+        assert_eq!(run.fit_minutes, Some(25));
+
+        // A run saved before #258 has no length and restores as saved.
+        let json = serde_json::to_string(&saved)
+            .unwrap()
+            .replace(",\"fit_minutes\":25", "");
+        let old: SavedRun = serde_json::from_str(&json).unwrap();
+        assert_eq!(old.fit_minutes, None);
+    }
+
+    #[test]
+    fn a_length_out_of_range_starts_nothing() {
+        let mut s = state();
+        let err = s
+            .run_program_fitted(1, Some(200), Instant::now())
+            .unwrap_err();
+        assert_eq!(err, "Post-meal runs from 5 to 180 min.");
+        assert!(s.program.is_none());
+        assert!(s.program_intent.is_none());
     }
 
     #[test]

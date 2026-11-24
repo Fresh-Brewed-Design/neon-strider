@@ -78,7 +78,7 @@ impl TrayAction {
             TrayAction::ProgramHold => Command::ProgramPause,
             TrayAction::ProgramSkip => Command::ProgramSkip,
             TrayAction::ProgramEnd => Command::ProgramEnd,
-            TrayAction::RunProgram(id) => Command::ProgramRun { id },
+            TrayAction::RunProgram(id) => Command::ProgramRun { id, minutes: None },
             TrayAction::OpenDashboard | TrayAction::ToggleHud | TrayAction::Quit => return None,
         })
     }
@@ -1032,7 +1032,13 @@ mod tests {
             ("program_go", Command::ProgramPause),
             ("program_skip", Command::ProgramSkip),
             ("program_end", Command::ProgramEnd),
-            ("program:2", Command::ProgramRun { id: 2 }),
+            (
+                "program:2",
+                Command::ProgramRun {
+                    id: 2,
+                    minutes: None,
+                },
+            ),
         ];
         let nodes = build(&program());
         for (id, command) in expected {
@@ -1079,7 +1085,7 @@ mod tests {
             for item in items(&build(v)) {
                 match item.action.and_then(TrayAction::command) {
                     None => {}
-                    Some(Command::ProgramRun { id }) => {
+                    Some(Command::ProgramRun { id, .. }) => {
                         assert!(v.programs.iter().any(|(p, _)| *p == id))
                     }
                     Some(c) => assert!(hud.contains(&c), "{c:?}"),
