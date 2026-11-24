@@ -205,7 +205,8 @@ body,
    row under the stats each, never a toast per change. */
 .hud-neural,
 .hud-stride,
-.hud-drift {
+.hud-drift,
+.hud-easystop {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -217,7 +218,8 @@ body,
 }
 .hud-neural .hud-label,
 .hud-stride .hud-label,
-.hud-drift .hud-label {
+.hud-drift .hud-label,
+.hud-easystop .hud-label {
   color: var(--accent);
   letter-spacing: 0.14em;
   overflow-wrap: anywhere;
@@ -225,7 +227,8 @@ body,
 }
 .hud-neural-speed,
 .hud-stride-speed,
-.hud-drift-speed {
+.hud-drift-speed,
+.hud-easystop-speed {
   display: flex;
   align-items: baseline;
   gap: 4px;

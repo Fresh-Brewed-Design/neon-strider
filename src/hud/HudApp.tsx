@@ -6,7 +6,7 @@ import { useEyeBreakTones } from "./eyeBreakTones";
 import { HudHeader } from "./HudHeader";
 import { HudNote } from "./HudNote";
 import { minifyTooltipKey } from "./minifyHotkey";
-import { Controls, NeuralLine, ProgramsModule, SpeedDriftLine, StatCell, StrideFitLine } from "./HudPanel";
+import { Controls, EasyStopLine, NeuralLine, ProgramsModule, SpeedDriftLine, StatCell, StrideFitLine } from "./HudPanel";
 import { RunStripRow, StripRow } from "./HudStrip";
 import { linkLabel } from "./status";
 import { ToastCard } from "./ToastCard";
@@ -105,6 +105,7 @@ export function HudApp() {
                 )}
                 <NeuralLine snapshot={snapshot} />
                 <SpeedDriftLine snapshot={snapshot} />
+                <EasyStopLine snapshot={snapshot} />
                 <StrideFitLine snapshot={snapshot} />
                 {widgets.includes("CONTROLS") && <Controls snapshot={snapshot} />}
                 {widgets.includes("PROGRAMS") && <ProgramsModule snapshot={snapshot} />}

@@ -11,6 +11,7 @@ import { calls } from "./calls";
 import { deckProfile } from "./deckprofile";
 import { deskSync } from "./desksync";
 import { easyStart } from "./easystart";
+import { easyStop } from "./easystop";
 import { echo } from "./echo";
 import { engage } from "./engage";
 import { eyeBreak } from "./eyebreak";
@@ -80,4 +81,5 @@ export const SCENARIOS: Scenario[] = [
   typingSpeed,
   today,
   speedDrift,
+  easyStop,
 ];
