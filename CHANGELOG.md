@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.67.0 (2026-11-24)
+
+### Changed
+
+- GHOST_POD is back in System → Labs, so your watch can read the belt as a foot pod again. Its switches start off.
+- WRIST_LINK and its watch data field are gone.
+
 ## 1.66.0 (2026-11-24)
 
 ### New

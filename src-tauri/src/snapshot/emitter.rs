@@ -71,7 +71,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     let update = crate::update::snapshot(now_ms);
     let traffic = crate::traffic::snapshot();
     let lights_out = lights_out::snapshot();
-    let wrist_link = crate::wrist_link::snapshot();
+    let ghost_pod = crate::ghost_pod::snapshot();
     let typing_speed = crate::typing_speed::snapshot();
     let mut heart_rate = crate::heart_rate::snapshot();
     let guided_task = crate::guided_task::snapshot();
@@ -151,7 +151,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     snapshot.lights_out = lights_out;
     // The first-connect offer only shows while the treadmill is connected.
     snapshot.calibration.offer &= snapshot.connection.connected;
-    snapshot.wrist_link = wrist_link;
+    snapshot.ghost_pod = ghost_pod;
     snapshot.typing_speed = typing_speed;
     snapshot.heart_rate = heart_rate;
     snapshot.guided_task = guided_task;

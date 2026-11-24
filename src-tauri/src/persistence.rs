@@ -1276,9 +1276,9 @@ const SCALAR_FIELDS: [(&str, ScalarField); 7] = [
 const KEY_LAST_DEVICE_ID: &str = "lastDeviceId";
 /// Settings no longer read: the old app-wide belt length (`beltLength`, a
 /// default of 120 cm rather than a measurement; the belt loop is kept per
-/// treadmill as `beltLoop:<id>`), and GHOST_POD's two switches (the foot pod
-/// was removed, #297). `save_config` deletes them.
-const RETIRED_KEYS: [&str; 3] = ["beltLength", "ghost_pod_enabled", "ghost_pod_power"];
+/// treadmill as `beltLoop:<id>`), and WRIST_LINK's switch (the watch data
+/// field's service was removed, #325). `save_config` deletes them.
+const RETIRED_KEYS: [&str; 2] = ["beltLength", "wrist_link_enabled"];
 /// The settings key the calibration points were kept under while they were
 /// app-wide. It still holds points saved before any treadmill was known,
 /// which the first treadmill to connect adopts.
@@ -4276,17 +4276,14 @@ mod settings_tests {
     }
 
     #[test]
-    fn ghost_pods_switches_are_retired_and_never_written() {
-        let c = load(&stored(&[
-            ("ghost_pod_enabled", "true"),
-            ("ghost_pod_power", "true"),
-        ]));
+    fn wrist_links_switch_is_retired_and_never_written() {
+        let c = load(&stored(&[("wrist_link_enabled", "true")]));
         let rows = config_to_settings(&c).unwrap();
-        assert!(rows.iter().all(|(k, _)| !k.starts_with("ghost_pod")));
-        assert!(RETIRED_KEYS.contains(&"ghost_pod_enabled"));
-        assert!(RETIRED_KEYS.contains(&"ghost_pod_power"));
-        // WRIST_LINK's switch is still read, so it stays.
-        assert!(!RETIRED_KEYS.contains(&"wrist_link_enabled"));
+        assert!(rows.iter().all(|(k, _)| !k.starts_with("wrist_link")));
+        assert!(RETIRED_KEYS.contains(&"wrist_link_enabled"));
+        // GHOST_POD's switches are read again, so they stay.
+        assert!(!RETIRED_KEYS.contains(&"ghost_pod_enabled"));
+        assert!(!RETIRED_KEYS.contains(&"ghost_pod_power"));
     }
 
     #[test]
