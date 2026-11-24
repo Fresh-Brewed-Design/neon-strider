@@ -1,16 +1,15 @@
 import { useState } from "react";
-import { Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import type { Program } from "../../ipc";
 import { useAppSnapshot } from "../../state/useAppState";
 import { useTreadmillStore } from "../../store/treadmillStore";
 import { ActiveProgramCard } from "../programs/ActiveProgramCard";
-import { FitToDeck } from "../programs/FitToDeck";
 import { NEW_PROGRAM, toDraft, type Draft } from "../programs/draft";
-import { describePlan, describeProgram } from "../programs/format";
 import { ProgramEditor } from "../programs/ProgramEditor";
-import { GhostButton, NeonButton, Page, Panel, Waiting } from "../ui";
+import { ProgramRow } from "../programs/ProgramRow";
+import { NeonButton, Page, Panel, Waiting } from "../ui";
 import { linkState } from "../../state/linkStatus";
-import { cx, openLinkDialog, send } from "../util";
+import { openLinkDialog, send } from "../util";
 
 /** Why Run is off while no treadmill is linked, with the dashboard's own Connect. It only links; it never starts the belt. */
 function OfflineLine({ linking }: { linking: boolean }) {
@@ -92,33 +91,15 @@ export function ProgramsPage() {
               const running = p.id === runningId;
               return (
                 <li key={p.id}>
-                  <Panel className={cx("flex items-center gap-3 px-4 py-3", running && "border-neon-yellow/40")}>
-                    <div className="min-w-0 flex-1" title={describePlan(p)}>
-                      <div className="break-words font-digital text-sm font-bold leading-tight tracking-wider text-white">{p.name}</div>
-                      <div className="font-mono text-xs text-white/60">{describeProgram(p)}</div>
-                      {p.note && <div className="text-xs leading-snug text-white/60">{p.note}</div>}
-                      <FitToDeck offer={s.fit_to_deck.find((o) => o.program_id === p.id) ?? null} />
-                    </div>
-                    <GhostButton aria-label={`Edit ${p.name}`} onClick={() => setPicked(toDraft(p))}>
-                      <Pencil size={14} />
-                    </GhostButton>
-                    <GhostButton aria-label={`Delete ${p.name}`} className="hover:text-neon-magenta" onClick={() => remove(p)}>
-                      <Trash2 size={14} />
-                    </GhostButton>
-                    <NeonButton
-                      tone={running ? "yellow" : "cyan"}
-                      className="flex h-9 w-24 items-center justify-center gap-1.5"
-                      disabled={!s.connection.connected || running}
-                      title={s.connection.connected ? describePlan(p) : "Connect the treadmill first"}
-                      onClick={() => send({ type: "program_run", id: p.id })}
-                    >
-                      {running ? "Running" : (
-                        <>
-                          <Play size={14} /> Run
-                        </>
-                      )}
-                    </NeonButton>
-                  </Panel>
+                  <ProgramRow
+                    program={p}
+                    running={running}
+                    connected={s.connection.connected}
+                    fitToDeck={s.fit_to_deck.find((o) => o.program_id === p.id) ?? null}
+                    fitToTime={s.fit_to_time.find((o) => o.program_id === p.id) ?? null}
+                    onEdit={() => setPicked(toDraft(p))}
+                    onDelete={() => remove(p)}
+                  />
                 </li>
               );
             })}

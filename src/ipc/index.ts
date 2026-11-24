@@ -35,6 +35,7 @@ export type { EchoProgram } from "./bindings/EchoProgram";
 export type { WallClock } from "./bindings/WallClock";
 export type { EyeBreakSnapshot } from "./bindings/EyeBreakSnapshot";
 export type { FitToDeckOffer } from "./bindings/FitToDeckOffer";
+export type { FitToTimeOption } from "./bindings/FitToTimeOption";
 export type { GuideCheck } from "./bindings/GuideCheck";
 export type { GuideMark } from "./bindings/GuideMark";
 export type { GuideSpeed } from "./bindings/GuideSpeed";

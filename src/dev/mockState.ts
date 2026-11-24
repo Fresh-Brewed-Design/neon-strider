@@ -113,6 +113,7 @@ export const snapshot: AppSnapshot = {
     repeat_every_minutes: 30,
   },
   fit_to_deck: [],
+  fit_to_time: [],
   neural: {
     enabled: true,
     factor: 1,

@@ -244,6 +244,7 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         programs: state.programs.clone(),
         active_program: state.active_program(),
         fit_to_deck: state.fit_to_deck_offers(deck.stride_fit_kmh),
+        fit_to_time: crate::programs::fit_to_time::options(&state.programs),
         deck,
         neural: neural_snapshot(state),
         speed_drift: crate::speed_drift::SpeedDriftSnapshot::default(),

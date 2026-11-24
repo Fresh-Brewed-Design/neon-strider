@@ -1,0 +1,5 @@
+- Run any program at a length you pick, for example 25 min before a meeting: choose the length beside Run on the Programs page. The first choice runs the program as saved.
+- WARM_UP and COOL_DOWN keep their minutes, and the steps between them stretch or shrink together to fill the rest. A COOL_DOWN that ends on heart rate still walks on until your pulse is down.
+- A program that repeats runs once at the length you pick. A program with no end walks for that length.
+- The saved program stays as it is, and the belt still starts only when you press Run.
+- Each program offers lengths from 5 to 180 min. A program with several steps between WARM_UP and COOL_DOWN runs from a third to three times their minutes, with every step at least 1 min.
