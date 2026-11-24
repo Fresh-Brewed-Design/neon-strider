@@ -32,7 +32,8 @@ function WeekCell({ title, week, change }: { title: string; week: WeekStats; cha
 /** This week and last week, from Rust's weekly summary. */
 export function WeeklyPanel({ weekly }: { weekly: WeeklySummary }) {
   return (
-    <Panel className="grid grid-cols-2 gap-3 p-3">
+    // Side by side while each week gets 10rem; a large Windows text size stacks them.
+    <Panel className="grid grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-3 p-3">
       <WeekCell title="This week" week={weekly.this_week} />
       <div className="border-l border-white/10 pl-3">
         <WeekCell title="Last week" week={weekly.last_week} change={weekly.distance_change} />
@@ -66,7 +67,9 @@ export function TotalsPanel({
   count: number;
 }) {
   return (
-    <Panel className="grid grid-cols-4 gap-3 p-3">
+    // One row of four while each total gets 6rem (its label and a value like 12h 30m); a large
+    // Windows text size wraps them onto more rows.
+    <Panel className="grid grid-cols-[repeat(auto-fit,minmax(6rem,1fr))] gap-3 p-3">
       <SummaryStat label="Distance" value={(meters / 1000).toFixed(1)} unit="km" />
       <SummaryStat label="Time" value={formatDuration(seconds)} />
       <SummaryStat label="Sessions" value={String(count)} />

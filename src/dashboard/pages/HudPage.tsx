@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
 import {
   dispatch,
@@ -16,6 +17,21 @@ import { MODULE_WIDGETS, STAT_WIDGETS, widgetName } from "../../widgets/registry
 import { Toggle } from "../system/fields";
 import { GhostButton, Hint, Label, OptionPicker, Page, Panel, Waiting } from "../ui";
 import { cx, send } from "../util";
+
+/** A codename that may break after its underscores when its row is narrow (a large Windows text size). */
+function Codename({ text }: { text: string }) {
+  const parts = text.split("_");
+  return parts.map((part, i) => (
+    <Fragment key={i}>
+      {part}
+      {i < parts.length - 1 && (
+        <>
+          _<wbr />
+        </>
+      )}
+    </Fragment>
+  ));
+}
 
 const CORNERS: { anchor: HudAnchor; label: string; className: string }[] = [
   { anchor: "top_left", label: "Top left", className: "left-2 top-2" },
@@ -215,77 +231,80 @@ export function HudPage() {
 
   return (
     <Page codename="OVERLAY_CONFIG" title="HUD">
-      <div className="grid grid-cols-[minmax(0,1fr)_14rem] gap-3">
-        <div className="flex flex-col gap-3">
-          <Panel className="p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <Label>On the HUD</Label>
-              <span className="font-mono text-xs text-white/60">Top to bottom</span>
-            </div>
-            {widgets.length === 0 ? (
-              <p className="px-1 py-3 font-mono text-xs text-white/60">
-                Nothing pinned, so the HUD is hidden. Add a widget from Available.
-              </p>
-            ) : (
-              <ul className="flex flex-col gap-1">
-                {widgets.map((id, i) => (
-                  <li key={id} className="flex items-center gap-2 rounded border border-white/10 bg-black/30 px-3 py-1.5">
-                    <span className="flex-1 font-mono text-xs font-bold uppercase tracking-[0.15em] text-neon-cyan">
-                      {widgetName(id)}
-                    </span>
-                    <GhostButton aria-label="Move up" disabled={i === 0} onClick={() => move(i, -1)}>
-                      <ArrowUp size={14} />
-                    </GhostButton>
-                    <GhostButton aria-label="Move down" disabled={i === widgets.length - 1} onClick={() => move(i, 1)}>
-                      <ArrowDown size={14} />
-                    </GhostButton>
-                    <GhostButton aria-label="Remove" onClick={() => send({ type: "hud_toggle_widget", widget: id })}>
-                      <X size={14} />
-                    </GhostButton>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Panel>
-
-          {available.length > 0 && (
+      {/* The widget lists beside the 14rem placement column; narrow, the column goes under them (index.css). */}
+      <div className="hud-page">
+        <div className="hud-page-cols grid grid-cols-[minmax(0,1fr)_14rem] gap-3">
+          <div className="flex min-w-0 flex-col gap-3">
             <Panel className="p-3">
-              <Label className="mb-2 block">Available</Label>
-              <ul className="flex flex-col gap-1">
-                {available.map((w) => (
-                  <li key={w.id}>
-                    <button
-                      type="button"
-                      onClick={() => send({ type: "hud_toggle_widget", widget: w.id })}
-                      className="flex w-full items-center gap-2 rounded border border-white/10 px-3 py-1.5 text-left transition-colors hover:border-neon-cyan/50 hover:bg-neon-cyan/5"
-                    >
-                      <Plus size={14} className="shrink-0 text-white/60" />
-                      <span className="min-w-0">
-                        <span className="block font-mono text-xs font-bold uppercase tracking-[0.12em] text-white/80">
-                          {widgetName(w.id)}
-                        </span>
-                        <span className="block truncate font-mono text-xs text-white/60">{w.description}</span>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3">
+                <Label>On the HUD</Label>
+                <span className="font-mono text-xs text-white/60">Top to bottom</span>
+              </div>
+              {widgets.length === 0 ? (
+                <p className="px-1 py-3 font-mono text-xs text-white/60">
+                  Nothing pinned, so the HUD is hidden. Add a widget from Available.
+                </p>
+              ) : (
+                <ul className="flex flex-col gap-1">
+                  {widgets.map((id, i) => (
+                    <li key={id} className="flex items-center gap-2 rounded border border-white/10 bg-black/30 px-3 py-1.5">
+                      <span className="min-w-0 flex-1 font-mono text-xs font-bold uppercase tracking-[0.15em] text-neon-cyan [overflow-wrap:anywhere]">
+                        <Codename text={widgetName(id)} />
                       </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+                      <GhostButton aria-label="Move up" disabled={i === 0} onClick={() => move(i, -1)}>
+                        <ArrowUp size={14} />
+                      </GhostButton>
+                      <GhostButton aria-label="Move down" disabled={i === widgets.length - 1} onClick={() => move(i, 1)}>
+                        <ArrowDown size={14} />
+                      </GhostButton>
+                      <GhostButton aria-label="Remove" onClick={() => send({ type: "hud_toggle_widget", widget: id })}>
+                        <X size={14} />
+                      </GhostButton>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </Panel>
-          )}
-        </div>
 
-        <Panel className="flex flex-col gap-3 p-3">
-          <Label>Corner</Label>
-          <CornerPicker anchor={anchor} custom={s.hud.custom !== null} />
-          <PlacementRow anchor={anchor} custom={s.hud.custom !== null} />
-          <MonitorPicker monitors={s.hud_monitors} selected={monitor} />
-          <IdleModePicker mode={s.hud.idle_mode} />
-          <MinifyHotkeyPicker hotkey={s.hud.minify_hotkey} platform={s.platform} />
-          <Hint>
-            Clicks pass through the HUD except on its panel. Speed and tilt pop-ups stay hidden while VEL or TILT is on
-            the HUD.
-          </Hint>
-        </Panel>
+            {available.length > 0 && (
+              <Panel className="p-3">
+                <Label className="mb-2 block">Available</Label>
+                <ul className="flex flex-col gap-1">
+                  {available.map((w) => (
+                    <li key={w.id}>
+                      <button
+                        type="button"
+                        onClick={() => send({ type: "hud_toggle_widget", widget: w.id })}
+                        className="flex w-full items-center gap-2 rounded border border-white/10 px-3 py-1.5 text-left transition-colors hover:border-neon-cyan/50 hover:bg-neon-cyan/5"
+                      >
+                        <Plus size={14} className="shrink-0 text-white/60" />
+                        <span className="min-w-0">
+                          <span className="block font-mono text-xs font-bold uppercase tracking-[0.12em] text-white/80 [overflow-wrap:anywhere]">
+                            <Codename text={widgetName(w.id)} />
+                          </span>
+                          <span className="block font-mono text-xs text-white/60">{w.description}</span>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </Panel>
+            )}
+          </div>
+
+          <Panel className="flex flex-col gap-3 p-3">
+            <Label>Corner</Label>
+            <CornerPicker anchor={anchor} custom={s.hud.custom !== null} />
+            <PlacementRow anchor={anchor} custom={s.hud.custom !== null} />
+            <MonitorPicker monitors={s.hud_monitors} selected={monitor} />
+            <IdleModePicker mode={s.hud.idle_mode} />
+            <MinifyHotkeyPicker hotkey={s.hud.minify_hotkey} platform={s.platform} />
+            <Hint>
+              Clicks pass through the HUD except on its panel. Speed and tilt pop-ups stay hidden while VEL or TILT is on
+              the HUD.
+            </Hint>
+          </Panel>
+        </div>
       </div>
     </Page>
   );

@@ -25,15 +25,17 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
     <Panel
       className={cx(
         // The status lines sit in a row of their own under the buttons, so the buttons never squeeze them onto two lines.
-        "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 px-4 py-2",
+        // The name keeps at least 12rem beside the buttons; with less room (a large Windows text
+        // size) the buttons wrap under it instead of crushing it.
+        "flex flex-wrap items-center gap-x-4 px-4 py-2",
         wait ? "border-l-4 border-neon-yellow bg-neon-yellow/10" : "border-neon-yellow/30",
       )}
     >
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1 basis-48">
         {wait ? (
           <div role="alert" className="break-words font-digital text-xs font-bold tracking-widest text-neon-yellow">{waitHeadline(wait)}</div>
         ) : (
-          <div className="flex min-w-0 items-baseline gap-2" data-testid="program-label-line">
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-2" data-testid="program-label-line">
             <Label className="shrink-0 whitespace-nowrap !tracking-[0.12em] text-neon-yellow/70">{a.paused ? "Program paused" : "Program running"}</Label>
             {a.phase === "walking" && (
               <span className="shrink-0 whitespace-nowrap font-mono text-xs text-white/60">
@@ -44,7 +46,7 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
         )}
         <div className="line-clamp-2 break-words font-digital text-base font-bold leading-tight tracking-wider text-neon-yellow">{a.name}</div>
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex flex-wrap items-center gap-1">
         {stepMap && (
           <GhostButton
             onClick={stepMap.onToggle}
@@ -84,7 +86,7 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
           <Square size={14} /> End
         </GhostButton>
       </div>
-      <div className="col-span-2 min-w-0">
+      <div className="min-w-0 basis-full">
         <div className="font-mono text-xs text-white/60">{describeActive(a)}</div>
         {wait && <div className="font-mono text-xs text-white/70">{waitReason(wait)}</div>}
       </div>

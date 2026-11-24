@@ -1,0 +1,1 @@
+- At a large Windows text size, the dashboard shows its sidebar as icons and lets pages wrap, so nothing is cut off or scrolls sideways.

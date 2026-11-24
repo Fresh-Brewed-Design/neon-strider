@@ -41,7 +41,7 @@ export function Section({
   return (
     <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-14">
       <Panel className="p-4">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
           <h2 id={`${id}-title`} className="font-digital text-sm font-bold uppercase tracking-[0.18em] text-white">
             {title}
           </h2>

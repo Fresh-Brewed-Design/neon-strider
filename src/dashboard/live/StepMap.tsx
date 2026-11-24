@@ -57,7 +57,7 @@ function Row({ row }: { row: PlanRow }) {
       data-state={row.state}
       aria-current={current ? "step" : undefined}
       className={cx(
-        "grid grid-cols-[1.5rem_minmax(0,1fr)_5.5rem_6.5rem_3.5rem_6rem] items-center gap-2 rounded px-1.5 font-mono text-[11px] leading-4",
+        "step-map-row grid grid-cols-[1.5rem_minmax(0,1fr)_5.5rem_6.5rem_3.5rem_6rem] items-center gap-2 rounded px-1.5 font-mono text-[11px] leading-4",
         current ? "bg-neon-yellow/10 text-neon-yellow" : row.state === "done" ? "text-white/30" : "text-white/70",
       )}
     >
@@ -95,7 +95,7 @@ export function StepMap({ a }: { a: ActiveProgram }) {
   const chart = stepChart(a, W, H);
   return (
     <Panel className="flex min-h-[130px] flex-1 basis-0 flex-col gap-1.5 px-3 py-2">
-      <div className="flex shrink-0 items-baseline gap-3 font-mono text-[11px]">
+      <div className="flex shrink-0 flex-wrap items-baseline gap-x-3 font-mono text-[11px]">
         <Label className="text-neon-yellow/80">STEP_MAP</Label>
         {repeat != null && (
           <span className="text-white/60">
@@ -107,7 +107,7 @@ export function StepMap({ a }: { a: ActiveProgram }) {
         <span className="text-neon-magenta/80">{chart.maxIncline.toFixed(1)}% tilt</span>
       </div>
       <Chart c={chart} />
-      <ol ref={listRef} aria-label="Program steps" className="relative min-h-0 flex-1 overflow-y-auto">
+      <ol ref={listRef} aria-label="Program steps" className="step-map-list relative min-h-0 flex-1 overflow-y-auto">
         {rows.map((r) => (
           <Row key={r.key} row={r} />
         ))}

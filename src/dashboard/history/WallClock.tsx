@@ -18,7 +18,7 @@ export function WallClockPanel({ clock }: { clock: WallClock }) {
   const days = clock.desk_days;
   return (
     <Panel className="flex flex-col gap-2 p-3">
-      <div className="flex items-baseline gap-3">
+      <div className="flex flex-wrap items-baseline gap-x-3">
         <Label>WALL_CLOCK</Label>
         <p className="min-w-0 flex-1 font-mono text-xs leading-snug text-white/60">{wallClockText(clock)}</p>
       </div>

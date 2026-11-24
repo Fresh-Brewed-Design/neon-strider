@@ -139,7 +139,9 @@ export function LivePage() {
       {/* Fits the 760x600 popup without scrolling, even with the maintenance
           banner and a running program both showing: both banners sit in the header. */}
       <div className="flex min-h-full flex-col gap-2">
-        <div className="grid grid-cols-2 gap-3">
+        {/* Two columns while each gets 16rem (the speed readout, nudges and presets side by
+            side); a large Windows text size stacks them instead. */}
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-3">
           <Axis
             title="Velocity"
             tone="cyan"
@@ -199,7 +201,10 @@ export function LivePage() {
         {s.active_program && mapOpen ? (
           <StepMap a={s.active_program} />
         ) : (
-          <div className="grid grid-cols-3 gap-2">
+          // At most three tiles a row (each a third of the row, less the two 0.5rem gaps), as at
+          // 100 %; under 7rem a tile (a codename and its value) would clip, so a large Windows
+          // text size gives fewer, wider tiles.
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(max(7rem,calc((100%_-_1rem)/3)),1fr))] gap-2">
             {stats.map((w) => {
               const { value, unit } = w.read(s);
               const spark = w.spark?.(s);

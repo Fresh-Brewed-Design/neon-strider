@@ -100,19 +100,21 @@ export function DashboardApp() {
   );
 
   return (
-    <div className="relative flex h-screen w-screen overflow-hidden bg-[#050505] text-white select-none">
+    // fixed inset-0, not w-screen/h-screen: the window's own box under any zoom, so at a large
+    // Windows text size the root (the container index.css sizes the layout by) is never wider.
+    <div className="dash-root fixed inset-0 flex overflow-hidden bg-[#050505] text-white select-none">
       <div className="crt-overlay" />
-      <nav className="flex w-40 shrink-0 flex-col border-r border-neon-cyan/15 bg-black/50" aria-label="Sections">
-        <div className="px-4 pb-4 pt-4" data-tauri-drag-region>
+      <nav className="dash-rail flex w-40 shrink-0 flex-col border-r border-neon-cyan/15 bg-black/50" aria-label="Sections">
+        <div className="dash-rail-logo px-4 pb-4 pt-4" data-tauri-drag-region>
           <div className="font-digital text-sm font-black tracking-[0.25em] text-neon-cyan" data-tauri-drag-region>
-            NEON
+            N<span className="dash-rail-text">EON</span>
           </div>
           <div className="font-digital text-sm font-black tracking-[0.25em] text-neon-magenta" data-tauri-drag-region>
-            STRIDER
+            S<span className="dash-rail-text">TRIDER</span>
           </div>
         </div>
 
-        <ul className="flex flex-col gap-1 px-2">
+        <ul className="dash-rail-list flex flex-col gap-1 px-2">
           {PAGES.map(({ id, label, Icon }) => {
             const active = id === page;
             return (
@@ -120,38 +122,41 @@ export function DashboardApp() {
                 <button
                   type="button"
                   aria-current={active ? "page" : undefined}
+                  title={label}
                   onClick={() => {
                     useTreadmillStore.getState().clearProgramRequest();
                     openPage(id);
                   }}
                   className={cx(
-                    "relative flex w-full items-center gap-3 rounded px-3 py-2.5 text-left transition-colors",
+                    "dash-rail-item relative flex w-full items-center gap-3 rounded px-3 py-2.5 text-left transition-colors",
                     active ? "bg-neon-cyan/10 text-neon-cyan" : "text-white/55 hover:bg-white/5 hover:text-white",
                   )}
                 >
                   {active && <span className="absolute inset-y-1.5 left-0 w-0.5 rounded bg-neon-cyan shadow-[0_0_8px_#00f3ff]" />}
                   <Icon size={16} />
-                  <span className="font-mono text-xs font-bold uppercase tracking-[0.2em]">{label}</span>
-                  {id === "system" && updateBadge && <UpdateDot className="ml-auto" />}
+                  <span className="dash-rail-text font-mono text-xs font-bold uppercase tracking-[0.2em]">{label}</span>
+                  {id === "system" && updateBadge && <UpdateDot className="dash-rail-dot ml-auto" />}
                 </button>
               </li>
             );
           })}
         </ul>
 
-        <div className="mt-auto flex flex-col gap-1 border-t border-white/5 p-2">
-          <GuidedPinMarker />
+        <div className="dash-rail-foot mt-auto flex flex-col gap-1 border-t border-white/5 p-2">
+          <div className="dash-wide-only empty:hidden">
+            <GuidedPinMarker />
+          </div>
           <button
             type="button"
             onClick={() => send({ type: "dashboard_set_pinned", pinned: !pinned })}
             title={pinned ? "Close the dashboard when it loses focus" : "Keep the dashboard open when it loses focus"}
             className={cx(
-              "flex w-full items-center gap-2 rounded px-2.5 py-2 text-left transition-colors hover:bg-white/5",
+              "dash-rail-item flex w-full items-center gap-2 rounded px-2.5 py-2 text-left transition-colors hover:bg-white/5",
               pinned ? "text-neon-cyan" : "text-white/60",
             )}
           >
             {pinned ? <Pin size={14} /> : <PinOff size={14} />}
-            <span className="font-mono text-[11px] font-bold uppercase tracking-[0.18em]">
+            <span className="dash-rail-text font-mono text-[11px] font-bold uppercase tracking-[0.18em]">
               {pinned ? "Pinned" : "Pin open"}
             </span>
           </button>
@@ -160,6 +165,10 @@ export function DashboardApp() {
       </nav>
 
       <main className="flex min-w-0 flex-1 flex-col">
+        {/* With the rail at icons only, the guided task's marker sits over the page instead. */}
+        <div className="dash-compact-only shrink-0 px-3 pt-2">
+          <GuidedPinMarker />
+        </div>
         {page !== "system" && (
           <CalibrateOffer
             onCalibrate={() => {
