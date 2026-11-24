@@ -1,0 +1,1 @@
+- The Programs page tags the program you ran last with LAST_RUN beside its name. The "Run or end a program" shortcut starts that program.
