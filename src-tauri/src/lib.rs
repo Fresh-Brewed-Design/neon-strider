@@ -25,6 +25,7 @@ pub mod easy_stop;
 pub mod echo;
 pub mod engine;
 pub mod export;
+pub mod ghost_pod;
 pub mod guided_task;
 pub mod heart_rate;
 pub mod history;
@@ -42,7 +43,6 @@ pub mod programs;
 pub mod protocol;
 pub mod secrets;
 pub mod speed_drift;
-pub mod wrist_link;
 // The simulated deck: tests, and the dev builds' "simulated treadmill"
 // choice (`sim_link`). Never in release builds.
 #[cfg(any(test, debug_assertions))]
@@ -307,8 +307,8 @@ async fn start_backend(app: tauri::AppHandle) {
     strava::spawn_worker(app.clone());
     update::init(&app);
     update::spawn(app.clone());
-    wrist_link::init(&app);
-    wrist_link::spawn(app.clone());
+    ghost_pod::init(&app);
+    ghost_pod::spawn(app.clone());
     heart_rate::init(&app);
     speed_drift::init(&app);
     typing_speed::init(&app);
