@@ -602,13 +602,14 @@ async fn listen_for_status(
         }
 
         // Speed drift's slow steps go untoasted too: its HUD line shows them.
-        // Easy start's steps are quiet the same way: one toast per step of
-        // the ramp would flood the HUD.
+        // Easy start's and easy stop's steps are quiet the same way: one
+        // toast per step of the ramp would flood the HUD.
         let neural_easing = state
             .neural_changed_at
             .is_some_and(|at| at.elapsed() < NEURAL_RAMP_QUIET)
             || state.speed_drift.changed_within(NEURAL_RAMP_QUIET)
-            || state.easy_start_quiet(state.now());
+            || state.easy_start_quiet(state.now())
+            || state.easing_down();
         let changes = toasts.on_frame(&t, neural_easing);
         if let Some(status) = changes.status {
             crate::hud::toast(

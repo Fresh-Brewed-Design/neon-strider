@@ -650,6 +650,12 @@ impl OrchestratorState {
     /// speed). `quiet`: a call holds the belt at the quiet speed;
     /// `calibrating`: a GROUND_TRUTH run has the belt.
     pub fn tick_speed_drift(&mut self, now: Instant, now_ms: u64, quiet: bool, calibrating: bool) {
+        // Easy stop eases the belt down to stop: drift holds as it is, so no
+        // drift step lands mid-ramp. A speed set by hand ends the ramp, and
+        // drift then sees it as always.
+        if self.easing_down() {
+            return;
+        }
         let (base, _, source) = self.resolve_base(now);
         let cfg = self.speed_drift.cfg;
         let speeds = self.drift_speeds(&cfg);

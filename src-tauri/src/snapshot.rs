@@ -263,6 +263,7 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         traffic: crate::traffic::TrafficSnapshot::default(),
         lights_out: LightsOutSnapshot::default(),
         easy_start: state.easy_start_snapshot(),
+        easy_stop: state.easy_stop_snapshot(),
         calibration: crate::calibration::CalibrationSnapshot::default(),
         wrist_link: crate::wrist_link::WristLinkSnapshot::default(),
         typing_speed: crate::typing_speed::TypingSpeedSnapshot::default(),

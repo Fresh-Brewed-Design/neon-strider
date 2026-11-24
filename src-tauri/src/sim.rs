@@ -4993,4 +4993,258 @@ mod tests {
         assert!(app_starts(&r.commands_since(mark)));
         assert!(r.deck.running_at(3.1), "{} km/h", r.deck.speed_kmh());
     }
+
+    // ---- Easy stop (#302) ----
+
+    /// A manual walk at 5 km/h with Easy stop switched on, the belt started
+    /// by a press.
+    fn easy_stop_rig() -> Rig {
+        let mut r = Rig::new();
+        r.state.easy_stop_enabled = true;
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(5.0);
+        r.set_speed(5.0);
+        r.run(15.0);
+        assert!(r.deck.running_at(5.0), "{} km/h", r.deck.speed_kmh());
+        r
+    }
+
+    /// STOP eases the belt down to the slowest speed over about 20 s in falling
+    /// steps, then sends the Stop; the walk's saved time includes the ramp.
+    #[test]
+    fn easy_stop_eases_a_manual_walk_down_then_stops_it() {
+        let mut r = easy_stop_rig();
+        let walked = r.state.session.duration_seconds;
+        let mark = r.mark();
+        r.press(DeckAction::Stop);
+        assert!(r.state.easing_down());
+        let mut speeds = vec![];
+        for _ in 0..19 {
+            r.run(1.0);
+            speeds.push(r.deck.speed_kmh());
+        }
+        assert_eq!(r.controls_since(mark, Control::Stop), 0, "no Stop yet");
+        assert!(speeds[1] < 5.0, "slowing at once: {speeds:?}");
+        assert!(speeds[8] > 1.5, "still easing at 9 s: {speeds:?}");
+        assert!(
+            speeds.windows(2).all(|w| w[1] <= w[0] + 0.01),
+            "only down: {speeds:?}"
+        );
+        assert!(r.deck.running_at(0.6), "at the floor: {speeds:?}");
+        let bytes = target_bytes_since(&r, mark);
+        assert!(bytes.windows(2).all(|w| w[0] > w[1]), "{bytes:?}");
+        assert_eq!(bytes.last(), Some(&6));
+        assert!(bytes.len() >= 8, "in steps: {bytes:?}");
+        let snap = r.state.easy_stop_snapshot();
+        assert!(snap.easing && snap.stop_in_s.is_some_and(|s| s <= 2));
+        r.run(2.0);
+        assert!(!r.state.easing_down());
+        assert!(r.controls_since(mark, Control::Stop) >= 1, "the Stop went");
+        r.run(10.0);
+        assert!(r.deck.belt_still());
+        assert_eq!(r.finalised.len(), 1, "one walk saved");
+        assert!(
+            r.finalised[0] >= walked + 19,
+            "{} s saved, {walked} s before STOP",
+            r.finalised[0]
+        );
+        assert!(!app_starts(&r.commands_since(mark)));
+    }
+
+    #[test]
+    fn a_second_stop_during_easy_stop_stops_at_once() {
+        let mut r = easy_stop_rig();
+        let mark = r.mark();
+        r.press(DeckAction::Stop);
+        r.run(5.0);
+        assert!(r.state.easing_down());
+        let second = r.mark();
+        r.press(DeckAction::Stop);
+        assert!(!r.state.easing_down());
+        r.run(0.3);
+        assert_eq!(r.controls_since(second, Control::Stop), 1);
+        r.run(15.0);
+        assert!(r.deck.belt_still());
+        assert!(
+            target_bytes_since(&r, second).is_empty(),
+            "nothing but the Stop"
+        );
+        assert!(!app_starts(&r.commands_since(mark)));
+    }
+
+    /// A pause during the ramp wins at once: the belt pauses, no Stop follows,
+    /// and the walk waits for GO, which resumes it at the walk's speed.
+    #[test]
+    fn a_pause_during_easy_stop_pauses_and_waits_for_go() {
+        let mut r = easy_stop_rig();
+        r.press(DeckAction::Stop);
+        // Mid-step, so no ramp step lands in the pause's own poll.
+        r.run(7.0);
+        let mark = r.mark();
+        r.press(DeckAction::Pause);
+        r.run(0.3);
+        assert_eq!(r.commands_since(mark), vec![PacketKind::AtomicAction]);
+        r.run(60.0);
+        assert_eq!(r.deck.status_code(), 10, "paused");
+        assert!(!r.state.easing_down());
+        assert_eq!(r.controls_since(mark, Control::Stop), 0, "no Stop");
+        assert!(!moves_belt(&r.commands_since(mark)), "nothing resumes it");
+        assert!(r.finalised.is_empty(), "the walk goes on");
+        r.press(DeckAction::Start);
+        r.run(20.0);
+        assert!(r.deck.running_at(5.0), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(r.sessions_started, 1, "the same walk");
+    }
+
+    /// A pause with the treadmill's own button mid-ramp: the ramp ends, the
+    /// belt stays paused and no Stop or start follows.
+    #[test]
+    fn a_pause_at_the_treadmill_during_easy_stop_stays_paused() {
+        let mut r = easy_stop_rig();
+        r.press(DeckAction::Stop);
+        r.run(6.0);
+        let t = r.t;
+        r.deck.press_pause(t);
+        let mark = r.mark();
+        r.run(60.0);
+        assert_eq!(r.deck.status_code(), 10, "still paused");
+        assert!(!r.state.easing_down());
+        assert_eq!(r.controls_since(mark, Control::Stop), 0);
+        assert!(!app_starts(&r.commands_since(mark)));
+    }
+
+    /// A speed set by hand during the ramp ends it: the walk goes on there.
+    #[test]
+    fn a_speed_set_by_hand_during_easy_stop_keeps_walking() {
+        let mut r = easy_stop_rig();
+        r.press(DeckAction::Stop);
+        r.run(6.0);
+        let mark = r.mark();
+        r.set_speed(3.0);
+        r.run(1.0);
+        assert!(!r.state.easing_down());
+        r.run(60.0);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(r.controls_since(mark, Control::Stop), 0);
+        assert_eq!(target_bytes_since(&r, mark), vec![30]);
+    }
+
+    /// A speed press during the ramp is a speed set by hand too: the walk goes
+    /// on from the speed the belt runs.
+    #[test]
+    fn a_speed_press_during_easy_stop_keeps_walking() {
+        let mut r = easy_stop_rig();
+        r.press(DeckAction::Stop);
+        r.run(6.0);
+        let mark = r.mark();
+        r.press(DeckAction::SpeedUp);
+        r.run(30.0);
+        assert!(!r.state.easing_down());
+        assert_eq!(r.controls_since(mark, Control::Stop), 0);
+        assert_eq!(r.deck.status_code(), 3, "still walking");
+    }
+
+    /// Stops other than the STOP press on a manual walk stay immediate with
+    /// easy stop on: Lights out, and STOP on a program.
+    #[test]
+    fn lights_out_and_a_program_stop_at_once_with_easy_stop_on() {
+        let mut r = easy_stop_rig();
+        let mark = r.mark();
+        r.state.set_test_now(r.t);
+        crate::snapshot::lights_out::apply(&mut r.state, crate::snapshot::lights_out::Effect::Stop);
+        assert!(!r.state.easing_down());
+        r.run(0.3);
+        assert_eq!(r.controls_since(mark, Control::Stop), 1);
+        r.run(15.0);
+        assert!(r.deck.belt_still());
+
+        let mut r = Rig::new();
+        r.state.easy_stop_enabled = true;
+        r.run(1.0);
+        r.run_program(POST_MEAL);
+        r.run(30.0);
+        let mark = r.mark();
+        r.press(DeckAction::Stop);
+        assert!(!r.state.easing_down());
+        r.run(0.3);
+        assert_eq!(r.controls_since(mark, Control::Stop), 1);
+    }
+
+    /// Switched off mid-ramp: STOP was pressed, so the belt stops at once.
+    #[test]
+    fn switching_easy_stop_off_mid_ramp_stops_at_once() {
+        let mut r = easy_stop_rig();
+        r.press(DeckAction::Stop);
+        r.run(5.0);
+        let mark = r.mark();
+        r.state.easy_stop_enabled = false;
+        r.run(0.5);
+        assert!(!r.state.easing_down());
+        assert_eq!(r.controls_since(mark, Control::Stop), 1);
+        r.run(15.0);
+        assert!(r.deck.belt_still());
+    }
+
+    /// A lost link mid-ramp: the reconnect adopts the belt's speed and never
+    /// sends the walk's 5 km/h again.
+    #[test]
+    fn a_lost_link_during_easy_stop_never_speeds_the_belt_back_up() {
+        let mut r = easy_stop_rig();
+        r.press(DeckAction::Stop);
+        r.run(8.0);
+        let at_drop = (r.deck.speed_kmh() * 10.0).round() as u8;
+        assert!(at_drop < 50, "eased down: byte {at_drop}");
+        r.drop_link();
+        r.run(2.0);
+        assert!(r.reconnect());
+        let mark = r.mark();
+        r.run(30.0);
+        assert!(!r.state.easing_down());
+        let bytes = target_bytes_since(&r, mark);
+        assert!(bytes.iter().all(|b| *b <= at_drop), "{bytes:?}");
+        assert!(r.deck.speed_kmh() <= at_drop as f32 / 10.0 + 0.05);
+        assert!(!app_starts(&r.commands_since(mark)));
+    }
+
+    /// Speed drift holds while the belt eases down: every target in the ramp
+    /// falls, and the Stop follows.
+    #[test]
+    fn speed_drift_never_fights_easy_stop() {
+        let mut r = drift_rig();
+        r.state.easy_stop_enabled = true;
+        r.run(5.0 * 60.0);
+        let mark = r.mark();
+        r.press(DeckAction::Stop);
+        r.run(19.0);
+        let bytes = target_bytes_since(&r, mark);
+        assert!(bytes.windows(2).all(|w| w[0] > w[1]), "{bytes:?}");
+        assert_eq!(bytes.last(), Some(&6));
+        r.run(15.0);
+        assert!(r.controls_since(mark, Control::Stop) >= 1);
+        assert!(r.deck.belt_still());
+    }
+
+    /// STOP during an easy start: the belt eases down from where it got to.
+    #[test]
+    fn easy_stop_during_easy_start_eases_down_from_where_the_belt_is() {
+        let mut r = eased_rig();
+        r.state.easy_stop_enabled = true;
+        r.run(1.0);
+        r.set_speed(5.0);
+        r.run(16.0);
+        assert!(r.state.easing_up());
+        let now_byte = (r.deck.speed_kmh() * 10.0).round() as u8;
+        let mark = r.mark();
+        r.press(DeckAction::Stop);
+        assert!(!r.state.easing_up() && r.state.easing_down());
+        r.run(19.0);
+        let bytes = target_bytes_since(&r, mark);
+        assert!(
+            bytes.iter().all(|b| *b <= now_byte),
+            "{now_byte}: {bytes:?}"
+        );
+        r.run(15.0);
+        assert!(r.deck.belt_still());
+    }
 }
