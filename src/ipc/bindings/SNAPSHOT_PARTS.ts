@@ -5,6 +5,7 @@ import type { AppSnapshot } from "./AppSnapshot";
 export const COLD_KEYS = [
   "programs",
   "fit_to_deck",
+  "fit_to_time",
   "hud",
   "hud_monitors",
   "strava",
