@@ -21,6 +21,7 @@ pub mod deck_profile;
 pub mod defaults;
 mod display;
 pub mod easy_start;
+pub mod easy_stop;
 pub mod echo;
 pub mod engine;
 pub mod export;
@@ -289,6 +290,7 @@ async fn start_backend(app: tauri::AppHandle) {
     }
     profile_sweep::init(&app).await;
     easy_start::init(&app).await;
+    easy_stop::init(&app).await;
 
     // Once per database: earlier builds saved bad session averages.
     let (app_c, tilt, offset) = (app.clone(), config.tilt_multiplier, config.incline_offset);

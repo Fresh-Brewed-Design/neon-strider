@@ -230,6 +230,7 @@ export const snapshot: AppSnapshot = {
   walkaway: { lock_enabled: true, idle_enabled: true, idle_minutes: 10, card: "none", pause_in_s: 0, reason: null },
   lights_out: { enabled: false },
   easy_start: { enabled: true },
+  easy_stop: { enabled: false, ramp_s: 20, easing: false, stop_in_s: null, to_kmh: null, message: null },
   update: {
     current_version: "1.2.0",
     status: { state: "up_to_date" },

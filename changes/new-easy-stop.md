@@ -1,0 +1,4 @@
+- Easy stop: DUMP on a manual walk can first slow the belt to the slowest speed over 20 s, then stop it, so stepping off at a desk is gentler.
+- A second DUMP stops the belt at once, and setting a speed by hand during the slowdown keeps the walk going.
+- Pause, walk-away, Lights out, a lost link and any stop at the treadmill stay immediate. The HUD shows EASY STOP with a countdown while the belt slows, and the saved walk includes the slowdown.
+- Easy stop is off by default. Switch it on in System, Treadmill.

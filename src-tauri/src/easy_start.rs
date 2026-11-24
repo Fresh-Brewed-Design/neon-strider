@@ -102,10 +102,22 @@ pub(crate) fn ramp_byte(from: u8, to: u8, elapsed: Duration) -> Option<u8> {
     if to <= from {
         return Some(to);
     }
-    let steps = (elapsed.as_millis() / STEP.as_millis()) as u64;
-    let frac = (steps * STEP.as_millis() as u64) as f64 / RAMP.as_millis() as f64;
-    let byte = from as f64 + (to - from) as f64 * frac.min(1.0);
-    Some((byte.round() as u8).clamp(from, to))
+    Some(stepped_byte(from, to, step_fraction(elapsed, RAMP, 0)))
+}
+
+/// How far through `ramp` the ramp is `elapsed` into it, 0 to 1, counted in
+/// whole `STEP`s; `ahead` more steps count as done already (a ramp down
+/// takes its first step on the press). Pure; shared with easy stop.
+pub(crate) fn step_fraction(elapsed: Duration, ramp: Duration, ahead: u64) -> f64 {
+    let steps = (elapsed.as_millis() / STEP.as_millis()) as u64 + ahead;
+    ((steps * STEP.as_millis() as u64) as f64 / ramp.as_millis() as f64).min(1.0)
+}
+
+/// The byte `frac` (0 to 1) of the way from `from` to `to`, either way,
+/// rounded and kept between the two. Pure; shared with easy stop.
+pub(crate) fn stepped_byte(from: u8, to: u8, frac: f64) -> u8 {
+    let byte = from as f64 + (to as f64 - from as f64) * frac.clamp(0.0, 1.0);
+    (byte.round() as u8).clamp(from.min(to), from.max(to))
 }
 
 /// The switch as the windows see it.
@@ -251,7 +263,7 @@ impl OrchestratorState {
         );
     }
 
-    fn end_easy_start(&mut self, now: Instant, why: Option<&str>) {
+    pub(crate) fn end_easy_start(&mut self, now: Instant, why: Option<&str>) {
         if self.easy_start.ramp.take().is_some() {
             self.easy_start.ended_at = Some(now);
             if let Some(why) = why {

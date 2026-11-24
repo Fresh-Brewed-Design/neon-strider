@@ -6,6 +6,7 @@ import type { ConnectionSnapshot } from "./ConnectionSnapshot";
 import type { DeckSnapshot } from "./DeckSnapshot";
 import type { DeskSync } from "./DeskSync";
 import type { EasyStartSnapshot } from "./EasyStartSnapshot";
+import type { EasyStopSnapshot } from "./EasyStopSnapshot";
 import type { EyeBreakSnapshot } from "./EyeBreakSnapshot";
 import type { FitToDeckOffer } from "./FitToDeckOffer";
 import type { FitToTimeOption } from "./FitToTimeOption";
@@ -102,6 +103,11 @@ lights_out: LightsOutSnapshot,
  * Every belt start eases up from the slowest speed (on by default).
  */
 easy_start: EasyStartSnapshot, 
+/**
+ * STOP on a manual walk eases the belt down first (off by default),
+ * and the ramp while the belt eases down.
+ */
+easy_stop: EasyStopSnapshot, 
 /**
  * Auto-update: the running version, any update on offer and its notes.
  */

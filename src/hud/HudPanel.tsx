@@ -153,6 +153,26 @@ export function SpeedDriftLine({ snapshot }: { snapshot: AppSnapshot }) {
   );
 }
 
+/**
+ * Quiet line while easy stop eases the belt down before stopping it, so a
+ * slowing belt never looks like a fault. Rust decides when
+ * (`easy_stop.easing`) and gives the countdown; its sentence is the tooltip.
+ */
+export function EasyStopLine({ snapshot }: { snapshot: AppSnapshot }) {
+  const e = snapshot.easy_stop;
+  if (!e.easing || e.to_kmh === null) return null;
+  return (
+    <div className="hud-easystop accent-magenta" data-testid="hud-easystop" title={e.message ?? undefined}>
+      <span className="hud-label">EASY STOP</span>
+      <span className="hud-easystop-speed">
+        to {e.to_kmh.toFixed(1)}
+        <span className="hud-unit">km/h</span>
+        {e.stop_in_s !== null && <span className="hud-unit">{e.stop_in_s} s</span>}
+      </span>
+    </div>
+  );
+}
+
 /** Engage / Stasis: one `toggle_start` to Rust, the same press as the shortcut. */
 export function EngageButton({
   snapshot,
@@ -194,11 +214,11 @@ export function Controls({ snapshot }: { snapshot: AppSnapshot }) {
           type="button"
           className="hud-btn hud-btn-stop hud-btn-stack accent-magenta"
           disabled={!connection.connected || deck.status === "Stopped" || deck.status === "Stopping"}
-          title="Stop the belt and end the session."
+          title={snapshot.easy_stop.easing ? "Stop the belt at once." : "Stop the belt and end the session."}
           onClick={() => send({ type: "stop" })}
         >
           DUMP{" "}
-          <span className="hud-btn-sub">end walk</span>
+          <span className="hud-btn-sub">{snapshot.easy_stop.easing ? "stop now" : "end walk"}</span>
         </button>
       </div>
       <div className="hud-steppers">

@@ -81,6 +81,9 @@ pub struct AppSnapshot {
     // ---- Easy start ----
     /// Every belt start eases up from the slowest speed (on by default).
     pub easy_start: crate::easy_start::EasyStartSnapshot,
+    /// STOP on a manual walk eases the belt down first (off by default),
+    /// and the ramp while the belt eases down.
+    pub easy_stop: crate::easy_stop::EasyStopSnapshot,
 
     // ---- Auto-update ----
     /// Auto-update: the running version, any update on offer and its notes.
@@ -874,6 +877,11 @@ pub enum Command {
     /// System -> Treadmill: every belt start eases up from the slowest speed
     /// (`on`, the default) or runs straight to the target. Persisted.
     EasyStartSet {
+        on: bool,
+    },
+    /// System -> Treadmill: STOP on a manual walk eases the belt down to the
+    /// slowest speed first (`on`) or stops it at once (the default). Persisted.
+    EasyStopSet {
         on: bool,
     },
 

@@ -348,6 +348,7 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
 
         // ---- Easy start ----
         Command::EasyStartSet { on } => crate::easy_start::set_enabled(&app, on).await,
+        Command::EasyStopSet { on } => crate::easy_stop::set_enabled(&app, on).await,
 
         // ---- Guided calibration (GROUND_TRUTH) ----
         Command::CalibrationRunStart { target_kmh } => {

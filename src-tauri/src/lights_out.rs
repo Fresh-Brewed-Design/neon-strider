@@ -25,7 +25,7 @@
 //!
 //! This file is declared from `snapshot.rs` (`#[path]`), not `lib.rs`.
 
-use crate::engine::{DeckAction, OrchestratorState};
+use crate::engine::OrchestratorState;
 use crate::persistence;
 use crate::protocol::MachineStatus;
 use serde::{Deserialize, Serialize};
@@ -170,7 +170,9 @@ pub fn apply(state: &mut OrchestratorState, effect: Effect) {
                 ),
             }
             // As END: stops the deck, ends any program, clears every intent.
-            state.trigger_action(DeckAction::Stop);
+            // At once, never eased (easy stop is for the STOP press only).
+            let now = state.now();
+            state.stop_now(now);
             // And no automatic start or resume when the display wakes.
             state.hold_auto_start = true;
         }

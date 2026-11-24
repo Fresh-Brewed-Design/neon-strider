@@ -449,6 +449,10 @@ pub struct OrchestratorState {
     /// off); off here so the engine's own tests run without it.
     pub easy_start_enabled: bool,
     pub(crate) easy_start: crate::easy_start::EasyStart,
+    /// Easy stop: STOP on a manual walk eases the belt down first
+    /// (`easy_stop.rs`). Loaded at startup (off unless switched on).
+    pub easy_stop_enabled: bool,
+    pub(crate) easy_stop: crate::easy_stop::EasyStop,
 
     /// Tests only: the simulated instant `now()` reads instead of the real
     /// clock, so ticked time and the engine's own clock reads agree.
@@ -537,6 +541,8 @@ impl Default for OrchestratorState {
             curve_hold: None,
             easy_start_enabled: false,
             easy_start: Default::default(),
+            easy_stop_enabled: false,
+            easy_stop: Default::default(),
             #[cfg(test)]
             test_now: None,
         }
@@ -1457,7 +1463,8 @@ impl OrchestratorState {
                     self.start_or_go(now);
                 }
             }
-            DeckAction::Stop => self.do_stop(now),
+            // STOP may ease the belt down first (easy_stop.rs).
+            DeckAction::Stop => self.stop_pressed(now),
         }
     }
 
@@ -1700,7 +1707,7 @@ impl OrchestratorState {
 
     /// Stop the deck and clear every intent, so nothing restarts it. The session
     /// is saved by `manage_session_lifecycle` once the deck reports Stopped.
-    fn do_stop(&mut self, now: Instant) {
+    pub(crate) fn do_stop(&mut self, now: Instant) {
         self.pending_control = Some(Control::Stop);
         self.stop_requested = true;
         self.manual_intent = None;
@@ -1912,6 +1919,8 @@ impl OrchestratorState {
     pub fn reset_connection(&mut self) {
         self.awaiting_first_packet = true;
         self.session_evaluated_on_connect = false;
+        // STOP was pressed before the drop: never back up to the walk speed.
+        self.easy_stop_link_lost();
         // An opening still writing its row belongs to the old link; its row is
         // dropped when it lands (`finish_session_open`).
         self.session_opening = None;
@@ -2376,6 +2385,7 @@ impl ProtocolEngine {
         state.check_start_watch(now);
         state.release_hold_if_moving();
         state.track_easy_start(now);
+        state.track_easy_stop(now);
         self.drive_stop(state, now);
         self.sync_with_deck(state, now);
         self.notice_deck_changes(state, now);
@@ -2672,6 +2682,8 @@ impl ProtocolEngine {
                 let h_speed = state.held_speed_byte().unwrap_or(h_speed);
                 // Easy start holds a belt that just started below the target.
                 let h_speed = state.easy_start_byte(h_speed, now);
+                // Easy stop holds a belt easing down to stop below it.
+                let h_speed = state.easy_stop_byte(h_speed, now);
                 // A byte DECK_PROFILE knows the deck changes or refuses goes
                 // out as the one it runs. The byte last sent is compared the
                 // same way: after the deck took another byte for it, it is

@@ -75,14 +75,16 @@ export function Transport({ s }: { s: AppSnapshot }) {
           className="flex h-12 w-32 flex-col items-center justify-center"
           disabled={deck.status === "Stopped" || deck.status === "Stopping" || control.pending}
           onClick={() => void control.run(() => dispatch({ type: "stop" }))}
-          title="Stop the belt and end the session"
+          title={s.easy_stop.easing ? "Stop the belt at once" : "Stop the belt and end the session"}
         >
           Dump{" "}
-          <span className="font-mono text-[11px] font-normal normal-case leading-tight tracking-normal opacity-70">end walk</span>
+          <span className="font-mono text-[11px] font-normal normal-case leading-tight tracking-normal opacity-70">
+            {s.easy_stop.easing ? "stop now" : "end walk"}
+          </span>
         </NeonButton>
       </div>
       <ActionStatus
-        pending={waiting && !moving && "Waiting for the treadmill to start…"}
+        pending={(waiting && !moving && "Waiting for the treadmill to start…") || s.easy_stop.message}
         error={engage.error ?? failed ?? control.error}
       />
     </div>
