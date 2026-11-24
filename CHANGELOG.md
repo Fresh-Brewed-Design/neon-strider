@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.67.1 (2026-11-24)
+
+### Fixed
+
+- GHOST_POD no longer lets a nearby Bluetooth device set an impossible total distance on the pod or fill the log with its writes.
+
 ## 1.67.0 (2026-11-24)
 
 ### Changed
