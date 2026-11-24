@@ -91,7 +91,8 @@ const RESUME_MARGIN_S: u16 = 3;
 /// the walker still on the belt reconnects inside that.
 const DROPOUT_GRACE: Duration = Duration::from_secs(30);
 /// Physics steps longer than this are a stall (sleep, lost link), not walking.
-/// Eight missed polls of 600 ms: longer is no longer a late frame.
+/// Eight missed polls of 600 ms: longer is no longer a late frame. GHOST_POD's
+/// `PodMeter::advance` uses the same 5 s.
 const MAX_PHYSICS_STEP_S: f64 = 5.0;
 /// Stride used when there is no calibration, cm.
 /// The common 0.415 times height estimate for a walking stride, at an adult
@@ -636,8 +637,9 @@ fn walking_kcal(speed_kmh: f64, grade_pct: f64, body_mass_kg: f64, dt_s: f64) ->
 }
 
 /// The rate behind `walking_kcal`, kcal per minute: METABOLIC_BURN's
-/// estimate. 0 when the speed or the weight isn't positive.
-fn walking_kcal_per_min(speed_kmh: f64, grade_pct: f64, body_mass_kg: f64) -> f64 {
+/// estimate, which GHOST_POD's power also comes from. 0 when the speed or
+/// the weight isn't positive.
+pub(crate) fn walking_kcal_per_min(speed_kmh: f64, grade_pct: f64, body_mass_kg: f64) -> f64 {
     // Written as a negation so NaN counts as "not positive".
     if !(speed_kmh > 0.0 && body_mass_kg > 0.0) {
         return 0.0;
