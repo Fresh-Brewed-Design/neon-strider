@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MergedSession } from "../../services/sessionMerge";
-import { groupByDay, metersByDay, totals, visibleSessions } from "./sessions";
+import { groupByDay, monthStart, rangeBounds, visibleSessions } from "./sessions";
 
 const NOW = new Date(2026, 10, 14, 12, 0);
 
@@ -44,15 +44,25 @@ describe("visibleSessions", () => {
   });
 });
 
-describe("totals, metersByDay and groupByDay", () => {
-  it("adds up distance, time and energy", () => {
-    expect(totals(SESSIONS)).toEqual({ meters: 6500, seconds: 2400, kcal: 160 });
+describe("rangeBounds and monthStart", () => {
+  it("spans one local day for a picked day", () => {
+    expect(rangeBounds("7d", "2026-11-14", NOW)).toEqual({
+      from: new Date(2026, 10, 14).getTime(),
+      to: new Date(2026, 10, 15).getTime(),
+    });
   });
 
-  it("sums distance per local day", () => {
-    expect(metersByDay(SESSIONS).get("2026-11-14")).toBe(1500);
+  it("starts a range at midnight and leaves All open", () => {
+    expect(rangeBounds("7d", null, NOW)).toEqual({ from: new Date(2026, 10, 8).getTime(), to: null });
+    expect(rangeBounds("all", null, NOW)).toEqual({ from: null, to: null });
   });
 
+  it("finds the first of a month, across a year end", () => {
+    expect(monthStart(new Date(2026, 0, 20), 2)).toBe(new Date(2025, 10, 1).getTime());
+  });
+});
+
+describe("groupByDay", () => {
   it("groups consecutive sessions of a day under one heading", () => {
     const groups = groupByDay(SESSIONS);
     expect(groups.map((g) => g.items.map((s) => s.id))).toEqual([[4, 3], [2], [1]]);

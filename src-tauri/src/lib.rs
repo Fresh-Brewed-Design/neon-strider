@@ -26,6 +26,7 @@ pub mod engine;
 pub mod export;
 pub mod guided_task;
 pub mod heart_rate;
+pub mod history;
 mod hooks;
 mod hud;
 pub mod limits;
@@ -397,7 +398,9 @@ pub fn run() {
             set_launch_at_login,
             bluetooth::sync_orchestrator_config,
             persistence::get_rust_config,
-            persistence::get_sessions,
+            history::history_sessions,
+            history::history_older,
+            history::history_stats,
             persistence::get_samples,
             persistence::delete_session,
             persistence::get_db_setting,

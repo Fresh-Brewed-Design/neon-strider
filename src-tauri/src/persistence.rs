@@ -23,7 +23,8 @@ static DB: Mutex<Option<Connection>> = Mutex::new(None);
 const BUSY_TIMEOUT: Duration = Duration::from_millis(5000);
 
 /// Explicit column list, so row mapping never depends on physical column order.
-const SESSION_COLS: &str = "id, start_time, end_time, duration_seconds, distance_meters, \
+pub(crate) const SESSION_COLS: &str =
+    "id, start_time, end_time, duration_seconds, distance_meters, \
      raw_distance_meters, calories, steps, raw_steps, avg_speed, raw_avg_speed, avg_incline, \
      strava_id, neural_heat, neural_ticks, last_hardware_time, hardware_time_offset, \
      avg_heart_rate, max_heart_rate, program_name";
@@ -1090,7 +1091,7 @@ fn backup_before_migrating(conn: &Connection, path: &Path) {
 /// Run `f` on the shared connection, opening it first if needed. The lock is
 /// held for the call, so never call back into persistence (or anything that
 /// does) from inside `f`.
-fn with_conn<T>(
+pub(crate) fn with_conn<T>(
     app: &AppHandle,
     f: impl FnOnce(&mut Connection) -> rusqlite::Result<T>,
 ) -> Result<T, String> {
@@ -1699,7 +1700,7 @@ fn insert_sample(
     .map(|_| ())
 }
 
-fn session_from_row(row: &rusqlite::Row) -> rusqlite::Result<Session> {
+pub(crate) fn session_from_row(row: &rusqlite::Row) -> rusqlite::Result<Session> {
     Ok(Session {
         id: Some(row.get(0)?),
         start_time: row.get(1)?,
@@ -1736,15 +1737,6 @@ fn query_sessions(
         let rows = stmt.query_map(params, session_from_row)?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
     })
-}
-
-/// The newest `limit` sessions, newest first (the History list).
-#[tauri::command]
-pub async fn get_sessions(app: tauri::AppHandle, limit: u32) -> Result<Vec<Session>, String> {
-    crate::util::blocking(move || {
-        query_sessions(&app, "ORDER BY start_time DESC LIMIT ?1", params![limit])
-    })
-    .await
 }
 
 /// Every saved session, oldest first (for the CSV export).

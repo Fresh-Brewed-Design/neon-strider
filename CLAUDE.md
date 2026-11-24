@@ -211,6 +211,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?lightsout`: LIGHTS_OUT on; on the HUD preview its toast
 - `?link=scanning|connecting|reconnecting|nodata|bt-off|failed`: each treadmill link state
 - `?loginstorage`: the Strava login kept in the database because Windows Credential Manager failed, with its note under the account
+- `?longhistory`: three walks a day for 14 months, so History lists the newest three months and offers Load older walks
 - `?mac`: running on macOS: its words ("this Mac", System Settings), ⌃⌥ shortcuts, no minify key choice, no Slow down on calls
 - `?maxhr=178`: a max heart rate of 178 bpm set in System -> Heart rate (program heart zones use it)
 - `?minified`: the running strip; with `?program=resting|paused`, `?noprogram` or `?idle`; with `?hrspark=...`, `?hrzone=...` or `?heart=on|waiting` it shows PULSE_RATE

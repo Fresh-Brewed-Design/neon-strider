@@ -1,0 +1,1 @@
+- Fixed History losing walks after about a year: the totals and the calendar now count every saved walk, and Load older walks at the end of the list brings back earlier months, three at a time.
