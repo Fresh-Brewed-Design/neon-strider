@@ -22,6 +22,8 @@ import { cx } from "../util";
 
 /** Walks loaded at once: three a day for a year fill the 53-week calendar, and 1000 rows stay quick. */
 const LOAD_LIMIT = 1000;
+/** Until the first snapshot: one constant, so it never reads as a change. */
+const NO_IDS: number[] = [];
 
 export function HistoryPage() {
   const refreshTrigger = useTreadmillStore((s) => s.historyRefreshTrigger);
@@ -33,7 +35,7 @@ export function HistoryPage() {
   const deskSync = useAppState((s) => s.desk_sync);
   const wallClock = useAppState((s) => s.wall_clock);
   const todayTimeline = useAppState((s) => s.today_timeline);
-  const savedIds = useAppState((s) => s.strava.saved_session_ids) ?? [];
+  const savedIds = useAppState((s) => s.strava.saved_session_ids) ?? NO_IDS;
 
   const [raw, setRaw] = useState<Session[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -129,7 +131,7 @@ export function HistoryPage() {
             optionClassName={(active) =>
               cx(
                 "px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.12em] transition-colors",
-                active ? "bg-neon-cyan/15 text-neon-cyan" : "text-white/45 hover:bg-white/5 hover:text-white",
+                active ? "bg-neon-cyan/15 text-neon-cyan" : "text-white/60 hover:bg-white/5 hover:text-white",
               )
             }
           />
@@ -151,7 +153,7 @@ export function HistoryPage() {
         <Panel className="p-3">
           <div className="mb-2 flex items-center justify-between">
             <Label>Past year</Label>
-            <span className="font-mono text-[11px] text-white/40">Click a day to show only its sessions</span>
+            <span className="font-mono text-xs text-white/60">Click a day to show only its sessions</span>
           </div>
           <Calendar metersByDay={byDay} selected={day} onSelect={setDay} />
         </Panel>
@@ -172,9 +174,9 @@ export function HistoryPage() {
         {loadError ? (
           <p className="py-6 text-center font-mono text-xs text-red-400">Could not load sessions: {loadError}</p>
         ) : !sessions ? (
-          <p className="py-6 text-center font-mono text-xs text-white/40">Loading sessions…</p>
+          <p className="py-6 text-center font-mono text-xs text-white/60">Loading sessions…</p>
         ) : groups.length === 0 ? (
-          <p className="py-6 text-center font-mono text-xs text-white/40">
+          <p className="py-6 text-center font-mono text-xs text-white/60">
             {sessions.length === 0
               ? "No sessions recorded yet. Every walk shows up in History."
               : "No sessions in this time frame."}

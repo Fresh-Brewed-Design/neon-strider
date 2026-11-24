@@ -26,7 +26,7 @@ export function Page({
     <section className="flex h-full min-h-0 flex-col">
       <header className="flex shrink-0 items-end justify-between gap-3 px-5 pb-2 pt-3" data-tauri-drag-region>
         <div data-tauri-drag-region>
-          <div className="font-mono text-[11px] tracking-[0.25em] text-white/40" data-tauri-drag-region>
+          <div className="font-mono text-xs tracking-[0.25em] text-white/60" data-tauri-drag-region>
             {codename}
           </div>
           <h1 className="font-digital text-lg font-bold tracking-[0.12em] text-white" data-tauri-drag-region>
@@ -46,7 +46,7 @@ export function Panel({ className, children }: { className?: string; children: R
 
 export function Label({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <span className={cx("font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-white/50", className)}>
+    <span className={cx("font-mono text-xs font-bold uppercase tracking-[0.2em] text-white/60", className)}>
       {children}
     </span>
   );
@@ -54,7 +54,7 @@ export function Label({ children, className }: { children: ReactNode; className?
 
 /** Small grey explanation under or beside a control. */
 export function Hint({ className, ...rest }: HTMLAttributes<HTMLParagraphElement>) {
-  return <p className={cx("font-mono text-[11px] leading-relaxed text-white/45", className)} {...rest} />;
+  return <p className={cx("font-mono text-xs leading-relaxed text-white/60", className)} {...rest} />;
 }
 
 export function NeonButton({
@@ -85,7 +85,7 @@ export function GhostButton({ className, children, ...rest }: ButtonHTMLAttribut
     <button
       type="button"
       className={cx(
-        "rounded px-2 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-white/50",
+        "rounded px-2 py-1 font-mono text-xs font-bold uppercase tracking-[0.15em] text-white/60",
         "transition-colors hover:bg-white/5 hover:text-white disabled:opacity-30",
         className,
       )}
@@ -98,7 +98,7 @@ export function GhostButton({ className, children, ...rest }: ButtonHTMLAttribut
 
 /** Shown on pages that need live data before the first snapshot arrives. */
 export function Waiting() {
-  return <div className="p-6 font-mono text-xs uppercase tracking-[0.2em] text-white/40">Waiting for core link…</div>;
+  return <div className="p-6 font-mono text-xs uppercase tracking-[0.2em] text-white/60">Waiting for core link…</div>;
 }
 
 export type PickerOption<T extends string> = { value: T; label: ReactNode };

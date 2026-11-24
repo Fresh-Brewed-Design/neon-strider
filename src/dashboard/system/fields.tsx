@@ -47,7 +47,7 @@ export function Section({
           </h2>
           {status}
         </div>
-        {description && <p className="mt-1 font-mono text-xs leading-relaxed text-white/50">{description}</p>}
+        {description && <p className="mt-1 font-mono text-xs leading-relaxed text-white/60">{description}</p>}
         <div className="mt-4 flex flex-col gap-4">{children}</div>
       </Panel>
     </section>
@@ -277,7 +277,7 @@ export function NumberField({
           }}
           className={cx(INPUT_CLASS, "w-24")}
         />
-        {unit && <span className="font-mono text-[11px] text-white/45">{unit}</span>}
+        {unit && <span className="font-mono text-xs text-white/60">{unit}</span>}
       </div>
       <ActionStatus pending={action.pending} error={action.error} className="mt-1" />
       {hint && <Hint className="mt-1">{hint}</Hint>}

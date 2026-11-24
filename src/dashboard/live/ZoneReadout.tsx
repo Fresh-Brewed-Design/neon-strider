@@ -8,7 +8,7 @@ import { cx, TONE_TEXT } from "../util";
  * tooltip, and screen readers read it.
  */
 export function ZoneReadout({ zone }: { zone: ZoneBand }) {
-  const tone = zone.position ? TONE_TEXT[ZONE_ACCENT[zone.position]] : "text-white/50";
+  const tone = zone.position ? TONE_TEXT[ZONE_ACCENT[zone.position]] : "text-white/60";
   return (
     <span
       className="ml-auto min-w-0 text-right font-mono text-[11px] leading-snug tracking-[0.08em] [overflow-wrap:anywhere]"
@@ -17,7 +17,7 @@ export function ZoneReadout({ zone }: { zone: ZoneBand }) {
     >
       <span className={cx("font-bold", tone)}>{zone.label}</span>
       <span className="ml-2 text-white/60">
-        {zoneRange(zone)} <span className="text-white/40">BPM</span>
+        {zoneRange(zone)} <span className="text-white/60">BPM</span>
       </span>
       <span className="sr-only">{zone.message}</span>
     </span>

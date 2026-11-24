@@ -17,7 +17,7 @@ export function TypingSpeedTable({ data }: { data: TypingSpeedSnapshot }) {
           aria-label="Key presses per minute by walking speed"
           className="grid grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-x-4 gap-y-1 font-mono text-[11px]"
         >
-          <div role="row" className="contents text-white/45 uppercase tracking-[0.12em]">
+          <div role="row" className="contents text-white/60 uppercase tracking-[0.12em]">
             <span role="columnheader">Speed</span>
             <span role="columnheader" className="text-right">
               Minutes walked
