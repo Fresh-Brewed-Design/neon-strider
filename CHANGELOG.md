@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.63.0 (2026-11-24)
+
+### Changed
+
+- Arrow keys now move between options in pick-one lists: the HUD page's display, idle and minify key lists, the History time frame, and the choice rows in System and the program editor. Home and End jump to the first and last option, and Tab stops on each list once.
+
+### Fixed
+
+- The dashboard and HUD stay responsive while the database is slow: saving and loading walks no longer holds up the treadmill link.
+- Smoother dashboard and HUD, with less CPU used while walking: settings, programs and other rarely changing parts are only sent to the windows when they change, and a hidden window gets nothing until it shows.
+
 ## 1.62.0 (2026-11-24)
 
 ### Changed
