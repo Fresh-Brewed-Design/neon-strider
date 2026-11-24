@@ -144,6 +144,7 @@ export function LivePage() {
         <div className="grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-3">
           <Axis
             title="Velocity"
+            wheelHint="Scroll to change speed."
             tone="cyan"
             unit="km/h"
             actual={deck.speed_kmh}
@@ -170,6 +171,7 @@ export function LivePage() {
           />
           <Axis
             title="Tilt"
+            wheelHint="Scroll to change incline."
             tone="magenta"
             unit="%"
             actual={deck.incline_pct}
