@@ -98,7 +98,7 @@ export function StepMap({ a }: { a: ActiveProgram }) {
       <div className="flex shrink-0 items-baseline gap-3 font-mono text-[11px]">
         <Label className="text-neon-yellow/80">STEP_MAP</Label>
         {repeat != null && (
-          <span className="text-white/50">
+          <span className="text-white/60">
             Cycle {a.cycle} · repeats every {num(repeat)} min
           </span>
         )}

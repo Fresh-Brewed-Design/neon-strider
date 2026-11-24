@@ -56,7 +56,7 @@ function StrideFitForm({ fit, save }: { fit: number | null; save: ReturnType<typ
           aria-label="STRIDE_FIT speed in km/h"
         />
       </label>
-      <span className="pb-2 font-mono text-[11px] text-white/50">km/h</span>
+      <span className="pb-2 font-mono text-xs text-white/60">km/h</span>
       <NeonButton className="px-3 py-1.5" disabled={save.pending || value.trim() === ""} onClick={submit}>
         SAVE
       </NeonButton>

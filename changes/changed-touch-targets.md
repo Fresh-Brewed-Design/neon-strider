@@ -1,0 +1,1 @@
+- Bigger buttons and clearer text for a walking desk. The Live page's speed and incline presets are taller, the HUD's VEL and TILT buttons are 36 px, and small text is 12 px in a brighter grey.

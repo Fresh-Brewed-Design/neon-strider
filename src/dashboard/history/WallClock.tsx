@@ -20,7 +20,7 @@ export function WallClockPanel({ clock }: { clock: WallClock }) {
     <Panel className="flex flex-col gap-2 p-3">
       <div className="flex items-baseline gap-3">
         <Label>WALL_CLOCK</Label>
-        <p className="min-w-0 flex-1 font-mono text-[11px] leading-snug text-white/60">{wallClockText(clock)}</p>
+        <p className="min-w-0 flex-1 font-mono text-xs leading-snug text-white/60">{wallClockText(clock)}</p>
       </div>
       {days > 0 && (
         <div>
@@ -50,7 +50,7 @@ export function WallClockPanel({ clock }: { clock: WallClock }) {
           </ul>
           <div aria-hidden className="mt-1 grid gap-1" style={columns}>
             {hours.map((h, i) => (
-              <span key={h} className="whitespace-nowrap font-mono text-[11px] leading-none text-white/40">
+              <span key={h} className="whitespace-nowrap font-mono text-xs leading-none text-white/60">
                 {i % LABEL_EVERY === 0 ? String(h).padStart(2, "0") : ""}
               </span>
             ))}

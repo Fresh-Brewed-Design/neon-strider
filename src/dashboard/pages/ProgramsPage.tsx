@@ -95,8 +95,8 @@ export function ProgramsPage() {
                   <Panel className={cx("flex items-center gap-3 px-4 py-3", running && "border-neon-yellow/40")}>
                     <div className="min-w-0 flex-1" title={describePlan(p)}>
                       <div className="break-words font-digital text-sm font-bold leading-tight tracking-wider text-white">{p.name}</div>
-                      <div className="font-mono text-xs text-white/50">{describeProgram(p)}</div>
-                      {p.note && <div className="text-xs leading-snug text-white/40">{p.note}</div>}
+                      <div className="font-mono text-xs text-white/60">{describeProgram(p)}</div>
+                      {p.note && <div className="text-xs leading-snug text-white/60">{p.note}</div>}
                       <FitToDeck offer={s.fit_to_deck.find((o) => o.program_id === p.id) ?? null} />
                     </div>
                     <GhostButton aria-label={`Edit ${p.name}`} onClick={() => setPicked(toDraft(p))}>
