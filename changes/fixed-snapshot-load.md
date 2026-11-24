@@ -1,0 +1,1 @@
+- The dashboard and HUD stay responsive while the database is slow: saving and loading walks no longer holds up the treadmill link.

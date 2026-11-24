@@ -1525,6 +1525,23 @@ pub fn db_create_session(app: &tauri::AppHandle) -> Result<i64, String> {
     })
 }
 
+/// Delete a session row created for a walk that never used it (the belt
+/// stopped, or the link changed, while the row was written). A row with
+/// samples is kept: it is a walk.
+pub fn db_discard_empty_session(app: &tauri::AppHandle, id: i64) -> Result<(), String> {
+    with_conn(app, |conn| discard_empty_session(conn, id).map(|_| ()))
+}
+
+/// `db_discard_empty_session` on a connection; true when the row went.
+fn discard_empty_session(conn: &Connection, id: i64) -> rusqlite::Result<bool> {
+    let n = conn.execute(
+        "DELETE FROM sessions WHERE id = ?1
+         AND NOT EXISTS (SELECT 1 FROM samples WHERE session_id = ?1)",
+        params![id],
+    )?;
+    Ok(n > 0)
+}
+
 /// Write a session's running totals; `end_time` becomes now.
 pub fn db_update_session(app: &tauri::AppHandle, id: i64, data: Session) -> Result<(), String> {
     let now = crate::util::now_ms();
@@ -1657,7 +1674,10 @@ fn query_sessions(
 /// The newest `limit` sessions, newest first (the History list).
 #[tauri::command]
 pub async fn get_sessions(app: tauri::AppHandle, limit: u32) -> Result<Vec<Session>, String> {
-    query_sessions(&app, "ORDER BY start_time DESC LIMIT ?1", params![limit])
+    crate::util::blocking(move || {
+        query_sessions(&app, "ORDER BY start_time DESC LIMIT ?1", params![limit])
+    })
+    .await
 }
 
 /// Every saved session, oldest first (for the CSV export).
@@ -1704,7 +1724,7 @@ pub fn db_sessions_by_ids(app: &tauri::AppHandle, ids: &[i64]) -> Result<Vec<Ses
 
 #[tauri::command]
 pub async fn get_samples(app: tauri::AppHandle, session_id: i64) -> Result<Vec<Sample>, String> {
-    db_get_samples(&app, session_id)
+    crate::util::blocking(move || db_get_samples(&app, session_id)).await
 }
 
 /// A session's samples, oldest first.
@@ -2399,6 +2419,25 @@ mod db_tests {
         dir.join("treadmill.db")
     }
 
+    #[test]
+    fn an_unused_session_row_is_dropped_but_a_walk_is_kept() {
+        let conn = memory_db();
+        conn.execute_batch(
+            "INSERT INTO sessions (id, start_time, end_time) VALUES (1, 1000, 1000), (2, 1000, 1000);
+             INSERT INTO samples (session_id, timestamp, speed, incline) VALUES (2, 1500, 3.5, 0);",
+        )
+        .unwrap();
+        assert!(discard_empty_session(&conn, 1).unwrap());
+        assert!(!discard_empty_session(&conn, 2).unwrap(), "it has samples");
+        let left: Vec<i64> = conn
+            .prepare("SELECT id FROM sessions")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(left, vec![2]);
+    }
     #[test]
     fn existing_database_is_backed_up_before_migrating_and_not_after() {
         let path = temp_db("premigrate");

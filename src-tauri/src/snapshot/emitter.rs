@@ -182,11 +182,23 @@ impl Loop {
             .unwrap_or((false, None))
     }
 
-    /// Keep the running program on disk so a restart can resume it.
+    /// Keep the running program on disk so a restart can resume it. The
+    /// write runs off the async threads (#273), and only when one is due.
     async fn save_program_run(&mut self) {
         let now_ms = crate::util::now_ms();
         let current = ORCHESTRATOR.lock().await.saved_run(now_ms);
-        programs::persist_active_run(&self.app, current, &mut self.last_run_save);
+        if !programs::active_run_save_due(self.last_run_save.as_ref(), current.as_ref()) {
+            return;
+        }
+        let app = self.app.clone();
+        let mut last = self.last_run_save.take();
+        let saved = crate::util::blocking(move || {
+            programs::persist_active_run(&app, current, &mut last);
+            Ok(last)
+        })
+        .await;
+        // A failed hand-off leaves no record, so the next tick saves again.
+        self.last_run_save = saved.unwrap_or(None);
     }
 
     /// Write DECK_PROFILE when the deck taught it something (or it was
