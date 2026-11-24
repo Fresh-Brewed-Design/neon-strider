@@ -109,6 +109,7 @@ function MonitorPicker({ monitors, selected }: { monitors: HudMonitor[]; selecte
       <Label>Display</Label>
       <OptionPicker
         label="Display"
+        activation="manual"
         className="flex flex-col gap-1"
         options={monitors.map((m) => ({
           value: m.name,

@@ -109,6 +109,10 @@ export type PickerOption<T extends string> = { value: T; label: ReactNode };
  * previous one and choose it, and Home and End jump to the ends. Each caller
  * keeps its own look through `className` and `optionClassName`.
  *
+ * With `activation="manual"` the keys only move focus, and Space, Enter or a
+ * click chooses: for options whose choice does something visible at once,
+ * such as moving the HUD to another display.
+ *
  * `disabled` marks the options aria-disabled and ignores presses instead of
  * disabling the buttons, so focus stays put while a choice is being saved.
  */
@@ -118,6 +122,7 @@ export function OptionPicker<T extends string>({
   value,
   onChange,
   disabled = false,
+  activation = "auto",
   className,
   optionClassName,
 }: {
@@ -128,6 +133,8 @@ export function OptionPicker<T extends string>({
   value: T | null;
   onChange: (next: T) => void;
   disabled?: boolean;
+  /** "auto": moving with the keys chooses. "manual": only Space, Enter or a click does. */
+  activation?: "auto" | "manual";
   className?: string;
   optionClassName: (active: boolean) => string;
 }) {
@@ -159,12 +166,18 @@ export function OptionPicker<T extends string>({
       case "End":
         next = last;
         break;
+      case " ":
+      case "Enter":
+        if (activation === "auto") return;
+        e.preventDefault();
+        pick(i);
+        return;
       default:
         return;
     }
     e.preventDefault();
     buttons.current[next]?.focus();
-    if (next !== i) pick(next);
+    if (activation === "auto" && next !== i) pick(next);
   };
 
   return (

@@ -14,10 +14,12 @@ type Value = (typeof OPTIONS)[number]["value"];
 function Picker({
   start,
   disabled = false,
+  activation,
   onChange = () => {},
 }: {
   start: Value | null;
   disabled?: boolean;
+  activation?: "auto" | "manual";
   onChange?: (next: Value) => void;
 }) {
   const [value, setValue] = useState<Value | null>(start);
@@ -27,6 +29,7 @@ function Picker({
       options={OPTIONS}
       value={value}
       disabled={disabled}
+      activation={activation}
       onChange={(next) => {
         onChange(next);
         setValue(next);
@@ -110,6 +113,31 @@ describe("OptionPicker", () => {
     fireEvent.click(radio("Charlie"));
     fireEvent.click(radio("Charlie"));
     expect(onChange.mock.calls.map((c: unknown[]) => c[0])).toEqual(["c", "c"]);
+  });
+
+  it("chooses on Space or Enter, not on the arrows, with manual activation", () => {
+    const onChange = vi.fn();
+    render(<Picker start="a" activation="manual" onChange={onChange} />);
+    radio("Alpha").focus();
+    fireEvent.keyDown(radio("Alpha"), { key: "ArrowDown" });
+    fireEvent.keyDown(radio("Bravo"), { key: "End" });
+    expect(radio("Charlie")).toHaveFocus();
+    expect(radio("Alpha")).toHaveAttribute("aria-checked", "true");
+    expect(onChange).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(radio("Charlie"), { key: " " });
+    expect(radio("Charlie")).toHaveAttribute("aria-checked", "true");
+    fireEvent.keyDown(radio("Charlie"), { key: "Home" });
+    fireEvent.keyDown(radio("Alpha"), { key: "Enter" });
+    expect(onChange.mock.calls.map((c: unknown[]) => c[0])).toEqual(["c", "a"]);
+  });
+
+  it("leaves Space and Enter to the button with automatic activation", () => {
+    const onChange = vi.fn();
+    render(<Picker start="a" onChange={onChange} />);
+    fireEvent.keyDown(radio("Bravo"), { key: "Enter" });
+    fireEvent.keyDown(radio("Bravo"), { key: " " });
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("keeps focus but ignores presses while disabled", () => {

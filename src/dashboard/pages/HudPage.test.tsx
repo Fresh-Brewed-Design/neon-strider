@@ -56,13 +56,17 @@ describe("HUD page minify hotkey", () => {
 });
 
 describe("HUD page pickers with the keyboard", () => {
-  it("moves the display with an arrow key, and a click on the primary forgets a missing one", async () => {
+  it("moves the display on Enter after an arrow key, and a click on the primary forgets a missing one", async () => {
     render(<HudPage />);
     const group = screen.getByRole("radiogroup", { name: "Display" });
     const primary = screen.getByRole("radio", { name: /^Display 1/ });
     expect(group).toContainElement(primary);
     expect(primary).toHaveAttribute("tabindex", "0");
     await act(async () => fireEvent.keyDown(primary, { key: "ArrowDown" }));
+    expect(dispatched()).toEqual([]);
+    const second = screen.getByRole("radio", { name: /^Display 2/ });
+    expect(second).toHaveFocus();
+    await act(async () => fireEvent.keyDown(second, { key: "Enter" }));
     await act(async () => fireEvent.click(primary));
     expect(dispatched()).toEqual([
       { command: { type: "hud_set_monitor", monitor: mock.hud_monitors[1].name } },
