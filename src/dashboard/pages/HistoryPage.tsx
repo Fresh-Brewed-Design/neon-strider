@@ -17,7 +17,7 @@ import { TcxModal } from "../history/TcxModal";
 import { TodayPanel } from "../history/Today";
 import { useSessionUploads } from "../history/useSessionUploads";
 import { WallClockPanel } from "../history/WallClock";
-import { GhostButton, Label, Page, Panel } from "../ui";
+import { GhostButton, Label, OptionPicker, Page, Panel } from "../ui";
 import { cx } from "../util";
 
 /** Walks loaded at once: three a day for a year fill the 53-week calendar, and 1000 rows stay quick. */
@@ -117,25 +117,22 @@ export function HistoryPage() {
           >
             {exportAction.pending ? "Exporting…" : "Export CSV"}
           </GhostButton>
-          <div role="group" aria-label="Time frame" className="flex overflow-hidden rounded border border-white/10">
-            {RANGES.map((r) => (
-              <button
-                key={r.id}
-                type="button"
-                aria-pressed={!day && range === r.id}
-                onClick={() => {
-                  setRange(r.id);
-                  setDay(null);
-                }}
-                className={cx(
-                  "px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.12em] transition-colors",
-                  !day && range === r.id ? "bg-neon-cyan/15 text-neon-cyan" : "text-white/45 hover:bg-white/5 hover:text-white",
-                )}
-              >
-                {r.label}
-              </button>
-            ))}
-          </div>
+          <OptionPicker
+            label="Time frame"
+            className="flex overflow-hidden rounded border border-white/10"
+            options={RANGES.map((r) => ({ value: r.id, label: r.label }))}
+            value={day ? null : range}
+            onChange={(next) => {
+              setRange(next);
+              setDay(null);
+            }}
+            optionClassName={(active) =>
+              cx(
+                "px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.12em] transition-colors",
+                active ? "bg-neon-cyan/15 text-neon-cyan" : "text-white/45 hover:bg-white/5 hover:text-white",
+              )
+            }
+          />
         </>
       }
     >

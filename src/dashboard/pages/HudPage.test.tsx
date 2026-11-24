@@ -54,3 +54,30 @@ describe("HUD page minify hotkey", () => {
     expect(screen.queryByRole("radio", { name: "Alt + Pause" })).not.toBeInTheDocument();
   });
 });
+
+describe("HUD page pickers with the keyboard", () => {
+  it("moves the display with an arrow key, and a click on the primary forgets a missing one", async () => {
+    render(<HudPage />);
+    const group = screen.getByRole("radiogroup", { name: "Display" });
+    const primary = screen.getByRole("radio", { name: /^Display 1/ });
+    expect(group).toContainElement(primary);
+    expect(primary).toHaveAttribute("tabindex", "0");
+    await act(async () => fireEvent.keyDown(primary, { key: "ArrowDown" }));
+    await act(async () => fireEvent.click(primary));
+    expect(dispatched()).toEqual([
+      { command: { type: "hud_set_monitor", monitor: "\\.\DISPLAY2" } },
+      { command: { type: "hud_set_monitor", monitor: null } },
+    ]);
+  });
+
+  it("sends the next idle mode on ArrowDown and the last on End", async () => {
+    render(<HudPage />);
+    const full = screen.getByRole("radio", { name: "Show everything" });
+    await act(async () => fireEvent.keyDown(full, { key: "ArrowDown" }));
+    await act(async () => fireEvent.keyDown(full, { key: "End" }));
+    expect(dispatched()).toEqual([
+      { command: { type: "hud_set_idle_mode", mode: "strip" } },
+      { command: { type: "hud_set_idle_mode", mode: "hidden" } },
+    ]);
+  });
+});

@@ -1,6 +1,6 @@
-// The dashboard's shared building blocks: page frame, panel, label and buttons.
+// The dashboard's shared building blocks: page frame, panel, label, buttons and the option picker.
 
-import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
+import { useRef, type ButtonHTMLAttributes, type HTMLAttributes, type KeyboardEvent, type ReactNode } from "react";
 import { cx, type Tone } from "./util";
 
 const TONE_BUTTON: Record<Tone, string> = {
@@ -99,4 +99,97 @@ export function GhostButton({ className, children, ...rest }: ButtonHTMLAttribut
 /** Shown on pages that need live data before the first snapshot arrives. */
 export function Waiting() {
   return <div className="p-6 font-mono text-xs uppercase tracking-[0.2em] text-white/40">Waiting for core link…</div>;
+}
+
+export type PickerOption<T extends string> = { value: T; label: ReactNode };
+
+/**
+ * Pick one of a few options: a WAI-ARIA radio group. Tab lands on the chosen
+ * option (or the first when none is), the arrow keys move to the next or
+ * previous one and choose it, and Home and End jump to the ends. Each caller
+ * keeps its own look through `className` and `optionClassName`.
+ *
+ * `disabled` marks the options aria-disabled and ignores presses instead of
+ * disabling the buttons, so focus stays put while a choice is being saved.
+ */
+export function OptionPicker<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+  disabled = false,
+  className,
+  optionClassName,
+}: {
+  /** The group's accessible name. */
+  label: string;
+  options: readonly PickerOption<T>[];
+  /** The chosen option, or null when none is. */
+  value: T | null;
+  onChange: (next: T) => void;
+  disabled?: boolean;
+  className?: string;
+  optionClassName: (active: boolean) => string;
+}) {
+  const buttons = useRef<(HTMLButtonElement | null)[]>([]);
+  const chosen = options.findIndex((o) => o.value === value);
+  const tabStop = chosen >= 0 ? chosen : 0;
+
+  // A click on the chosen option still reports it (the HUD display picker
+  // uses that to forget a display that is gone); the keys only report a move.
+  const pick = (i: number) => {
+    if (!disabled) onChange(options[i].value);
+  };
+
+  const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>, i: number) => {
+    const last = options.length - 1;
+    let next: number;
+    switch (e.key) {
+      case "ArrowDown":
+      case "ArrowRight":
+        next = i === last ? 0 : i + 1;
+        break;
+      case "ArrowUp":
+      case "ArrowLeft":
+        next = i === 0 ? last : i - 1;
+        break;
+      case "Home":
+        next = 0;
+        break;
+      case "End":
+        next = last;
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+    buttons.current[next]?.focus();
+    if (next !== i) pick(next);
+  };
+
+  return (
+    <div role="radiogroup" aria-label={label} aria-disabled={disabled || undefined} className={className}>
+      {options.map((o, i) => {
+        const active = i === chosen;
+        return (
+          <button
+            key={o.value}
+            ref={(el) => {
+              buttons.current[i] = el;
+            }}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            aria-disabled={disabled || undefined}
+            tabIndex={i === tabStop ? 0 : -1}
+            onClick={() => pick(i)}
+            onKeyDown={(e) => onKeyDown(e, i)}
+            className={optionClassName(active)}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
