@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.67.3 (2026-11-24)
+
+### Fixed
+
+- The step numbers in the program editor line up with their kind menus at a large Windows text size.
+
+## 1.67.2 (2026-11-24)
+
+### Fixed
+
+- At a large Windows text size, the dashboard shows its sidebar as icons and lets pages wrap, so nothing is cut off or scrolls sideways.
+
+## 1.67.1 (2026-11-24)
+
+### Fixed
+
+- GHOST_POD no longer lets a nearby Bluetooth device set an impossible total distance on the pod or fill the log with its writes.
+
+## 1.67.0 (2026-11-24)
+
+### Changed
+
+- GHOST_POD is back in System → Labs, so your watch can read the belt as a foot pod again. Its switches start off.
+- WRIST_LINK and its watch data field are gone.
+
 ## 1.66.0 (2026-11-24)
 
 ### New

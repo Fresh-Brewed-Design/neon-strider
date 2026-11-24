@@ -15,7 +15,7 @@ import { ActiveProgramCard } from "../programs/ActiveProgramCard";
 import { readPref, writePref } from "../localPrefs";
 import { StatusPill } from "../StatusPill";
 import { MaintenanceBanner } from "../system/MaintenanceBanner";
-import { Label, Page, Panel, Waiting } from "../ui";
+import { Codename, Label, Page, Panel, Waiting } from "../ui";
 import { cx, send, TONE_TEXT } from "../util";
 
 const SPEED_PRESETS = [1.5, 2.5, 3, 4, 5, 6];
@@ -139,7 +139,9 @@ export function LivePage() {
       {/* Fits the 760x600 popup without scrolling, even with the maintenance
           banner and a running program both showing: both banners sit in the header. */}
       <div className="flex min-h-full flex-col gap-2">
-        <div className="grid grid-cols-2 gap-3">
+        {/* Two columns while each gets 16rem (the speed readout, nudges and presets side by
+            side); a large Windows text size stacks them instead. */}
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-3">
           <Axis
             title="Velocity"
             tone="cyan"
@@ -199,7 +201,10 @@ export function LivePage() {
         {s.active_program && mapOpen ? (
           <StepMap a={s.active_program} />
         ) : (
-          <div className="grid grid-cols-3 gap-2">
+          // At most three tiles a row (each a third of the row, less the two 0.5rem gaps), as at
+          // 100 %; under 7rem a tile (a codename and its value) would clip, so a large Windows
+          // text size gives fewer, wider tiles.
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(max(7rem,calc((100%_-_1rem)/3)),1fr))] gap-2">
             {stats.map((w) => {
               const { value, unit } = w.read(s);
               const spark = w.spark?.(s);
@@ -213,7 +218,9 @@ export function LivePage() {
               return (
                 <Panel key={w.id} className={cx("flex flex-col gap-0.5 px-3 py-1.5", spark && "col-span-2")}>
                   <div className="flex items-start justify-between gap-1">
-                    <Label className="min-w-0 tracking-[0.12em] [overflow-wrap:anywhere]">{w.codename}</Label>
+                    <Label className="min-w-0 tracking-[0.12em] [overflow-wrap:anywhere]">
+                      <Codename text={w.codename} />
+                    </Label>
                     {zone && <ZoneReadout zone={zone} />}
                     {target && <TargetReadout target={target} />}
                     <PinToggle widget={w.id} pinned={pinned.has(w.id)} />

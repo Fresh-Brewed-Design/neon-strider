@@ -819,7 +819,7 @@ mod mic {
 }
 
 // ---------------------------------------------------------------------------
-// Bluetooth peripheral (WRIST_LINK)
+// Bluetooth peripheral (GHOST_POD)
 // ---------------------------------------------------------------------------
 //
 // A WinRT GATT server (`GattServiceProvider`). It needs an adapter with the
@@ -975,8 +975,8 @@ mod peripheral {
     }
 
     /// Log a central the first time it shows up, and watch its session so
-    /// its disconnect is logged too. `what` is what it did ("read of ...21b0 on
-    /// WRIST_LINK").
+    /// its disconnect is logged too. `what` is what it did ("read of 2a54 on
+    /// RSC").
     fn note_central(session: &GattSession, what: &str) {
         let address = address_of(session);
         let mut guard = centrals();
@@ -1587,7 +1587,7 @@ mod tests {
     /// On this PC's real adapter: two services on providers of their own, one
     /// advertised and one only served; the served one never aborts, and
     /// removing it leaves the first advertising. It uses UUIDs the app never
-    /// serves, so it doesn't clash with a running app's WRIST_LINK. Run with
+    /// serves, so it doesn't clash with a running app's foot pod. Run with
     /// `cargo test peripheral_providers_are_independent -- --ignored --nocapture`.
     #[test]
     #[ignore = "needs a Bluetooth adapter with the peripheral role"]

@@ -92,7 +92,7 @@ export function LinkControl() {
         type="button"
         onClick={() => void scan()}
         title={view?.title ?? "Find and connect a treadmill"}
-        className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left transition-colors hover:bg-white/5"
+        className="dash-rail-item flex w-full items-center gap-2 rounded px-2.5 py-2 text-left transition-colors hover:bg-white/5"
       >
         <StatusPill
           bare
@@ -100,6 +100,7 @@ export function LinkControl() {
           tone={view?.tone ?? "problem"}
           label={view?.label ?? "OFFLINE"}
           className="tracking-[0.12em]"
+          labelClassName="dash-rail-text"
         />
         {conn?.simulated && (
           <span

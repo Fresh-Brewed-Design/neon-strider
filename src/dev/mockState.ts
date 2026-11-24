@@ -268,12 +268,16 @@ export const snapshot: AppSnapshot = {
   pc_walk_share: { active_s: 20_400, walked_s: 7_800, share_pct: 38 },
   // No timeline unless ?today asks for one.
   today_timeline: null,
-  wrist_link: {
+  ghost_pod: {
     enabled: false,
-    serving: false,
+    status: "off",
+    label: "OFFLINE",
+    message: "Switch GHOST_POD on to let a watch read the belt as a foot pod.",
     watches: 0,
-    failed: false,
-    message: "Switch WRIST_LINK on to let the watch's data field read the belt.",
+    speed_kmh: 0,
+    power_enabled: false,
+    power_watches: 0,
+    power_w: 0,
   },
   typing_speed: {
     enabled: false,
