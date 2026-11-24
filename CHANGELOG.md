@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.67.2 (2026-11-24)
+
+### Fixed
+
+- At a large Windows text size, the dashboard shows its sidebar as icons and lets pages wrap, so nothing is cut off or scrolls sideways.
+
 ## 1.67.1 (2026-11-24)
 
 ### Fixed
