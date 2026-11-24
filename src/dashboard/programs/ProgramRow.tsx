@@ -46,8 +46,8 @@ export function ProgramRow({
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1" title={describePlan(p)}>
           <div className="break-words font-digital text-sm font-bold leading-tight tracking-wider text-white">{p.name}</div>
-          <div className="font-mono text-xs text-white/50">{describeProgram(p)}</div>
-          {p.note && <div className="text-xs leading-snug text-white/40">{p.note}</div>}
+          <div className="font-mono text-xs text-white/60">{describeProgram(p)}</div>
+          {p.note && <div className="text-xs leading-snug text-white/60">{p.note}</div>}
           <FitToDeck offer={fitToDeck} />
         </div>
         <GhostButton aria-label={`Edit ${p.name}`} onClick={onEdit}>
@@ -91,7 +91,7 @@ export function ProgramRow({
         </NeonButton>
       </div>
       {note.length > 0 && !running && (
-        <div className="font-mono text-[11px] leading-snug text-white/55" data-testid="fit-to-time-note">
+        <div className="font-mono text-xs leading-snug text-white/60" data-testid="fit-to-time-note">
           {note.map((line) => (
             <p key={line}>{line}</p>
           ))}

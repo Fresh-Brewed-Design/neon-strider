@@ -58,7 +58,7 @@ export function TemplateEditor({ strava }: { strava: StravaSnapshot }) {
       <ActionStatus pending={saving.pending && "Saving…"} error={saving.error} done={saving.done} />
 
       <label className="block">
-        <span className="font-mono text-[11px] text-white/60">Title</span>
+        <span className="font-mono text-xs text-white/60">Title</span>
         <input
           type="text"
           maxLength={SETTING_LIMITS.title_template_chars}
@@ -70,7 +70,7 @@ export function TemplateEditor({ strava }: { strava: StravaSnapshot }) {
       </label>
       {strava.daily_rollup && (
         <label className="block">
-          <span className="font-mono text-[11px] text-white/60">Daily rollup title</span>
+          <span className="font-mono text-xs text-white/60">Daily rollup title</span>
           <input
             type="text"
             maxLength={SETTING_LIMITS.title_template_chars}
@@ -82,7 +82,7 @@ export function TemplateEditor({ strava }: { strava: StravaSnapshot }) {
         </label>
       )}
       <label className="block">
-        <span className="font-mono text-[11px] text-white/60">Description</span>
+        <span className="font-mono text-xs text-white/60">Description</span>
         <textarea
           rows={3}
           maxLength={SETTING_LIMITS.description_template_chars}
@@ -99,7 +99,7 @@ export function TemplateEditor({ strava }: { strava: StravaSnapshot }) {
           {TEMPLATE_FIELDS.map((f) => (
             <div key={f.name} className="contents">
               <dt className="select-text text-cyan-300/80">{`{${f.name}}`}</dt>
-              <dd className="min-w-0 break-words text-white/45">{f.about}</dd>
+              <dd className="min-w-0 break-words text-white/60">{f.about}</dd>
             </div>
           ))}
         </dl>
@@ -112,7 +112,7 @@ export function TemplateEditor({ strava }: { strava: StravaSnapshot }) {
         aria-label="Preview from a sample walk"
         className="select-text rounded border border-white/10 bg-black/30 p-3 font-mono text-[11px] leading-relaxed"
       >
-        <div className="text-white/40">Preview · sample walk</div>
+        <div className="text-white/60">Preview · sample walk</div>
         {preview ? (
           <>
             <div className="mt-1 break-words font-bold text-white/85">{preview.title}</div>

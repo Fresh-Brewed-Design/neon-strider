@@ -20,7 +20,7 @@ function Reading({ label, value, limit }: { label: string; value: string; limit?
       <Label className="block">{label}</Label>
       <div className="mt-0.5 font-digital text-sm text-white">
         {value}
-        {limit && <> <span className="font-mono text-[11px] text-white/45">/ {limit}</span></>}
+        {limit && <> <span className="font-mono text-xs text-white/60">/ {limit}</span></>}
       </div>
     </div>
   );
@@ -71,7 +71,7 @@ export function MaintenanceSection() {
           <span
             className={cx(
               "font-mono text-[11px] font-bold uppercase tracking-[0.2em]",
-              m.due ? "text-neon-magenta" : "text-white/50",
+              m.due ? "text-neon-magenta" : "text-white/60",
             )}
           >
             {m.due ? "Service due" : `${Math.round(m.progress * 100)}% of interval`}

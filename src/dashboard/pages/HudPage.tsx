@@ -115,7 +115,7 @@ function MonitorPicker({ monitors, selected }: { monitors: HudMonitor[]; selecte
               )}
             >
               {m.label}
-              {m.is_primary && <span className="text-white/45"> (primary)</span>}
+              {m.is_primary && <span className="text-white/60"> (primary)</span>}
             </button>
           </li>
         ))}
@@ -236,10 +236,10 @@ export function HudPage() {
           <Panel className="p-3">
             <div className="mb-2 flex items-center justify-between">
               <Label>On the HUD</Label>
-              <span className="font-mono text-[11px] text-white/40">Top to bottom</span>
+              <span className="font-mono text-xs text-white/60">Top to bottom</span>
             </div>
             {widgets.length === 0 ? (
-              <p className="px-1 py-3 font-mono text-xs text-white/45">
+              <p className="px-1 py-3 font-mono text-xs text-white/60">
                 Nothing pinned, so the HUD is hidden. Add a widget from Available.
               </p>
             ) : (
@@ -275,12 +275,12 @@ export function HudPage() {
                       onClick={() => send({ type: "hud_toggle_widget", widget: w.id })}
                       className="flex w-full items-center gap-2 rounded border border-white/10 px-3 py-1.5 text-left transition-colors hover:border-neon-cyan/50 hover:bg-neon-cyan/5"
                     >
-                      <Plus size={14} className="shrink-0 text-white/50" />
+                      <Plus size={14} className="shrink-0 text-white/60" />
                       <span className="min-w-0">
                         <span className="block font-mono text-xs font-bold uppercase tracking-[0.12em] text-white/80">
                           {widgetName(w.id)}
                         </span>
-                        <span className="block truncate font-mono text-[11px] text-white/40">{w.description}</span>
+                        <span className="block truncate font-mono text-xs text-white/60">{w.description}</span>
                       </span>
                     </button>
                   </li>

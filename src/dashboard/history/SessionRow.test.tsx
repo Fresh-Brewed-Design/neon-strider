@@ -110,6 +110,57 @@ describe("SessionRow ECHO", () => {
     row(walk(), { live: true, onEcho });
     const button = screen.getByRole("button", { name: "ECHO" }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
-    expect(button.title).toBe("ECHO waits for the walk to end.");
+    expect(button.title).toBe("ECHO");
+  });
+});
+
+function actionRow(expanded: boolean, stravaLinked: boolean, onSave = vi.fn()) {
+  return (
+    <SessionRow
+      session={walk()}
+      expanded={expanded}
+      stravaLinked={stravaLinked}
+      uploadState="idle"
+      onToggle={vi.fn()}
+      onUpload={vi.fn()}
+      onSave={onSave}
+      onOpenFolder={vi.fn()}
+      onMarkUploaded={vi.fn()}
+      onInspect={vi.fn()}
+      onDelete={vi.fn()}
+      onEcho={vi.fn()}
+      onOpenProgram={vi.fn()}
+    />
+  );
+}
+
+describe("SessionRow actions", () => {
+  it("keeps Upload and Delete as icons and puts the rest in the expanded row", () => {
+    const { rerender } = render(actionRow(false, true));
+    expect(screen.getByRole("button", { name: "Upload to Strava" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Delete session" })).toBeTruthy();
+    for (const name of ["Save for Strava", "Preview TCX", "ECHO"]) {
+      expect(screen.queryByRole("button", { name })).toBeNull();
+    }
+    rerender(actionRow(true, true));
+    for (const name of ["Save for Strava", "Preview TCX", "ECHO"]) {
+      expect(screen.getByRole("button", { name })).toBeTruthy();
+    }
+  });
+
+  it("gives every button the same aria-label and title", () => {
+    render(actionRow(true, true));
+    for (const b of screen.getAllByRole("button")) {
+      if (b.hasAttribute("aria-expanded")) continue;
+      expect(b.getAttribute("title")).toBe(b.getAttribute("aria-label"));
+    }
+  });
+
+  it("shows the save result under its own button", async () => {
+    const onSave = vi.fn(() => Promise.resolve({ file_name: "walk.tcx" }));
+    render(actionRow(true, false, onSave));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save for Strava" })));
+    expect(screen.getByText(/Saved walk\.tcx/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open folder" })).toBeTruthy();
   });
 });

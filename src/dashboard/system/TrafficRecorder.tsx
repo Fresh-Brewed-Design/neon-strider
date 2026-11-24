@@ -37,7 +37,7 @@ export function TrafficRecorder() {
         />
       ) : t.recording ? (
         <ActionStatus ambient pending={`Recording · ${trafficSummary(t)}`} className="mt-1">
-          <span className="min-w-0 break-all text-white/50">{t.file_name}</span>
+          <span className="min-w-0 break-all text-white/60">{t.file_name}</span>
         </ActionStatus>
       ) : (
         saved && (

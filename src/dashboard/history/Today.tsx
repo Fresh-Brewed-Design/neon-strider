@@ -25,10 +25,10 @@ export function TodayPanel({ timeline }: { timeline: TodayTimeline }) {
     <Panel className="flex flex-col gap-2 p-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <Label>Today</Label>
-        <p className="min-w-0 flex-1 font-mono text-[11px] leading-snug text-white/60">{todayText(timeline)}</p>
+        <p className="min-w-0 flex-1 font-mono text-xs leading-snug text-white/60">{todayText(timeline)}</p>
         <ul aria-label="Legend" className="flex flex-wrap gap-x-3 gap-y-1">
           {LEGEND.map((m) => (
-            <li key={m} className="flex items-center gap-1.5 font-mono text-[11px] text-white/50">
+            <li key={m} className="flex items-center gap-1.5 font-mono text-xs text-white/60">
               <span aria-hidden className={cx("h-2.5 w-2.5 rounded-sm", MARK_CLASS[m], m === "away" && "ring-1 ring-inset ring-white/25")} />
               {MARK_WORDS[m]}
             </li>
@@ -51,7 +51,7 @@ export function TodayPanel({ timeline }: { timeline: TodayTimeline }) {
             );
           })}
         </ul>
-        <div aria-hidden className="relative mt-1 h-[1.1em] font-mono text-[11px] leading-none text-white/40">
+        <div aria-hidden className="relative mt-1 h-[1.1em] font-mono text-xs leading-none text-white/60">
           {ticks.map((h) => {
             const pct = at(timeline, h * 60);
             // Labels at the ends stay inside the panel.

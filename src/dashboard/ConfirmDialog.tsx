@@ -28,20 +28,20 @@ export function ConfirmDialog() {
         <div className="bg-neon-cyan/5 border-b border-neon-cyan/20 p-4 flex items-center gap-3">
           <AlertCircle className="text-neon-cyan" size={20} />
           <h2 className="text-sm font-black tracking-[0.2em] text-neon-cyan uppercase flex-1">{pending.title}</h2>
-          <button onClick={cancel} className="text-white/50 hover:text-white transition-colors">
+          <button onClick={cancel} className="text-white/60 hover:text-white transition-colors">
             <X size={18} />
           </button>
         </div>
 
         <div className="p-6">
           <p className="whitespace-pre-line text-xs text-white/70 font-mono leading-relaxed tracking-tight">{pending.message}</p>
-          {pending.hint && <p className="mt-3 whitespace-pre-line text-[11px] text-white/50 font-mono leading-relaxed tracking-tight">{pending.hint}</p>}
+          {pending.hint && <p className="mt-3 whitespace-pre-line text-xs text-white/60 font-mono leading-relaxed tracking-tight">{pending.hint}</p>}
         </div>
 
         <div className="p-4 bg-black/40 flex gap-3 justify-end">
           <button
             onClick={cancel}
-            className="px-6 py-2 rounded-lg text-[11px] font-black uppercase tracking-widest text-white/60 hover:text-white hover:bg-white/5 transition-all"
+            className="px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest text-white/60 hover:text-white hover:bg-white/5 transition-all"
           >
             Cancel
           </button>

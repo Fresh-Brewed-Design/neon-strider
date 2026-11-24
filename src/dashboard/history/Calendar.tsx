@@ -52,7 +52,7 @@ export function Calendar({
         {months.map((m) => (
           <span
             key={m.col}
-            className="whitespace-nowrap font-mono text-[11px] leading-none text-white/45"
+            className="whitespace-nowrap font-mono text-xs leading-none text-white/60"
             style={{ gridColumnStart: m.col + 1 }}
           >
             {m.name}
@@ -89,7 +89,7 @@ export function Calendar({
           );
         })}
       </div>
-      <div className="mt-1.5 flex items-center justify-end gap-1.5 font-mono text-[11px] text-white/45">
+      <div className="mt-1.5 flex items-center justify-end gap-1.5 font-mono text-xs text-white/60">
         <span>Less</span>
         {[0.2, 0.35, 0.6, 1].map((o) => (
           <span key={o} className="h-2.5 w-2.5 rounded-[2px] bg-neon-cyan" style={{ opacity: o }} />

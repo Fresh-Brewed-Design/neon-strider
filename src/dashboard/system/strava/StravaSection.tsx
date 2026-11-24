@@ -35,7 +35,7 @@ export function StravaSection() {
           <SyncActions strava={strava} connect={connect} busy={busy} activityText={activityText(strava.activity)} />
         </div>
       ) : (
-        <p className="font-mono text-xs text-white/40">Waiting for core link…</p>
+        <p className="font-mono text-xs text-white/60">Waiting for core link…</p>
       )}
     </Section>
   );
