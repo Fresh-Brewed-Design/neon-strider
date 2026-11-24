@@ -1,4 +1,4 @@
-- Program tones (off by default, on the Programs page): the HUD beeps when a running program moves to its next step, so a speed change never comes as a surprise with headphones on.
-- A program that waits for GO plays its own two-tone cue, for example after `REST COMPLETE // PRESS GO`.
+- Program tones on the Programs page, off by default: the HUD beeps when a running program moves to its next step.
+- A program that starts waiting for GO, for example after `REST COMPLETE // PRESS GO`, plays its own two-tone cue.
 - A rising cue plays about 5 s before a step that speeds the belt up.
-- The tones never start, stop or change the belt. A paused or stopped belt stays quiet, and opening the HUD never plays an old cue.
+- The tones only play sound and never move the belt. A paused or stopped belt stays quiet, and opening the HUD never replays an old cue.
