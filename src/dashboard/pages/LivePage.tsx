@@ -10,6 +10,7 @@ import { PinToggle } from "../live/PinToggle";
 import { Transport } from "../live/Transport";
 import { TargetReadout } from "../live/TargetReadout";
 import { StepMap } from "../live/StepMap";
+import { WalkReadout } from "../live/WalkReadout";
 import { ZoneReadout } from "../live/ZoneReadout";
 import { ActiveProgramCard } from "../programs/ActiveProgramCard";
 import { readPref, writePref } from "../localPrefs";
@@ -199,9 +200,10 @@ export function LivePage() {
 
         <ActiveProgramCard stepMap={{ open: mapOpen, onToggle: toggleMap }} />
 
-        {/* STEP_MAP takes the stats' place and the height left under the program card. */}
+        {/* STEP_MAP takes the stats' place and the height left under the program card;
+            time, distance and today's distance stay in its header. */}
         {s.active_program && mapOpen ? (
-          <StepMap a={s.active_program} />
+          <StepMap a={s.active_program} readout={<WalkReadout s={s} />} />
         ) : (
           // At most three tiles a row (each a third of the row, less the two 0.5rem gaps), as at
           // 100 %; under 7rem a tile (a codename and its value) would clip, so a large Windows
