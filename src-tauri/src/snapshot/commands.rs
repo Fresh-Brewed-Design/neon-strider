@@ -148,6 +148,9 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             })
             .await
         }
+        Command::ProgramTonesSet { on } => {
+            blocking(move || super::program_tones::set_enabled(&app, on)).await
+        }
 
         // ---- HUD and dashboard windows ----
         Command::HudToggleWidget { widget } => {

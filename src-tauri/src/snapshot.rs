@@ -11,8 +11,8 @@
 //! - `emitter`: collecting the snapshot and pushing it to the windows
 //!
 //! The feature modules that contribute a part of the snapshot or act on it
-//! (calls, desk, desk_sync, eyebreak, hud_drag, lights_out, maintenance, odometer, pc_walk_share, seated,
-//! tray, tray_menu,
+//! (calls, desk, desk_sync, eyebreak, hud_drag, lights_out, maintenance, odometer, pc_walk_share,
+//! program_tones, seated, tray, tray_menu,
 //! walkaway, wall_clock, weekly) are declared here rather than in `lib.rs`, so this module owns
 //! their wiring.
 
@@ -34,6 +34,8 @@ pub mod maintenance;
 pub mod odometer;
 #[path = "pc_walk_share.rs"]
 pub mod pc_walk_share;
+#[path = "program_tones.rs"]
+pub mod program_tones;
 #[path = "seated.rs"]
 pub mod seated;
 #[path = "tray.rs"]
@@ -234,7 +236,7 @@ fn neural_snapshot(state: &OrchestratorState) -> NeuralSnapshot {
 
 /// Build a snapshot from state. Pure (no Tauri, no locks, no I/O) so it can be
 /// unit-tested. `speed_drift`, `desk_sync`, `wall_clock`, `pc_walk_share`, `today_timeline`, `walkaway`, `update`, `traffic`, `lights_out`, `ghost_pod`,
-/// `calibration`, `guided_task` and `hud_view` are left at their defaults: they depend on the clock or shared
+/// `calibration`, `guided_task`, `program_tones` and `hud_view` are left at their defaults: they depend on the clock or shared
 /// state, so the emitter fills them in.
 pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSnapshot {
     let deck = deck_snapshot(state, parts.max_incline_level);
@@ -245,6 +247,7 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         active_program: state.active_program(),
         fit_to_deck: state.fit_to_deck_offers(deck.stride_fit_kmh),
         fit_to_time: crate::programs::fit_to_time::options(&state.programs),
+        program_tones: program_tones::ProgramTonesSnapshot::default(),
         deck,
         neural: neural_snapshot(state),
         speed_drift: crate::speed_drift::SpeedDriftSnapshot::default(),

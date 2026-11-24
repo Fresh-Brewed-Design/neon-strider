@@ -33,6 +33,9 @@ pub struct AppSnapshot {
     /// FIT_TO_TIME (#258): the lengths each program may run at once, for the
     /// picker beside its Run. A program whose length can't change has none.
     pub fit_to_time: Vec<crate::programs::fit_to_time::FitToTimeOption>,
+    /// Program tones (off by default): the switch and the latest cue for the
+    /// HUD to play (`program_tones.rs`).
+    pub program_tones: crate::snapshot::program_tones::ProgramTonesSnapshot,
 
     // ---- Neural flow ----
     pub neural: NeuralSnapshot,
@@ -574,6 +577,11 @@ pub enum Command {
     /// program is still offered. Never starts the program or moves the belt.
     ProgramFitToDeck {
         id: u32,
+    },
+    /// Program tones on or off: the HUD beeps at step changes, a wait for
+    /// GO and just before a faster step. Sound only; never moves the belt.
+    ProgramTonesSet {
+        on: bool,
     },
 
     // ---- HUD and dashboard windows ----
