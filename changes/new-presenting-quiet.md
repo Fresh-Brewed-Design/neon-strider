@@ -1,0 +1,3 @@
+- The HUD holds its cards back while you present or a full-screen app is in front, such as a slideshow, a game or a full-screen video. The sit-too-long card, the eye-break heads-up, the last-week card, the update offer, the belt service card and plain toasts wait, and the ones still relevant show when you're done.
+- Cards that need an answer still show, such as walk-away and the eye-break resume card, and so does a program waiting for GO. No eye break starts while cards are held, and the belt is never touched.
+- While cards are held, the HUD shows a small PRESENTING // CARDS HELD line. Switch it off in System -> Desk with "Hold cards while presenting" (on by default).
