@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { errorText } from "../../components/useAction";
-import { dispatch } from "../../ipc";
+import { dispatch, type StravaActivity } from "../../ipc";
 import type { MergedSession } from "../../services/sessionMerge";
 import { getAppSnapshot, useAppState } from "../../state/useAppState";
 import { activityText } from "../stravaStatus";
 import type { UploadState } from "./SessionRow";
+
+// Until the first snapshot: constants, so they never read as a change.
+const NO_IDS: number[] = [];
+const NO_ERRORS: Record<string, string> = {};
+const IDLE: StravaActivity = { state: "idle" };
 
 export interface RowNote {
   ok: boolean;
@@ -27,9 +32,9 @@ export function useSessionUploads(onUploaded: () => void) {
   const stravaConnected = useAppState((s) => s.strava.connected) ?? false;
   const stravaSyncing = useAppState((s) => s.strava.syncing) ?? false;
   const stravaResultAt = useAppState((s) => s.strava.last_result?.at_ms ?? null);
-  const uploadingIds = useAppState((s) => s.strava.uploading_session_ids) ?? [];
-  const uploadErrors = useAppState((s) => s.strava.upload_errors) ?? {};
-  const activity = useAppState((s) => s.strava.activity) ?? { state: "idle" as const };
+  const uploadingIds = useAppState((s) => s.strava.uploading_session_ids) ?? NO_IDS;
+  const uploadErrors = useAppState((s) => s.strava.upload_errors) ?? NO_ERRORS;
+  const activity = useAppState((s) => s.strava.activity) ?? IDLE;
 
   const [uploads, setUploads] = useState<Record<number, UploadState>>({});
   const [notes, setNotes] = useState<Record<number, RowNote>>({});

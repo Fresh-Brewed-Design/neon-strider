@@ -49,6 +49,7 @@ pub mod weekly;
 
 pub(crate) mod commands;
 mod emitter;
+mod frame;
 mod hud;
 mod stasis;
 mod types;
@@ -243,6 +244,7 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         programs: state.programs.clone(),
         active_program: state.active_program(),
         fit_to_deck: state.fit_to_deck_offers(deck.stride_fit_kmh),
+        fit_to_time: crate::programs::fit_to_time::options(&state.programs),
         deck,
         neural: neural_snapshot(state),
         speed_drift: crate::speed_drift::SpeedDriftSnapshot::default(),
@@ -401,6 +403,11 @@ mod tests {
             due: false,
             progress: 0.0,
         }
+    }
+
+    /// A snapshot from a default engine, for the frame tests.
+    pub(super) fn sample_snapshot() -> AppSnapshot {
+        snap(&OrchestratorState::default(), 0.0, 15)
     }
 
     fn snap(state: &OrchestratorState, base: f64, max_incline: u8) -> AppSnapshot {

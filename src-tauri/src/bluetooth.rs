@@ -17,7 +17,9 @@
 //! Both talk to the deck through [`DeckLink`]: the real treadmill over BLE,
 //! or, in dev builds only, the simulated one (`sim_link.rs`).
 
-use crate::engine::{DeckAction, OrchestratorState, Packet, PacketKind, ProtocolEngine};
+use crate::engine::{
+    ConnectTotals, DeckAction, OrchestratorState, Packet, PacketKind, ProtocolEngine,
+};
 use crate::protocol::{self, MachineStatus, Telemetry};
 use btleplug::api::{
     Central, CharPropFlags, Characteristic, Manager as _, Peripheral as _, ScanFilter,
@@ -346,9 +348,20 @@ pub(crate) async fn spawn_protocol_worker(app: tauri::AppHandle, deck: DeckLink)
         serde_json::json!({ "type": "STATUS", "message": "DEVICE_CONNECTED", "isActionable": true }),
     );
 
+    // Read before taking the belt lock: a slow database must not stall the
+    // other tasks that need it (#273).
+    let config = {
+        let app_b = app.clone();
+        crate::util::blocking(move || Ok(crate::persistence::load_config(&app_b)))
+            .await
+            .unwrap_or_else(|e| {
+                log::error!("Config not read off the async threads: {}", e);
+                crate::persistence::load_config(&app)
+            })
+    };
     let worker_id = {
         let mut state = ORCHESTRATOR.lock().await;
-        let id = begin_worker(&mut state, &crate::persistence::load_config(&app));
+        let id = begin_worker(&mut state, &config);
         log::info!(
             "Spawning worker #{} for device {}. Config Loaded: Tilt={:.1}, Offset={:.1}",
             id,
@@ -421,13 +434,8 @@ pub(crate) async fn spawn_protocol_worker(app: tauri::AppHandle, deck: DeckLink)
             }
         }
 
-        let stopped = {
-            let mut state = ORCHESTRATOR.lock().await;
-            if state.should_start_session() {
-                open_session(&app, &mut state, deck.simulated());
-            }
-            state.last_status == MachineStatus::Stopped
-        };
+        open_session_if_due(&app, deck.simulated()).await;
+        let stopped = ORCHESTRATOR.lock().await.last_status == MachineStatus::Stopped;
 
         tokio::time::sleep(if stopped {
             WORKER_TICK_STOPPED
@@ -459,20 +467,75 @@ async fn drop_dead_link(deck: &DeckLink, worker_id: u64) {
     crate::link::retry_soon();
 }
 
-/// Open the session a moving belt calls for. A simulated deck's walks stay in
-/// memory (negative ids), so a dev run never reaches History, the odometer or
-/// Strava.
-fn open_session(app: &tauri::AppHandle, state: &mut OrchestratorState, simulated: bool) {
-    #[cfg(debug_assertions)]
-    if simulated {
-        state.start_session(crate::sim_link::next_session_id());
-        return;
+/// Open the session a moving belt calls for. The row is written without the
+/// belt lock (#273): the opening is claimed under it, so no other path opens
+/// one meanwhile, and the session starts once the row exists, if the belt
+/// still moves. A simulated deck's walks stay in memory (negative ids), so a
+/// dev run never reaches History, the odometer or Strava.
+async fn open_session_if_due(app: &tauri::AppHandle, simulated: bool) {
+    let ticket = {
+        let mut state = ORCHESTRATOR.lock().await;
+        if !state.should_start_session() {
+            return;
+        }
+        #[cfg(debug_assertions)]
+        if simulated {
+            state.start_session(crate::sim_link::next_session_id());
+            return;
+        }
+        #[cfg(not(debug_assertions))]
+        let _ = simulated;
+        state.claim_session_open()
+    };
+    let created = {
+        let app = app.clone();
+        crate::util::blocking(move || crate::persistence::db_create_session(&app)).await
+    };
+    let mut state = ORCHESTRATOR.lock().await;
+    match created {
+        Ok(id) if state.finish_session_open(ticket, id) => {
+            log::info!("Session {} opened for the moving belt", id);
+        }
+        Ok(id) => {
+            drop(state);
+            log::info!(
+                "Session {} not needed any more (the belt stopped or the link changed)",
+                id
+            );
+            discard_session_row(app, id).await;
+        }
+        Err(e) => {
+            state.release_session_open(ticket);
+            log::error!("Failed to create session: {}", e);
+        }
     }
-    #[cfg(not(debug_assertions))]
-    let _ = simulated;
-    match crate::persistence::db_create_session(app) {
-        Ok(id) => state.start_session(id),
-        Err(e) => log::error!("Failed to create session: {}", e),
+}
+
+/// Drop a session row that was created but never used, off the async threads.
+async fn discard_session_row(app: &tauri::AppHandle, id: i64) {
+    let app = app.clone();
+    if let Err(e) =
+        crate::util::blocking(move || crate::persistence::db_discard_empty_session(&app, id)).await
+    {
+        log::warn!("Unused session {} not removed: {}", id, e);
+    }
+}
+
+/// The resume-or-new decision on a connect's first frame
+/// (`OrchestratorState::begin_session_on_connect`), with its database half
+/// run without the belt lock. The status listener waits for it, so the
+/// frames after this one are taken in order once it is done.
+async fn decide_session_on_connect(app: &tauri::AppHandle, ticket: u64, deck: ConnectTotals) {
+    let row = {
+        let app = app.clone();
+        crate::util::blocking(move || crate::engine::connect_session_row(&app, deck.time_s)).await
+    };
+    let unused = ORCHESTRATOR
+        .lock()
+        .await
+        .finish_session_on_connect(ticket, row, deck);
+    if let Some(id) = unused {
+        discard_session_row(app, id).await;
     }
 }
 
@@ -583,20 +646,26 @@ async fn listen_for_status(
             // In memory only, the way `sim::Rig` runs them.
             state.update_physics();
             if state.should_start_session() {
-                open_session(&app, &mut state, true);
+                #[cfg(debug_assertions)]
+                state.start_session(crate::sim_link::next_session_id());
             } else if state.should_stop_session() {
                 state.stop_session();
             }
         } else {
             // Resume or new session, once per connection, from the deck's live
-            // totals, so a walk already under way is picked up.
-            state.evaluate_session_on_connect(
-                &app,
-                t.time_sec,
-                (t.distance_km * 1000.0) as f64,
-                t.steps as f64,
-                t.calories,
-            );
+            // totals, so a walk already under way is picked up. The database
+            // is asked without the belt lock (#273).
+            if let Some(ticket) = state.begin_session_on_connect(t.time_sec) {
+                drop(state);
+                let deck = ConnectTotals {
+                    time_s: t.time_sec,
+                    distance_m: (t.distance_km * 1000.0) as f64,
+                    steps: t.steps as f64,
+                    calories: t.calories,
+                };
+                decide_session_on_connect(&app, ticket, deck).await;
+                state = ORCHESTRATOR.lock().await;
+            }
             state.update_physics();
             state.manage_session_lifecycle(&app);
         }
@@ -1055,9 +1124,14 @@ async fn subscribe_and_start(
             *CONNECTED_DECK.lock().await = Some(deck);
 
             // The raw id matches fastest next time.
-            let mut config = crate::persistence::load_config(app);
-            config.last_device_id = Some(raw_id.to_string());
-            if let Err(e) = crate::persistence::save_config(app, &config) {
+            let (app_b, id) = (app.clone(), raw_id.to_string());
+            let saved = crate::util::blocking(move || {
+                let mut config = crate::persistence::load_config(&app_b);
+                config.last_device_id = Some(id);
+                crate::persistence::save_config(&app_b, &config)
+            })
+            .await;
+            if let Err(e) = saved {
                 log::warn!("Could not remember the treadmill: {}", e);
             }
             return Ok(true);
@@ -1082,7 +1156,7 @@ pub async fn trigger_action(action: String) -> Result<(), String> {
 
 /// Load the stored settings into the orchestrator at startup. Whether to
 /// resume a session is decided later, on the first frame after connecting
-/// (`OrchestratorState::evaluate_session_on_connect`).
+/// (`OrchestratorState::begin_session_on_connect`).
 pub async fn init_from_config(config: &crate::persistence::AppConfig) {
     ORCHESTRATOR.lock().await.sync_config(config);
 }

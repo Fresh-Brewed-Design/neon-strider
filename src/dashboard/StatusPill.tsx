@@ -7,7 +7,7 @@ const TONE: Record<StatusTone, { text: string; border: string; Icon: ComponentTy
   ok: { text: "text-neon-cyan", border: "border-neon-cyan/40", Icon: Check },
   working: { text: "text-neon-yellow", border: "border-neon-yellow/40", Icon: Loader2 },
   problem: { text: "text-red-400", border: "border-red-400/40", Icon: AlertTriangle },
-  idle: { text: "text-white/50", border: "border-white/15", Icon: CircleSlash },
+  idle: { text: "text-white/60", border: "border-white/15", Icon: CircleSlash },
 };
 
 /**

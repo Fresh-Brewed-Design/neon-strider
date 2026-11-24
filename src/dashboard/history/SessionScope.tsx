@@ -152,9 +152,9 @@ export function SessionScope({ session }: { session: MergedSession }) {
   }, [points, runs]);
 
   if (failed) return <p className="py-4 text-center font-mono text-xs text-red-400">Could not load this session's samples.</p>;
-  if (!points) return <p className="py-4 text-center font-mono text-xs text-white/40">Loading samples…</p>;
+  if (!points) return <p className="py-4 text-center font-mono text-xs text-white/60">Loading samples…</p>;
   if (points.length < 2) {
-    return <p className="py-4 text-center font-mono text-xs text-white/40">This session has too few samples to plot.</p>;
+    return <p className="py-4 text-center font-mono text-xs text-white/60">This session has too few samples to plot.</p>;
   }
 
   return (
@@ -166,7 +166,7 @@ export function SessionScope({ session }: { session: MergedSession }) {
           aria-label={runs.length > 0 ? "Speed, incline and heart rate over the session" : "Speed and incline over the session"}
         />
       </div>
-      <div className="mt-1 flex gap-4 font-mono text-[11px] text-white/50">
+      <div className="mt-1 flex gap-4 font-mono text-xs text-white/60">
         <span><span className="text-neon-cyan">Cyan</span> speed</span>
         <span><span className="text-neon-magenta">Magenta</span> incline</span>
         {runs.length > 0 && <span><span className="text-neon-yellow">Yellow</span> heart rate</span>}

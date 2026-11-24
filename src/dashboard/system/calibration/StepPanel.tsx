@@ -52,7 +52,7 @@ export function StepPanel({ run, limits }: { run: CalibrationRunView; limits: Ca
 function Readout({ label, value }: { label: string; value: string }) {
   return (
     <div className="space-y-0.5">
-      <div className="font-mono text-[11px] uppercase text-white/50">{label}</div>
+      <div className="font-mono text-xs uppercase text-white/60">{label}</div>
       <div className="font-digital text-sm text-white">{value}</div>
     </div>
   );
@@ -94,7 +94,7 @@ function StepTapping({ steps, limits }: { steps: StepRunView; limits: Calibratio
       >
         <div className="h-full bg-neon-cyan transition-all" style={{ width: `${progress * 100}%` }} />
       </div>
-      <div className="font-mono text-[11px] text-white/60">
+      <div className="font-mono text-xs text-white/60">
         {steps.kept} of {limits.min_steps} agreeing times between footsteps.
       </div>
       {dropped && <Hint>{dropped}</Hint>}

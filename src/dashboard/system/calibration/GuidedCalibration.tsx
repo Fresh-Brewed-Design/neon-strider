@@ -185,7 +185,7 @@ export function GuidedCalibration() {
                     <Readout label="RUNS" value={String(row.point.runs ?? 1)} className="text-white" />
                   </>
                 ) : (
-                  <span className="font-mono text-[11px] uppercase tracking-[0.15em] text-white/40">Uncalibrated</span>
+                  <span className="font-mono text-xs uppercase tracking-[0.15em] text-white/60">Uncalibrated</span>
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-1">
@@ -209,7 +209,7 @@ export function GuidedCalibration() {
                     }}
                     aria-label={`Remove ${row.targetKmh.toFixed(1)} km/h from the target list`}
                     title="Remove from the target list"
-                    className="p-2 text-white/50 transition-colors hover:text-neon-magenta"
+                    className="p-2 text-white/60 transition-colors hover:text-neon-magenta"
                   >
                     <X size={14} />
                   </button>
@@ -220,7 +220,7 @@ export function GuidedCalibration() {
                     onClick={() => removePoint(row.index as number)}
                     aria-label={`Delete the ${row.targetKmh.toFixed(1)} km/h point`}
                     title="Delete"
-                    className="p-2 text-white/50 transition-colors hover:text-neon-magenta"
+                    className="p-2 text-white/60 transition-colors hover:text-neon-magenta"
                   >
                     <Trash2 size={14} />
                   </button>
@@ -250,7 +250,7 @@ export function GuidedCalibration() {
         type="button"
         aria-expanded={advanced}
         onClick={() => setAdvanced((v) => !v)}
-        className="flex items-center gap-1 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-white/60 transition-colors hover:text-neon-cyan"
+        className="flex items-center gap-1 font-mono text-xs font-bold uppercase tracking-[0.15em] text-white/60 transition-colors hover:text-neon-cyan"
       >
         {advanced ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         ADVANCED // TARGET_LIST
@@ -337,7 +337,7 @@ function BeltLoopStep({
             aria-label="Belt loop length in cm"
           />
         </label>
-        <span className="pb-2 font-mono text-[11px] text-white/50">cm</span>
+        <span className="pb-2 font-mono text-xs text-white/60">cm</span>
         <NeonButton className="px-3 py-1.5" disabled={save.pending || value.trim() === ""} onClick={submit}>
           SAVE
         </NeonButton>
@@ -389,7 +389,7 @@ function AddSpeed() {
 function Readout({ label, value, className, hint }: { label: string; value: string; className: string; hint?: string }) {
   return (
     <div className="space-y-0.5">
-      <div className="font-mono text-[11px] uppercase text-white/50">{label}</div>
+      <div className="font-mono text-xs uppercase text-white/60">{label}</div>
       <div className={cx("font-digital text-sm", className)}>{value}</div>
       {hint && <div className="font-mono text-[11px] text-neon-yellow">{hint}</div>}
     </div>
@@ -510,11 +510,11 @@ function RunPanel({
           >
             <div className="h-full bg-neon-cyan transition-all" style={{ width: `${progress * 100}%` }} />
           </div>
-          <div className="font-mono text-[11px] text-white/60">
+          <div className="font-mono text-xs text-white/60">
             {run.kept} of {limits.min_agreeing} agreeing times between passes.
           </div>
           {run.reported_kmh !== null && run.measured_kmh !== null && (
-            <div className="font-mono text-[11px] text-white/60">
+            <div className="font-mono text-xs text-white/60">
               The deck shows {run.reported_kmh.toFixed(1)} km/h; the belt measures {run.measured_kmh.toFixed(2)} km/h.
             </div>
           )}
@@ -587,7 +587,7 @@ function StopButton() {
 const MARK_CLASS: Record<SweepMark | "current", string> = {
   saved: "border-emerald-400/60 text-emerald-400",
   skipped: "border-white/10 text-white/40 line-through",
-  pending: "border-white/15 text-white/50",
+  pending: "border-white/15 text-white/60",
   current: "border-neon-yellow/70 text-neon-yellow",
 };
 

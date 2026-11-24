@@ -12,7 +12,12 @@ export type Command = { "type": "start" } | { "type": "pause" } | { "type": "sto
 /**
  * id 0 creates a new program.
  */
-program: Program, } | { "type": "program_delete", id: number, } | { "type": "program_run", id: number, } | { "type": "program_pause" } | { "type": "program_resume" } | { "type": "program_skip" } | { "type": "program_end" } | { "type": "program_fit_to_deck", id: number, } | { "type": "hud_toggle_widget", widget: HudWidget, } | { "type": "hud_set_widgets", widgets: Array<HudWidget>, } | { "type": "hud_set_anchor", anchor: HudAnchor, } | { "type": "hud_drag_start", grab_x: number, grab_y: number, } | { "type": "hud_reset_position" } | { "type": "hud_set_monitor", monitor: string | null, } | { "type": "dashboard_set_pinned", pinned: boolean, } | { "type": "hud_set_idle_mode", mode: HudIdleMode, } | { "type": "hud_expand" } | { "type": "hud_set_minified", minified: boolean, } | { "type": "hud_set_minify_hotkey", hotkey: HudMinifyHotkey, } | { "type": "strava_set_credentials", client_id: string, client_secret: string, } | { "type": "strava_connect" } | { "type": "strava_disconnect" } | { "type": "strava_set_auto_sync", enabled: boolean, } | { "type": "strava_set_daily_rollup", enabled: boolean, 
+program: Program, } | { "type": "program_delete", id: number, } | { "type": "program_run", id: number, 
+/**
+ * FIT_TO_TIME (#258): run once at this many minutes, from
+ * `snapshot.fit_to_time`. Absent runs the program as saved.
+ */
+minutes?: number, } | { "type": "program_pause" } | { "type": "program_resume" } | { "type": "program_skip" } | { "type": "program_end" } | { "type": "program_fit_to_deck", id: number, } | { "type": "hud_toggle_widget", widget: HudWidget, } | { "type": "hud_set_widgets", widgets: Array<HudWidget>, } | { "type": "hud_set_anchor", anchor: HudAnchor, } | { "type": "hud_drag_start", grab_x: number, grab_y: number, } | { "type": "hud_reset_position" } | { "type": "hud_set_monitor", monitor: string | null, } | { "type": "dashboard_set_pinned", pinned: boolean, } | { "type": "hud_set_idle_mode", mode: HudIdleMode, } | { "type": "hud_expand" } | { "type": "hud_set_minified", minified: boolean, } | { "type": "hud_set_minify_hotkey", hotkey: HudMinifyHotkey, } | { "type": "strava_set_credentials", client_id: string, client_secret: string, } | { "type": "strava_connect" } | { "type": "strava_disconnect" } | { "type": "strava_set_auto_sync", enabled: boolean, } | { "type": "strava_set_daily_rollup", enabled: boolean, 
 /**
  * Local "HH:MM".
  */

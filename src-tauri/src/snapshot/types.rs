@@ -30,6 +30,9 @@ pub struct AppSnapshot {
     /// STRIDE_FIT for incline, with Rust's words for the card and the
     /// confirm dialog. Empty while STRIDE_FIT is unset.
     pub fit_to_deck: Vec<crate::programs::fit_to_deck::FitToDeckOffer>,
+    /// FIT_TO_TIME (#258): the lengths each program may run at once, for the
+    /// picker beside its Run. A program whose length can't change has none.
+    pub fit_to_time: Vec<crate::programs::fit_to_time::FitToTimeOption>,
 
     // ---- Neural flow ----
     pub neural: NeuralSnapshot,
@@ -603,6 +606,11 @@ pub enum Command {
     },
     ProgramRun {
         id: u32,
+        /// FIT_TO_TIME (#258): run once at this many minutes, from
+        /// `snapshot.fit_to_time`. Absent runs the program as saved.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        minutes: Option<u32>,
     },
     ProgramPause,
     ProgramResume,
@@ -1099,7 +1107,22 @@ mod tests {
             }
         );
         let c: Command = serde_json::from_str(r#"{"type":"program_run","id":3}"#).unwrap();
-        assert_eq!(c, Command::ProgramRun { id: 3 });
+        assert_eq!(
+            c,
+            Command::ProgramRun {
+                id: 3,
+                minutes: None
+            }
+        );
+        let c: Command =
+            serde_json::from_str(r#"{"type":"program_run","id":3,"minutes":25}"#).unwrap();
+        assert_eq!(
+            c,
+            Command::ProgramRun {
+                id: 3,
+                minutes: Some(25)
+            }
+        );
         let c: Command = serde_json::from_str(r#"{"type":"program_skip"}"#).unwrap();
         assert_eq!(c, Command::ProgramSkip);
         assert!(serde_json::from_str::<Command>(r#"{"type":"automation_toggle"}"#).is_err());

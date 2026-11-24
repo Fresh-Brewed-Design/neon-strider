@@ -14,7 +14,7 @@ import { useAppSnapshot } from "../../state/useAppState";
 import { MINIFY_KEYS, minifyKeyText } from "../../hud/minifyHotkey";
 import { MODULE_WIDGETS, STAT_WIDGETS, widgetName } from "../../widgets/registry";
 import { Toggle } from "../system/fields";
-import { GhostButton, Hint, Label, Page, Panel, Waiting } from "../ui";
+import { GhostButton, Hint, Label, OptionPicker, Page, Panel, Waiting } from "../ui";
 import { cx, send } from "../util";
 
 const CORNERS: { anchor: HudAnchor; label: string; className: string }[] = [
@@ -89,6 +89,13 @@ function PlacementRow({ anchor, custom }: { anchor: HudAnchor; custom: boolean }
   );
 }
 
+/** The look of one row in the HUD page's pick-one lists. */
+const rowOption = (active: boolean) =>
+  cx(
+    "w-full rounded border px-2 py-1.5 text-left font-mono text-[11px] transition-colors",
+    active ? "border-neon-cyan bg-neon-cyan/15 text-neon-cyan" : "border-white/15 text-white/70 hover:border-neon-cyan/50",
+  );
+
 /** Which display the HUD sits on. Hidden when there is only one. */
 function MonitorPicker({ monitors, selected }: { monitors: HudMonitor[]; selected: string | null }) {
   if (monitors.length < 2) return null;
@@ -100,26 +107,25 @@ function MonitorPicker({ monitors, selected }: { monitors: HudMonitor[]; selecte
   return (
     <div className="flex flex-col gap-1.5">
       <Label>Display</Label>
-      <ul className="flex flex-col gap-1" aria-label="Display">
-        {monitors.map((m) => (
-          <li key={m.name}>
-            <button
-              type="button"
-              aria-pressed={m.name === active}
-              onClick={() => send({ type: "hud_set_monitor", monitor: m.is_primary ? null : m.name })}
-              className={cx(
-                "w-full rounded border px-2 py-1.5 text-left font-mono text-[11px] transition-colors",
-                m.name === active
-                  ? "border-neon-cyan bg-neon-cyan/15 text-neon-cyan"
-                  : "border-white/15 text-white/70 hover:border-neon-cyan/50",
-              )}
-            >
+      <OptionPicker
+        label="Display"
+        activation="manual"
+        className="flex flex-col gap-1"
+        options={monitors.map((m) => ({
+          value: m.name,
+          label: (
+            <>
               {m.label}
-              {m.is_primary && <span className="text-white/45"> (primary)</span>}
-            </button>
-          </li>
-        ))}
-      </ul>
+              {m.is_primary && <span className="text-white/60"> (primary)</span>}
+            </>
+          ),
+        }))}
+        value={active}
+        onChange={(name) =>
+          send({ type: "hud_set_monitor", monitor: monitors.find((m) => m.name === name)?.is_primary ? null : name })
+        }
+        optionClassName={rowOption}
+      />
       {missing && (
         <p className="font-mono text-[11px] leading-relaxed text-neon-yellow/80">
           The chosen display is not connected, so the HUD sits on the primary display.
@@ -141,26 +147,15 @@ function IdleModePicker({ mode }: { mode: HudIdleMode }) {
   return (
     <div className="flex flex-col gap-1.5">
       <Label>When the belt is still</Label>
-      <div className="flex flex-col gap-1" role="radiogroup" aria-label="When the belt is still">
-        {IDLE_MODES.map((m) => (
-          <button
-            key={m.mode}
-            type="button"
-            role="radio"
-            aria-checked={m.mode === mode}
-            disabled={set.pending}
-            onClick={() => void set.run(() => dispatch({ type: "hud_set_idle_mode", mode: m.mode }))}
-            className={cx(
-              "w-full rounded border px-2 py-1.5 text-left font-mono text-[11px] transition-colors",
-              m.mode === mode
-                ? "border-neon-cyan bg-neon-cyan/15 text-neon-cyan"
-                : "border-white/15 text-white/70 hover:border-neon-cyan/50",
-            )}
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>
+      <OptionPicker
+        label="When the belt is still"
+        className="flex flex-col gap-1"
+        options={IDLE_MODES.map((m) => ({ value: m.mode, label: m.label }))}
+        value={mode}
+        disabled={set.pending}
+        onChange={(next) => void set.run(() => dispatch({ type: "hud_set_idle_mode", mode: next }))}
+        optionClassName={rowOption}
+      />
       <ActionStatus pending={set.pending} error={set.error} />
       <Hint>Cards that need an answer still show, and a hidden HUD comes back when the belt moves.</Hint>
     </div>
@@ -189,26 +184,15 @@ function MinifyHotkeyPicker({ hotkey, platform }: { hotkey: HudMinifyHotkey; pla
         }
       />
       {hotkey.enabled && platform.minify_key_choice && (
-        <div className="flex flex-col gap-1" role="radiogroup" aria-label="Minify hotkey">
-          {MINIFY_KEYS.map((k) => (
-            <button
-              key={k.key}
-              type="button"
-              role="radio"
-              aria-checked={k.key === hotkey.key}
-              disabled={set.pending}
-              onClick={() => save({ ...hotkey, key: k.key })}
-              className={cx(
-                "w-full rounded border px-2 py-1.5 text-left font-mono text-[11px] transition-colors",
-                k.key === hotkey.key
-                  ? "border-neon-cyan bg-neon-cyan/15 text-neon-cyan"
-                  : "border-white/15 text-white/70 hover:border-neon-cyan/50",
-              )}
-            >
-              {minifyKeyText(k.key, platform)}
-            </button>
-          ))}
-        </div>
+        <OptionPicker
+          label="Minify hotkey"
+          className="flex flex-col gap-1"
+          options={MINIFY_KEYS.map((k) => ({ value: k.key, label: minifyKeyText(k.key, platform) }))}
+          value={hotkey.key}
+          disabled={set.pending}
+          onChange={(key) => save({ ...hotkey, key })}
+          optionClassName={rowOption}
+        />
       )}
       <ActionStatus pending={set.pending} error={set.error} />
     </div>
@@ -236,10 +220,10 @@ export function HudPage() {
           <Panel className="p-3">
             <div className="mb-2 flex items-center justify-between">
               <Label>On the HUD</Label>
-              <span className="font-mono text-[11px] text-white/40">Top to bottom</span>
+              <span className="font-mono text-xs text-white/60">Top to bottom</span>
             </div>
             {widgets.length === 0 ? (
-              <p className="px-1 py-3 font-mono text-xs text-white/45">
+              <p className="px-1 py-3 font-mono text-xs text-white/60">
                 Nothing pinned, so the HUD is hidden. Add a widget from Available.
               </p>
             ) : (
@@ -275,12 +259,12 @@ export function HudPage() {
                       onClick={() => send({ type: "hud_toggle_widget", widget: w.id })}
                       className="flex w-full items-center gap-2 rounded border border-white/10 px-3 py-1.5 text-left transition-colors hover:border-neon-cyan/50 hover:bg-neon-cyan/5"
                     >
-                      <Plus size={14} className="shrink-0 text-white/50" />
+                      <Plus size={14} className="shrink-0 text-white/60" />
                       <span className="min-w-0">
                         <span className="block font-mono text-xs font-bold uppercase tracking-[0.12em] text-white/80">
                           {widgetName(w.id)}
                         </span>
-                        <span className="block truncate font-mono text-[11px] text-white/40">{w.description}</span>
+                        <span className="block truncate font-mono text-xs text-white/60">{w.description}</span>
                       </span>
                     </button>
                   </li>

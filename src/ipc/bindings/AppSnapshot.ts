@@ -9,6 +9,7 @@ import type { EasyStartSnapshot } from "./EasyStartSnapshot";
 import type { EasyStopSnapshot } from "./EasyStopSnapshot";
 import type { EyeBreakSnapshot } from "./EyeBreakSnapshot";
 import type { FitToDeckOffer } from "./FitToDeckOffer";
+import type { FitToTimeOption } from "./FitToTimeOption";
 import type { GuidedTaskSnapshot } from "./GuidedTaskSnapshot";
 import type { HeartRateSnapshot } from "./HeartRateSnapshot";
 import type { HudConfig } from "./HudConfig";
@@ -40,7 +41,12 @@ export type AppSnapshot = { connection: ConnectionSnapshot, deck: DeckSnapshot, 
  * STRIDE_FIT for incline, with Rust's words for the card and the
  * confirm dialog. Empty while STRIDE_FIT is unset.
  */
-fit_to_deck: Array<FitToDeckOffer>, neural: NeuralSnapshot, 
+fit_to_deck: Array<FitToDeckOffer>, 
+/**
+ * FIT_TO_TIME (#258): the lengths each program may run at once, for the
+ * picker beside its Run. A program whose length can't change has none.
+ */
+fit_to_time: Array<FitToTimeOption>, neural: NeuralSnapshot, 
 /**
  * Speed drift (#251): its settings, what it is doing and Rust's sentence
  * for it. The HUD shows a line while it sets the speed.

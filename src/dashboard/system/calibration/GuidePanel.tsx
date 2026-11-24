@@ -67,7 +67,7 @@ const STEP_CLASS =
 const MARK_CLASS: Record<GuideMark | "next", string> = {
   saved: "border-emerald-400/60 text-emerald-400",
   skipped: "border-white/10 text-white/40 line-through",
-  pending: "border-white/15 text-white/50",
+  pending: "border-white/15 text-white/60",
   next: "border-neon-yellow/70 text-neon-yellow",
 };
 

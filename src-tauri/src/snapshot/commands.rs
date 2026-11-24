@@ -124,8 +124,11 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             change_programs(&app, |state| state.delete_program(id, Instant::now())).await?;
             programs::persist_last_run(&app, None)
         }
-        Command::ProgramRun { id } => {
-            ORCHESTRATOR.lock().await.run_program(id, Instant::now())?;
+        Command::ProgramRun { id, minutes } => {
+            ORCHESTRATOR
+                .lock()
+                .await
+                .run_program_fitted(id, minutes, Instant::now())?;
             programs::persist_last_run(&app, Some(id))
         }
         Command::ProgramPause => ORCHESTRATOR.lock().await.pause_program(Instant::now()),

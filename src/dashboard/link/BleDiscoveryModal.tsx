@@ -75,7 +75,7 @@ export function BleDiscoveryModal({
                 aria-label="Close"
                 className="p-1 hover:bg-white/10 rounded transition-colors"
               >
-                <X size={18} className="text-white/40" />
+                <X size={18} className="text-white/60" />
               </button>
             </div>
 
@@ -90,30 +90,30 @@ export function BleDiscoveryModal({
                     ) : scanError ? (
                       <BluetoothOff className="text-red-400" size={24} />
                     ) : (
-                      <SearchX className="text-white/50" size={24} />
+                      <SearchX className="text-white/60" size={24} />
                     )}
                   </div>
                   {adapterOff ? (
                     <div className="flex flex-col gap-1">
                       <p className="text-[11px] font-bold text-red-400 uppercase tracking-widest">Bluetooth is off</p>
-                      <p className="text-[11px] text-white/60 break-words">
+                      <p className="text-xs text-white/60 break-words">
                         {scanError ?? `Turn Bluetooth on in ${settings}, then scan again.`}
                       </p>
                     </div>
                   ) : isScanning ? (
                     <div className="flex flex-col gap-1">
                       <p className="text-[11px] font-bold text-neon-yellow uppercase tracking-widest">Scanning for treadmills…</p>
-                      <p className="text-[11px] text-white/50">This takes about 5 seconds.</p>
+                      <p className="text-xs text-white/60">This takes about 5 seconds.</p>
                     </div>
                   ) : scanError ? (
                     <div className="flex flex-col gap-1">
                       <p className="text-[11px] font-bold text-red-400 uppercase tracking-widest">Scan failed</p>
-                      <p className="text-[11px] text-white/60 break-words">{scanError}</p>
+                      <p className="text-xs text-white/60 break-words">{scanError}</p>
                     </div>
                   ) : scanned ? (
                     <div className="flex flex-col gap-1">
-                      <p className="text-[11px] font-bold text-white/60 uppercase tracking-widest">No treadmills found</p>
-                      <p className="text-[11px] text-white/50">
+                      <p className="text-xs font-bold text-white/60 uppercase tracking-widest">No treadmills found</p>
+                      <p className="text-xs text-white/60">
                         Make sure it&apos;s switched on and in range, then scan again.
                       </p>
                     </div>
@@ -132,14 +132,14 @@ export function BleDiscoveryModal({
                       >
                         <div className="flex flex-col items-start gap-1 min-w-0">
                           <span className="text-xs font-black uppercase tracking-wider">{device.name || 'Unknown Device'}</span>
-                          <span className="text-[11px] font-mono text-white/50 truncate max-w-[200px]">{device.id}</span>
+                          <span className="text-xs font-mono text-white/60 truncate max-w-[200px]">{device.id}</span>
                         </div>
                         {linking ? (
                           <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-neon-yellow">
                             <Loader2 size={14} className="animate-spin" /> Linking…
                           </span>
                         ) : (
-                          <Link2 className="text-white/50 group-hover:text-neon-cyan transition-colors" size={16} />
+                          <Link2 className="text-white/60 group-hover:text-neon-cyan transition-colors" size={16} />
                         )}
                       </button>
                       <ActionStatus

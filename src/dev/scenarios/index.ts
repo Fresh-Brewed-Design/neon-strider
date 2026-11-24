@@ -15,6 +15,7 @@ import { easyStop } from "./easystop";
 import { echo } from "./echo";
 import { engage } from "./engage";
 import { eyeBreak } from "./eyebreak";
+import { fitToTime } from "./fittotime";
 import { guided } from "./guided";
 import { heartRate } from "./heart";
 import { history } from "./history";
@@ -82,4 +83,5 @@ export const SCENARIOS: Scenario[] = [
   today,
   speedDrift,
   easyStop,
+  fitToTime,
 ];

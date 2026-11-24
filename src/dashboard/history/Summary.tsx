@@ -7,7 +7,7 @@ import { formatChange, type ChangeTone } from "./weekly";
 const TONE_CLASS: Record<ChangeTone, string> = {
   up: "text-emerald-400",
   down: "text-neon-magenta",
-  flat: "text-white/50",
+  flat: "text-white/60",
   new: "text-neon-cyan",
 };
 
@@ -18,10 +18,10 @@ function WeekCell({ title, week, change }: { title: string; week: WeekStats; cha
       <Label>{title}</Label>
       <div className="flex flex-wrap items-baseline gap-x-2">
         <span className="font-digital text-xl text-neon-cyan">{week.distance_km.toFixed(1)}</span>
-        <span className="font-mono text-xs text-white/40">km</span>
+        <span className="font-mono text-xs text-white/60">km</span>
         {chip && <span className={cx("font-mono text-xs font-bold", TONE_CLASS[chip.tone])}>{chip.text}</span>}
       </div>
-      <div className="font-mono text-[11px] text-white/50">
+      <div className="font-mono text-xs text-white/60">
         {week.active_days} / 7 days · {formatDuration(week.duration_s)} · {week.sessions}{" "}
         {week.sessions === 1 ? "session" : "sessions"}
       </div>
@@ -47,7 +47,7 @@ function SummaryStat({ label, value, unit }: { label: string; value: string; uni
       <Label>{label}</Label>
       <div className="flex items-baseline gap-1">
         <span className="font-digital text-xl text-neon-cyan">{value}</span>
-        {unit && <span className="font-mono text-xs text-white/40">{unit}</span>}
+        {unit && <span className="font-mono text-xs text-white/60">{unit}</span>}
       </div>
     </div>
   );

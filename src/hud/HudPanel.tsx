@@ -262,7 +262,7 @@ export function ProgramsModule({ snapshot }: { snapshot: AppSnapshot }) {
         <div className="hud-auto-readout">
           <span className="hud-label">{wait ? "READY" : a.paused ? "PAUSED" : "PROGRAM"}</span>
           <span className="hud-value hud-value-sm">{a.name}</span>
-          <span className="hud-sub">{describeActive(a)}</span>
+          <span className="hud-sub hud-run-status">{describeActive(a)}</span>
           {next && (
             <span className="hud-sub hud-next">
               {/* Each part stays whole and keeps its trailing dot; a narrow panel wraps between them. */}
