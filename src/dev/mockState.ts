@@ -116,6 +116,7 @@ export const snapshot: AppSnapshot = {
   },
   fit_to_deck: [],
   fit_to_time: [],
+  program_tones: { enabled: false, seq: 0, cue: null, at_ms: 0 },
   neural: {
     enabled: true,
     factor: 1,

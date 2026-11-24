@@ -31,6 +31,7 @@ import { neural } from "./neural";
 import { pcWalkShare } from "./pcwalk";
 import { platform } from "./platform";
 import { programs } from "./programs";
+import { programTones } from "./programtones";
 import { seated } from "./seated";
 import { shortcuts } from "./shortcuts";
 import { speedDrift } from "./speeddrift";
@@ -85,6 +86,7 @@ export const SCENARIOS: Scenario[] = [
   speedDrift,
   easyStop,
   fitToTime,
+  programTones,
   // After platform: the keys follow ?mac.
   shortcuts,
 ];
