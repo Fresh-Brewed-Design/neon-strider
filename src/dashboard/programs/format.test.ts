@@ -124,7 +124,7 @@ describe("T-MINUS", () => {
   const finite: ActiveProgram = { ...active, name: "Brisk", repeat_every_minutes: null, cycle: 1, program_seconds_remaining: 23 * 60 + 10 };
 
   it("shows the time left and the end on the PC clock", () => {
-    expect(describeTimeLeft(finite, now, "en-GB")).toBe(`T-MINUS${NBSP}23:10 · ENDS${NBSP}15:40`);
+    expect(describeTimeLeft(finite, now, "en-GB")).toBe(`T-MINUS 23:10${NBSP}· ENDS${NBSP}15:40`);
   });
 
   it("writes the end in the user's time format, with no seconds", () => {
@@ -133,14 +133,23 @@ describe("T-MINUS", () => {
   });
 
   it("counts hours past the first", () => {
-    expect(describeTimeLeft({ ...finite, program_seconds_remaining: 3600 + 125 }, now, "en-GB")).toBe(`T-MINUS${NBSP}1:02:05 · ENDS${NBSP}16:19`);
+    expect(describeTimeLeft({ ...finite, program_seconds_remaining: 3600 + 125 }, now, "en-GB")).toBe(`T-MINUS 1:02:05${NBSP}· ENDS${NBSP}16:19`);
   });
 
   it("drops the end while paused, since it drifts", () => {
-    expect(describeTimeLeft({ ...finite, paused: true }, now, "en-GB")).toBe(`T-MINUS${NBSP}23:10`);
+    expect(describeTimeLeft({ ...finite, paused: true }, now, "en-GB")).toBe(`T-MINUS 23:10`);
   });
 
   it("shows nothing for a program with no fixed end", () => {
     expect(describeTimeLeft(active, now, "en-GB")).toBeNull();
+  });
+});
+
+describe("T-MINUS wrapping", () => {
+  it("wraps after the dot or after T-MINUS, never inside the end time", () => {
+    const a: ActiveProgram = { ...active, repeat_every_minutes: null, program_seconds_remaining: 1390 };
+    const line = describeTimeLeft(a, new Date(2026, 10, 24, 15, 17, 0), "en-US")!;
+    expect(line.split(" ")).toHaveLength(3);
+    expect(line.split(" ")[2]).toMatch(/^ENDS.3:40.PM$/);
   });
 });

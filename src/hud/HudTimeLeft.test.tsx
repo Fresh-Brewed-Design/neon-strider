@@ -35,14 +35,14 @@ describe("HUD T-MINUS", () => {
   it("shows the whole program's time left and end under the step line", () => {
     current = withLeft(1390);
     const { container } = render(<HudApp />);
-    expect(tMinus(container)?.startsWith(`T-MINUS${NBSP}23:10 · ENDS${NBSP}`)).toBe(true);
+    expect(tMinus(container)?.startsWith(`T-MINUS 23:10${NBSP}· ENDS${NBSP}`)).toBe(true);
     expect(container.querySelector(".hud-run-status")?.textContent).toContain("left");
   });
 
   it("shows only the time left while paused", () => {
     current = withLeft(1390, true);
     const { container } = render(<HudApp />);
-    expect(tMinus(container)).toBe(`T-MINUS${NBSP}23:10`);
+    expect(tMinus(container)).toBe(`T-MINUS 23:10`);
   });
 
   it("shows nothing for a repeating program", () => {

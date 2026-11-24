@@ -226,7 +226,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?offline`: no treadmill saved yet
 - `?onemonitor`: a single display
 - `?pcwalk`: the WALKED stat pinned on the HUD at 38 % (2h 10m of 5h 40m); `=early` 6 minutes of PC time (`--`), `=long` 10h 05m of 11h 50m, `=none` no PC time today
-- `?program=ready|hold|still|resting|paused|interval`: a program waiting for GO after a rest, after a 0 km/h step (its steps have no kind), or after a reconnect found the belt still; mid-rest; paused by the user; or Interval walk on its 3rd brisk round (`INTERVAL 3/5`); each shows STEP_MAP on the Live page and the next step on the HUD
+- `?program=ready|hold|still|resting|paused|interval`: a program waiting for GO after a rest, after a 0 km/h step (its steps have no kind), or after a reconnect found the belt still; mid-rest; paused by the user; or Interval walk on its 3rd brisk round (`INTERVAL 3/5`, `T-MINUS 17:08`); each shows STEP_MAP on the Live page and the next step on the HUD
 - `?reconnect`: the Strava login needs a fresh grant
 - `?reject`: every command fails
 - `?saved`: a walk saved for a manual Strava upload

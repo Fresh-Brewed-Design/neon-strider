@@ -135,8 +135,10 @@ export function finishClock(seconds: number, now: Date, locale?: string): string
 export function describeTimeLeft(a: ActiveProgram, now: Date = new Date(), locale?: string): string | null {
   const left = a.program_seconds_remaining;
   if (left == null) return null;
-  // No-break spaces keep each part whole when a narrow HUD wraps the line.
-  const tMinus = `T-MINUS${NBSP}${formatClock(left)}`;
+  // No-break spaces keep the dot on the time left and the end time whole, so a narrow HUD
+  // wraps after the dot, or after T-MINUS when even the time left is too wide.
+  const tMinus = `T-MINUS ${formatClock(left)}`;
   if (a.paused) return tMinus;
-  return `${tMinus} · ENDS${NBSP}${finishClock(left, now, locale)}`;
+  const ends = finishClock(left, now, locale).replace(/ /g, NBSP);
+  return `${tMinus}${NBSP}· ENDS${NBSP}${ends}`;
 }
