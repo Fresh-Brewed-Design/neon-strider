@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.67.5 (2026-11-24)
+
+### Fixed
+
+- The program line on the minified HUD strip no longer ends a line with a dangling dot when it wraps.
+
 ## 1.67.4 (2026-11-24)
 
 ### Fixed
