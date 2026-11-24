@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.67.3 (2026-11-24)
+
+### Fixed
+
+- The step numbers in the program editor line up with their kind menus at a large Windows text size.
+
 ## 1.67.2 (2026-11-24)
 
 ### Fixed
