@@ -1,1 +1,0 @@
-- On a Mac: Slow down on calls works (it asks macOS which apps take microphone input), Open at login is a Login Item in System Settings, and System → Permissions shows whether Bluetooth and Input Monitoring are allowed, with a button to the right settings page. Neural flow says when macOS hasn't allowed Input Monitoring yet. A shortcut another app already holds shows crossed out.

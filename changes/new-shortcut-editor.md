@@ -1,1 +1,0 @@
-- Shortcuts can be changed: System → Shortcuts records a new key for each one (from the keyboard, with the shortcuts paused meanwhile), removes one, or switches a shortcut off, and RESET brings back the defaults. Each shortcut can have two keys. The HUD's minify key moved there from the HUD page, keeping the key you chose.

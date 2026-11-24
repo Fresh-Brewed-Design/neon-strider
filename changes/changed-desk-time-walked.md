@@ -1,1 +1,0 @@
-- The WALKED stat's full name is now DESK TIME WALKED (was PC TIME WALKED).
