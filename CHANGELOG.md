@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.61.1 (2026-11-24)
+
+### Fixed
+
+- The dashboard and HUD redraw only the parts that changed while you walk, so the app uses less of the PC.
+
 ## 1.61.0 (2026-11-23)
 
 ### New
