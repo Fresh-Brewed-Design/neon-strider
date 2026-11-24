@@ -1,1 +1,1 @@
-- While a program runs, STEP_MAP on the Live page now shows the walk's time, distance and today's distance in its top line. You no longer need to close the map to see them.
+- While a program runs, STEP_MAP on the Live page shows the walk's time, distance and today's distance in its top line.
