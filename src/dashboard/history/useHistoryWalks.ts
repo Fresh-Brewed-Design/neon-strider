@@ -121,9 +121,9 @@ export function useHistoryWalks(range: Range, day: string | null, reload: unknow
           setRaw((have) => addRows(have ?? [], page.sessions));
           setLoadedFrom(from);
         }
-        return from;
+        return page.sessions.length;
       },
-      { done: (from) => (from === null ? "No older walks saved." : `Listed back to ${monthName(from)}.`) },
+      { done: (n) => (n === 0 ? "No older walks saved." : `Loaded ${n} older ${n === 1 ? "walk" : "walks"}.`) },
     );
 
   return { raw, stats, loadError, loadedFrom, dayLoading, olderToLoad, loadOlder, older };

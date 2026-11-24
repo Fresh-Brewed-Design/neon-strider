@@ -72,7 +72,7 @@ describe("History beyond the listed months", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Load older walks" }));
     const older = screen.getByTestId("history-older");
     const month = new Date(OLD_FROM).toLocaleDateString([], { month: "long", year: "numeric" });
-    expect(await within(older).findByText(`Listed back to ${month}.`)).toBeInTheDocument();
+    expect(await within(older).findByText("Loaded 1 older walk.")).toBeInTheDocument();
     expect(vi.mocked(invoke)).toHaveBeenCalledWith("history_older", { beforeMs: expect.any(Number) as number });
     expect(within(older).getByText(`Walks listed back to ${month}.`)).toBeInTheDocument();
     // Every walk is listed now, so the button goes.
