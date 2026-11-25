@@ -43,6 +43,7 @@ export function UpdatesSection() {
     useTreadmillStore.getState().confirm({
       title: `Install v${offer.version}`,
       ...installConfirmText(s, offer.version),
+      confirmLabel: "Install",
       onConfirm: () => void install.run(() => dispatch({ type: "update_install" })),
     });
   };

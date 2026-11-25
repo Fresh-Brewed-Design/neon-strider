@@ -66,6 +66,8 @@ export function HistoryPage() {
     const n = session.mergedIds.length;
     confirm({
       title: "Delete session",
+      confirmLabel: "Delete",
+      tone: "danger",
       message: `Delete ${n > 1 ? `${n} joined records` : "the session"} from the local archive? Deleted sessions can't be restored.`,
       onConfirm: async () => {
         try {
