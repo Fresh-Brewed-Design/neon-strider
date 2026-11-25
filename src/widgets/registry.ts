@@ -128,7 +128,7 @@ export const STAT_WIDGETS: StatWidget[] = [
 ];
 
 /** A length of time that stays on one line: a non-breaking space inside it. */
-const unbroken = (seconds: number) => formatDuration(seconds).replace(" ", "00a0");
+const unbroken = (seconds: number) => formatDuration(seconds).replace(" ", " ");
 
 /** Today's walking time beside DAILY_TOTAL's km, e.g. "2h 14m"; none before the first walk of the day. */
 export function todayTimeDetail(s: AppSnapshot): string | null {
