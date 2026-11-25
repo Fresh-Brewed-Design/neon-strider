@@ -1,0 +1,1 @@
+- While the belt is paused, the HUD status reads STASIS with a clock counting up (STASIS 3:20), and the Live page shows the same clock under Re-jack, so you can see how long a pause has lasted.
