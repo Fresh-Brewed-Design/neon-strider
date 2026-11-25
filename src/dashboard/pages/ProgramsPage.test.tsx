@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppSnapshot } from "../../ipc";
@@ -62,5 +62,18 @@ describe("Programs offline", () => {
     unmount();
     show((s) => Object.assign(s.connection, { connected: true }));
     expect(screen.queryByTestId("programs-offline")).not.toBeInTheDocument();
+  });
+});
+
+describe("Programs delete", () => {
+  it("shows a refused delete in the program's own row", async () => {
+    show(() => {});
+    const name = current!.programs[0].name;
+    fireEvent.click(screen.getByRole("button", { name: `Delete ${name}` }));
+    vi.mocked(invoke).mockRejectedValueOnce("Program is running");
+    await act(async () => useTreadmillStore.getState().pendingConfirmation!.onConfirm());
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith("dispatch", { command: { type: "program_delete", id: current!.programs[0].id } });
+    const row = screen.getByRole("button", { name: `Delete ${name}` }).closest("li")!;
+    expect(within(row).getByRole("alert")).toHaveTextContent("Program is running");
   });
 });

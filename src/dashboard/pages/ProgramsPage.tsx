@@ -10,7 +10,7 @@ import { ProgramRow } from "../programs/ProgramRow";
 import { ProgramTonesSetting } from "../programs/ProgramTonesSetting";
 import { NeonButton, Page, Panel, Waiting } from "../ui";
 import { linkState } from "../../state/linkStatus";
-import { openLinkDialog, send } from "../util";
+import { openLinkDialog } from "../util";
 
 /** Why Run is off while no treadmill is linked, with the dashboard's own Connect. It only links; it never starts the belt. */
 function OfflineLine({ linking }: { linking: boolean }) {
@@ -47,13 +47,14 @@ export function ProgramsPage() {
   const state = linkState(s.connection).state;
   const linking = state === "connecting" || state === "scanning";
 
-  const remove = (p: Program) =>
+  // The row deletes on Confirm, so a refusal shows under its own Delete button.
+  const remove = (p: Program, onConfirm: () => void) =>
     confirm({
       title: "Delete program",
       confirmLabel: "Delete",
       tone: "danger",
       message: `Delete "${p.name}"? A deleted program can't be restored.`,
-      onConfirm: () => send({ type: "program_delete", id: p.id }),
+      onConfirm,
     });
 
   return (
@@ -102,7 +103,7 @@ export function ProgramsPage() {
                     fitToDeck={s.fit_to_deck.find((o) => o.program_id === p.id) ?? null}
                     fitToTime={s.fit_to_time.find((o) => o.program_id === p.id) ?? null}
                     onEdit={() => setPicked(toDraft(p))}
-                    onDelete={() => remove(p)}
+                    onDelete={(onConfirm) => remove(p, onConfirm)}
                   />
                 </li>
               );

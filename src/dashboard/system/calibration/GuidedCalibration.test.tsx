@@ -318,3 +318,14 @@ describe("GuidedCalibration", () => {
     expect(screen.getByLabelText("Remove 14.0 km/h from the target list")).toBeTruthy();
   });
 });
+
+describe("GuidedCalibration Close", () => {
+  it("shows a refused Close under the run's buttons", async () => {
+    current!.calibration.run = runView({ phase: "measured", passes: 9, kept: 8, result: result() });
+    render(<GuidedCalibration />);
+    vi.mocked(invoke).mockRejectedValueOnce("Treadmill not connected");
+    await act(async () => fireEvent.click(screen.getByText("Close")));
+    expect(dispatched()).toContainEqual({ type: "calibration_run_close" });
+    expect(screen.getByText("Treadmill not connected")).toBeTruthy();
+  });
+});

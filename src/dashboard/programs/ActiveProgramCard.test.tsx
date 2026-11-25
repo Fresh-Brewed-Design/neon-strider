@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppSnapshot } from "../../ipc";
 
@@ -14,6 +15,7 @@ const { snapshot: mock } = await import("../../dev/mockBackend");
 const { ActiveProgramCard } = await import("./ActiveProgramCard");
 
 beforeEach(() => {
+  vi.mocked(invoke).mockClear();
   current = structuredClone(mock);
 });
 
@@ -54,5 +56,25 @@ describe("ActiveProgramCard T-MINUS", () => {
     current!.active_program = { ...current!.active_program!, program_seconds_remaining: null };
     render(<ActiveProgramCard />);
     expect(screen.queryByTestId("program-time-left")).toBeNull();
+  });
+});
+
+describe("ActiveProgramCard buttons", () => {
+  it("show a rejected End in the card, under the buttons", async () => {
+    current!.active_program = { ...current!.active_program!, paused: false, wait: null };
+    vi.mocked(invoke).mockRejectedValueOnce("Treadmill not connected");
+    render(<ActiveProgramCard />);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: /End/ })));
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith("dispatch", { command: { type: "program_end" } });
+    expect(within(screen.getByRole("alert")).getByText("Treadmill not connected")).toBeInTheDocument();
+  });
+
+  it("show a rejected GO in the card", async () => {
+    current!.active_program = { ...current!.active_program!, paused: true, wait: "rest_complete" };
+    vi.mocked(invoke).mockRejectedValueOnce("No program is running");
+    render(<ActiveProgramCard />);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "GO" })));
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith("dispatch", { command: { type: "program_resume" } });
+    expect(screen.getAllByRole("alert").map((n) => n.textContent)).toContain("No program is running");
   });
 });
