@@ -1,0 +1,1 @@
+- The ENGAGE button on the sit-too-long card now has a tooltip that says what it does.
