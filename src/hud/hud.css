@@ -139,7 +139,7 @@ body,
   letter-spacing: 0.18em;
 }
 
-/* The STASIS clock beside the word: tight like T-MINUS, so 1:05:09 still
+/* The STASIS clock beside the word: tight like T-MINUS, so 1h05 still
    shares the line with the logo at 340 px, and tabular so it ticks without
    the header shifting. */
 .hud-status-clock {

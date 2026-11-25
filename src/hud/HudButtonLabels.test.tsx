@@ -60,6 +60,11 @@ describe("HUD belt buttons", () => {
     });
     expect(engageSub(go)).toBe("resume");
     expect(engageTitle(go)).toBe("Resume the program.");
+    const clocked = panel((s) => {
+      s.deck.status = "Paused";
+      s.deck.paused_for_s = 200;
+    });
+    expect(engageSub(clocked)).toBe("resume 3:20");
   });
 
   it("label the running program's buttons and give them tooltips", () => {

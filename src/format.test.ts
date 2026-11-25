@@ -36,11 +36,11 @@ describe("formatDayHeading across a daylight-saving change", () => {
 });
 
 describe("the STASIS clock", () => {
-  it("reads m:ss under an hour and h:mm:ss from an hour up", () => {
+  it("reads m:ss under an hour and hours with minutes from an hour up", () => {
     expect(stasisClock(5)).toBe("0:05");
     expect(stasisClock(200.9)).toBe("3:20");
-    expect(stasisClock(3600)).toBe("1:00:00");
-    expect(stasisClock(3909)).toBe("1:05:09");
+    expect(stasisClock(3600)).toBe("1h00");
+    expect(stasisClock(3909)).toBe("1h05");
   });
 
   it("keeps the bare word until Rust has a clock", () => {

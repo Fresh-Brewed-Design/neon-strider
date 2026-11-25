@@ -99,7 +99,11 @@ export function engageSub(snapshot: AppSnapshot): string {
   if (isMoving(deck)) return "pause";
   if (connection.start_pending) return "starting";
   const a = snapshot.active_program;
-  return deck.status === "Paused" || (a?.phase === "walking" && a.paused) ? "resume" : "start";
+  if (deck.status === "Paused" || (a?.phase === "walking" && a.paused)) {
+    // The STASIS clock rides on the button where the header has no room for it.
+    return deck.paused_for_s === null ? "resume" : `resume ${stasisClock(deck.paused_for_s)}`;
+  }
+  return "start";
 }
 
 /** The main button's tooltip, the same words as `engageSub` in a sentence. */

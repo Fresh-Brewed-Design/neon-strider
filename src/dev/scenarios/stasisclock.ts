@@ -1,7 +1,7 @@
 // The STASIS clock (`deck.paused_for_s`): while the belt is paused it counts
 // up once a second, as Rust's does, and clears on resume or stop. A paused
 // preview starts it at 3:20 so the label shows a value at once;
-// ?stasisclock=3909 starts it there instead (1:05:09, past an hour).
+// ?stasisclock=3909 starts it there instead (1h05, past an hour).
 import { params, snapshot } from "../mockState";
 import type { Scenario } from "./types";
 

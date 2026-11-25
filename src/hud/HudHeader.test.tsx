@@ -26,7 +26,21 @@ describe("HudHeader", () => {
   });
 
   it("shows the STASIS clock beside the status while paused", () => {
-    header(false, { text: "STASIS", tone: "idle", clock: "1:05:09" });
-    expect(screen.getByText("STASIS", { exact: false }).textContent).toBe("STASIS\u00a01:05:09");
+    header(false, { text: "STASIS", tone: "idle", clock: "1h05" });
+    expect(screen.getByText("STASIS", { exact: false }).textContent).toBe("STASIS\u00a01h05");
+  });
+
+  it("leaves the STASIS clock to the resume button beside the minify button", () => {
+    render(
+      <HudHeader
+        link={{ text: "STASIS", tone: "idle", clock: "3:20" }}
+        relink={null}
+        onRelink={() => {}}
+        onMinify={() => {}}
+        logo={{} as Parameters<typeof HudHeader>[0]["logo"]}
+        dragging={false}
+      />,
+    );
+    expect(screen.getByText("STASIS").textContent).toBe("STASIS");
   });
 });

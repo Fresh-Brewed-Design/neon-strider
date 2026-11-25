@@ -59,7 +59,9 @@ export function HudHeader({
           ) : (
             <span className={`hud-status tone-${link.tone}`} title={relink?.title ?? undefined}>
               {link.text}
-              {link.clock && (
+              {/* Beside the minify button the clock would push the status onto a second
+                  line, so the full panel shows it on its resume button instead. */}
+              {link.clock && !onMinify && (
                 <span className="hud-status-clock" title="How long the belt has been paused.">
                   &nbsp;
                   {link.clock}

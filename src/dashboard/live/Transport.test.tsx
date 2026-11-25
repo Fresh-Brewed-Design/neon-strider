@@ -27,7 +27,7 @@ describe("Transport belt buttons", () => {
 
   it("shows the STASIS clock under Re-jack while paused", () => {
     const paused = show((s) => (s.deck = { ...s.deck, status: "Paused", speed_kmh: 0, paused_for_s: 3909 }));
-    expect(screen.getByRole("button", { name: "Re-jack resume STASIS\u00a01:05:09" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Re-jack resume STASIS\u00a01h05" })).toBeInTheDocument();
     paused.unmount();
     show((s) => (s.deck = { ...s.deck, status: "Running", speed_kmh: 3, paused_for_s: null }));
     expect(screen.queryByText(/STASIS\u00a0/)).toBeNull();

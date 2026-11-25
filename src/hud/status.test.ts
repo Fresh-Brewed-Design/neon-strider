@@ -22,12 +22,12 @@ describe("linkLabel", () => {
     expect(linkLabel(snap({ deck: { status: "Stopping" } }))).toEqual({ text: "SPIN-DOWN", tone: "idle" });
   });
 
-  it("counts the pause up beside STASIS, m:ss then h:mm:ss", () => {
+  it("counts the pause up beside STASIS, m:ss then hours and minutes", () => {
     const paused = (paused_for_s: number) => linkLabel(snap({ deck: { status: "Paused", paused_for_s } }));
     expect(paused(0)).toEqual({ text: "STASIS", tone: "idle", clock: "0:00" });
     expect(paused(200)).toEqual({ text: "STASIS", tone: "idle", clock: "3:20" });
     expect(paused(3599)).toEqual({ text: "STASIS", tone: "idle", clock: "59:59" });
-    expect(paused(3909)).toEqual({ text: "STASIS", tone: "idle", clock: "1:05:09" });
+    expect(paused(3909)).toEqual({ text: "STASIS", tone: "idle", clock: "1h05" });
     // A clock left over from a pause never shows once the belt moves.
     expect(linkLabel(snap({ deck: { status: "Running", paused_for_s: 12 } }))).toEqual({ text: "RUNNING", tone: "live" });
   });

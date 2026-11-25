@@ -25,10 +25,15 @@ export function mmss(totalSeconds: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-/** The STASIS clock: how long the belt has been paused, m:ss, then h:mm:ss from an hour up. */
+/**
+ * The STASIS clock: how long the belt has been paused, m:ss under an hour,
+ * then hours and minutes ("1h05"). Seconds drop from an hour up so the HUD's
+ * resume button keeps its width and the QUIET button stays on its row.
+ */
 export function stasisClock(totalSeconds: number): string {
   const t = Math.max(0, Math.floor(totalSeconds));
-  return t >= 3600 ? formatClock(t) : mmss(t);
+  if (t < 3600) return mmss(t);
+  return `${Math.floor(t / 3600)}h${String(Math.floor((t % 3600) / 60)).padStart(2, "0")}`;
 }
 
 /** The paused belt's status word with its clock ("STASIS 3:20"), or the bare word before Rust has one. */
