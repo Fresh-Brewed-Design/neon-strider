@@ -7,6 +7,7 @@ import { Sparkline } from "../widgets/Sparkline";
 import { HudNote } from "./HudNote";
 import { EngageButton } from "./HudPanel";
 import { hotkeyTitle } from "./shortcutLabel";
+import { dumpTitle } from "./status";
 import { useHudSend } from "./useHudSend";
 
 /** Four corners pointing out: show the whole HUD. */
@@ -180,6 +181,7 @@ export function RunStripRow({ snapshot }: { snapshot: AppSnapshot }) {
           type="button"
           className="hud-btn hud-btn-stop accent-magenta"
           disabled={!connection.connected || stopped}
+          title={dumpTitle(snapshot)}
           onClick={() => void send({ type: "stop" })}
         >
           DUMP

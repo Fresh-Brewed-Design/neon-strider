@@ -991,8 +991,8 @@ pub fn dismiss(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// INSTALL or LATER on the HUD card: the card has been seen for this version.
-/// INSTALL (`open`) opens the dashboard on the notes rather than installing.
+/// NOTES or LATER on the HUD card: the card has been seen for this version.
+/// NOTES (`open`) opens the dashboard on the notes rather than installing.
 pub fn hud_card(app: &AppHandle, open: bool) -> Result<(), String> {
     let version = with(|rt| rt.offer.as_ref().map(|o| o.version.clone()));
     if let Some(version) = version {

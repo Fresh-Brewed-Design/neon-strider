@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.76.2 (2026-11-25)
+
+### Changed
+
+- Pausing and resuming now use one word per thing. The belt is STASIS and RE-JACK. A program is HOLD and GO.
+- The walk-away card's RE-JACK and DUMP match the belt controls everywhere else.
+
+## 1.76.1 (2026-11-25)
+
+### Fixed
+
+- While the belt rests, the HUD dims only the live stats. Errors, the link status, a program waiting for GO and the new not-connected line under the controls stay at full strength.
+- A program waiting for GO shows one prompt on its card. The HUD's update card button reads NOTES, since the button opens the release notes in the dashboard.
+
 ## 1.76.0 (2026-11-25)
 
 ### New

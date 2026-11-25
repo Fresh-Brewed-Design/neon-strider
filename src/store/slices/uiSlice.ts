@@ -10,4 +10,7 @@ export const createUISlice: StateCreator<TreadmillStore, [], [], UISlice> = (set
   programRequest: null,
   openProgram: (id) => set({ programRequest: id }),
   clearProgramRequest: () => set({ programRequest: null }),
+
+  leaveGuard: null,
+  setLeaveGuard: (guard) => set({ leaveGuard: guard }),
 });
