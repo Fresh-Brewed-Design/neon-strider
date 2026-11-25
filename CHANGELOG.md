@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.76.2 (2026-11-25)
+
+### Changed
+
+- Pausing and resuming now use one word per thing. The belt is STASIS and RE-JACK. A program is HOLD and GO.
+- The walk-away card's RE-JACK and DUMP match the belt controls everywhere else.
+
 ## 1.76.1 (2026-11-25)
 
 ### Fixed
