@@ -36,6 +36,10 @@ pub struct AppSnapshot {
     /// Program tones (off by default): the switch and the latest cue for the
     /// HUD to play (`program_tones.rs`).
     pub program_tones: crate::snapshot::program_tones::ProgramTonesSnapshot,
+    /// The program run last (#336), for the LAST_RUN tag on its Programs
+    /// row; the "Run or end a program" shortcut starts the same one. None
+    /// until a program runs, or once the program run last is deleted.
+    pub program_last_run_id: Option<u32>,
 
     // ---- Neural flow ----
     pub neural: NeuralSnapshot,

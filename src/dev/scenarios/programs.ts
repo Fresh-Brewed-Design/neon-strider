@@ -1,4 +1,4 @@
-// Programs. ?noprogram: none running. ?noprograms: none saved.
+// Programs. ?noprogram: none running (Workday shows LAST_RUN). ?noprograms: none saved.
 // ?program=ready: Workday's rest is over on a still belt, and cycle 4 waits for GO
 // (REST COMPLETE // PRESS GO). ?program=hold: a walking step after a 0 km/h step waits.
 // ?program=still: the belt was found still after a reconnect. ?program=resting: mid-rest.
@@ -118,6 +118,7 @@ export const programs: Scenario = {
     if (params.has("noprograms")) {
       snapshot.programs = [];
       snapshot.active_program = null;
+      snapshot.program_last_run_id = null;
     }
     const programFlag = params.get("program");
     if (programFlag === "interval" && snapshot.active_program) {
@@ -132,7 +133,10 @@ export const programs: Scenario = {
   commands: {
     program_run: (c) => {
       const p = snapshot.programs.find((x) => x.id === c.id);
-      if (p) snapshot.active_program = startProgram(p);
+      if (p) {
+        snapshot.active_program = startProgram(p);
+        snapshot.program_last_run_id = p.id;
+      }
     },
     program_save: (c) => {
       const i = snapshot.programs.findIndex((x) => x.id === c.program.id);

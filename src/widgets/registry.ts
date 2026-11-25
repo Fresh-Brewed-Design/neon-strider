@@ -136,7 +136,9 @@ export function pcWalkShareReading(s: AppSnapshot): StatReading {
 export function pcWalkShareDetail(s: AppSnapshot): string | null {
   const { active_s, walked_s } = s.pc_walk_share;
   if (active_s <= 0) return null;
-  return `${formatDuration(walked_s)} of ${formatDuration(active_s)}`;
+  // Each duration stays on one line: a non-breaking space inside it, a plain one around "of".
+  const whole = (seconds: number) => formatDuration(seconds).replace(" ", "\u00a0");
+  return `${whole(walked_s)} of ${whole(active_s)}`;
 }
 
 const BY_ID = new Map(STAT_WIDGETS.map((w) => [w.id, w]));

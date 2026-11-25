@@ -22,6 +22,7 @@ function runCommand(id: number, minutes: number | null): Command {
 export function ProgramRow({
   program: p,
   running,
+  lastRun,
   connected,
   fitToDeck,
   fitToTime,
@@ -30,6 +31,8 @@ export function ProgramRow({
 }: {
   program: Program;
   running: boolean;
+  /** Rust's `snapshot.program_last_run_id` names this program (#336). */
+  lastRun: boolean;
   connected: boolean;
   fitToDeck: FitToDeckOffer | null;
   fitToTime: FitToTimeOption | null;
@@ -47,7 +50,18 @@ export function ProgramRow({
           size) the buttons wrap under it, so the name never breaks one letter per line. */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1 basis-48" title={describePlan(p)}>
-          <div className="break-words font-digital text-sm font-bold leading-tight tracking-wider text-white">{p.name}</div>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <div className="min-w-0 break-words font-digital text-sm font-bold leading-tight tracking-wider text-white">{p.name}</div>
+            {/* The running row already reads Running, so the tag only marks a program at rest. */}
+            {lastRun && !running && (
+              <span
+                className="shrink-0 rounded border border-neon-cyan/60 px-1 font-mono text-[11px] font-bold leading-tight tracking-[0.12em] text-neon-cyan"
+                title="The program run last"
+              >
+                LAST_RUN
+              </span>
+            )}
+          </div>
           <div className="font-mono text-xs text-white/60">{describeProgram(p)}</div>
           {p.note && <div className="text-xs leading-snug text-white/60">{p.note}</div>}
           <FitToDeck offer={fitToDeck} />
