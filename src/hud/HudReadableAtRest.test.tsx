@@ -73,21 +73,20 @@ describe("HUD panel at rest", () => {
 });
 
 describe("HUD waiting for GO", () => {
-  it("keeps one prompt and one GO on the program card, with what comes next, SKIP and END", () => {
+  it("keeps one prompt on the program card, with what comes next, SKIP and END", () => {
     show(panel(waiting));
     expect(screen.getByText("REST COMPLETE // PRESS GO")).toBeInTheDocument();
     expect(screen.queryByText("READY")).not.toBeInTheDocument();
     expect(screen.queryByText(/GO starts the belt/)).not.toBeInTheDocument();
-    const go = screen.getAllByRole("button", { name: /^GO/ });
-    expect(go).toHaveLength(1);
-    expect(go[0]).toHaveAccessibleName("GO start belt");
-    expect(go[0]).toHaveAttribute("title", "Start the belt and carry on with the program.");
-    expect(go[0]).toHaveClass("hud-btn-go");
+    const go = screen.getByRole("button", { name: "GO start belt" });
+    expect(go).toHaveAttribute("title", "Start the belt and carry on with the program.");
+    expect(go).toHaveClass("hud-btn-go");
     expect(screen.getByText(/cycle 4/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "SKIP next step" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "END end program" })).toBeInTheDocument();
-    // DUMP stays with the belt controls.
-    expect(screen.getByRole("button", { name: "DUMP end walk" })).toBeInTheDocument();
+    // The controls keep their layout: Engage reads GO in its own slot, DUMP beside it.
+    const transport = Array.from(document.querySelectorAll(".hud-transport > button")).map((b) => b.textContent);
+    expect(transport).toEqual(["GO resume", "DUMP end walk", "QUIET slow down"]);
   });
 
   it("keeps Engage's GO when the program card is not pinned", () => {

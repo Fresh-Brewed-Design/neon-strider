@@ -58,8 +58,8 @@ export function HudApp() {
   const wait = snapshot?.active_program?.wait ?? null;
   // A program waiting for GO keeps the whole panel (Rust ignores minify then).
   const canMinify = full && !wait;
-  // The program card's headline and GO are the one prompt while it shows.
-  const goOnProgramCard = full && wait !== null && widgets.includes("PROGRAMS");
+  // The program card's headline is the one prompt while it shows.
+  const promptOnProgramCard = full && wait !== null && widgets.includes("PROGRAMS");
   // A toast is redundant while the panel already shows the same thing live
   // (the running strip shows speed; the still strip shows neither).
   const toasts = allToasts.filter(
@@ -67,7 +67,7 @@ export function HudApp() {
       !(full && t.type === "VELOCITY" && widgets.includes("VELOCITY")) &&
       !(minified && t.type === "VELOCITY") &&
       !(full && t.type === "ELEVATION" && widgets.includes("INCLINE")) &&
-      !(goOnProgramCard && t.type === "AUTOMATION" && t.message === waitHeadline(wait)),
+      !(promptOnProgramCard && t.type === "AUTOMATION" && t.message === waitHeadline(wait)),
   );
   const stats = widgets.filter((w) => statWidget(w) !== undefined);
   const hasPanel = snapshot !== null && widgets.length > 0 && view !== "hidden";
@@ -130,7 +130,7 @@ export function HudApp() {
                 <StrideFitLine snapshot={snapshot} />
                 <QuietNowLine snapshot={snapshot} />
                 <PresentingLine snapshot={snapshot} />
-                {widgets.includes("CONTROLS") && <Controls snapshot={snapshot} goOnProgramCard={goOnProgramCard} />}
+                {widgets.includes("CONTROLS") && <Controls snapshot={snapshot} />}
                 {widgets.includes("PROGRAMS") && (
                   <ProgramsModule snapshot={snapshot} offlineShown={widgets.includes("CONTROLS")} />
                 )}

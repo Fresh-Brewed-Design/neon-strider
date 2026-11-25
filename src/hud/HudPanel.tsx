@@ -277,11 +277,7 @@ function QuietButton({ snapshot, send }: { snapshot: AppSnapshot; send: (c: Comm
  * Engage / Stasis, Dump, QUIET and the speed and tilt steppers. While no
  * treadmill is linked, a line under them says why they are off.
  */
-export function Controls({ snapshot, goOnProgramCard = false }: {
-  snapshot: AppSnapshot;
-  /** A program waits for GO and the program card shows its own GO, so Engage steps aside. */
-  goOnProgramCard?: boolean;
-}) {
+export function Controls({ snapshot }: { snapshot: AppSnapshot }) {
   const { send, error } = useHudSend();
   const relink = useRelink(snapshot.connection);
   const { deck, connection } = snapshot;
@@ -290,7 +286,8 @@ export function Controls({ snapshot, goOnProgramCard = false }: {
   return (
     <div className="hud-module">
       <div className="hud-transport">
-        {!goOnProgramCard && <EngageButton snapshot={snapshot} send={send} sub />}
+        {/* Engage keeps its slot in every state, GO included, so a press from habit never lands on DUMP. */}
+        <EngageButton snapshot={snapshot} send={send} sub />
         <button
           type="button"
           className="hud-btn hud-btn-stop hud-btn-stack accent-magenta"
