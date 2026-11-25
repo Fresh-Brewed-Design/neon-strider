@@ -334,6 +334,44 @@ pub fn input_idle_for() -> Option<std::time::Duration> {
 }
 
 // ---------------------------------------------------------------------------
+// Presenting
+// ---------------------------------------------------------------------------
+//
+// Why SHQueryUserNotificationState: it is the documented way for an app to
+// ask whether now is a bad time for notifications, the same state Windows
+// itself uses to hold back its own toasts. It covers a presentation (Windows
+// presentation settings, a slideshow), a full-screen Direct3D game or video,
+// and any other full-screen app in front. One call into the shell, cheap
+// enough for the desk loop's once-a-second poll; there is no event for it.
+
+/// The notification states that mean "presenting": a full-screen app or
+/// presentation settings (QUNS_BUSY), a full-screen Direct3D app
+/// (QUNS_RUNNING_D3D_FULL_SCREEN) and presentation mode
+/// (QUNS_PRESENTATION_MODE). Quiet time (a new user's first hour), an app in
+/// immersive mode and no user present are not presenting.
+fn notification_state_is_presenting(state: i32) -> bool {
+    use windows::Win32::UI::Shell::{
+        QUNS_BUSY, QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN,
+    };
+    [
+        QUNS_BUSY,
+        QUNS_RUNNING_D3D_FULL_SCREEN,
+        QUNS_PRESENTATION_MODE,
+    ]
+    .iter()
+    .any(|s| s.0 == state)
+}
+
+pub fn presenting() -> bool {
+    // SAFETY: a plain query that writes one enum value; no pointers kept.
+    match unsafe { windows::Win32::UI::Shell::SHQueryUserNotificationState() } {
+        Ok(state) => notification_state_is_presenting(state.0),
+        // A failed query (no shell yet at login, say) never holds cards back.
+        Err(_) => false,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Session lock
 // ---------------------------------------------------------------------------
 //
@@ -1471,6 +1509,21 @@ mod tests {
         assert!(display_state_is_off(0));
         assert!(!display_state_is_off(1), "on");
         assert!(!display_state_is_off(2), "dimmed");
+    }
+
+    #[test]
+    fn busy_full_screen_and_presentation_count_as_presenting() {
+        // QUNS_* values from shellapi.h.
+        assert!(!notification_state_is_presenting(1), "not present");
+        assert!(notification_state_is_presenting(2), "busy");
+        assert!(notification_state_is_presenting(3), "Direct3D full screen");
+        assert!(notification_state_is_presenting(4), "presentation mode");
+        assert!(
+            !notification_state_is_presenting(5),
+            "accepts notifications"
+        );
+        assert!(!notification_state_is_presenting(6), "quiet time");
+        assert!(!notification_state_is_presenting(7), "immersive app");
     }
 
     fn table(minify: Option<&str>) -> [u32; keys::SLOTS] {

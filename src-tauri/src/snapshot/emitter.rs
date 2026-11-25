@@ -151,6 +151,9 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     snapshot.traffic = traffic;
     snapshot.lights_out = lights_out;
     snapshot.program_tones = program_tones;
+    snapshot.presenting = super::presenting::snapshot();
+    // After every card is decided, before the HUD view and the card check.
+    super::presenting::hold_cards(&mut snapshot);
     // The first-connect offer only shows while the treadmill is connected.
     snapshot.calibration.offer &= snapshot.connection.connected;
     snapshot.ghost_pod = ghost_pod;
@@ -318,7 +321,7 @@ impl Loop {
     /// invisible and click-through.
     /// A HUD hidden from the tray menu comes back when a card appears.
     fn ensure_hud_for_cards(&mut self, snapshot: &AppSnapshot) {
-        let card = snapshot.maintenance.due
+        let card = snapshot.maintenance.hud_card
             || snapshot.weekly.show_card
             || snapshot.seated.show_card
             || snapshot.eye_break.phase != eyebreak::EyeBreakPhase::Idle

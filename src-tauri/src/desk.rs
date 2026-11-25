@@ -1,5 +1,6 @@
 //! Desk features at runtime: the sit-too-long nudge, eye breaks, program
-//! tones, slow-down-on-calls, walk-away safety and lights out.
+//! tones, slow-down-on-calls, walk-away safety, lights out, and whether Windows
+//! says the user is presenting (`presenting`, which holds cards back).
 //!
 //! One loop, once a second. It reads the belt and the treadmill link under one
 //! short lock of the orchestrator, runs the pure state machines (`seated.rs`,
@@ -16,7 +17,8 @@ use crate::engine::{DeckAction, OrchestratorState};
 use crate::programs::{self, ProgramPhase};
 use crate::protocol::MachineStatus;
 use crate::snapshot::{
-    calls, desk_sync, eyebreak, lights_out, pc_walk_share, program_tones, seated, walkaway,
+    calls, desk_sync, eyebreak, lights_out, pc_walk_share, presenting, program_tones, seated,
+    walkaway,
 };
 use crate::util::{blocking, now_ms_u64 as now_ms};
 use std::time::Duration;
@@ -144,6 +146,16 @@ fn eye_break_pause(state: &mut OrchestratorState, hold: eyebreak::Hold) {
     }
 }
 
+/// The screen as the eye-break machine sees it each second.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct EyeScreen {
+    pub idle_ms: Option<u64>,
+    pub locked: bool,
+    pub display_off: bool,
+    /// The HUD holds its non-urgent cards back (`presenting`).
+    pub held: bool,
+}
+
 /// One eye-break tick against the belt: runs the machine and applies a pause.
 /// It never starts the belt.
 pub(crate) fn eye_break_tick(
@@ -151,16 +163,15 @@ pub(crate) fn eye_break_tick(
     rt: &mut eyebreak::Runtime,
     ready: bool,
     now: u64,
-    idle_ms: Option<u64>,
-    locked: bool,
-    display_off: bool,
+    screen: EyeScreen,
 ) {
     let belt = eye_belt(ready, state);
     let (rest_in_ms, rest_len_ms) = eye_rest(belt, state);
     let tick = eyebreak::Tick {
-        idle_ms,
-        locked,
-        display_off,
+        idle_ms: screen.idle_ms,
+        locked: screen.locked,
+        display_off: screen.display_off,
+        held: screen.held,
         belt,
         rest_in_ms,
         rest_len_ms,
@@ -250,8 +261,13 @@ async fn step(
     // Eye breaks. First, so a break's pause is in before walk-away looks.
     let ready = treadmill_ready(connected, state);
     out.belt_running = ready && belt_running(state);
-    let display_off = crate::platform::display_off();
-    eyebreak::with(|rt| eye_break_tick(state, rt, ready, now, idle_ms, locked, display_off));
+    let screen = EyeScreen {
+        idle_ms,
+        locked,
+        display_off: crate::platform::display_off(),
+        held: presenting::holding(),
+    };
+    eyebreak::with(|rt| eye_break_tick(state, rt, ready, now, screen));
 
     // Program tones: only reads the program and the belt.
     let tick = program_tones::Tick {
@@ -366,6 +382,7 @@ pub fn init(app: &AppHandle) {
     calls::init(app);
     walkaway::init(app);
     lights_out::init(app);
+    presenting::init(app);
 }
 
 /// Start the microphone poller and the one-second loop.
@@ -385,6 +402,9 @@ pub fn spawn(app: AppHandle) {
             // The PC's own idle time where the platform has one, else the hooks'.
             let idle =
                 crate::platform::input_idle_for().or_else(|| idle_ms.map(Duration::from_millis));
+            // Before the desk features run, so this second's cards already
+            // follow it.
+            presenting::observe(crate::platform::presenting());
             desk_sync::note_input(&app, idle);
             let out = step(connected, now, idle_ms, &mut machine).await;
             // Read before the desk features acted, so a walk-away pause this

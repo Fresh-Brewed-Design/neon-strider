@@ -193,6 +193,7 @@ export const snapshot: AppSnapshot = {
     days_since: 38,
     interval_days: 90,
     due: false,
+    hud_card: false,
     progress: 0.42,
   },
   weekly: {
@@ -233,6 +234,7 @@ export const snapshot: AppSnapshot = {
   odometer: { distance_km: 412.6, belt_hours: 138.2, since_ms: Date.UTC(2026, 2, 12) },
   walkaway: { lock_enabled: true, idle_enabled: true, idle_minutes: 10, card: "none", pause_in_s: 0, reason: null },
   lights_out: { enabled: false },
+  presenting: { enabled: true, presenting: false, holding: false },
   easy_start: { enabled: true },
   easy_stop: { enabled: false, ramp_s: 20, easing: false, stop_in_s: null, to_kmh: null, message: null },
   update: {

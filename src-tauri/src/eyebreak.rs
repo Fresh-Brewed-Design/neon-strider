@@ -203,6 +203,11 @@ pub struct Tick {
     pub locked: bool,
     /// The PC's display is off.
     pub display_off: bool,
+    /// The HUD holds its non-urgent cards back (`presenting`, a presentation
+    /// or a full-screen app): no heads-up or break begins, and the count stops
+    /// a heads-up short of the break, so the break comes with its warning once
+    /// the hold ends.
+    pub held: bool,
     /// The belt, so a break can pause it and know the pause is still its own.
     pub belt: Belt,
     /// While a program walks: walking time until it next holds the belt still
@@ -405,11 +410,17 @@ impl EyeBreak {
         }
 
         let interval = cfg.minutes as u64 * MINUTE;
+        if input.held {
+            // The heads-up's minute is kept in reserve while held: the break
+            // never starts unannounced right after a presentation ends.
+            self.active_ms = self.active_ms.min(interval.saturating_sub(WARN_MS));
+        }
         let (next_ms, at_rest) = self.plan(cfg, interval, input);
         self.next_ms = next_ms;
         self.at_rest = at_rest;
-        // Set for a rest: it begins once the belt is at it.
-        if next_ms == 0 && (!at_rest || input.belt == Belt::Rest) {
+        // Set for a rest: it begins once the belt is at it. Never while held:
+        // its card would not show, and a pause with no card is a surprise.
+        if next_ms == 0 && !input.held && (!at_rest || input.belt == Belt::Rest) {
             if at_rest {
                 log::info!("Eye break: taking the break at the program's rest");
             }
@@ -632,6 +643,7 @@ mod tests {
             idle_ms: Some(0),
             locked: false,
             display_off: false,
+            held: false,
             belt: Belt::Other,
             rest_in_ms: None,
             rest_len_ms: None,
@@ -660,6 +672,7 @@ mod tests {
             idle_ms: Some(30 * SECOND),
             locked: false,
             display_off: false,
+            held: false,
             belt: b,
             rest_in_ms: None,
             rest_len_ms: None,
@@ -885,6 +898,7 @@ mod tests {
             idle_ms: Some(30 * SECOND),
             locked: false,
             display_off: false,
+            held: false,
             belt: Belt::Other,
             rest_in_ms: None,
             rest_len_ms: None,
@@ -967,6 +981,7 @@ mod tests {
             idle_ms: Some(0),
             locked: true,
             display_off: false,
+            held: false,
             belt: Belt::Other,
             rest_in_ms: None,
             rest_len_ms: None,
@@ -977,6 +992,28 @@ mod tests {
     }
 
     #[test]
+    fn no_break_begins_while_held_and_the_heads_up_comes_after() {
+        let (mut m, c) = (EyeBreak::default(), cfg());
+        let walking = belt(Belt::Walking(Hold::Manual));
+        let held = Tick {
+            held: true,
+            ..walking
+        };
+        // Presenting through the whole interval and well past it.
+        let effects = run(&mut m, &c, 0, 1800, held);
+        assert!(effects.is_empty(), "the belt is never paused while held");
+        assert_ne!(m.phase(), EyeBreakPhase::Break);
+        assert_eq!(m.blink_seq(), 0);
+        // Once the hold ends the heads-up's minute is still ahead.
+        run(&mut m, &c, 1801, 1802, walking);
+        assert_eq!(m.phase(), EyeBreakPhase::Upcoming);
+        let effects = run(&mut m, &c, 1803, 1870, walking);
+        assert_eq!(m.phase(), EyeBreakPhase::Break);
+        // The break's own pause, a whole heads-up after the hold ended.
+        assert!(effects.first().is_some_and(|(s, _)| *s >= 1801 + 59));
+    }
+
+    #[test]
     fn a_pause_in_input_as_long_as_a_break_counts_as_one() {
         let (mut m, c) = (EyeBreak::default(), cfg());
         run(&mut m, &c, 0, 600, typing());
@@ -984,6 +1021,7 @@ mod tests {
             idle_ms: Some(91 * SECOND),
             locked: false,
             display_off: false,
+            held: false,
             belt: Belt::Other,
             rest_in_ms: None,
             rest_len_ms: None,
@@ -1194,6 +1232,7 @@ mod tests {
         assert_eq!(m.phase(), EyeBreakPhase::Upcoming);
         let dark = Tick {
             display_off: true,
+            held: false,
             ..typing()
         };
         m.tick(&c, T0 + 1151 * SECOND, &dark);

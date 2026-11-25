@@ -473,6 +473,12 @@ extern "C" fn on_key_event(
     event
 }
 
+/// macOS has no presentation state like Windows' notification state, so the
+/// HUD never holds its cards back here.
+pub fn presenting() -> bool {
+    false
+}
+
 /// How long since the last keyboard or mouse input in this login session.
 pub fn input_idle_for() -> Option<Duration> {
     // SAFETY: plain query with constant arguments.

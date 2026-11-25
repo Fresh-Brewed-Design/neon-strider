@@ -84,6 +84,9 @@ pub struct AppSnapshot {
     pub walkaway: WalkAwaySnapshot,
     /// Lights out: stop the belt when the PC's display turns off.
     pub lights_out: LightsOutSnapshot,
+    /// Hold cards while presenting: the switch, whether Windows says the
+    /// user is presenting, and whether the HUD holds its cards back now.
+    pub presenting: crate::snapshot::presenting::PresentingSnapshot,
 
     // ---- Easy start ----
     /// Every belt start eases up from the slowest speed (on by default).
@@ -781,6 +784,13 @@ pub enum Command {
     /// Lights out: a full Stop (any program ends) when the PC's
     /// display turns off.
     LightsOutSetConfig {
+        enabled: bool,
+    },
+
+    // ---- Hold cards while presenting ----
+    /// Hold the HUD's non-urgent cards and toasts while Windows says the user
+    /// is presenting or a full-screen app is in front.
+    PresentingSetConfig {
         enabled: bool,
     },
 

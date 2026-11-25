@@ -59,8 +59,15 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// Send a toast to the HUD page (and any other window listening).
+/// Send a toast to the HUD page (and any other window listening). Held back
+/// (dropped) while the HUD holds its cards for a presentation, except a
+/// running program's toasts (`snapshot::presenting::holds_toast`).
 pub(crate) fn toast(app: &tauri::AppHandle, payload: serde_json::Value) {
+    let kind = payload.get("type").and_then(|t| t.as_str());
+    if snapshot::presenting::holds_toast(kind, snapshot::presenting::holding()) {
+        log::debug!("Toast held while presenting: {:?}", kind);
+        return;
+    }
     let _ = app.emit(EVENT_HUD_UPDATE, payload);
 }
 

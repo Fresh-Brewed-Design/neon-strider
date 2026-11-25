@@ -30,6 +30,7 @@ import { maintenance } from "./maintenance";
 import { neural } from "./neural";
 import { pcWalkShare } from "./pcwalk";
 import { platform } from "./platform";
+import { presenting } from "./presenting";
 import { programs } from "./programs";
 import { programTones } from "./programtones";
 import { seated } from "./seated";
@@ -89,4 +90,6 @@ export const SCENARIOS: Scenario[] = [
   programTones,
   // After platform: the keys follow ?mac.
   shortcuts,
+  // Last: it holds the cards the scenarios above put up.
+  presenting,
 ];

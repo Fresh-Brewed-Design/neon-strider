@@ -104,6 +104,10 @@ pub fn input_idle_for() -> Option<std::time::Duration> {
     None
 }
 
+pub fn presenting() -> bool {
+    false
+}
+
 pub fn peripheral_add(
     _service: &super::PeripheralService,
     _events: super::PeripheralEvents,

@@ -7,6 +7,7 @@ import { GhostButton, Hint, Label } from "../ui";
 import { cx, send } from "../util";
 import { NumberField, Section, Toggle } from "./fields";
 import { LightsOutSetting } from "./LightsOutSetting";
+import { PresentingSetting } from "./PresentingSetting";
 
 const L = SETTING_LIMITS;
 const MAX_PROGRAM_BUTTONS = L.seated_program_buttons;
@@ -279,6 +280,13 @@ export function DeskSection() {
       <div className="border-t border-white/10" />
 
       <LightsOutSetting />
+
+      {s.platform.os === "windows" && (
+        <>
+          <div className="border-t border-white/10" />
+          <PresentingSetting />
+        </>
+      )}
 
       {/* Slow down on calls needs the OS's list of apps using the microphone (`platform.microphone`). */}
       {s.platform.microphone && (

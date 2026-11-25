@@ -177,6 +177,24 @@ export function EasyStopLine({ snapshot }: { snapshot: AppSnapshot }) {
   );
 }
 
+/**
+ * Quiet line while the HUD holds its non-urgent cards and toasts back,
+ * because Windows says a presentation or full-screen app is in front. Rust
+ * decides when (`presenting.holding`); the held cards show once it ends.
+ */
+export function PresentingLine({ snapshot }: { snapshot: AppSnapshot }) {
+  if (!snapshot.presenting.holding) return null;
+  return (
+    <div
+      className="hud-presenting accent-cyan"
+      data-testid="hud-presenting"
+      title="Cards wait until the presentation or full-screen app closes."
+    >
+      <span className="hud-label">PRESENTING // CARDS HELD</span>
+    </div>
+  );
+}
+
 /** Engage / Stasis: one `toggle_start` to Rust, the same press as the shortcut. */
 export function EngageButton({
   snapshot,
