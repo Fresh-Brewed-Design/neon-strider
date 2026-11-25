@@ -162,7 +162,7 @@ export function DashboardApp() {
               {pinned ? "Pinned" : "Pin open"}
             </span>
           </button>
-          {/* The icon-only rail has no room for a sentence: there the line shows over the page instead. */}
+          {/* The icon-only rail has no room for a sentence: there the line shows beside it, under the page. */}
           <div className="dash-wide-only empty:hidden">
             <ActionStatus error={pin.error} className="px-1" />
           </div>
@@ -175,9 +175,6 @@ export function DashboardApp() {
         <div className="dash-compact-only shrink-0 px-3 pt-2">
           <GuidedPinMarker />
         </div>
-        <div className="dash-compact-only shrink-0 px-3 pt-2">
-          <ActionStatus error={pin.error} />
-        </div>
         {page !== "system" && (
           <CalibrateOffer
             onCalibrate={() => {
@@ -188,6 +185,10 @@ export function DashboardApp() {
         )}
         <div className="min-h-0 flex-1">
           <Current />
+        </div>
+        {/* With the rail at icons only, a refused pin shows at the page's foot, beside the pin button. */}
+        <div className="dash-compact-only shrink-0 px-3 pb-2">
+          <ActionStatus error={pin.error} />
         </div>
       </main>
 
