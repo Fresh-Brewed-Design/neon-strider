@@ -26,12 +26,8 @@ def dashboard(browser, name, nav=None, scroll_to=None, tab=None, query=""):
     if nav:
         page.locator("nav[aria-label='Sections'] button", has_text=nav).click()
     if tab:
-        page.get_by_role('button', name=tab).or_(page.get_by_role('tab', name=tab)).first.click()
+        page.get_by_role('button', name=tab).or_(page.get_by_role('tab', name=tab)).or_(page.get_by_role('radio', name=tab)).first.click()
     settle(page)
-    if tab:
-        # Tabs scroll their section flush under the header; back off a little so the card's top edge shows.
-        page.evaluate("()=>{const e=document.querySelector('div.overflow-y-auto');e.scrollTop-=24}")
-        settle(page, 500)
     if scroll_to:
         page.get_by_text(scroll_to, exact=False).first.scroll_into_view_if_needed()
         page.evaluate(
@@ -73,7 +69,7 @@ with sync_playwright() as p:
         "dashboard-live": lambda: dashboard(browser, "dashboard-live"),
         "dashboard-programs": lambda: dashboard(browser, "dashboard-programs", nav="Programs"),
         "dashboard-history": lambda: dashboard(browser, "dashboard-history", nav="History"),
-        "dashboard-system": lambda: dashboard(browser, "dashboard-system", nav="System", tab="Strava"),
+        "dashboard-system": lambda: dashboard(browser, "dashboard-system", nav="System", tab="LINKS"),
         "hud-program": lambda: hud(browser, "hud-program"),
         "hud-walkaway": lambda: hud(browser, "hud-walkaway", "?walkaway=warning"),
         "hud-neural": lambda: hud(browser, "hud-neural", "?neural=active"),

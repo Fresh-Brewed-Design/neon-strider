@@ -37,7 +37,7 @@ export function CalibrateOffer({ onCalibrate }: { onCalibrate: () => void }) {
         </GhostButton>
       </div>
       <ActionStatus pending={skip.pending} error={skip.error} />
-      <Hint>Calibration stays in System, Calibration.</Hint>
+      <Hint>Calibration stays in System, DECK, Calibration.</Hint>
     </div>
   );
 }

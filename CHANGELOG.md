@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.74.1 (2026-11-25)
+
+### Fixed
+
+- Fixed the shortcut descriptions in System, Shortcuts breaking one letter per line at large Windows text sizes.
+
 ## 1.74.0 (2026-11-25)
 
 ### New

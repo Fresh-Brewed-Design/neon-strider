@@ -1,0 +1,2 @@
+- System shows its settings on four tabs, DECK, LINKS, ROUTINE and CORE, in place of the long list of section links that covered half the window at large text sizes. The last tab open is remembered.
+- Calibrate this treadmill opens System on the DECK tab at Calibration, and INSTALL on the HUD's update card opens the CORE tab at Updates.

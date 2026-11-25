@@ -8,7 +8,7 @@ vi.mock("../../state/useAppState", () => ({
 }));
 
 const { snapshot: mock } = await import("../../dev/mockBackend");
-const { SectionIndex } = await import("./SystemPage");
+const { SystemTabs } = await import("./SystemPage");
 
 function withDot(dot: boolean): AppSnapshot {
   const s = structuredClone(mock);
@@ -16,24 +16,41 @@ function withDot(dot: boolean): AppSnapshot {
   return s;
 }
 
-const updatesTab = () => screen.getByRole("button", { name: /Updates/ });
+const tab = (name: string) => screen.getByRole("radio", { name: new RegExp(name) });
 
-describe("System's Updates tab", () => {
+describe("System's group tabs", () => {
   afterEach(() => {
     current = null;
   });
 
-  it("shows the update dot while Rust says an update is waiting", () => {
+  it("offers DECK, LINKS, ROUTINE and CORE, with the open one checked", () => {
+    current = withDot(false);
+    render(<SystemTabs tab="links" onChange={() => {}} />);
+    const group = screen.getByRole("radiogroup", { name: "System groups" });
+    expect(within(group).getAllByRole("radio").map((b) => b.textContent)).toEqual(["DECK", "LINKS", "ROUTINE", "CORE"]);
+    expect(tab("LINKS").getAttribute("aria-checked")).toBe("true");
+    expect(tab("DECK").getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("reports the tab pressed", () => {
+    current = withDot(false);
+    const onChange = vi.fn();
+    render(<SystemTabs tab="deck" onChange={onChange} />);
+    tab("ROUTINE").click();
+    expect(onChange).toHaveBeenCalledWith("routine");
+  });
+
+  it("shows the update dot on CORE while Rust says an update is waiting", () => {
     current = withDot(true);
-    render(<SectionIndex />);
-    expect(within(updatesTab()).getByRole("img", { name: "Update available" })).toBeTruthy();
-    // Only the Updates tab carries it.
+    render(<SystemTabs tab="deck" onChange={() => {}} />);
+    expect(within(tab("CORE")).getByRole("img", { name: "Update available" })).toBeTruthy();
+    // Only the CORE tab carries it.
     expect(screen.getAllByRole("img", { name: "Update available" })).toHaveLength(1);
   });
 
   it("has no dot once it clears", () => {
     current = withDot(false);
-    render(<SectionIndex />);
-    expect(within(updatesTab()).queryByRole("img")).toBeNull();
+    render(<SystemTabs tab="deck" onChange={() => {}} />);
+    expect(within(tab("CORE")).queryByRole("img")).toBeNull();
   });
 });

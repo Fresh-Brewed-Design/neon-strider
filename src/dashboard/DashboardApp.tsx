@@ -14,6 +14,7 @@ import { HistoryPage } from "./pages/HistoryPage";
 import { HudPage } from "./pages/HudPage";
 import { SystemPage } from "./pages/SystemPage";
 import { CalibrateOffer } from "./system/calibration/CalibrateOffer";
+import { showSystemSection } from "./system/systemTabs";
 import { UpdateDot } from "./system/updates/UpdateDot";
 import { showUpdateBadge } from "./system/updates/updates";
 import { WhatsNewDialog } from "./system/updates/WhatsNewDialog";
@@ -31,8 +32,6 @@ const PAGES: { id: PageId; label: string; Icon: ComponentType<{ size?: number }>
 const PAGE_KEY = "dashboard.page";
 /** The last HUD "open the notes" request this dashboard followed (`update.show_notes_at_ms`). */
 const NOTES_SHOWN_KEY = "dashboard.updateNotesShownAt";
-const UPDATES_SECTION_ID = "sys-updates";
-const CALIBRATION_SECTION_ID = "sys-calibration";
 
 function readPage(): PageId {
   const saved = readPref(PAGE_KEY);
@@ -84,7 +83,7 @@ export function DashboardApp() {
     [],
   );
 
-  // INSTALL on the HUD's update card: open System -> Updates on the notes, once per request.
+  // INSTALL on the HUD's update card: open System, CORE, Updates on the notes, once per request.
   useEffect(
     () =>
       subscribeAppSnapshot((s) => {
@@ -93,8 +92,7 @@ export function DashboardApp() {
         writePref(NOTES_SHOWN_KEY, String(at));
         writePref(PAGE_KEY, "system");
         setPage("system");
-        // 80 ms: a frame or so for the System page to render before scrolling to it.
-        setTimeout(() => document.getElementById(UPDATES_SECTION_ID)?.scrollIntoView({ block: "start" }), 80);
+        showSystemSection("sys-updates");
       }),
     [],
   );
@@ -173,7 +171,7 @@ export function DashboardApp() {
           <CalibrateOffer
             onCalibrate={() => {
               openPage("system");
-              setTimeout(() => document.getElementById(CALIBRATION_SECTION_ID)?.scrollIntoView({ block: "start" }), 80);
+              showSystemSection("sys-calibration");
             }}
           />
         )}
