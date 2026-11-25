@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.76.8 (2026-11-25)
+
+### Changed
+
+- Settings and HUD text is shorter and clearer, and the empty History page now says how a walk gets recorded.
+
 ## 1.76.7 (2026-11-25)
 
 ### Fixed
