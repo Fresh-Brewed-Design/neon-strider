@@ -376,7 +376,7 @@ export function ProgramsModule({ snapshot, offlineShown = false }: {
           <SmallButton
             className={wait ? "hud-btn-go" : undefined}
             sub={wait ? "start belt" : a.paused ? "resume" : "pause"}
-            title={wait ? "Start the belt and carry on with the program." : a.paused ? "Resume the program." : "Pause the program."}
+            title={wait ? "Start the belt and carry on with the program." : a.paused ? "Resume the program." : "Hold the program."}
             onClick={() => send({ type: a.paused ? "program_resume" : "program_pause" })}
           >
             {a.paused ? "GO" : "HOLD"}

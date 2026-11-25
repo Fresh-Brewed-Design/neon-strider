@@ -1,0 +1,2 @@
+- Pausing and resuming now use one word per thing. The belt is STASIS and RE-JACK. A program is HOLD and GO.
+- The walk-away card's RE-JACK and DUMP match the belt controls everywhere else.

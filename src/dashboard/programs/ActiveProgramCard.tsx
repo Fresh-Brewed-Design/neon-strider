@@ -68,12 +68,16 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
             <Play size={14} /> GO
           </button>
         ) : a.paused ? (
-          <GhostButton onClick={() => send({ type: "program_resume" })} className="flex items-center gap-1.5 text-neon-yellow">
-            <Play size={14} /> Resume
+          <GhostButton
+            onClick={() => send({ type: "program_resume" })}
+            className="flex items-center gap-1.5 text-neon-yellow"
+            title="Resume the program."
+          >
+            <Play size={14} /> GO
           </GhostButton>
         ) : (
-          <GhostButton onClick={() => send({ type: "program_pause" })} className="flex items-center gap-1.5">
-            <Pause size={14} /> Pause
+          <GhostButton onClick={() => send({ type: "program_pause" })} className="flex items-center gap-1.5" title="Hold the program.">
+            <Pause size={14} /> HOLD
           </GhostButton>
         )}
         <GhostButton onClick={() => send({ type: "program_skip" })} className="flex items-center gap-1.5" title="Skip to the next step">

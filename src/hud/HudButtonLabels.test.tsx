@@ -71,7 +71,7 @@ describe("HUD belt buttons", () => {
         s.active_program = { ...structuredClone(mock.active_program!), phase: "walking", paused: false, wait: null };
       }),
     );
-    expect(screen.getByRole("button", { name: "HOLD pause" })).toHaveAttribute("title", "Pause the program.");
+    expect(screen.getByRole("button", { name: "HOLD pause" })).toHaveAttribute("title", "Hold the program.");
     expect(screen.getByRole("button", { name: "SKIP next step" })).toHaveAttribute("title", "Skip to the next step.");
     expect(screen.getByRole("button", { name: "END end program" })).toHaveAttribute("title", "End the program.");
   });
