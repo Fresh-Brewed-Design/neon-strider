@@ -106,3 +106,10 @@ describe("Live page maintenance banner", () => {
     expect(header).toHaveTextContent(/off or asleep/);
   });
 });
+
+describe("Live page tile codenames", () => {
+  it("sizes a codename with its tile, never under 11 px", async () => {
+    const { CODENAME_FIT } = await import("./LivePage");
+    expect(CODENAME_FIT).toMatch(/clamp\(11px,[\d.]+cqw,12px\)/);
+  });
+});
