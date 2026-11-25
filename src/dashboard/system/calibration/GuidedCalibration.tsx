@@ -421,6 +421,7 @@ function RunPanel({
   const tap = useAction();
   const again = useAction();
   const undo = useAction();
+  const closing = useAction();
   const listening = run.phase !== "measured";
   // GAIT_SYNC's footsteps take the same keys once the belt is measured.
   const keysListening = listening || (run.steps !== null && run.steps.phase !== "measured");
@@ -453,7 +454,7 @@ function RunPanel({
         : walk === "guide"
           ? ({ type: "calibration_guide_skip" } as const)
           : ({ type: "calibration_run_close" } as const);
-    void dispatch(command).finally(onClosed);
+    void closing.run(() => dispatch(command)).finally(onClosed);
   };
 
   const phaseLabel = { settling: "SPIN_UP", tapping: "TAPPING", measured: "MEASURED" }[run.phase];
@@ -525,8 +526,11 @@ function RunPanel({
           {dropped && <Hint>{dropped}</Hint>}
           {run.note && <div className="font-mono text-[11px] text-neon-yellow">{run.note}</div>}
           <div className="flex justify-end">
-            <GhostButton onClick={close}>{inSweep ? "SKIP" : "Close"}</GhostButton>
+            <GhostButton disabled={closing.pending} onClick={close}>
+              {inSweep ? "SKIP" : "Close"}
+            </GhostButton>
           </div>
+          <ActionStatus pending={closing.pending} error={closing.error} className="justify-end text-right" />
         </div>
       )}
 
@@ -560,8 +564,13 @@ function RunPanel({
               TAP AGAIN
             </GhostButton>
             {/* In a sweep or the walk, the panel above has RUN and SKIP for the speed. */}
-            {!inSweep && <GhostButton onClick={close}>Close</GhostButton>}
+            {!inSweep && (
+              <GhostButton disabled={closing.pending} onClick={close}>
+                Close
+              </GhostButton>
+            )}
           </div>
+          <ActionStatus pending={closing.pending} error={closing.error} />
           <ActionStatus pending={undo.pending} error={undo.error} />
           <ActionStatus pending={again.pending} error={again.error} />
           <StepPanel run={run} limits={limits} />
