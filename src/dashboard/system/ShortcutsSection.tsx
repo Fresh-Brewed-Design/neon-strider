@@ -4,6 +4,7 @@ import { dispatch, type KeyCombo, type Shortcut, type ShortcutView } from "../..
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { useAppSnapshot } from "../../state/useAppState";
+import { useTreadmillStore } from "../../store/treadmillStore";
 import { GhostButton, Hint } from "../ui";
 import { cx } from "../util";
 import { Section } from "./fields";
@@ -117,7 +118,7 @@ function ShortcutRow({
         </div>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
           {view.keys.length === 0 && !recording && (
-            <span className="font-mono text-xs uppercase tracking-[0.15em] text-white/40">Off</span>
+            <span className="font-mono text-xs uppercase tracking-[0.15em] text-white/60">Off</span>
           )}
           {view.keys.map((k, i) => (
             <span
@@ -134,7 +135,7 @@ function ShortcutRow({
                 aria-label={`Remove ${k.label} from ${text.name}`}
                 disabled={change.pending || recording}
                 onClick={() => save(combos.filter((_, j) => j !== i))}
-                className="rounded text-white/50 hover:text-white disabled:opacity-30"
+                className="rounded text-white/60 hover:text-white disabled:opacity-30"
               >
                 <X size={12} />
               </button>
@@ -194,7 +195,15 @@ export function ShortcutsSection() {
         <div className="flex flex-col items-start gap-1">
           <GhostButton
             disabled={reset.pending || recording !== null}
-            onClick={() => void reset.run(() => dispatch({ type: "shortcuts_reset" }))}
+            onClick={() =>
+              useTreadmillStore.getState().confirm({
+                title: "Reset shortcuts",
+                message: "Every shortcut you changed goes back to its default keys.",
+                confirmLabel: "Reset",
+                tone: "danger",
+                onConfirm: () => void reset.run(() => dispatch({ type: "shortcuts_reset" })),
+              })
+            }
           >
             Reset to the defaults
           </GhostButton>

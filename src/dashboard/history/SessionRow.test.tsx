@@ -164,3 +164,12 @@ describe("SessionRow actions", () => {
     expect(screen.getByRole("button", { name: "Open folder" })).toBeTruthy();
   });
 });
+
+describe("SessionRow delete while recording", () => {
+  it("is disabled with a title saying why", () => {
+    row(walk(), { live: true });
+    const del = screen.getByRole("button", { name: /Still recording\. Delete/ }) as HTMLButtonElement;
+    expect(del.disabled).toBe(true);
+    expect(del.title).toBe(del.getAttribute("aria-label"));
+  });
+});

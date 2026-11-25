@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.76.5 (2026-11-25)
+
+### Fixed
+
+- The speed and tilt sliders now have names for screen readers and show a focus ring on Tab. Both stay locked while the treadmill is offline.
+- The Live page writes km/h in lower case beside TARGET.
+- STEP_MAP labels its top speed and tilt as a legend on the chart. Finished steps and the STASIS and DUMP hint lines are easier to read. The rest between cycles reads "speed before program".
+
+## 1.76.4 (2026-11-25)
+
+### Fixed
+
+- Dashboard dialogs take keyboard focus and close on Escape. Dashboard animations follow the system setting to reduce motion.
+- Strava Disconnect, template reset, shortcut reset, Forget heart rate sensor and deleting a calibration point now ask before they run.
+
+## 1.76.3 (2026-11-25)
+
+### Fixed
+
+- The program editor asks before discarding unsaved edits on X, Cancel, Escape or a change of page.
+- Program steps show a mistyped minutes, speed or incline value as an error under the step.
+
+## 1.76.2 (2026-11-25)
+
+### Changed
+
+- Pausing and resuming now use one word per thing. The belt is STASIS and RE-JACK. A program is HOLD and GO.
+- The walk-away card's RE-JACK and DUMP match the belt controls everywhere else.
+
+## 1.76.1 (2026-11-25)
+
+### Fixed
+
+- While the belt rests, the HUD dims only the live stats. Errors, the link status, a program waiting for GO and the new not-connected line under the controls stay at full strength.
+- A program waiting for GO shows one prompt on its card. The HUD's update card button reads NOTES, since the button opens the release notes in the dashboard.
+
 ## 1.76.0 (2026-11-25)
 
 ### New

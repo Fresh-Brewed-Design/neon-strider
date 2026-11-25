@@ -6,6 +6,7 @@ import { formatDuration } from "../format";
 import { formatChange } from "../dashboard/history/weekly";
 import { describePlan } from "../dashboard/programs/format";
 import { startFailure } from "../state/linkStatus";
+import { resumeWord } from "./status";
 import { HudNote } from "./HudNote";
 import { SmallButton } from "./SmallButton";
 import { useHudSend } from "./useHudSend";
@@ -144,7 +145,7 @@ export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
  * cooldown with its countdown and SKIP. A break set for a running program's
  * rest (`at_rest`) waits for it and pauses nothing. Otherwise a walking belt is
  * paused for it (with "Pause the belt" on); after the break, while that pause holds, the card asks
- * RESUME (a press: GO or the treadmill's resume) or STAY STILL. Nothing here
+ * GO or RE-JACK (the word for what the press resumes) or STAY STILL. Nothing here
  * starts the belt by itself. During the break the card shows the guided blink
  * step (`blink`: SHUTTER // CLOSE, SQUEEZE, OPEN). Rust counts the time and owns
  * the pause; the tones are played by the HUD (`useEyeBreakTones`).
@@ -164,11 +165,11 @@ export function EyeBreakCard({ snapshot }: { snapshot: AppSnapshot }) {
       <div className="hud-toast hud-eyebreak accent-cyan" role="alert">
         <div className="hud-toast-body">
           <span className="hud-toast-message">OCULAR_IMPLANT // RECALIBRATED</span>
-          <span className="hud-sub">Break over. The belt stays paused until you resume.</span>
+          <span className="hud-sub">Break over. The belt stays paused until you press {resumeWord(snapshot)}.</span>
         </div>
         <HudNote error={error} />
         <div className="hud-seated-actions">
-          <SmallButton onClick={() => send({ type: "eye_break_resume" })}>RESUME</SmallButton>
+          <SmallButton onClick={() => send({ type: "eye_break_resume" })}>{resumeWord(snapshot)}</SmallButton>
           <SmallButton onClick={() => send({ type: "eye_break_stay_still" })}>STAY STILL</SmallButton>
         </div>
       </div>
@@ -211,8 +212,9 @@ export function EyeBreakCard({ snapshot }: { snapshot: AppSnapshot }) {
 }
 
 /**
- * A new version is ready, shown once per version. INSTALL opens the dashboard
- * on the notes (it never installs blind); LATER just hides the card.
+ * A new version is ready, shown once per version. NOTES opens the dashboard
+ * on the release notes, where Install is (the HUD never installs blind);
+ * LATER just hides the card.
  */
 export function UpdateCard({ snapshot }: { snapshot: AppSnapshot }) {
   const { send, error } = useHudSend();
@@ -222,11 +224,13 @@ export function UpdateCard({ snapshot }: { snapshot: AppSnapshot }) {
     <div className="hud-toast hud-update accent-cyan" role="status">
       <div className="hud-toast-body">
         <span className="hud-toast-message">UPDATE READY // v{version}</span>
-        <span className="hud-sub">Read what&apos;s new, then install from the dashboard.</span>
+        <span className="hud-sub">Read the release notes in the dashboard, then press Install.</span>
         <HudNote error={error} />
       </div>
       <div className="hud-walkaway-actions">
-        <SmallButton onClick={() => send({ type: "update_hud_card", open: true })}>INSTALL</SmallButton>
+        <SmallButton title="Open the release notes in the dashboard." onClick={() => send({ type: "update_hud_card", open: true })}>
+          NOTES
+        </SmallButton>
         <SmallButton onClick={() => send({ type: "update_hud_card", open: false })}>LATER</SmallButton>
       </div>
     </div>
@@ -236,7 +240,7 @@ export function UpdateCard({ snapshot }: { snapshot: AppSnapshot }) {
 /**
  * Walk-away safety. The warning counts down to a pause after a long time with
  * no keyboard or mouse input (any input or STAY cancels it); after a pause,
- * the belt never restarts by itself, so the card waits for RESUME or END.
+ * the belt never restarts by itself, so the card waits for RE-JACK (GO on a paused program) or DUMP.
  */
 export function WalkAwayCard({ snapshot }: { snapshot: AppSnapshot }) {
   const { send, error } = useHudSend();
@@ -265,12 +269,14 @@ export function WalkAwayCard({ snapshot }: { snapshot: AppSnapshot }) {
     <div className="hud-toast hud-walkaway accent-magenta" role="alert">
       <div className="hud-toast-body">
         <span className="hud-toast-message">WALK-AWAY // BELT PAUSED</span>
-        <span className="hud-sub">{why} The session is kept; resume when you are back.</span>
+        <span className="hud-sub">{why} The session is kept. Press {resumeWord(snapshot)} when you are back.</span>
         <HudNote error={error} />
       </div>
       <div className="hud-walkaway-actions">
-        <SmallButton onClick={() => send({ type: "walkaway_resume" })}>RESUME</SmallButton>
-        <SmallButton onClick={() => send({ type: "walkaway_end" })}>END</SmallButton>
+        <SmallButton onClick={() => send({ type: "walkaway_resume" })}>{resumeWord(snapshot)}</SmallButton>
+        <SmallButton sub="end walk" title="Stop the belt and end the session." onClick={() => send({ type: "walkaway_end" })}>
+          DUMP
+        </SmallButton>
       </div>
     </div>
   );

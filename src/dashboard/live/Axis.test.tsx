@@ -55,6 +55,39 @@ describe("speed slider", () => {
   });
 });
 
+describe("slider access", () => {
+  it("is named after its axis", () => {
+    expect(speedAxis(() => {})).toHaveAccessibleName("Velocity target");
+  });
+
+  it("is really disabled when offline", () => {
+    render(
+      <Axis
+        title="Tilt"
+        tone="magenta"
+        unit="%"
+        actual={1}
+        target={1}
+        min={0}
+        max={10}
+        step={0.5}
+        presets={[]}
+        formatPreset={(v) => `${v}%`}
+        disabled
+        onSet={() => {}}
+        onNudge={() => {}}
+        pin={{ widget: "INCLINE", pinned: false }}
+      />,
+    );
+    expect(screen.getByRole("slider", { name: "Tilt target" })).toBeDisabled();
+  });
+
+  it("shows the unit in lower case beside the upper-case TARGET label", () => {
+    speedAxis(() => {});
+    expect(screen.getByText("km/h", { selector: "span.normal-case" })).toBeInTheDocument();
+  });
+});
+
 describe("STRIDE_FIT mark on the speed slider", () => {
   const axis = (mark: { value: number; label: string; title: string } | null) =>
     render(

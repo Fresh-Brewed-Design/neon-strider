@@ -3,6 +3,7 @@ import { ExternalLink, Loader2, ShieldCheck } from "lucide-react";
 import { ActionStatus, InlineAction } from "../../../components/ActionStatus";
 import { useAction, type BackendAction } from "../../../components/useAction";
 import { dispatch, type StravaSnapshot } from "../../../ipc";
+import { useTreadmillStore } from "../../../store/treadmillStore";
 import { GhostButton, Label, NeonButton } from "../../ui";
 import { post } from "../../util";
 import { INPUT_CLASS } from "../fields";
@@ -119,7 +120,15 @@ export function Account({
           </span>
           <GhostButton
             disabled={disconnect.pending}
-            onClick={() => void disconnect.run(post({ type: "strava_disconnect" }))}
+            onClick={() =>
+              useTreadmillStore.getState().confirm({
+                title: "Disconnect Strava",
+                message: "Walks stop uploading to Strava until you connect again.",
+                confirmLabel: "Disconnect",
+                tone: "danger",
+                onConfirm: () => void disconnect.run(post({ type: "strava_disconnect" })),
+              })
+            }
           >
             {disconnect.pending ? "Disconnecting…" : "Disconnect"}
           </GhostButton>

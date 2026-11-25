@@ -69,12 +69,13 @@ export function ProgramRow({
           <FitToDeck offer={fitToDeck} />
         </div>
         <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-3">
-          <GhostButton aria-label={`Edit ${p.name}`} onClick={onEdit}>
+          <GhostButton aria-label={`Edit ${p.name}`} title={`Edit ${p.name}`} className="min-h-6 min-w-6" onClick={onEdit}>
             <Pencil size={14} />
           </GhostButton>
           <GhostButton
             aria-label={`Delete ${p.name}`}
-            className="hover:text-neon-magenta"
+            title={`Delete ${p.name}`}
+            className="ml-2 min-h-6 min-w-6 hover:text-neon-magenta"
             disabled={remove.pending}
             onClick={() => onDelete(() => void remove.run(post({ type: "program_delete", id: p.id })))}
           >

@@ -77,16 +77,18 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
             disabled={control.pending}
             onClick={() => void control.run(post({ type: "program_resume" }))}
             className="flex items-center gap-1.5 text-neon-yellow"
+            title="Resume the program."
           >
-            <Play size={14} /> Resume
+            <Play size={14} /> GO
           </GhostButton>
         ) : (
           <GhostButton
             disabled={control.pending}
             onClick={() => void control.run(post({ type: "program_pause" }))}
             className="flex items-center gap-1.5"
+            title="Hold the program."
           >
-            <Pause size={14} /> Pause
+            <Pause size={14} /> HOLD
           </GhostButton>
         )}
         <GhostButton

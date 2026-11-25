@@ -200,14 +200,16 @@ function PinnedRow({ widgets, index: i }: { widgets: HudWidget[]; index: number 
         <span className="min-w-0 flex-1 font-mono text-xs font-bold uppercase tracking-[0.15em] text-neon-cyan [overflow-wrap:anywhere]">
           <Codename text={widgetName(id)} />
         </span>
-        <GhostButton aria-label="Move up" disabled={i === 0 || action.pending} onClick={() => move(-1)}>
+        <GhostButton aria-label="Move up" title="Move up" className="min-h-6 min-w-6" disabled={i === 0 || action.pending} onClick={() => move(-1)}>
           <ArrowUp size={14} />
         </GhostButton>
-        <GhostButton aria-label="Move down" disabled={i === widgets.length - 1 || action.pending} onClick={() => move(1)}>
+        <GhostButton aria-label="Move down" title="Move down" className="min-h-6 min-w-6" disabled={i === widgets.length - 1 || action.pending} onClick={() => move(1)}>
           <ArrowDown size={14} />
         </GhostButton>
         <GhostButton
           aria-label="Remove"
+          title="Remove"
+          className="ml-2 min-h-6 min-w-6"
           disabled={action.pending}
           onClick={() => void action.run(post({ type: "hud_toggle_widget", widget: id }))}
         >

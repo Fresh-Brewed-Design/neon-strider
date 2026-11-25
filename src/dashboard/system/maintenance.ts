@@ -8,6 +8,7 @@ import { useTreadmillStore } from "../../store/treadmillStore";
 export function confirmServiced(onConfirm: () => void): void {
   useTreadmillStore.getState().confirm({
     title: "Mark belt serviced",
+    confirmLabel: "Mark serviced",
     message: "Reset the service counter to today? Distance and days start again from zero.",
     onConfirm,
   });

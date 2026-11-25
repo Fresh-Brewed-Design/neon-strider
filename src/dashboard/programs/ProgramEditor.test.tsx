@@ -10,7 +10,9 @@ vi.mock("../../state/useAppState", () => ({
 
 const { snapshot: mock } = await import("../../dev/mockBackend");
 const { ProgramEditor } = await import("./ProgramEditor");
-const { toDraft } = await import("./draft");
+const { NEW_PROGRAM, toDraft } = await import("./draft");
+const { useTreadmillStore } = await import("../../store/treadmillStore");
+const { leavePage } = await import("../leavePage");
 
 const saved = () =>
   vi
@@ -231,5 +233,120 @@ describe("ProgramEditor STRIDE_FIT flag", () => {
     expect(flag()).toBeNull();
     fireEvent.change(screen.getByDisplayValue("5.0"), { target: { value: "5.6" } });
     expect(flag()).toBeTruthy();
+  });
+});
+
+describe("ProgramEditor unsaved edits (#368)", () => {
+  const brisk = () => current!.programs.find((p) => p.name === "Brisk")!;
+  const pending = () => useTreadmillStore.getState().pendingConfirmation;
+  const speed = () => screen.getByLabelText<HTMLInputElement>("Step 1 speed in km/h");
+
+  beforeEach(() => useTreadmillStore.setState({ pendingConfirmation: null, leaveGuard: null }));
+
+  it("closes at once on Cancel, X or Escape with nothing changed", () => {
+    const done = vi.fn();
+    render(<ProgramEditor initial={toDraft(brisk())} onDone={done} />);
+    fireEvent.click(screen.getAllByRole("button", { name: "Cancel" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "Cancel" })[1]);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(done).toHaveBeenCalledTimes(3);
+    expect(pending()).toBeNull();
+    expect(useTreadmillStore.getState().leaveGuard).toBeNull();
+  });
+
+  it("asks before discarding an edit, and keeps the edit on Cancel", () => {
+    const done = vi.fn();
+    render(<ProgramEditor initial={toDraft(brisk())} onDone={done} />);
+    fireEvent.change(speed(), { target: { value: "4.5" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Cancel" })[1]);
+    expect(done).not.toHaveBeenCalled();
+    expect(pending()).toMatchObject({ title: "Discard edits", message: 'Discard the unsaved edits to "Brisk"?' });
+    act(() => useTreadmillStore.getState().clearConfirmation());
+    expect(speed().value).toBe("4.5");
+    fireEvent.keyDown(window, { key: "Escape" });
+    act(() => pending()!.onConfirm());
+    expect(done).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves Escape to an open dialog", () => {
+    const done = vi.fn();
+    render(<ProgramEditor initial={toDraft(brisk())} onDone={done} />);
+    fireEvent.change(speed(), { target: { value: "4.5" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Cancel" })[0]);
+    const first = pending();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(pending()).toBe(first);
+    expect(done).not.toHaveBeenCalled();
+  });
+
+  it("doesn't ask once an edit is typed back", () => {
+    const done = vi.fn();
+    render(<ProgramEditor initial={toDraft(brisk())} onDone={done} />);
+    fireEvent.change(speed(), { target: { value: "4.5" } });
+    fireEvent.change(speed(), { target: { value: "5" } });
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(pending()).toBeNull();
+    expect(done).toHaveBeenCalledTimes(1);
+  });
+
+  it("guards another page only while the draft has edits", () => {
+    const done = vi.fn();
+    const go = vi.fn();
+    render(<ProgramEditor initial={NEW_PROGRAM} onDone={done} />);
+    leavePage(go);
+    expect(go).toHaveBeenCalledTimes(1);
+    fireEvent.change(speed(), { target: { value: "4" } });
+    leavePage(go);
+    expect(go).toHaveBeenCalledTimes(1);
+    expect(pending()?.message).toBe("Discard the new program?");
+    act(() => pending()!.onConfirm());
+    expect(done).toHaveBeenCalledTimes(1);
+    expect(go).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("ProgramEditor errors at the field (#368)", () => {
+  const speed = () => screen.getByLabelText<HTMLInputElement>("Step 1 speed in km/h");
+  const minutes = () => screen.getByLabelText<HTMLInputElement>("Step 1 minutes");
+  const p = () => current!.programs.find((x) => x.name === "Brisk")!;
+
+  it("marks a speed that isn't a number under its step as it is typed", () => {
+    render(<ProgramEditor initial={toDraft(p())} onDone={() => {}} />);
+    fireEvent.change(speed(), { target: { value: "abc" } });
+    expect(speed()).toHaveAttribute("aria-invalid", "true");
+    const line = document.getElementById(speed().getAttribute("aria-describedby")!);
+    expect(line).toHaveTextContent("Speed needs a number.");
+    expect(minutes()).not.toHaveAttribute("aria-invalid");
+  });
+
+  it("marks a speed above the deck's top, and Save names the step without sending", async () => {
+    render(<ProgramEditor initial={toDraft(p())} onDone={() => {}} />);
+    fireEvent.change(speed(), { target: { value: "99" } });
+    expect(screen.getByText("Speed must be 0 or 0.6 to 10.5 km/h.")).toBeTruthy();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save" })));
+    expect(saved()).toEqual([]);
+    expect(screen.getByRole("alert")).toHaveTextContent("Fix step 1 to save.");
+    fireEvent.change(speed(), { target: { value: "5" } });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(speed()).not.toHaveAttribute("aria-invalid");
+  });
+
+  it("shows an emptied field only after Save", async () => {
+    render(<ProgramEditor initial={toDraft(p())} onDone={() => {}} />);
+    fireEvent.change(minutes(), { target: { value: "" } });
+    expect(minutes()).not.toHaveAttribute("aria-invalid");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save" })));
+    expect(minutes()).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("Minutes need a number.")).toBeTruthy();
+  });
+
+  it("puts Rust's step error under that step", async () => {
+    vi.mocked(invoke).mockRejectedValueOnce("Step 1: a zone needs a walking speed");
+    render(<ProgramEditor initial={toDraft(p())} onDone={() => {}} />);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save" })));
+    expect(screen.getByText("A zone needs a walking speed.")).toBeTruthy();
+    expect(screen.getByRole("alert")).toHaveTextContent("Fix step 1 to save.");
+    fireEvent.change(speed(), { target: { value: "4" } });
+    expect(screen.queryByText("A zone needs a walking speed.")).toBeNull();
   });
 });

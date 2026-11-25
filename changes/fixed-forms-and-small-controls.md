@@ -1,0 +1,7 @@
+- Number fields in System now say "Saved." after a change, and name the limit when a value was held to it.
+- Icon buttons in Programs, History and the HUD page have titles, a bigger click area and a gap before Delete.
+- Delete is off for a walk that is still recording.
+- The History year grid is one tab stop, and arrow keys move between days.
+- Pin open and Pinned report their state to screen readers.
+- Diagnostics steps no faster than every 200 ms.
+- Strava sync times, Shortcut "Off" and skipped calibration speeds are easier to read.

@@ -1,6 +1,6 @@
 // The dashboard's shared building blocks: page frame, panel, label, buttons and the option picker.
 
-import { Fragment, useRef, type ButtonHTMLAttributes, type HTMLAttributes, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useRef, type ButtonHTMLAttributes, type HTMLAttributes, type KeyboardEvent, type ReactNode, type Ref } from "react";
 import { cx, type Tone } from "./util";
 
 const TONE_BUTTON: Record<Tone, string> = {
@@ -78,7 +78,7 @@ export function NeonButton({
   className,
   children,
   ...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & { tone?: Tone }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { tone?: Tone; ref?: Ref<HTMLButtonElement> }) {
   return (
     <button
       type="button"

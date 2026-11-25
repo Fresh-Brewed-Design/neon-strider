@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { ActionStatus } from "../../../components/ActionStatus";
 import { useAction } from "../../../components/useAction";
 import { SETTING_LIMITS, TEMPLATE_FIELDS, type StravaSnapshot } from "../../../ipc";
+import { useTreadmillStore } from "../../../store/treadmillStore";
 import { GhostButton, Hint, Label } from "../../ui";
 import { cx, post } from "../../util";
 import { INPUT_CLASS } from "../fields";
@@ -40,12 +41,19 @@ export function TemplateEditor({ strava }: { strava: StravaSnapshot }) {
     setDraft({});
   };
 
-  const reset = () => {
-    void saving.run(post({ type: "strava_set_templates", title: "", rollup_title: "", description: "" }), {
-      done: "Reset to the default templates.",
+  const reset = () =>
+    useTreadmillStore.getState().confirm({
+      title: "Reset Strava templates",
+      message: "The default title and description templates replace your own.",
+      confirmLabel: "Reset",
+      tone: "danger",
+      onConfirm: () => {
+        void saving.run(post({ type: "strava_set_templates", title: "", rollup_title: "", description: "" }), {
+          done: "Reset to the default templates.",
+        });
+        setDraft({});
+      },
     });
-    setDraft({});
-  };
 
   return (
     <div className="flex flex-col gap-3">

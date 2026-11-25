@@ -2,6 +2,7 @@ import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { dispatch, SETTING_LIMITS } from "../../ipc";
 import { useAppSnapshot } from "../../state/useAppState";
+import { useTreadmillStore } from "../../store/treadmillStore";
 import { StatusPill } from "../StatusPill";
 import { GhostButton, Hint, NeonButton } from "../ui";
 import { NumberField, Section } from "./fields";
@@ -41,7 +42,15 @@ export function HeartRateSection() {
               </div>
               <GhostButton
                 disabled={pick.pending}
-                onClick={() => void pick.run(() => dispatch({ type: "heart_rate_forget" }))}
+                onClick={() =>
+                  useTreadmillStore.getState().confirm({
+                    title: "Forget heart rate sensor",
+                    message: `Neon Strider stops reading ${heart.sensor?.name || "the heart rate sensor"} until you pick a sensor again.`,
+                    confirmLabel: "Forget",
+                    tone: "danger",
+                    onConfirm: () => void pick.run(() => dispatch({ type: "heart_rate_forget" })),
+                  })
+                }
               >
                 Forget
               </GhostButton>
