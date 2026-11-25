@@ -65,3 +65,21 @@ describe("HUD page pickers with the keyboard", () => {
     ]);
   });
 });
+
+describe("HUD page status lines", () => {
+  it("shows a refused remove under the widget's own row", async () => {
+    render(<HudPage />);
+    vi.mocked(invoke).mockRejectedValueOnce("Treadmill not connected");
+    const remove = screen.getAllByRole("button", { name: "Remove" })[0];
+    await act(async () => fireEvent.click(remove));
+    expect(remove.closest("li")).toHaveTextContent("Treadmill not connected");
+  });
+
+  it("shows a refused corner under the corner picker", async () => {
+    render(<HudPage />);
+    vi.mocked(invoke).mockRejectedValueOnce("Treadmill not connected");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Top left" })));
+    expect(dispatched()).toEqual([{ command: { type: "hud_set_anchor", anchor: "top_left" } }]);
+    expect(screen.getByRole("alert")).toHaveTextContent("Treadmill not connected");
+  });
+});
