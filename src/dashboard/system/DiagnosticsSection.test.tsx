@@ -35,7 +35,7 @@ describe("Diagnostics raw send", () => {
 
     // Further sends while the dialog is open are dropped, not queued.
     sendOnce();
-    await act(async () => fireEvent.click(screen.getByText("Confirm")));
+    await act(async () => fireEvent.click(screen.getByText("Send")));
     expect(screen.queryByText("Send raw commands")).not.toBeInTheDocument();
     expect(rawSends()).toHaveLength(1);
     expect(rawSends()[0][1]).toEqual({ body: [0x53, 0x00, ...Array<number>(10).fill(0)] });
@@ -62,7 +62,7 @@ describe("Diagnostics raw send", () => {
     act(() => vi.advanceTimersByTime(5000));
     expect(rawSends()).toHaveLength(0);
 
-    await act(async () => fireEvent.click(screen.getByText("Confirm")));
+    await act(async () => fireEvent.click(screen.getByText("Send")));
     expect(rawSends()).toHaveLength(1);
     await act(async () => vi.advanceTimersByTime(1999));
     expect(rawSends()).toHaveLength(1);

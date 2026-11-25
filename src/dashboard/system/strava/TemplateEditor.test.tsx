@@ -1,7 +1,14 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { invoke } from "@tauri-apps/api/core";
+import { describe, expect, it, vi } from "vitest";
 import { TEMPLATE_FIELDS, type StravaSnapshot } from "../../../ipc";
+import { useTreadmillStore } from "../../../store/treadmillStore";
 import { TemplateEditor } from "./TemplateEditor";
+
+const templateSaves = () =>
+  vi
+    .mocked(invoke)
+    .mock.calls.filter(([cmd, a]) => cmd === "dispatch" && (a as { command: { type: string } }).command.type === "strava_set_templates");
 
 const strava = {
   title_template: "NEON STRIDER // {distance_km} KM UPLINK",
@@ -44,5 +51,22 @@ describe("TemplateEditor help", () => {
     ]) {
       expect(names).toContain(name);
     }
+  });
+});
+
+describe("TemplateEditor reset", () => {
+  it("asks before putting the default templates back", async () => {
+    vi.mocked(invoke).mockClear();
+    render(<TemplateEditor strava={strava} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reset to default" }));
+    expect(templateSaves()).toHaveLength(0);
+    const ask = useTreadmillStore.getState().pendingConfirmation;
+    expect(ask).toMatchObject({
+      message: "Your own title and description templates are replaced by the defaults.",
+      confirmLabel: "Reset",
+      tone: "danger",
+    });
+    await act(async () => ask?.onConfirm());
+    expect(templateSaves()).toHaveLength(1);
   });
 });

@@ -20,6 +20,7 @@ export function FitToDeck({ offer }: { offer: FitToDeckOffer | null }) {
       title: "FIT_TO_DECK",
       message: o.message,
       hint: o.hint,
+      confirmLabel: "Fit to deck",
       onConfirm: () => void action.run(() => dispatch({ type: "program_fit_to_deck", id: o.program_id }), { done: o.done }),
     });
   return (

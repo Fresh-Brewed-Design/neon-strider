@@ -65,6 +65,20 @@ export function GuidedCalibration() {
   const snap = useAppSnapshot();
   const points = useTreadmillStore((s) => s.calibrationPoints);
   const removePoint = useTreadmillStore((s) => s.removeCalibrationPoint);
+  // A measured point holds every run timed at its speed, so deleting one asks first.
+  const askRemovePoint = (row: CalibrationRow) => {
+    if (row.index === null || !row.point) return;
+    const index = row.index;
+    const kmh = row.targetKmh.toFixed(1);
+    const runs = row.point.runs ?? 1;
+    useTreadmillStore.getState().confirm({
+      title: `Delete the ${kmh} km/h point`,
+      message: `The ${kmh} km/h point and its ${runs === 1 ? "1 run" : `${runs} runs`} are deleted for good.`,
+      confirmLabel: "Delete",
+      tone: "danger",
+      onConfirm: () => removePoint(index),
+    });
+  };
   // Which RUN was pressed, only for its status line; the open run itself is Rust's.
   const [pressed, setPressed] = useState<number | null>(null);
   const runAction = useAction();
@@ -218,7 +232,7 @@ export function GuidedCalibration() {
                 {row.point && row.index !== null && (
                   <button
                     type="button"
-                    onClick={() => removePoint(row.index as number)}
+                    onClick={() => askRemovePoint(row)}
                     aria-label={`Delete the ${row.targetKmh.toFixed(1)} km/h point`}
                     title="Delete"
                     className="p-2 text-white/60 transition-colors hover:text-neon-magenta"

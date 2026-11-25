@@ -47,6 +47,7 @@ export function DiagnosticsSection() {
       return new Promise((resolve) =>
         store.confirm({
           title: "Send raw commands",
+          confirmLabel: "Send",
           message: "Raw commands can start the belt. Step off first. Armed for 5 minutes.",
           onConfirm: () => {
             armedUntil.current = Date.now() + RAW_ARMED_MS;

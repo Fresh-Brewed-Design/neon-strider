@@ -240,6 +240,22 @@ describe("GuidedCalibration", () => {
     expect((screen.getByText("STOP") as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it("asks before deleting a measured point, naming its speed and runs", () => {
+    useTreadmillStore.setState({ calibrationPoints: [{ ...saved, runs: 3 }], pendingConfirmation: null });
+    render(<GuidedCalibration />);
+    fireEvent.click(screen.getByRole("button", { name: "Delete the 3.0 km/h point" }));
+    expect(useTreadmillStore.getState().calibrationPoints).toHaveLength(1);
+    const ask = useTreadmillStore.getState().pendingConfirmation;
+    expect(ask).toMatchObject({
+      title: "Delete the 3.0 km/h point",
+      message: "The 3.0 km/h point and its 3 runs are deleted for good.",
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    act(() => ask?.onConfirm());
+    expect(useTreadmillStore.getState().calibrationPoints).toEqual([]);
+  });
+
   it("ADD sends the speed to Rust and shows the list Rust keeps", async () => {
     const { rerender } = render(<GuidedCalibration />);
     openAdvanced();
