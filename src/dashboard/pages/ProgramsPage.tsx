@@ -7,6 +7,7 @@ import { ActiveProgramCard } from "../programs/ActiveProgramCard";
 import { NEW_PROGRAM, toDraft, type Draft } from "../programs/draft";
 import { ProgramEditor } from "../programs/ProgramEditor";
 import { ProgramRow } from "../programs/ProgramRow";
+import { ProgramTonesSetting } from "../programs/ProgramTonesSetting";
 import { NeonButton, Page, Panel, Waiting } from "../ui";
 import { linkState } from "../../state/linkStatus";
 import { openLinkDialog, send } from "../util";
@@ -106,6 +107,8 @@ export function ProgramsPage() {
             })}
           </ul>
         )}
+
+        {!editing && <ProgramTonesSetting />}
       </div>
     </Page>
   );

@@ -23,6 +23,7 @@ import type { OdometerSnapshot } from "./OdometerSnapshot";
 import type { PcWalkShare } from "./PcWalkShare";
 import type { PlatformSnapshot } from "./PlatformSnapshot";
 import type { Program } from "./Program";
+import type { ProgramTonesSnapshot } from "./ProgramTonesSnapshot";
 import type { SeatedSnapshot } from "./SeatedSnapshot";
 import type { SessionSnapshot } from "./SessionSnapshot";
 import type { ShortcutsSnapshot } from "./ShortcutsSnapshot";
@@ -48,6 +49,11 @@ fit_to_deck: Array<FitToDeckOffer>,
  * picker beside its Run. A program whose length can't change has none.
  */
 fit_to_time: Array<FitToTimeOption>, 
+/**
+ * Program tones (off by default): the switch and the latest cue for the
+ * HUD to play (`program_tones.rs`).
+ */
+program_tones: ProgramTonesSnapshot, 
 /**
  * The program run last (#336), for the LAST_RUN tag on its Programs
  * row; the "Run or end a program" shortcut starts the same one. None

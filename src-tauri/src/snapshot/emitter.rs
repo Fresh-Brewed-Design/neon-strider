@@ -4,8 +4,8 @@
 use super::frame::{self, Delivery, Due, Frame, Windows};
 use super::{
     build_snapshot, calls, daily_base, desk_sync, eyebreak, hud, lights_out, maintenance, odometer,
-    pc_walk_share, refresh_daily_base, seated, stasis, tray, tray_menu, walkaway, weekly,
-    AppSnapshot, ConnectionSnapshot, SnapshotParts, EVENT_APP_STATE,
+    pc_walk_share, program_tones, refresh_daily_base, seated, stasis, tray, tray_menu, walkaway,
+    weekly, AppSnapshot, ConnectionSnapshot, SnapshotParts, EVENT_APP_STATE,
 };
 use crate::bluetooth::{self, ORCHESTRATOR};
 use crate::programs::{self, SavedRun};
@@ -61,6 +61,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     let strava = strava::snapshot();
     let weekly = weekly::snapshot();
     let eye_break = eyebreak::snapshot();
+    let program_tones = program_tones::snapshot();
     let calls = calls::snapshot();
     let now_ms = crate::util::now_ms_u64();
     let wall_clock = desk_sync::wall_clock();
@@ -149,6 +150,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     snapshot.update = update;
     snapshot.traffic = traffic;
     snapshot.lights_out = lights_out;
+    snapshot.program_tones = program_tones;
     // The first-connect offer only shows while the treadmill is connected.
     snapshot.calibration.offer &= snapshot.connection.connected;
     snapshot.ghost_pod = ghost_pod;
