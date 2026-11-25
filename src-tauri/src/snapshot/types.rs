@@ -764,6 +764,9 @@ pub enum Command {
         enabled: bool,
         quiet_kmh: f32,
     },
+    /// Quiet now: ease a running belt to the quiet speed, or put the speed
+    /// back on the second press. Never starts a still belt.
+    QuietNow,
 
     // ---- Walk-away safety ----
     /// Walk-away settings: pause on lock, and pause after no input for
@@ -1271,6 +1274,8 @@ mod tests {
                 quiet_kmh: 1.8
             }
         );
+        let c: Command = serde_json::from_str(r#"{"type":"quiet_now"}"#).unwrap();
+        assert_eq!(c, Command::QuietNow);
         assert!(serde_json::from_str::<Command>(
             r#"{"type":"maintenance_set_basis","basis":"miles","hours":60.0}"#
         )

@@ -207,6 +207,7 @@ body,
 .hud-stride,
 .hud-drift,
 .hud-easystop,
+.hud-quiet,
 .hud-presenting {
   display: flex;
   flex-wrap: wrap;
@@ -221,6 +222,7 @@ body,
 .hud-stride .hud-label,
 .hud-drift .hud-label,
 .hud-easystop .hud-label,
+.hud-quiet .hud-label,
 .hud-presenting .hud-label {
   color: var(--accent);
   letter-spacing: 0.14em;
@@ -230,7 +232,8 @@ body,
 .hud-neural-speed,
 .hud-stride-speed,
 .hud-drift-speed,
-.hud-easystop-speed {
+.hud-easystop-speed,
+.hud-quiet-speed {
   display: flex;
   align-items: baseline;
   gap: 4px;
@@ -529,6 +532,14 @@ body,
 .hud-transport { display: flex; flex-wrap: wrap; gap: 8px; }
 .hud-transport .hud-btn-main { flex: 100 1 auto; min-width: max-content; }
 .hud-transport .hud-btn-stop { flex: 1 0 72px; }
+/* QUIET sits beside DUMP while the row fits (Engage keeps its whole word),
+   else wraps under them. Lit while Quiet now holds the belt. */
+.hud-transport .hud-btn-quiet { flex: 1 0 72px; }
+.hud-btn-quiet.is-on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+}
 
 .hud-steppers {
   display: grid;

@@ -207,7 +207,7 @@ pub(crate) fn eye_break_resume_on(
 
 /// The target speed the call logic reads and writes: the running program's live
 /// step target, or the manual one (falling back to what the deck reports).
-fn belt_view(state: &OrchestratorState) -> calls::Belt {
+pub(crate) fn belt_view(state: &OrchestratorState) -> calls::Belt {
     let program = state.program_walking();
     let target_kmh = if program {
         state.active_program().map_or(0.0, |a| a.speed_kmh)
@@ -219,6 +219,7 @@ fn belt_view(state: &OrchestratorState) -> calls::Belt {
     };
     calls::Belt {
         running: belt_running(state),
+        paused: state.last_status == MachineStatus::Paused,
         program,
         target_kmh,
         min_kmh: state.min_physical_speed(),
@@ -247,12 +248,7 @@ struct Outcome {
     belt_running: bool,
 }
 
-async fn step(
-    connected: bool,
-    now: u64,
-    idle_ms: Option<u64>,
-    machine: &mut calls::CallMachine,
-) -> Outcome {
+async fn step(connected: bool, now: u64, idle_ms: Option<u64>) -> Outcome {
     let mut out = Outcome::default();
     let mut guard = ORCHESTRATOR.lock().await;
     let state: &mut OrchestratorState = &mut guard;
@@ -295,7 +291,7 @@ async fn step(
         mic_in_use: calls::mic::in_use_now(),
         belt: belt_view(state),
     };
-    match machine.tick(&cfg, now, &input) {
+    match calls::with_machine(|m| m.tick(&cfg, now, &input)) {
         Some(calls::Action::Quiet { to_kmh }) => {
             log::info!(
                 "Call detected: easing the belt from {:.1} to {:.1} km/h",
@@ -312,7 +308,6 @@ async fn step(
         }
         None => {}
     }
-    calls::set_quiet_active(machine.quiet_active());
 
     // Walk-away. After the call logic, which never restarts a paused belt.
     let input = walkaway::Input {
@@ -392,7 +387,6 @@ pub fn spawn(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let mut ticker = tokio::time::interval(TICK);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        let mut machine = calls::CallMachine::default();
         loop {
             ticker.tick().await;
             // Asked before the orchestrator lock is taken (see snapshot.rs's locking rule).
@@ -406,7 +400,7 @@ pub fn spawn(app: AppHandle) {
             // follow it.
             presenting::observe(crate::platform::presenting());
             desk_sync::note_input(&app, idle);
-            let out = step(connected, now, idle_ms, &mut machine).await;
+            let out = step(connected, now, idle_ms).await;
             // Read before the desk features acted, so a walk-away pause this
             // second still counts the second it ends.
             pc_walk_share::tick(&app, idle, out.belt_running);
@@ -427,6 +421,50 @@ pub fn spawn(app: AppHandle) {
 // ---------------------------------------------------------------------------
 // Commands from the HUD card
 // ---------------------------------------------------------------------------
+
+/// Quiet now on the orchestrator: the press on `machine`, its speed applied
+/// the way a call's is (`apply_speed`). It only lowers a running belt or puts
+/// back the speed it lowered; it never starts, resumes or pauses the belt.
+pub(crate) fn quiet_now_on(
+    state: &mut OrchestratorState,
+    ready: bool,
+    machine: &mut calls::CallMachine,
+    cfg: &calls::Config,
+) -> Result<(), String> {
+    if !ready {
+        return Err(ENGAGE_OFFLINE.to_string());
+    }
+    let belt = belt_view(state);
+    match machine.press_quiet_now(cfg, &belt) {
+        Ok(Some(calls::Action::Quiet { to_kmh })) => {
+            log::info!(
+                "Quiet now: easing the belt from {:.1} to {:.1} km/h",
+                belt.target_kmh,
+                to_kmh
+            );
+            apply_speed(state, to_kmh);
+        }
+        Ok(Some(calls::Action::Restore { to_kmh })) => {
+            log::info!("Quiet now off: restoring {:.1} km/h", to_kmh);
+            apply_speed(state, to_kmh);
+        }
+        Ok(None) if machine.quiet_now() => {
+            log::info!("Quiet now: taking over the call's quiet speed");
+        }
+        Ok(None) => log::info!("Quiet now off: the speed was changed since, left as it is"),
+        Err(refusal) => return Err(refusal.message()),
+    }
+    Ok(())
+}
+
+/// QUIET on the HUD, QUIET NOW in the tray.
+pub async fn press_quiet_now() -> Result<(), String> {
+    let connected = bluetooth::is_bluetooth_connected().await;
+    let mut state = ORCHESTRATOR.lock().await;
+    let ready = treadmill_ready(connected, &state);
+    let cfg = calls::config();
+    calls::with_machine(|m| quiet_now_on(&mut state, ready, m, &cfg))
+}
 
 /// STAY on the walk-away warning card.
 pub fn walkaway_stay() {

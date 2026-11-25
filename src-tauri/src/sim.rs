@@ -4995,6 +4995,113 @@ mod tests {
         assert!(r.deck.running_at(3.1), "{} km/h", r.deck.speed_kmh());
     }
 
+    // ---- Quiet now (#345) ----
+
+    /// QUIET on the HUD or QUIET NOW in the tray, through the desk's own code
+    /// (`desk::quiet_now_on`) with the default 2.0 km/h quiet speed.
+    fn quiet_now(r: &mut Rig, m: &mut crate::snapshot::calls::CallMachine) -> Result<(), String> {
+        r.state.set_test_now(r.t);
+        let cfg = crate::snapshot::calls::Config::default();
+        crate::snapshot::desk::quiet_now_on(&mut r.state, true, m, &cfg)
+    }
+
+    /// One desk-loop pass of the call machine with the microphone free.
+    fn quiet_tick(r: &Rig, m: &mut crate::snapshot::calls::CallMachine) {
+        let input = crate::snapshot::calls::Input {
+            mic_in_use: false,
+            belt: crate::snapshot::desk::belt_view(&r.state),
+        };
+        let cfg = crate::snapshot::calls::Config::default();
+        assert_eq!(m.tick(&cfg, crate::util::now_ms_u64(), &input), None);
+    }
+
+    #[test]
+    fn quiet_now_eases_a_walk_down_and_a_second_press_puts_it_back() {
+        let mut r = walking_at_three();
+        let mut m = Default::default();
+        let mark = r.mark();
+        quiet_now(&mut r, &mut m).unwrap();
+        r.run(20.0);
+        quiet_tick(&r, &mut m);
+        assert!(r.deck.running_at(2.0), "{} km/h", r.deck.speed_kmh());
+        assert!(m.quiet_now());
+        quiet_now(&mut r, &mut m).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+        assert!(!m.quiet_now());
+        let sent = r.commands_since(mark);
+        assert!(!app_starts(&sent), "{sent:?}");
+    }
+
+    #[test]
+    fn quiet_now_on_a_paused_belt_sends_nothing() {
+        let mut r = walking_at_three();
+        let mut m = Default::default();
+        r.press(DeckAction::Pause);
+        r.run(12.0);
+        assert!(r.deck.belt_still());
+        let mark = r.mark();
+        let e = quiet_now(&mut r, &mut m).unwrap_err();
+        assert_eq!(e, "Quiet now works on a running belt.");
+        r.run(30.0);
+        assert!(r.deck.belt_still(), "still paused");
+        assert!(!moves_belt(&r.commands_since(mark)));
+    }
+
+    #[test]
+    fn quiet_now_held_through_a_pause_never_resumes_the_belt() {
+        let mut r = walking_at_three();
+        let mut m = Default::default();
+        quiet_now(&mut r, &mut m).unwrap();
+        r.run(20.0);
+        r.press(DeckAction::Pause);
+        r.run(12.0);
+        quiet_tick(&r, &mut m);
+        assert!(m.quiet_now(), "a pause keeps the hold");
+        let mark = r.mark();
+        let e = quiet_now(&mut r, &mut m).unwrap_err();
+        assert_eq!(e, "Quiet now puts the speed back once the belt runs.");
+        r.run(30.0);
+        assert!(r.deck.belt_still());
+        assert!(!moves_belt(&r.commands_since(mark)));
+        // RE-JACK walks on at the quiet speed; the second press puts 3.0 back.
+        r.press(DeckAction::Start);
+        r.run(15.0);
+        quiet_tick(&r, &mut m);
+        assert!(r.deck.running_at(2.0), "{} km/h", r.deck.speed_kmh());
+        quiet_now(&mut r, &mut m).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+    }
+
+    #[test]
+    fn a_speed_set_by_hand_during_quiet_now_stays() {
+        let mut r = walking_at_three();
+        let mut m = Default::default();
+        quiet_now(&mut r, &mut m).unwrap();
+        r.run(20.0);
+        r.set_speed(2.5);
+        r.run(15.0);
+        quiet_tick(&r, &mut m);
+        assert!(!m.quiet_now(), "the hand speed ends the hold");
+        assert!(r.deck.running_at(2.5), "{} km/h", r.deck.speed_kmh());
+    }
+
+    #[test]
+    fn quiet_now_eases_a_program_step_and_leaves_the_saved_program_alone() {
+        let mut r = post_meal_walking();
+        let mut m = Default::default();
+        quiet_now(&mut r, &mut m).unwrap();
+        r.run(20.0);
+        quiet_tick(&r, &mut m);
+        assert!(r.deck.running_at(2.0), "{} km/h", r.deck.speed_kmh());
+        let saved = r.state.programs.iter().find(|p| p.id == POST_MEAL).unwrap();
+        assert_eq!(saved.steps[0].speed_kmh, 4.0);
+        quiet_now(&mut r, &mut m).unwrap();
+        r.run(20.0);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+    }
+
     // ---- Easy stop (#302) ----
 
     /// A manual walk at 5 km/h with Easy stop switched on, the belt started

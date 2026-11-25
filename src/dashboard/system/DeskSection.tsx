@@ -288,45 +288,42 @@ export function DeskSection() {
         </>
       )}
 
+      <div className="border-t border-white/10" />
+
       {/* Slow down on calls needs the OS's list of apps using the microphone (`platform.microphone`). */}
       {s.platform.microphone && (
-        <>
-          <div className="border-t border-white/10" />
-
-          <Toggle
-            label="Slow down on calls"
-            tone="yellow"
-            checked={calls.enabled}
-            onChange={(enabled) => saveCalls({ enabled })}
-            description="While an app uses the microphone, a running belt eases to the quiet speed until 10 seconds after the call."
-            hint="The belt never speeds up for a call, and a speed changed during the call stays."
-          />
-          {calls.enabled && (
-            <>
-              <NumberField
-                label="Quiet speed"
-                unit="km/h"
-                min={L.calls_quiet_kmh.min}
-                max={L.calls_quiet_kmh.max}
-                step={0.1}
-                value={calls.quiet_kmh}
-                hint="A running program is eased too, for the current step only; the saved program is not changed."
-                snap={(kmh) => roundSpeed(snapToDeck(kmh, s.deck))}
-                onCommit={(quiet_kmh) => saveCalls({ quiet_kmh: Math.round(quiet_kmh * 100) / 100 })}
-              />
-              <Hint aria-live="polite">
-                {calls.quiet_active
-                  ? "On a call: the belt is at the quiet speed."
-                  : calls.mic_in_use
-                    ? "Microphone in use."
-                    : "Microphone is free."}{" "}
-                {s.platform.os === "macos"
-                  ? "This asks macOS which apps are taking microphone input; no audio is recorded or heard."
-                  : "This uses the list Windows keeps of apps using the microphone; no audio is recorded or heard."}
-              </Hint>
-            </>
-          )}
-        </>
+        <Toggle
+          label="Slow down on calls"
+          tone="yellow"
+          checked={calls.enabled}
+          onChange={(enabled) => saveCalls({ enabled })}
+          description="While an app uses the microphone, a running belt eases to the quiet speed until 10 seconds after the call."
+          hint="The belt never speeds up for a call, and a speed changed during the call stays."
+        />
+      )}
+      {/* The HUD's QUIET button (Quiet now) uses the same speed, with or without call detection. */}
+      <NumberField
+        label="Quiet speed"
+        unit="km/h"
+        min={L.calls_quiet_kmh.min}
+        max={L.calls_quiet_kmh.max}
+        step={0.1}
+        value={calls.quiet_kmh}
+        hint={`${s.platform.microphone ? "Calls and QUIET on the HUD ease" : "QUIET on the HUD eases"} a running belt to this speed. A running program eases for the current step only, and the saved program stays as it was.`}
+        snap={(kmh) => roundSpeed(snapToDeck(kmh, s.deck))}
+        onCommit={(quiet_kmh) => saveCalls({ quiet_kmh: Math.round(quiet_kmh * 100) / 100 })}
+      />
+      {s.platform.microphone && calls.enabled && (
+        <Hint aria-live="polite">
+          {calls.quiet_active
+            ? "On a call: the belt is at the quiet speed."
+            : calls.mic_in_use
+              ? "Microphone in use."
+              : "Microphone is free."}{" "}
+          {s.platform.os === "macos"
+            ? "This asks macOS which apps are taking microphone input; no audio is recorded or heard."
+            : "This uses the list Windows keeps of apps using the microphone; no audio is recorded or heard."}
+        </Hint>
       )}
     </Section>
   );

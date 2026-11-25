@@ -12,6 +12,7 @@ import {
   EasyStopLine,
   NeuralLine,
   PresentingLine,
+  QuietNowLine,
   ProgramsModule,
   SpeedDriftLine,
   StatCell,
@@ -119,6 +120,7 @@ export function HudApp() {
                 <SpeedDriftLine snapshot={snapshot} />
                 <EasyStopLine snapshot={snapshot} />
                 <StrideFitLine snapshot={snapshot} />
+                <QuietNowLine snapshot={snapshot} />
                 <PresentingLine snapshot={snapshot} />
                 {widgets.includes("CONTROLS") && <Controls snapshot={snapshot} />}
                 {widgets.includes("PROGRAMS") && <ProgramsModule snapshot={snapshot} />}

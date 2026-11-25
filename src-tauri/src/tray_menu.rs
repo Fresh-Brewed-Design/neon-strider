@@ -49,6 +49,8 @@ pub enum TrayAction {
     SpeedDown,
     InclineUp,
     InclineDown,
+    /// Quiet now: the HUD's QUIET button.
+    QuietNow,
     /// GO on a paused or waiting program.
     ProgramGo,
     /// HOLD on a walking program.
@@ -74,6 +76,7 @@ impl TrayAction {
             TrayAction::SpeedDown => Command::NudgeSpeed { up: false },
             TrayAction::InclineUp => Command::NudgeIncline { up: true },
             TrayAction::InclineDown => Command::NudgeIncline { up: false },
+            TrayAction::QuietNow => Command::QuietNow,
             TrayAction::ProgramGo => Command::ProgramResume,
             TrayAction::ProgramHold => Command::ProgramPause,
             TrayAction::ProgramSkip => Command::ProgramSkip,
@@ -164,6 +167,8 @@ pub struct MenuInput {
     pub max_speed_kmh: f32,
     pub target_incline_level: u8,
     pub max_incline_level: u8,
+    /// While Quiet now holds the belt: the speed a second press puts back.
+    pub quiet_now_back_kmh: Option<f32>,
     /// The open session's time, if a session is open.
     pub session_s: Option<u64>,
     pub program: Option<ProgramView>,
@@ -187,6 +192,7 @@ impl MenuInput {
             max_speed_kmh: s.deck.max_speed_kmh,
             target_incline_level: s.deck.target_incline_level,
             max_incline_level: s.deck.max_incline_level,
+            quiet_now_back_kmh: s.calls.quiet_now_back_kmh,
             session_s: s.session.active_id.map(|_| s.session.duration_s),
             program: s.active_program.as_ref().map(|a| ProgramView {
                 id: a.program_id,
@@ -220,6 +226,7 @@ impl MenuInput {
             max_speed_kmh: 0.0,
             target_incline_level: 0,
             max_incline_level: 0,
+            quiet_now_back_kmh: None,
             session_s: None,
             program: None,
             programs: Vec::new(),
@@ -336,6 +343,15 @@ fn engage_label(v: &MenuInput) -> &'static str {
     }
 }
 
+/// Quiet now's label: what a click does. `QUIET NOW` eases the belt down;
+/// while it holds, `END QUIET · BACK TO 4.0 KM/H` puts the speed back.
+fn quiet_label(v: &MenuInput) -> String {
+    match v.quiet_now_back_kmh {
+        Some(kmh) => format!("END QUIET{SEP}BACK TO {kmh:.1} KM/H"),
+        None => "QUIET NOW".into(),
+    }
+}
+
 /// A saved name as menu text: trimmed, shortened, `&` shown as itself.
 fn menu_text(name: &str) -> String {
     let name = name.trim();
@@ -395,6 +411,14 @@ pub fn build(v: &MenuInput) -> Vec<Node> {
             c && v.target_incline_level > 0,
             TrayAction::InclineDown,
         )),
+        // Only a running belt: Quiet now never starts a still one, and on a
+        // paused one it waits for the belt to run again.
+        Node::Item(Item {
+            id: "quiet_now".into(),
+            label: quiet_label(v),
+            enabled: c && v.status == MachineStatus::Running,
+            action: Some(TrayAction::QuietNow),
+        }),
         Node::Separator,
     ];
     // The HUD's program row: GO on a paused program, HOLD on a walking one.
@@ -728,6 +752,7 @@ mod tests {
             max_speed_kmh: 6.0,
             target_incline_level: 0,
             max_incline_level: 12,
+            quiet_now_back_kmh: None,
             session_s: None,
             program: None,
             programs: vec![(1, "Workday".into()), (2, "Climb & Cruise".into())],
@@ -795,17 +820,45 @@ mod tests {
         assert_eq!(
             render_tree(&build(&disconnected())),
             "RELINK 12S [x]\nNO PROGRAM [x]\n----\nENGAGE [x]\nDUMP [x]\nVEL UP [x]\n\
-             VEL DOWN [x]\nTILT UP [x]\nTILT DOWN [x]\n----\nHOLD [x]\nSKIP [x]\nEND [x]\n\
+             VEL DOWN [x]\nTILT UP [x]\nTILT DOWN [x]\nQUIET NOW [x]\n----\nHOLD [x]\nSKIP [x]\nEND [x]\n\
              RUN PROGRAM >\n  Workday [x]\n  Climb & Cruise [x]\n----\nOpen dashboard\n\
              Hide HUD\nQuit\n"
         );
         assert_eq!(
             render_tree(&build(&program())),
             "VEL 3.2 KM/H \u{b7} 12:34 [x]\nPROGRAM Workday \u{b7} STEP 2/4 \u{b7} 3:10 [x]\n\
-             ----\nSTASIS\nDUMP\nVEL UP\nVEL DOWN\nTILT UP\nTILT DOWN\n----\nHOLD\nSKIP\nEND\n\
+             ----\nSTASIS\nDUMP\nVEL UP\nVEL DOWN\nTILT UP\nTILT DOWN\nQUIET NOW\n----\nHOLD\nSKIP\nEND\n\
              RUN PROGRAM >\n  Workday \u{b7} RUNNING [x]\n  Climb & Cruise\n----\n\
              Open dashboard\nHide HUD\nQuit\n"
         );
+    }
+
+    #[test]
+    fn quiet_now_needs_a_running_belt_and_its_label_says_what_a_click_does() {
+        assert!(!find(&build(&still()), "quiet_now").enabled);
+        assert!(!find(&build(&disconnected()), "quiet_now").enabled);
+        let paused = MenuInput {
+            status: MachineStatus::Paused,
+            quiet_now_back_kmh: Some(4.0),
+            ..walking()
+        };
+        assert!(!find(&build(&paused), "quiet_now").enabled);
+        let item = find(&build(&walking()), "quiet_now").clone();
+        assert!(item.enabled);
+        assert_eq!(item.label, "QUIET NOW");
+        assert_eq!(
+            item.action.and_then(TrayAction::command),
+            Some(Command::QuietNow)
+        );
+        let quiet = MenuInput {
+            quiet_now_back_kmh: Some(4.0),
+            ..walking()
+        };
+        let item = find(&build(&quiet), "quiet_now").clone();
+        assert!(item.enabled);
+        assert_eq!(item.label, "END QUIET \u{b7} BACK TO 4.0 KM/H");
+        // Same layout, so the native item is relabelled in place.
+        assert_eq!(layout(&build(&walking())), layout(&build(&quiet)));
     }
 
     #[test]
@@ -1059,7 +1112,7 @@ mod tests {
     }
 
     /// Every command the menu can send is one the HUD's buttons already send
-    /// (HudPanel.tsx: the transport, steppers and program row): nothing here
+    /// (HudPanel.tsx: the transport with QUIET, steppers and program row): nothing here
     /// is a new way to move the belt.
     #[test]
     fn the_menu_sends_only_commands_the_hud_sends() {
@@ -1070,6 +1123,7 @@ mod tests {
             Command::NudgeSpeed { up: false },
             Command::NudgeIncline { up: true },
             Command::NudgeIncline { up: false },
+            Command::QuietNow,
             Command::ProgramResume,
             Command::ProgramPause,
             Command::ProgramSkip,
