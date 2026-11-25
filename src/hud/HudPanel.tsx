@@ -366,7 +366,7 @@ export function ProgramsModule({ snapshot }: { snapshot: AppSnapshot }) {
           <SmallButton
             className={wait ? "hud-btn-go" : undefined}
             sub={a.paused ? "resume" : "pause"}
-            title={a.paused ? "Resume the program." : "Pause the program."}
+            title={a.paused ? "Resume the program." : "Hold the program."}
             onClick={() => send({ type: a.paused ? "program_resume" : "program_pause" })}
           >
             {a.paused ? "GO" : "HOLD"}

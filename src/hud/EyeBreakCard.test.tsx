@@ -69,7 +69,7 @@ describe("EyeBreakCard", () => {
     render(<EyeBreakCard snapshot={withEye({ phase: "complete", holds_belt: true })} />);
     expect(screen.getByText("OCULAR_IMPLANT // RECALIBRATED")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "SKIP" })).toBeNull();
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "RESUME" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "RE-JACK" })));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "STAY STILL" })));
     expect(sent()).toEqual([
       { command: { type: "eye_break_resume" } },
