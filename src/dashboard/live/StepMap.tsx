@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import type { ActiveProgram } from "../../ipc";
 import { planRows, rowTime, stepChart, zoneText, type PlanRow, type StepChart } from "../programs/stepMap";
 import { Label, Panel } from "../ui";
@@ -75,9 +75,10 @@ function Row({ row }: { row: PlanRow }) {
  * STEP_MAP on the Live page: the running program's steps and a stepped speed
  * and incline chart with a "you are here" line. It takes the stats' place and
  * the height left on the page (at least two list rows), so the page still fits
- * 760x600; the list scrolls inside it.
+ * 760x600; the list scrolls inside it. `readout` sits in its header (the Live
+ * page's time and distances), so those stay in view while the map is open.
  */
-export function StepMap({ a }: { a: ActiveProgram }) {
+export function StepMap({ a, readout }: { a: ActiveProgram; readout?: ReactNode }) {
   const rows = planRows(a);
   const listRef = useRef<HTMLOListElement>(null);
   const currentKey = rows.find((r) => r.state === "current")?.key;
@@ -102,6 +103,7 @@ export function StepMap({ a }: { a: ActiveProgram }) {
             Cycle {a.cycle} · repeats every {num(repeat)} min
           </span>
         )}
+        {readout}
         {/* Each axis top in its line's colour, so the labels double as the legend. */}
         <span className="ml-auto text-neon-cyan/80">{chart.maxSpeed.toFixed(1)} km/h</span>
         <span className="text-neon-magenta/80">{chart.maxIncline.toFixed(1)}% tilt</span>
