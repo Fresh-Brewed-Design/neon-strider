@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.76.7 (2026-11-25)
+
+### Fixed
+
+- A dashboard button that fails now shows the reason right under the button, not in a toast in the corner.
+- Buttons covered: GO, Pause, Skip and End on the program card, program delete, stat pins, the HUD page's lists and pickers, Live speed and tilt, Desk settings, Maintenance and Pin open.
+
 ## 1.76.6 (2026-11-25)
 
 ### Fixed
