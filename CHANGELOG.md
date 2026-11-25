@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.70.1 (2026-11-25)
+
+### Fixed
+
+- At a large Windows text size, a long one-word stat name on the Live page shrinks to fit its tile.
+- The PC TIME WALKED tile keeps each duration, such as 5h 40m, on one line.
+
 ## 1.70.0 (2026-11-24)
 
 ### New

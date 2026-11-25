@@ -184,7 +184,14 @@ node scripts/feature-inventory.mjs [word]   # what the app already has (toasts, 
 cargo test        # in src-tauri/: Rust tests, and regenerates src/ipc/bindings
 cargo fmt --check # in src-tauri/: formatting
 cargo clippy --all-targets -- -D warnings   # in src-tauri/: lints, no warnings allowed
+npm run tauri build   # installer; its beforeBuildCommand already runs npm run build
 ```
+
+Before a PR, run what CI runs, once each: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`
+and `cargo test` (only when the branch changes `src-tauri/` or `src/ipc/bindings/`), then
+`npx tsc --noEmit`, `npx eslint .`, `npx vitest run`, and last `npm run tauri build`. Clippy
+covers `cargo check`, and `tauri build` covers `npm run build`, so neither runs separately.
+Skip `tauri build` when only tests or docs change.
 
 Design without a treadmill: with a Vite server running, open `/hud-preview.html` or
 `/dashboard-preview.html`. Both run on a mocked backend (`src/dev/mockBackend.ts`, with the
@@ -329,7 +336,7 @@ sticker on the deck gives 200 km (125 miles), which is the default.
   its byte (`CurveHold`) until the next speed change or step. Tests in `engine.rs`,
   `programs.rs` and `sim.rs` pin it.
 - Before building a feature, run `node scripts/feature-inventory.mjs <word>` and grep the code for the behaviour itself (toast and card text, snapshot fields, settings); improve what exists instead of adding a near-duplicate.
-- After editing any Rust file, run `cargo check` in `src-tauri/`.
+- After a batch of Rust edits, run `cargo clippy --all-targets` in `src-tauri/` (it checks the test code too), not `cargo check` after every edit.
 - The Rust version is pinned in `rust-toolchain.toml`; bump it there and in the workflows together, and fix any new clippy lints in the same PR.
 - Packet decoding and speed/calibration scaling belong in **Rust**, not JS.
 - UI text is never smaller than 11px.

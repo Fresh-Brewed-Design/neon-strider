@@ -64,6 +64,20 @@ describe("Live page STEP_MAP", () => {
     expect(localStorage.getItem("liveStepMap")).toBe("closed");
   });
 
+  it("keeps time, distance and today's distance in view beside the map", () => {
+    current!.session.duration_s = 754;
+    current!.session.distance_m = 1234;
+    current!.session.daily_distance_m = 4560;
+    render(<LivePage />);
+    const readout = screen.getByRole("group", { name: "Walk stats" });
+    expect(readout).toHaveTextContent("TIME 12:34");
+    expect(readout).toHaveTextContent("DIST 1.23 KM");
+    expect(readout).toHaveTextContent("TODAY 4.56 KM");
+
+    fireEvent.click(screen.getByRole("button", { name: /map/i }));
+    expect(screen.queryByRole("group", { name: "Walk stats" })).not.toBeInTheDocument();
+  });
+
   it("keeps the stats with no program running", () => {
     current!.active_program = null;
     render(<LivePage />);
@@ -90,5 +104,12 @@ describe("Live page maintenance banner", () => {
     const header = document.querySelector("header")!;
     expect(header).toHaveTextContent(/Belt service due/);
     expect(header).toHaveTextContent(/off or asleep/);
+  });
+});
+
+describe("Live page tile codenames", () => {
+  it("sizes a codename with its tile, never under 11 px", async () => {
+    const { CODENAME_FIT } = await import("./LivePage");
+    expect(CODENAME_FIT).toMatch(/clamp\(11px,[\d.]+cqw,12px\)/);
   });
 });
