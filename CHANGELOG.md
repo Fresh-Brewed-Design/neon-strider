@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.72.0 (2026-11-25)
+
+### New
+
+- The Programs page tags the program you ran last with LAST_RUN beside its name. The "Run or end a program" shortcut starts that program.
+
 ## 1.71.0 (2026-11-25)
 
 ### Changed
