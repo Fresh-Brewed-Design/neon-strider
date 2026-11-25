@@ -26,19 +26,27 @@ function ExpandIcon() {
 
 /**
  * The panel collapsed during stasis (`hud_view` "strip"): under the header,
- * today's total (DAILY_TOTAL), expand (the whole panel until the belt next
+ * today's total (DAILY_TOTAL, with today's walking time beside its label), expand (the whole panel until the belt next
  * moves) and Engage.
  */
 export function StripRow({ snapshot }: { snapshot: AppSnapshot }) {
   const { send, error } = useHudSend();
   const daily = statWidget("DAILY");
   const total = daily?.read(snapshot);
+  const time = daily?.detail?.(snapshot);
   return (
     <div className="hud-strip">
       <div className="hud-strip-row">
         {daily && total && (
           <div className={`hud-strip-total accent-${daily.accent}`} title={daily.codename}>
-            <span className="hud-label">{daily.label}</span>
+            <span className="hud-strip-head">
+              <span className="hud-label">{daily.label}</span>
+              {time && (
+                <span className="hud-sub hud-strip-time" data-testid="hud-strip-time">
+                  {time}
+                </span>
+              )}
+            </span>
             <span className="hud-value hud-value-sm">
               {total.value}
               {total.unit && <span className="hud-unit">{total.unit}</span>}

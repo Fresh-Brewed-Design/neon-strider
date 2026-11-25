@@ -55,6 +55,18 @@ describe("HUD strip", () => {
     expect(container.querySelector(".hud-stats")).toBeNull();
   });
 
+  it("shows today's walking time beside TODAY, and none before the first walk", () => {
+    show(still("strip", (s) => (s.session.daily_time_s = 8_040)));
+    expect(screen.getByTestId("hud-strip-time")).toHaveTextContent("2h 14m");
+    expect(screen.getByTestId("hud-strip-time").closest(".hud-strip-total")).toHaveTextContent("TODAY");
+  });
+
+  it("leaves the time out before the first walk of the day", () => {
+    show(still("strip", (s) => (s.session.daily_time_s = 0)));
+    expect(screen.getByText("TODAY")).toBeInTheDocument();
+    expect(screen.queryByTestId("hud-strip-time")).toBeNull();
+  });
+
   it("expand and Engage each send one command", async () => {
     vi.mocked(invoke).mockClear();
     show(still("strip"));

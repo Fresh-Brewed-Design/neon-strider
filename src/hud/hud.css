@@ -278,6 +278,14 @@ body,
 
 .hud-strip-total .hud-value { color: var(--accent); }
 
+/* Today's walking time on the label's line, so the km line keeps its width. */
+.hud-strip-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.hud-strip-time { line-height: 1.2; font-variant-numeric: tabular-nums; }
+
 .hud-btn.hud-btn-expand {
   flex-shrink: 0;
   margin-left: auto;
