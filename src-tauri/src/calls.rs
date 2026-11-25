@@ -276,14 +276,13 @@ impl CallMachine {
                 // Only ever slower: a belt already at or under the quiet speed
                 // (or not running) is left alone, for this whole call. So is
                 // a belt Quiet now holds: its second press puts the speed back.
-                let adjusted = (belt.running
-                    && !self.quiet_now()
-                    && belt.target_kmh > quiet + SAME_KMH)
-                    .then_some(Adjusted {
-                        saved_kmh: belt.target_kmh,
-                        set_kmh: quiet,
-                        program: belt.program,
-                    });
+                let adjusted =
+                    (belt.running && !self.quiet_now() && belt.target_kmh > quiet + SAME_KMH)
+                        .then_some(Adjusted {
+                            saved_kmh: belt.target_kmh,
+                            set_kmh: quiet,
+                            program: belt.program,
+                        });
                 self.phase = Phase::Call {
                     adjusted,
                     free_since_ms: None,

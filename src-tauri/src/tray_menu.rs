@@ -846,7 +846,10 @@ mod tests {
         let item = find(&build(&walking()), "quiet_now").clone();
         assert!(item.enabled);
         assert_eq!(item.label, "QUIET NOW");
-        assert_eq!(item.action.and_then(TrayAction::command), Some(Command::QuietNow));
+        assert_eq!(
+            item.action.and_then(TrayAction::command),
+            Some(Command::QuietNow)
+        );
         let quiet = MenuInput {
             quiet_now_back_kmh: Some(4.0),
             ..walking()
