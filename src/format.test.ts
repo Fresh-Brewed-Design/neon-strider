@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { formatDayHeading } from "./format";
+import { formatDayHeading, stasisClock, stasisLabel } from "./format";
 
 // Clock changes in America/New_York: 2026-03-08 (23 h day) and 2026-11-01 (25 h day).
 describe("formatDayHeading across a daylight-saving change", () => {
@@ -32,5 +32,19 @@ describe("formatDayHeading across a daylight-saving change", () => {
   it("labels yesterday just after the clocks go back", () => {
     const now = new Date(2026, 10, 2, 0, 30).getTime();
     expect(formatDayHeading(new Date(2026, 10, 1, 12).getTime(), now)).toBe("Yesterday");
+  });
+});
+
+describe("the STASIS clock", () => {
+  it("reads m:ss under an hour and h:mm:ss from an hour up", () => {
+    expect(stasisClock(5)).toBe("0:05");
+    expect(stasisClock(200.9)).toBe("3:20");
+    expect(stasisClock(3600)).toBe("1:00:00");
+    expect(stasisClock(3909)).toBe("1:05:09");
+  });
+
+  it("keeps the bare word until Rust has a clock", () => {
+    expect(stasisLabel(null)).toBe("STASIS");
+    expect(stasisLabel(65)).toBe("STASIS\u00a01:05");
   });
 });

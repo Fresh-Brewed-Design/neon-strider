@@ -37,6 +37,7 @@ import { seated } from "./seated";
 import { shortcuts } from "./shortcuts";
 import { speedDrift } from "./speeddrift";
 import { stasis } from "./stasis";
+import { stasisClock } from "./stasisclock";
 import { strava } from "./strava";
 import { strideFit } from "./stridefit";
 import { today } from "./today";
@@ -88,6 +89,8 @@ export const SCENARIOS: Scenario[] = [
   easyStop,
   fitToTime,
   programTones,
+  // After every scenario that pauses the belt at load.
+  stasisClock,
   // After platform: the keys follow ?mac.
   shortcuts,
   // Last: it holds the cards the scenarios above put up.

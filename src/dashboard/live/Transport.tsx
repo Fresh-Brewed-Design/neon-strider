@@ -1,5 +1,6 @@
 import { Loader2 } from "lucide-react";
 import { ActionStatus } from "../../components/ActionStatus";
+import { stasisLabel } from "../../format";
 import { useAction, useBackendAction } from "../../components/useAction";
 import { dispatch, type AppSnapshot } from "../../ipc";
 import { isMoving, linkState, linkView, startFailure } from "../../state/linkStatus";
@@ -22,6 +23,8 @@ export function Transport({ s }: { s: AppSnapshot }) {
   // On a paused program this button is its GO (Rust resumes the program).
   const programGo = !moving && s.active_program?.phase === "walking" && s.active_program.paused;
   const paused = deck.status === "Paused";
+  // The STASIS clock under the resume button: how long the pause has lasted.
+  const stasis = paused && deck.paused_for_s !== null ? stasisLabel(deck.paused_for_s) : null;
 
   if (!connection.connected) {
     const linking = state === "connecting" || state === "scanning";
@@ -70,6 +73,12 @@ export function Transport({ s }: { s: AppSnapshot }) {
           </span>{" "}
           <span className="font-mono text-[11px] font-normal normal-case leading-tight tracking-normal opacity-70">
             {moving ? "pause" : programGo || paused ? "resume" : "start"}
+            {stasis !== null && " "}
+            {stasis !== null && (
+              <span className="ml-1 font-bold uppercase tabular-nums tracking-[0.14em]" title="How long the belt has been paused.">
+                {stasis}
+              </span>
+            )}
           </span>
         </NeonButton>
         <NeonButton

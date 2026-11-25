@@ -139,6 +139,14 @@ body,
   letter-spacing: 0.18em;
 }
 
+/* The STASIS clock beside the word: tight like T-MINUS, so 1:05:09 still
+   shares the line with the logo at 340 px, and tabular so it ticks without
+   the header shifting. */
+.hud-status-clock {
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
 /* The link label as a "reconnect now" button while the link is down. Its
    colour comes from the .tone-* rule below. */
 .hud-relink {

@@ -1,4 +1,4 @@
-import type { LinkTone, RelinkView } from "./status";
+import type { LinkLabel, RelinkView } from "./status";
 import type { useLogoDrag } from "./useHudDrag";
 
 /**
@@ -17,7 +17,7 @@ export function HudHeader({
   minifyKey = null,
   simulated = false,
 }: {
-  link: { text: string; tone: LinkTone };
+  link: LinkLabel;
   relink: RelinkView | null;
   onRelink: () => void;
   logo: ReturnType<typeof useLogoDrag>;
@@ -59,6 +59,12 @@ export function HudHeader({
           ) : (
             <span className={`hud-status tone-${link.tone}`} title={relink?.title ?? undefined}>
               {link.text}
+              {link.clock && (
+                <span className="hud-status-clock" title="How long the belt has been paused.">
+                  &nbsp;
+                  {link.clock}
+                </span>
+              )}
             </span>
           )}
           {onMinify && (

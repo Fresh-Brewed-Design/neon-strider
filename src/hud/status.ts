@@ -1,10 +1,18 @@
 import type { AppSnapshot, ConnectionSnapshot } from "../ipc";
+import { stasisClock } from "../format";
 import { isMoving, linkState, linkView } from "../state/linkStatus";
 
 export type LinkTone = "live" | "idle" | "down" | "warn";
 
+/** The HUD header's status word, LED colour and, while paused, the STASIS clock ("3:20"). */
+export interface LinkLabel {
+  text: string;
+  tone: LinkTone;
+  clock?: string;
+}
+
 /** The HUD header's status word and LED colour. */
-export function linkLabel(s: AppSnapshot): { text: string; tone: LinkTone } {
+export function linkLabel(s: AppSnapshot): LinkLabel {
   const state = linkState(s.connection).state;
   if (!s.connection.connected || state === "no_data") {
     const v = linkView(s.connection, s.platform.settings);
@@ -22,7 +30,10 @@ export function linkLabel(s: AppSnapshot): { text: string; tone: LinkTone } {
     case "Starting":
       return { text: "SPIN-UP", tone: "live" };
     case "Paused":
-      return { text: "STASIS", tone: "idle" };
+      // Counts up while paused (Rust's clock), so a long pause is plain to see.
+      return s.deck.paused_for_s === null
+        ? { text: "STASIS", tone: "idle" }
+        : { text: "STASIS", tone: "idle", clock: stasisClock(s.deck.paused_for_s) };
     case "Stopping":
       return { text: "SPIN-DOWN", tone: "idle" };
     default:

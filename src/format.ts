@@ -25,6 +25,17 @@ export function mmss(totalSeconds: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+/** The STASIS clock: how long the belt has been paused, m:ss, then h:mm:ss from an hour up. */
+export function stasisClock(totalSeconds: number): string {
+  const t = Math.max(0, Math.floor(totalSeconds));
+  return t >= 3600 ? formatClock(t) : mmss(t);
+}
+
+/** The paused belt's status word with its clock ("STASIS 3:20"), or the bare word before Rust has one. */
+export function stasisLabel(pausedForS: number | null | undefined): string {
+  return pausedForS === null || pausedForS === undefined ? "STASIS" : `STASIS\u00a0${stasisClock(pausedForS)}`;
+}
+
 /** A length of time in words: "1h 05m", "12m" or "40s". */
 export function formatDuration(seconds: number): string {
   const total = Math.max(0, Math.round(seconds));
