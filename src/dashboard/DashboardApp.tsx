@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState, type ComponentType } from "react";
 import { Activity, History, LayoutDashboard, ListChecks, Pin, PinOff, Settings2 } from "lucide-react";
 import { toast, Toaster } from "sonner";
+import { ActionStatus } from "../components/ActionStatus";
+import { useAction } from "../components/useAction";
 import { subscribeAppSnapshot, useAppState } from "../state/useAppState";
 import { useTreadmillStore } from "../store/treadmillStore";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { GuidedPinMarker } from "./guided/GuidedPinMarker";
 import { LinkControl } from "./link/LinkControl";
 import { readPref, writePref } from "./localPrefs";
-import { cx, send } from "./util";
+import { cx, post } from "./util";
 import { LivePage } from "./pages/LivePage";
 import { ProgramsPage } from "./pages/ProgramsPage";
 import { HistoryPage } from "./pages/HistoryPage";
@@ -62,6 +64,7 @@ function BackgroundToasts() {
 /** The tray popup: a nav rail on the left, the chosen page on the right. */
 export function DashboardApp() {
   const pinned = useAppState((s) => s.hud.dashboard_pinned) ?? false;
+  const pin = useAction();
   const [page, setPage] = useState<PageId>(readPage);
   const Current = PAGES.find((p) => p.id === page)?.Page ?? LivePage;
 
@@ -146,7 +149,8 @@ export function DashboardApp() {
           </div>
           <button
             type="button"
-            onClick={() => send({ type: "dashboard_set_pinned", pinned: !pinned })}
+            disabled={pin.pending}
+            onClick={() => void pin.run(post({ type: "dashboard_set_pinned", pinned: !pinned }))}
             title={pinned ? "Close the dashboard when it loses focus" : "Keep the dashboard open when it loses focus"}
             className={cx(
               "dash-rail-item flex w-full items-center gap-2 rounded px-2.5 py-2 text-left transition-colors hover:bg-white/5",
@@ -158,6 +162,10 @@ export function DashboardApp() {
               {pinned ? "Pinned" : "Pin open"}
             </span>
           </button>
+          {/* The icon-only rail has no room for a sentence: there the line shows over the page instead. */}
+          <div className="dash-wide-only empty:hidden">
+            <ActionStatus error={pin.error} className="px-1" />
+          </div>
           <LinkControl />
         </div>
       </nav>
@@ -166,6 +174,9 @@ export function DashboardApp() {
         {/* With the rail at icons only, the guided task's marker sits over the page instead. */}
         <div className="dash-compact-only shrink-0 px-3 pt-2">
           <GuidedPinMarker />
+        </div>
+        <div className="dash-compact-only shrink-0 px-3 pt-2">
+          <ActionStatus error={pin.error} />
         </div>
         {page !== "system" && (
           <CalibrateOffer
