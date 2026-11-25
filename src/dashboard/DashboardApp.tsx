@@ -84,7 +84,7 @@ export function DashboardApp() {
     [],
   );
 
-  // INSTALL on the HUD's update card: open System, CORE, Updates on the notes, once per request.
+  // NOTES on the HUD's update card: open System, CORE, Updates on the notes, once per request.
   useEffect(
     () =>
       subscribeAppSnapshot((s) => {

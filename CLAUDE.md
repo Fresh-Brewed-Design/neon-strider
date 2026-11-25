@@ -225,7 +225,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?easystop=on|easing`: Easy stop switched on in System -> Treadmill; `=easing` a manual walk easing down after DUMP, 12 s before the Stop (EASY STOP on the HUD, DUMP reads "stop now")
 - `?echo=short`: ECHO on a History walk is refused as too short, with Rust's message
 - `?engage=timeout`: the deck's screen is off, so Engage waits and fails
-- `?eyebreak=upcoming|rest|break|still|resume`: the OCULAR_IMPLANT cards: heads-up, heads-up set for a program rest, cooldown with the belt paused or left alone, resume card
+- `?eyebreak=upcoming|rest|break|still|resume`: the OCULAR_IMPLANT cards: heads-up, heads-up set for a program rest, cooldown with the belt paused or left alone, RE-JACK card
 - `?ghostpod=advertising|connected|error`: System -> Labs GHOST_POD
 - `?ghostpower=waiting|linked`: GHOST_POD's power switch on, with no watch or a watch reading 135 W
 - `?guided`: a guided task (GROUND_TRUTH) holding the dashboard open and on top, with UNPIN
@@ -274,7 +274,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?traffic=recording|saved`: the Diagnostics traffic recorder
 - `?typingspeed`: System -> Labs typing by speed on, with a table of five speed bands from 12 walks; `=empty` on with no walks counted yet
 - `?update=available|downloading|failed|whatsnew`: auto-update states
-- `?walkaway=warning|paused|idle`: the walk-away cards
+- `?walkaway=warning|paused|idle`: the walk-away cards (RE-JACK and DUMP on the paused one)
 - `?weekly`: the last-week HUD card; `=long|new|down` variants
 - `?wallclock=new|late|none`: History's WALL_CLOCK card with no desk days, a walk at 21:00 widening the row, or desk days with no walks
 - `?zonetilt`: System -> Labs ZONE_TILT on, so the program editor offers each heart zone step speed, incline or both
@@ -323,7 +323,7 @@ sticker on the deck gives 200 km (125 miles), which is the default.
 
 ## Conventions
 
-- **The belt never starts moving without a user action in that moment** (Engage, GO/Resume,
+- **The belt never starts moving without a user action in that moment** (Engage, GO, RE-JACK,
   starting a program, a speed set by hand, a HUD or shortcut press, or a start at the treadmill
   with its own buttons or remote). The app never starts or
   resumes the belt by itself after a restart, a reconnect, an update, an unlock or a call
