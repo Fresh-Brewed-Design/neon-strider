@@ -34,8 +34,9 @@ tried.
   - **History**: totals, a year calendar, every session with a speed/incline replay, Strava
     upload, and CSV export.
   - **HUD**: pick and order the HUD widgets and its corner.
-  - **System**: treadmill limits, calibration, Strava, neural flow, desk nudges, belt
-    maintenance, startup and diagnostics.
+  - **System**: four tabs. DECK has treadmill limits, calibration, speed drift and belt
+    maintenance; LINKS Strava and heart rate; ROUTINE neural flow, sessions, desk nudges and
+    shortcuts; CORE startup, updates, labs and diagnostics.
 - **Strava.** Connect once; finished walks upload in the background, merged across short
   breaks, as indoor walks with your shoes, a themed title and description, and optional muting
   from your feed. Optional daily rollup uploads a day's walks as one activity after your shift
@@ -67,7 +68,7 @@ The dashboard pages and HUD cards, captured from the mocked preview (no treadmil
 | | |
 |---|---|
 | ![Programs page listing saved routines with a program running](docs/img/dashboard-programs.png) | ![History page with weekly totals, a year calendar and the session list](docs/img/dashboard-history.png) |
-| ![System page, Strava section with auto-sync, daily rollup and shoe choice](docs/img/dashboard-system.png) | ![HUD with a walk-away warning card counting down above the panel](docs/img/hud-walkaway.png) |
+| ![System page on its LINKS tab, Strava with auto-sync, daily rollup and shoe choice](docs/img/dashboard-system.png) | ![HUD with a walk-away warning card counting down above the panel](docs/img/hud-walkaway.png) |
 
 ![HUD with the neural flow line showing the belt eased to 3.3 of 3.5 km/h](docs/img/hud-neural.png)
 

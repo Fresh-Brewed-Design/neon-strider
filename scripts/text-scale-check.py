@@ -20,7 +20,8 @@ BASE = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:5192"
 SHOTS = Path(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] != "-" else None
 SCALES = [int(v) for v in sys.argv[3].split(",")] if len(sys.argv) > 3 else [100, 150, 200, 225]
 
-# (name, nav button, preview flags, then an optional press on the page)
+# (name, nav button, preview flags, then an optional press on the page: a button's name,
+# "expand" for the first expandable row, or "tab:<name>" for one of System's group tabs)
 VIEWS = [
     ("live", "Live", "", None),
     ("live-map", "Live", "program=interval", None),
@@ -32,8 +33,11 @@ VIEWS = [
     ("history", "History", "", None),
     ("history-walk", "History", "heart=on", "expand"),
     ("hud", "HUD", "", None),
-    ("system", "System", "", None),
-    ("system-calibration", "System", "calwizard=guidedone", None),
+    ("system", "System", "", "tab:DECK"),
+    ("system-links", "System", "", "tab:LINKS"),
+    ("system-routine", "System", "", "tab:ROUTINE"),
+    ("system-core", "System", "update=available", "tab:CORE"),
+    ("system-calibration", "System", "calwizard=guidedone", "tab:DECK"),
 ]
 
 # Every text node: past the window's sides, cut by an ancestor that hides overflow, or
@@ -87,7 +91,9 @@ def open_view(page, scale, nav, flags, press):
     page.goto(f"{BASE}/dashboard-preview.html{query}")
     page.wait_for_selector("nav[aria-label='Sections']")
     page.locator("nav[aria-label='Sections'] button", has_text=nav).first.click()
-    if press == "expand":
+    if press and press.startswith("tab:"):
+        page.get_by_role("radio", name=press[4:]).click()
+    elif press == "expand":
         page.locator("button[aria-expanded]").first.click()
     elif press:
         page.get_by_role("button", name=press).first.click()
