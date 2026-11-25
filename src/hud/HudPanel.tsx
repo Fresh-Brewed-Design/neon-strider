@@ -177,6 +177,34 @@ export function EasyStopLine({ snapshot }: { snapshot: AppSnapshot }) {
   );
 }
 
+/** The speed Quiet now eases to: the quiet setting, never under the deck's slowest. */
+function quietKmh(snapshot: AppSnapshot): number {
+  return Math.max(snapshot.calls.quiet_kmh, snapshot.deck.min_speed_kmh);
+}
+
+/**
+ * Quiet line while Quiet now holds the belt at the quiet speed, pressed on
+ * the HUD or in the tray. Rust decides when (`calls.quiet_now`); a speed set
+ * by hand, a program step or a stop ends it and the line goes.
+ */
+export function QuietNowLine({ snapshot }: { snapshot: AppSnapshot }) {
+  const { quiet_now, quiet_now_back_kmh: back } = snapshot.calls;
+  if (!quiet_now || back === null) return null;
+  return (
+    <div
+      className="hud-quiet accent-yellow"
+      data-testid="hud-quiet"
+      title={`QUIET puts ${back.toFixed(1)} km/h back.`}
+    >
+      <span className="hud-label">QUIET // HOLD</span>
+      <span className="hud-quiet-speed">
+        {quietKmh(snapshot).toFixed(1)}
+        <span className="hud-unit">/{back.toFixed(1)} km/h</span>
+      </span>
+    </div>
+  );
+}
+
 /**
  * Quiet line while the HUD holds its non-urgent cards and toasts back,
  * because Windows says a presentation or full-screen app is in front. Rust
@@ -222,7 +250,30 @@ export function EngageButton({
   );
 }
 
-/** Engage / Stasis, Dump and the speed and tilt steppers. */
+/**
+ * QUIET: Quiet now, one `quiet_now` to Rust. The first press eases a running
+ * belt to the quiet speed and the second puts the speed back. Rust refuses a
+ * still belt or one already as slow, and says why under the controls.
+ */
+function QuietButton({ snapshot, send }: { snapshot: AppSnapshot; send: (c: Command) => Promise<boolean> }) {
+  const back = snapshot.calls.quiet_now_back_kmh;
+  const on = snapshot.calls.quiet_now && back !== null;
+  return (
+    <button
+      type="button"
+      className={`hud-btn hud-btn-quiet hud-btn-stack accent-yellow${on ? " is-on" : ""}`}
+      aria-pressed={on}
+      disabled={!snapshot.connection.connected}
+      title={on ? `Put ${back.toFixed(1)} km/h back.` : `Ease the belt to ${quietKmh(snapshot).toFixed(1)} km/h.`}
+      onClick={() => void send({ type: "quiet_now" })}
+    >
+      QUIET{" "}
+      <span className="hud-btn-sub">{on ? `back to ${back.toFixed(1)}` : "slow down"}</span>
+    </button>
+  );
+}
+
+/** Engage / Stasis, Dump, QUIET and the speed and tilt steppers. */
 export function Controls({ snapshot }: { snapshot: AppSnapshot }) {
   const { send, error } = useHudSend();
   const { deck, connection } = snapshot;
@@ -242,6 +293,7 @@ export function Controls({ snapshot }: { snapshot: AppSnapshot }) {
           DUMP{" "}
           <span className="hud-btn-sub">{snapshot.easy_stop.easing ? "stop now" : "end walk"}</span>
         </button>
+        <QuietButton snapshot={snapshot} send={send} />
       </div>
       <div className="hud-steppers">
         <Stepper

@@ -2,10 +2,14 @@
 //!
 //! While any app is using the microphone (a call), a running belt eases to a
 //! quiet speed, so the walking is less noticeable to the people on the call, and
-//! goes back when the call ends. Three parts:
+//! goes back when the call ends. Quiet now (#345) is the same slowdown pressed
+//! by hand (the HUD's QUIET button, the tray's QUIET NOW), for a listen-only
+//! meeting or someone at the desk that leaves the microphone idle: a second
+//! press puts the speed back. Three parts:
 //!
 //! - `mic`: polls whether another app uses the microphone (`platform`);
-//! - `CallMachine`: the pure decision logic, driven with injected times;
+//! - `CallMachine`: the pure decision logic for calls and Quiet now, driven
+//!   with injected times;
 //! - the settings and the snapshot.
 //!
 //! `desk.rs` polls the microphone, runs the machine once a second and applies
@@ -73,12 +77,18 @@ pub struct CallsSnapshot {
     pub mic_in_use: bool,
     /// The belt is currently held at the quiet speed because of a call.
     pub quiet_active: bool,
+    /// Quiet now holds the belt at the quiet speed (pressed by hand).
+    pub quiet_now: bool,
+    /// While Quiet now holds: the speed a second press puts back.
+    pub quiet_now_back_kmh: Option<f32>,
 }
 
 /// What the machine needs to know about the belt.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Belt {
     pub running: bool,
+    /// Paused mid-walk: the target is kept and a resume walks at it again.
+    pub paused: bool,
     /// A program step is walking, so the speed lives in the program's live target.
     pub program: bool,
     /// The current target speed: the program's live target, or the manual one.
@@ -130,9 +140,112 @@ pub struct CallMachine {
     phase: Phase,
     /// While idle: when the microphone was first seen in use.
     mic_since_ms: Option<u64>,
+    /// Quiet now: the slowdown pressed by hand, put back by a second press.
+    manual: Option<Adjusted>,
+}
+
+/// Why a Quiet now press changed nothing; the HUD shows it under the button.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum QuietRefusal {
+    /// The belt is still: Quiet now never starts it.
+    NotRunning,
+    /// The belt already runs at or under the quiet speed (this one).
+    AlreadySlow { quiet_kmh: f32 },
+    /// Quiet now holds a paused belt: the speed goes back once it runs.
+    PausedHold,
+}
+
+impl QuietRefusal {
+    pub fn message(self) -> String {
+        match self {
+            QuietRefusal::NotRunning => "Quiet now works on a running belt.".to_string(),
+            QuietRefusal::AlreadySlow { quiet_kmh } => {
+                format!("The belt already runs at {quiet_kmh:.1} km/h or slower.")
+            }
+            QuietRefusal::PausedHold => {
+                "Quiet now puts the speed back once the belt runs.".to_string()
+            }
+        }
+    }
 }
 
 impl CallMachine {
+    /// Quiet now holds the belt at the quiet speed.
+    pub fn quiet_now(&self) -> bool {
+        self.manual.is_some()
+    }
+
+    /// While Quiet now holds: the speed a second press puts back.
+    pub fn quiet_now_back_kmh(&self) -> Option<f32> {
+        self.manual.map(|a| a.saved_kmh)
+    }
+
+    /// The belt is held at the quiet speed, for a call or by Quiet now
+    /// (Neural flow and speed drift defer to either).
+    pub fn holds_quiet(&self) -> bool {
+        self.quiet_active() || self.quiet_now()
+    }
+
+    /// A Quiet now press. The first eases a running belt to the quiet speed;
+    /// the second puts back the speed it had. It only ever lowers a running
+    /// belt and never starts a still one. During a call that already holds
+    /// the belt quiet, the press takes the hold over, so the call's end
+    /// leaves the belt quiet and the second press puts the speed back.
+    pub fn press_quiet_now(
+        &mut self,
+        cfg: &Config,
+        belt: &Belt,
+    ) -> Result<Option<Action>, QuietRefusal> {
+        if let Some(a) = self.manual {
+            if !belt.running {
+                // A restore on a paused belt would wait in the intent and
+                // walk on at it after GO; keep holding and say so instead.
+                return Err(QuietRefusal::PausedHold);
+            }
+            self.manual = None;
+            // Moved by hand or by a program step since: left as it is.
+            return Ok(restore(&a, belt));
+        }
+        if let Phase::Call {
+            adjusted: Some(a),
+            free_since_ms,
+        } = self.phase
+        {
+            self.manual = Some(a);
+            self.phase = Phase::Call {
+                adjusted: None,
+                free_since_ms,
+            };
+            return Ok(None);
+        }
+        if !belt.running {
+            return Err(QuietRefusal::NotRunning);
+        }
+        let quiet = cfg.quiet_kmh.max(belt.min_kmh);
+        if belt.target_kmh <= quiet + SAME_KMH {
+            return Err(QuietRefusal::AlreadySlow { quiet_kmh: quiet });
+        }
+        let a = Adjusted {
+            saved_kmh: belt.target_kmh,
+            set_kmh: quiet,
+            program: belt.program,
+        };
+        self.manual = Some(a);
+        Ok(Some(Action::Quiet { to_kmh: a.set_kmh }))
+    }
+
+    /// Quiet now lets go once its speed is no longer the belt's: a speed set
+    /// by hand, a program step, a switch to or from a program, or the walk
+    /// ending. A pause keeps the hold (the target stays and a resume walks at
+    /// it), as a call's restore does.
+    fn check_quiet_now(&mut self, belt: &Belt) {
+        if let Some(a) = self.manual {
+            if !((belt.running || belt.paused) && still_ours(&a, belt)) {
+                self.manual = None;
+            }
+        }
+    }
+
     /// We are holding the belt at the quiet speed for a call.
     pub fn quiet_active(&self) -> bool {
         matches!(
@@ -146,6 +259,7 @@ impl CallMachine {
 
     /// Advance to `now_ms`. Returns a speed change to apply, if any.
     pub fn tick(&mut self, cfg: &Config, now_ms: u64, input: &Input) -> Option<Action> {
+        self.check_quiet_now(&input.belt);
         match self.phase {
             Phase::Idle => {
                 if !(cfg.enabled && input.mic_in_use) {
@@ -160,9 +274,12 @@ impl CallMachine {
                 let belt = &input.belt;
                 let quiet = cfg.quiet_kmh.max(belt.min_kmh);
                 // Only ever slower: a belt already at or under the quiet speed
-                // (or not running) is left alone, for this whole call.
-                let adjusted =
-                    (belt.running && belt.target_kmh > quiet + SAME_KMH).then_some(Adjusted {
+                // (or not running) is left alone, for this whole call. So is
+                // a belt Quiet now holds: its second press puts the speed back.
+                let adjusted = (belt.running
+                    && !self.quiet_now()
+                    && belt.target_kmh > quiet + SAME_KMH)
+                    .then_some(Adjusted {
                         saved_kmh: belt.target_kmh,
                         set_kmh: quiet,
                         program: belt.program,
@@ -204,12 +321,14 @@ impl CallMachine {
 /// belt that is still running. A stopped or paused belt is never restarted by a
 /// restore.
 fn restore(a: &Adjusted, belt: &Belt) -> Option<Action> {
-    let untouched = belt.running
-        && belt.program == a.program
-        && (belt.target_kmh - a.set_kmh).abs() <= SAME_KMH;
-    untouched.then_some(Action::Restore {
+    (belt.running && still_ours(a, belt)).then_some(Action::Restore {
         to_kmh: a.saved_kmh,
     })
+}
+
+/// The target is still the quiet speed we set, in the same mode.
+fn still_ours(a: &Adjusted, belt: &Belt) -> bool {
+    belt.program == a.program && (belt.target_kmh - a.set_kmh).abs() <= SAME_KMH
 }
 
 // ---------------------------------------------------------------------------
@@ -273,18 +392,31 @@ static CONFIG: Mutex<Config> = Mutex::new(Config {
     quiet_kmh: DEFAULT_QUIET_KMH,
     start_hold_ms: CALL_START_HOLD_MS,
 });
-/// Published by the desk loop for the snapshot.
+/// Published from the machine for the engine: the belt is held quiet, for a
+/// call or by Quiet now.
 static QUIET_ACTIVE: AtomicBool = AtomicBool::new(false);
+/// The one machine: the desk loop ticks it, a Quiet now press acts on it.
+/// Always taken after the orchestrator lock, never held across an await.
+static MACHINE: Mutex<CallMachine> = Mutex::new(CallMachine {
+    phase: Phase::Idle,
+    mic_since_ms: None,
+    manual: None,
+});
 
 pub fn config() -> Config {
     *CONFIG.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-pub fn set_quiet_active(active: bool) {
-    QUIET_ACTIVE.store(active, Ordering::Relaxed);
+/// Run `f` on the machine, then publish whether it holds the belt quiet.
+pub fn with_machine<R>(f: impl FnOnce(&mut CallMachine) -> R) -> R {
+    let mut m = MACHINE.lock().unwrap_or_else(|e| e.into_inner());
+    let out = f(&mut m);
+    QUIET_ACTIVE.store(m.holds_quiet(), Ordering::Relaxed);
+    out
 }
 
-/// The belt is held at the quiet speed for a call (Neural flow defers to it).
+/// The belt is held at the quiet speed, for a call or by Quiet now (Neural
+/// flow and speed drift defer to it).
 pub fn quiet_active() -> bool {
     QUIET_ACTIVE.load(Ordering::Relaxed)
 }
@@ -338,11 +470,17 @@ pub fn set_config(app: &AppHandle, enabled: bool, quiet_kmh: f32) -> Result<(), 
 /// For the snapshot. No I/O.
 pub fn snapshot() -> CallsSnapshot {
     let cfg = config();
+    let (call, quiet_now_back_kmh) = {
+        let m = MACHINE.lock().unwrap_or_else(|e| e.into_inner());
+        (m.quiet_active(), m.quiet_now_back_kmh())
+    };
     CallsSnapshot {
         enabled: cfg.enabled,
         quiet_kmh: cfg.quiet_kmh,
         mic_in_use: mic::in_use_now(),
-        quiet_active: quiet_active(),
+        quiet_active: call,
+        quiet_now: quiet_now_back_kmh.is_some(),
+        quiet_now_back_kmh,
     }
 }
 
@@ -377,6 +515,7 @@ mod tests {
     fn running(target: f32) -> Belt {
         Belt {
             running: true,
+            paused: false,
             program: false,
             target_kmh: target,
             min_kmh: 0.6,
@@ -611,6 +750,213 @@ mod tests {
             m.tick(&cfg(), T0 + 100 * S, &call(running(4.0))),
             Some(Action::Quiet { to_kmh: 2.0 })
         );
+    }
+
+    // ---- Quiet now (#345) ----
+
+    fn paused(target: f32) -> Belt {
+        Belt {
+            running: false,
+            paused: true,
+            ..running(target)
+        }
+    }
+
+    fn stopped(target: f32) -> Belt {
+        Belt {
+            running: false,
+            ..running(target)
+        }
+    }
+
+    /// A Quiet now press that eases `belt` to the 2.0 km/h quiet speed.
+    fn quieted(m: &mut CallMachine, belt: Belt) {
+        assert_eq!(
+            m.press_quiet_now(&cfg(), &belt),
+            Ok(Some(Action::Quiet { to_kmh: 2.0 }))
+        );
+    }
+
+    #[test]
+    fn quiet_now_eases_a_running_belt_and_the_second_press_puts_it_back() {
+        let mut m = CallMachine::default();
+        quieted(&mut m, running(4.0));
+        assert!(m.quiet_now());
+        assert!(m.holds_quiet());
+        assert!(!m.quiet_active(), "no call");
+        assert_eq!(m.quiet_now_back_kmh(), Some(4.0));
+        // It holds while the belt walks at the quiet speed, with no call.
+        assert!(run(&mut m, &cfg(), 1, 600, quiet_call(running(2.0))).is_empty());
+        assert!(m.quiet_now());
+        assert_eq!(
+            m.press_quiet_now(&cfg(), &running(2.0)),
+            Ok(Some(Action::Restore { to_kmh: 4.0 }))
+        );
+        assert!(!m.quiet_now());
+        assert!(!m.holds_quiet());
+    }
+
+    #[test]
+    fn quiet_now_never_starts_a_still_belt() {
+        let mut m = CallMachine::default();
+        for belt in [stopped(4.0), paused(4.0)] {
+            assert_eq!(
+                m.press_quiet_now(&cfg(), &belt),
+                Err(QuietRefusal::NotRunning)
+            );
+            assert!(!m.quiet_now());
+        }
+    }
+
+    #[test]
+    fn quiet_now_on_a_belt_already_slow_changes_nothing_and_says_so() {
+        let mut m = CallMachine::default();
+        for kmh in [1.5, 2.0, 2.04] {
+            assert_eq!(
+                m.press_quiet_now(&cfg(), &running(kmh)),
+                Err(QuietRefusal::AlreadySlow { quiet_kmh: 2.0 })
+            );
+        }
+        assert!(!m.quiet_now());
+        assert_eq!(
+            QuietRefusal::AlreadySlow { quiet_kmh: 2.0 }.message(),
+            "The belt already runs at 2.0 km/h or slower."
+        );
+        // The treadmill's slowest speed is the floor, as for a call.
+        let c = Config {
+            quiet_kmh: 0.5,
+            ..cfg()
+        };
+        assert_eq!(
+            m.press_quiet_now(&c, &running(4.0)),
+            Ok(Some(Action::Quiet { to_kmh: 0.6 }))
+        );
+    }
+
+    #[test]
+    fn a_speed_set_by_hand_ends_quiet_now_without_a_restore() {
+        let mut m = CallMachine::default();
+        quieted(&mut m, running(4.0));
+        run(&mut m, &cfg(), 1, 5, quiet_call(running(2.0)));
+        // Nudged up by 0.1 by hand: the hold lets go at once.
+        assert!(run(&mut m, &cfg(), 6, 6, quiet_call(running(2.1))).is_empty());
+        assert!(!m.quiet_now());
+        // A press now is a fresh Quiet now from 2.1.
+        assert_eq!(
+            m.press_quiet_now(&cfg(), &running(2.1)),
+            Ok(Some(Action::Quiet { to_kmh: 2.0 }))
+        );
+        assert_eq!(m.quiet_now_back_kmh(), Some(2.1));
+    }
+
+    #[test]
+    fn a_second_press_after_the_speed_moved_restores_nothing() {
+        // Moved between the last tick and the press: the restore is dropped.
+        let mut m = CallMachine::default();
+        quieted(&mut m, running(4.0));
+        assert_eq!(m.press_quiet_now(&cfg(), &running(3.0)), Ok(None));
+        assert!(!m.quiet_now());
+    }
+
+    #[test]
+    fn a_pause_keeps_quiet_now_and_the_restore_waits_for_the_belt_to_run() {
+        let mut m = CallMachine::default();
+        quieted(&mut m, running(4.0));
+        run(&mut m, &cfg(), 1, 30, quiet_call(paused(2.0)));
+        assert!(m.quiet_now(), "a pause keeps the target");
+        assert_eq!(
+            m.press_quiet_now(&cfg(), &paused(2.0)),
+            Err(QuietRefusal::PausedHold)
+        );
+        assert!(m.quiet_now(), "still held, nothing moved");
+        // Resumed at the quiet speed: the second press puts the speed back.
+        run(&mut m, &cfg(), 31, 40, quiet_call(running(2.0)));
+        assert_eq!(
+            m.press_quiet_now(&cfg(), &running(2.0)),
+            Ok(Some(Action::Restore { to_kmh: 4.0 }))
+        );
+    }
+
+    #[test]
+    fn a_stop_ends_quiet_now() {
+        let mut m = CallMachine::default();
+        quieted(&mut m, running(4.0));
+        // The deck still reports the quiet speed while it winds down; the
+        // hold goes all the same.
+        run(&mut m, &cfg(), 1, 1, quiet_call(stopped(2.0)));
+        assert!(!m.quiet_now());
+        assert!(!m.holds_quiet());
+    }
+
+    #[test]
+    fn quiet_now_on_a_program_holds_its_live_target_and_a_step_change_ends_it() {
+        let mut m = CallMachine::default();
+        quieted(&mut m, program(3.5));
+        run(&mut m, &cfg(), 1, 30, quiet_call(program(2.0)));
+        assert!(m.quiet_now());
+        assert_eq!(
+            m.press_quiet_now(&cfg(), &program(2.0)),
+            Ok(Some(Action::Restore { to_kmh: 3.5 }))
+        );
+        // The next step starts at 4.0: the step's speed wins, no restore later.
+        quieted(&mut m, program(3.5));
+        run(&mut m, &cfg(), 31, 31, quiet_call(program(4.0)));
+        assert!(!m.quiet_now());
+        // A program that ends at the quiet speed hands over to a manual walk.
+        quieted(&mut m, program(3.5));
+        run(&mut m, &cfg(), 32, 32, quiet_call(running(2.0)));
+        assert!(!m.quiet_now());
+    }
+
+    #[test]
+    fn a_call_during_quiet_now_neither_slows_nor_restores() {
+        let mut m = CallMachine::default();
+        quieted(&mut m, running(4.0));
+        // A call starts and ends while Quiet now holds the belt.
+        assert!(run(&mut m, &cfg(), 1, 30, call(running(2.0))).is_empty());
+        assert!(!m.quiet_active(), "Quiet now already holds it");
+        assert!(run(&mut m, &cfg(), 31, 60, quiet_call(running(2.0))).is_empty());
+        assert!(m.quiet_now(), "the call's end leaves Quiet now on");
+        assert_eq!(
+            m.press_quiet_now(&cfg(), &running(2.0)),
+            Ok(Some(Action::Restore { to_kmh: 4.0 }))
+        );
+    }
+
+    #[test]
+    fn quiet_now_during_a_call_takes_the_hold_over() {
+        let mut m = CallMachine::default();
+        m.tick(&cfg(), T0, &call(running(4.0)));
+        assert!(m.quiet_active());
+        // Pressed mid-call: nothing moves, the hold becomes Quiet now's.
+        assert_eq!(m.press_quiet_now(&cfg(), &running(2.0)), Ok(None));
+        assert!(m.quiet_now());
+        assert!(!m.quiet_active());
+        assert!(m.holds_quiet());
+        // The call ends: no restore, the belt stays quiet.
+        let fx = run(&mut m, &cfg(), 1, 40, quiet_call(running(2.0)));
+        assert!(fx.is_empty(), "{fx:?}");
+        assert!(m.quiet_now());
+        // The second press puts back the speed from before the call.
+        assert_eq!(
+            m.press_quiet_now(&cfg(), &running(2.0)),
+            Ok(Some(Action::Restore { to_kmh: 4.0 }))
+        );
+    }
+
+    #[test]
+    fn quiet_now_works_with_slow_down_on_calls_switched_off() {
+        let off = Config {
+            enabled: false,
+            ..cfg()
+        };
+        let mut m = CallMachine::default();
+        assert_eq!(
+            m.press_quiet_now(&off, &running(4.0)),
+            Ok(Some(Action::Quiet { to_kmh: 2.0 }))
+        );
+        assert!(run(&mut m, &off, 1, 30, call(running(2.0))).is_empty());
+        assert!(m.quiet_now());
     }
 
     // ---- settings ----

@@ -8,4 +8,12 @@ mic_in_use: boolean,
 /**
  * The belt is currently held at the quiet speed because of a call.
  */
-quiet_active: boolean, };
+quiet_active: boolean, 
+/**
+ * Quiet now holds the belt at the quiet speed (pressed by hand).
+ */
+quiet_now: boolean, 
+/**
+ * While Quiet now holds: the speed a second press puts back.
+ */
+quiet_now_back_kmh: number | null, };

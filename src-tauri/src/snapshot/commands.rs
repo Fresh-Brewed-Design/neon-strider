@@ -290,6 +290,7 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         Command::CallsSetConfig { enabled, quiet_kmh } => {
             blocking(move || calls::set_config(&app, enabled, quiet_kmh)).await
         }
+        Command::QuietNow => desk::press_quiet_now().await,
 
         // ---- Walk-away safety ----
         Command::WalkawaySetConfig {
