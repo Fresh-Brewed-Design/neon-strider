@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.76.0 (2026-11-25)
+
+### New
+
+- QUIET on the HUD and QUIET NOW in the tray menu ease a running belt to the quiet speed. Use them for a listen-only meeting or when someone stops by the desk.
+- A second press puts back the speed the belt had. The tray item then reads END QUIET with that speed.
+- QUIET never starts a still belt. On a belt already at the quiet speed or slower, the HUD says so and nothing changes.
+- A speed set by hand, a new program step or a stop ends QUIET and keeps the new speed. A pause keeps QUIET on, and the second press works once the belt runs again.
+- Pressed during a call, QUIET keeps the belt quiet after the call ends, until the second press.
+- The quiet speed in System, Desk now stays editable with Slow down on calls switched off.
+
 ## 1.75.0 (2026-11-25)
 
 ### Changed
