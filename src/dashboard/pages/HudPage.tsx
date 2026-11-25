@@ -86,7 +86,7 @@ function PlacementRow({ anchor, custom }: { anchor: HudAnchor; custom: boolean }
       </div>
       <ActionStatus pending={reset.pending} error={reset.error} />
       <Hint>
-        Drag the NEON STRIDER logo to move the HUD to any display. Near a corner, the HUD snaps into place.
+        Drag the NEON STRIDER logo to place the HUD on any display and snap to a corner.
       </Hint>
     </div>
   );
@@ -165,7 +165,8 @@ function IdleModePicker({ mode }: { mode: HudIdleMode }) {
         optionClassName={rowOption}
       />
       <ActionStatus pending={set.pending} error={set.error} />
-      <Hint>Cards that need an answer still show, and a hidden HUD comes back when the belt moves.</Hint>
+      <Hint>Cards that need an answer still show.</Hint>
+      <Hint>A hidden HUD comes back when the belt moves.</Hint>
     </div>
   );
 }
@@ -177,7 +178,7 @@ function MinifyShortcutNote({ shortcuts }: { shortcuts: ShortcutsSnapshot }) {
     <div className="flex flex-col gap-1">
       <Label>Minify shortcut</Label>
       <Hint>
-        {key ? `${key} shrinks the HUD to a strip and brings it back.` : "Off."} Change it in System, ROUTINE, Shortcuts.
+        {key ? `${key} shrinks the HUD to a strip and back. Change the key in System, ROUTINE, Shortcuts.` : "The minify shortcut is off. Set a key in System, ROUTINE, Shortcuts."}
       </Hint>
     </div>
   );
@@ -294,10 +295,8 @@ export function HudPage() {
             <MonitorPicker monitors={s.hud_monitors} selected={monitor} />
             <IdleModePicker mode={s.hud.idle_mode} />
             <MinifyShortcutNote shortcuts={s.shortcuts} />
-            <Hint>
-              Clicks pass through the HUD except on its panel. Speed and tilt pop-ups stay hidden while VEL or TILT is on
-              the HUD.
-            </Hint>
+            <Hint>Clicks pass through the HUD except on its panel.</Hint>
+            <Hint>Speed and tilt pop-ups stay hidden while VEL or TILT shows on the HUD.</Hint>
           </Panel>
         </div>
       </div>

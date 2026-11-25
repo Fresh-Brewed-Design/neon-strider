@@ -23,7 +23,7 @@ describe("HUD page minify shortcut", () => {
   it("names the minify shortcut and where to change it", () => {
     render(<HudPage />);
     expect(
-      screen.getByText("Alt+Insert shrinks the HUD to a strip and brings it back. Change it in System, ROUTINE, Shortcuts."),
+      screen.getByText("Alt+Insert shrinks the HUD to a strip and back. Change the key in System, ROUTINE, Shortcuts."),
     ).toBeInTheDocument();
   });
 
@@ -31,7 +31,7 @@ describe("HUD page minify shortcut", () => {
     const minify = current!.shortcuts.list.find((v) => v.shortcut === "toggle_minified")!;
     minify.keys = [];
     render(<HudPage />);
-    expect(screen.getByText("Off. Change it in System, ROUTINE, Shortcuts.")).toBeInTheDocument();
+    expect(screen.getByText("The minify shortcut is off. Set a key in System, ROUTINE, Shortcuts.")).toBeInTheDocument();
   });
 });
 

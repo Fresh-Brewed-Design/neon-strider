@@ -1,0 +1,1 @@
+- Settings and HUD text is shorter and clearer, and the empty History page now says how a walk gets recorded.

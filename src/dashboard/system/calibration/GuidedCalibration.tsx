@@ -273,7 +273,7 @@ export function GuidedCalibration() {
       </button>
       {advanced && (
         <div className="space-y-3 border-l border-white/10 pl-3">
-          <Hint>The target list picks the speeds by hand, and RUN ALL runs each one, slowest first.</Hint>
+          <Hint>The target list picks speeds by hand and RUN ALL runs them slowest first.</Hint>
           {beltSet && !walk && !run && (
             <div>
               <NeonButton
@@ -359,7 +359,7 @@ function BeltLoopStep({
         </NeonButton>
       </div>
       <ActionStatus pending={save.pending} error={save.error} />
-      {!treadmillKnown && <Hint>Connect the treadmill first, so the belt length is kept for that treadmill.</Hint>}
+      {!treadmillKnown && <Hint>Connect the treadmill first so the belt length is saved per treadmill.</Hint>}
     </div>
   );
 }
@@ -519,7 +519,7 @@ function RunPanel({
           </button>
           <ActionStatus pending={false} error={tap.error} />
           <Hint>
-            {tapKey ? `Space taps in the dashboard, and ${tapKey} taps from any window.` : "Space taps in the dashboard."}
+            {tapKey ? `Space taps in the dashboard. ${tapKey} taps from any window.` : "Space taps in the dashboard."}
           </Hint>
           <div
             className="h-1.5 overflow-hidden rounded bg-white/10"

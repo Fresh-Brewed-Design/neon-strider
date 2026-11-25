@@ -75,7 +75,7 @@ export function NeuralSection() {
     <Section
       id="sys-neural"
       title="Neural flow"
-      description="Eases the belt off while you type a lot, and brings it back once you stop. Counts key presses only, never which keys."
+      description="Eases the belt off while you type a lot and brings it back once you stop."
     >
       <Toggle
         label="Neural flow"
@@ -83,7 +83,12 @@ export function NeuralSection() {
         checked={enabled}
         onChange={(v) => updateSettings({ focusStabilityEnabled: v })}
         description="Works on any walk, set by hand or by a program."
-        hint="Neural flow starts easing after about 10 s of steady typing. Typing less brings the speed back up within about 20 s, and full speed returns about a minute after typing stops. A speed you set yourself becomes the new starting point."
+        hint={[
+          "Counts key presses only, never which keys.",
+          "Easing starts after about 10 s of steady typing.",
+          "Typing less brings the speed back within about 20 s and full speed returns a minute after typing stops.",
+          "A speed you set yourself becomes the new starting point.",
+        ]}
       />
       {enabled && (
         <>

@@ -23,7 +23,7 @@ export function installProgress(u: UpdateSnapshot): string | null {
   if (s.state === "downloading") {
     return s.percent === null ? "Downloading…" : `Downloading ${s.percent}%…`;
   }
-  if (s.state === "installing") return "Installing. Neon Strider closes and opens again by itself.";
+  if (s.state === "installing") return "Installing: Neon Strider closes and opens again by itself.";
   return null;
 }
 

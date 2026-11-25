@@ -69,7 +69,7 @@ describe("EyeBreakCard", () => {
     const s = withEye({ phase: "complete", holds_belt: true });
     s.active_program = { ...structuredClone(mock.active_program!), phase: "walking", paused: true, wait: null };
     render(<EyeBreakCard snapshot={s} />);
-    expect(screen.getByText("Break over. The belt stays paused until you press GO.")).toBeInTheDocument();
+    expect(screen.getByText("The belt stays paused until you press GO.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "GO" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "RE-JACK" })).toBeNull();
   });
@@ -78,7 +78,7 @@ describe("EyeBreakCard", () => {
     render(<EyeBreakCard snapshot={withEye({ phase: "complete", holds_belt: true })} />);
     expect(screen.getByText("OCULAR_IMPLANT // RECALIBRATED")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "SKIP" })).toBeNull();
-    expect(screen.getByText("Break over. The belt stays paused until you press RE-JACK.")).toBeInTheDocument();
+    expect(screen.getByText("The belt stays paused until you press RE-JACK.")).toBeInTheDocument();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "RE-JACK" })));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "STAY STILL" })));
     expect(sent()).toEqual([

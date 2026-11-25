@@ -86,7 +86,7 @@ export function SyncActions({
 
   const saveForStrava = () =>
     void save.run(() => invoke<SavedFile>("strava_save_for_strava", { sessionIds: null }), {
-      done: (f) => `Saved ${f.file_name}. Drop it on the Strava page that just opened.`,
+      done: (f) => `Saved ${f.file_name}. Drop the file on the open Strava page.`,
     });
 
   const shownElsewhere = [connect.error, connect.done, sync.error, sync.done, save.error, save.done];
@@ -124,7 +124,7 @@ export function SyncActions({
       </div>
       {!connected && (
         <Hint>
-          Sync now needs a connected account, and Save for Strava works without one.
+          Sync now needs a connected account while Save for Strava works with no account.
         </Hint>
       )}
       {connected && !strava.auto_sync && (

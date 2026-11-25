@@ -40,7 +40,7 @@ export function TreadmillSection() {
           max={L.min_speed_kmh.max}
           step={0.1}
           value={minSpeed}
-          hint="The lowest running speed the controls will request, raised to the deck's own floor once DECK_PROFILE has seen it."
+          hint="Slowest speed is the lowest the controls request, never below the deck's own floor."
           onCommit={(v) => updateSettings({ minSpeed: Math.min(v, maxSpeed) })}
         />
         <NumberField
@@ -50,7 +50,7 @@ export function TreadmillSection() {
           max={L.max_speed_kmh.max}
           step={0.5}
           value={maxSpeed}
-          hint="The highest speed the controls will request, kept under the deck's own top speed once DECK_PROFILE has seen it."
+          hint="Top speed is the highest the controls request, never above the deck's own top speed."
           snap={(v) => snapToDeck(v, deck, "hw_kmh")}
           onCommit={(v) => updateSettings({ maxSpeed: v })}
         />
@@ -60,7 +60,7 @@ export function TreadmillSection() {
           min={L.max_incline_level.min}
           max={L.max_incline_level.max}
           value={maxIncline}
-          hint="The treadmill's top incline step, kept at or under the deck's own top level once DECK_PROFILE has seen it."
+          hint="Highest incline level is the treadmill's top step, never above the deck's own top level."
           snap={(v) => snapToLevel(v, deck)}
           onCommit={(v) => updateSettings({ maxIncline: v })}
         />
@@ -71,7 +71,7 @@ export function TreadmillSection() {
           max={L.body_mass_kg.max}
           step={0.5}
           value={bodyMassKg}
-          hint="Used to estimate calories burned. Stays on this computer."
+          hint="Body weight is used to estimate calories burned and kept on your computer."
           onCommit={(v) => updateSettings({ bodyMassKg: v })}
         />
       </div>
