@@ -109,7 +109,10 @@ Easy stop (`easy_stop.rs`, System -> Treadmill, off by default, `easy_stop_set`,
   - `main` → `index.html` → `src/main.tsx` → `src/dashboard/DashboardApp.tsx` (760×600 tray
     popup: nav rail with Live, Programs, History, HUD, System pages in `src/dashboard/pages/`).
     Each page's pieces live in a folder beside it: `system/` (with `calibration/`, `strava/` and
-    `updates/` inside), `history/`, `live/`, `programs/` and `link/` (Bluetooth scan and link control)
+    `updates/` inside), `history/`, `live/`, `programs/` and `link/` (Bluetooth scan and link control).
+    System shows its sections on four group tabs, DECK, LINKS, ROUTINE and CORE
+    (`system/systemTabs.ts`, the open one kept in `localPrefs`); a link from elsewhere calls
+    `showSystemSection(<section id>)`, which opens the section's tab and scrolls to it
   - `hud` → `hud.html` → `src/hud/HudApp.tsx` (transparent, always-on-top, click-through except
     over its panel; separate small bundle). `HudApp` handles state and events; the panel is
     `HudPanel.tsx`, the cards `HudCards.tsx`, toasts `ToastCard.tsx`, notes `HudNote.tsx`, and

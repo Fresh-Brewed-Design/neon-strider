@@ -23,7 +23,7 @@ const SWITCH_ON: Record<Tone, string> = {
 export const INPUT_CLASS =
   "rounded border border-white/15 bg-black/40 px-2.5 py-1.5 font-mono text-xs text-white outline-none focus:border-neon-cyan";
 
-/** A titled block on the System page. `id` is the target of the section index. */
+/** A titled block on the System page. `id` is where links from elsewhere scroll to (`systemTabs.ts`). */
 export function Section({
   id,
   title,
@@ -39,7 +39,7 @@ export function Section({
   children: ReactNode;
 }) {
   return (
-    <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-14">
+    <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-3">
       <Panel className="p-4">
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
           <h2 id={`${id}-title`} className="font-digital text-sm font-bold uppercase tracking-[0.18em] text-white">
