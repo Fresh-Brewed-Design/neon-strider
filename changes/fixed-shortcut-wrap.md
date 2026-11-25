@@ -1,1 +1,0 @@
-- Fixed the shortcut descriptions in System, Shortcuts breaking one letter per line at large Windows text sizes.
