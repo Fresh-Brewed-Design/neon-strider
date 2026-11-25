@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.76.3 (2026-11-25)
+
+### Fixed
+
+- The program editor asks before discarding unsaved edits on X, Cancel, Escape or a change of page.
+- Program steps show a mistyped minutes, speed or incline value as an error under the step.
+
 ## 1.76.2 (2026-11-25)
 
 ### Changed

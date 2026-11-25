@@ -2666,7 +2666,7 @@ dependencies = [
 
 [[package]]
 name = "neon-strider"
-version = "1.76.2"
+version = "1.76.3"
 dependencies = [
  "block2 0.6.2",
  "btleplug",
