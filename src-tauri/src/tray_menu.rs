@@ -1112,7 +1112,7 @@ mod tests {
     }
 
     /// Every command the menu can send is one the HUD's buttons already send
-    /// (HudPanel.tsx: the transport, steppers and program row): nothing here
+    /// (HudPanel.tsx: the transport with QUIET, steppers and program row): nothing here
     /// is a new way to move the belt.
     #[test]
     fn the_menu_sends_only_commands_the_hud_sends() {
@@ -1123,6 +1123,7 @@ mod tests {
             Command::NudgeSpeed { up: false },
             Command::NudgeIncline { up: true },
             Command::NudgeIncline { up: false },
+            Command::QuietNow,
             Command::ProgramResume,
             Command::ProgramPause,
             Command::ProgramSkip,
