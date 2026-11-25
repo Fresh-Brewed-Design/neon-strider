@@ -111,11 +111,11 @@ function ShortcutRow({
   return (
     <div className="flex flex-col gap-1">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-[1_1_15rem]">
           <span className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-white">{text.name}</span>
           <Hint className="mt-0.5">{text.does}</Hint>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-1.5">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
           {view.keys.length === 0 && !recording && (
             <span className="font-mono text-xs uppercase tracking-[0.15em] text-white/40">Off</span>
           )}
