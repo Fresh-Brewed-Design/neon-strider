@@ -43,8 +43,8 @@ export function TemplateEditor({ strava }: { strava: StravaSnapshot }) {
 
   const reset = () =>
     useTreadmillStore.getState().confirm({
-      title: "Reset the templates",
-      message: "Your own title and description templates are replaced by the defaults.",
+      title: "Reset Strava templates",
+      message: "The default title and description templates replace your own.",
       confirmLabel: "Reset",
       tone: "danger",
       onConfirm: () => {

@@ -62,7 +62,7 @@ describe("TemplateEditor reset", () => {
     expect(templateSaves()).toHaveLength(0);
     const ask = useTreadmillStore.getState().pendingConfirmation;
     expect(ask).toMatchObject({
-      message: "Your own title and description templates are replaced by the defaults.",
+      message: "The default title and description templates replace your own.",
       confirmLabel: "Reset",
       tone: "danger",
     });
