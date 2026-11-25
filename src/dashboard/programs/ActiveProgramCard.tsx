@@ -1,7 +1,9 @@
 import { ChartNoAxesColumn, Pause, Play, SkipForward, Square } from "lucide-react";
+import { ActionStatus } from "../../components/ActionStatus";
+import { useAction } from "../../components/useAction";
 import { useAppSnapshot } from "../../state/useAppState";
 import { GhostButton, Label, Panel } from "../ui";
-import { cx, send } from "../util";
+import { cx, post } from "../util";
 import { describeActive, describeTimeLeft, waitHeadline, waitReason } from "./format";
 
 /** The Live page's STEP_MAP switch: whether the step map shows in place of the stats. */
@@ -16,6 +18,8 @@ export interface StepMapToggle {
  */
 export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
   const s = useAppSnapshot();
+  // GO, Resume, Pause, Skip and End share one status line under the buttons.
+  const control = useAction();
   const a = s?.active_program;
   if (!a) return null;
   // Waiting for GO: the next step would start a still belt, so nothing moves until GO.
@@ -61,32 +65,48 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
         {wait ? (
           <button
             type="button"
-            onClick={() => send({ type: "program_resume" })}
-            className="flex items-center gap-1.5 rounded bg-neon-yellow px-3 py-1.5 font-digital text-xs font-bold tracking-widest text-black shadow-[0_0_14px_rgba(255,243,0,0.6)] hover:shadow-[0_0_20px_rgba(255,243,0,0.9)]"
+            disabled={control.pending}
+            onClick={() => void control.run(post({ type: "program_resume" }))}
+            className="flex items-center gap-1.5 rounded bg-neon-yellow px-3 py-1.5 disabled:opacity-60 font-digital text-xs font-bold tracking-widest text-black shadow-[0_0_14px_rgba(255,243,0,0.6)] hover:shadow-[0_0_20px_rgba(255,243,0,0.9)]"
             title="Start the belt and the next walk"
           >
             <Play size={14} /> GO
           </button>
         ) : a.paused ? (
-          <GhostButton onClick={() => send({ type: "program_resume" })} className="flex items-center gap-1.5 text-neon-yellow">
+          <GhostButton
+            disabled={control.pending}
+            onClick={() => void control.run(post({ type: "program_resume" }))}
+            className="flex items-center gap-1.5 text-neon-yellow"
+          >
             <Play size={14} /> Resume
           </GhostButton>
         ) : (
-          <GhostButton onClick={() => send({ type: "program_pause" })} className="flex items-center gap-1.5">
+          <GhostButton
+            disabled={control.pending}
+            onClick={() => void control.run(post({ type: "program_pause" }))}
+            className="flex items-center gap-1.5"
+          >
             <Pause size={14} /> Pause
           </GhostButton>
         )}
-        <GhostButton onClick={() => send({ type: "program_skip" })} className="flex items-center gap-1.5" title="Skip to the next step">
+        <GhostButton
+          disabled={control.pending}
+          onClick={() => void control.run(post({ type: "program_skip" }))}
+          className="flex items-center gap-1.5"
+          title="Skip to the next step"
+        >
           <SkipForward size={14} /> Skip
         </GhostButton>
         <GhostButton
-          onClick={() => send({ type: "program_end" })}
+          disabled={control.pending}
+          onClick={() => void control.run(post({ type: "program_end" }))}
           className="flex items-center gap-1.5 hover:text-neon-magenta"
           title="End the program and go back to the earlier speed."
         >
           <Square size={14} /> End
         </GhostButton>
       </div>
+      <ActionStatus error={control.error} className="basis-full justify-end text-right" />
       <div className="min-w-0 basis-full">
         <div className="font-mono text-xs text-white/60">{describeActive(a)}</div>
         {timeLeft && (
