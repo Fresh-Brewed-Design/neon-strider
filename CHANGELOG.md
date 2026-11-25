@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.76.5 (2026-11-25)
+
+### Fixed
+
+- The speed and tilt sliders now have names for screen readers and show a focus ring on Tab. Both stay locked while the treadmill is offline.
+- The Live page writes km/h in lower case beside TARGET.
+- STEP_MAP labels its top speed and tilt as a legend on the chart. Finished steps and the STASIS and DUMP hint lines are easier to read. The rest between cycles reads "speed before program".
+
 ## 1.76.4 (2026-11-25)
 
 ### Fixed
