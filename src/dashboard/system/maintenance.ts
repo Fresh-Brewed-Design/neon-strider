@@ -1,12 +1,16 @@
 import { useTreadmillStore } from "../../store/treadmillStore";
-import { send } from "../util";
 
-/** Asks before resetting the belt service counter; used by the Live banner and the System section. */
-export function confirmServiced(): void {
+/**
+ * Asks before resetting the belt service counter; used by the Live banner and the System section.
+ * `onConfirm` sends `maintenance_mark_serviced` through the caller's own action, so a refusal
+ * shows under the button that was pressed.
+ */
+export function confirmServiced(onConfirm: () => void): void {
   useTreadmillStore.getState().confirm({
     title: "Mark belt serviced",
+    confirmLabel: "Mark serviced",
     message: "Reset the service counter to today? Distance and days start again from zero.",
-    onConfirm: () => send({ type: "maintenance_mark_serviced" }),
+    onConfirm,
   });
 }
 

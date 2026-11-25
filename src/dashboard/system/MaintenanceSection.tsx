@@ -4,7 +4,7 @@ import { useAction } from "../../components/useAction";
 import { dispatch, SETTING_LIMITS, type MaintenanceBasis } from "../../ipc";
 import { useAppSnapshot } from "../../state/useAppState";
 import { Hint, Label, NeonButton } from "../ui";
-import { cx, send } from "../util";
+import { cx, post } from "../util";
 import { INPUT_CLASS, NumberField, Section } from "./fields";
 import { confirmServiced, fromDateInput, toDateInput } from "./maintenance";
 
@@ -37,6 +37,8 @@ export function MaintenanceSection() {
   const s = useAppSnapshot();
   const [today] = useState(() => toDateInput(Date.now()));
   const lastService = useAction();
+  const basis = useAction();
+  const serviced = useAction();
   if (!s) return null;
   const m = s.maintenance;
   const odo = s.odometer;
@@ -103,7 +105,11 @@ export function MaintenanceSection() {
               key={b.id}
               type="button"
               aria-pressed={m.basis === b.id}
-              onClick={() => m.basis !== b.id && send({ type: "maintenance_set_basis", basis: b.id, hours: m.interval_hours })}
+              disabled={basis.pending}
+              onClick={() =>
+                m.basis !== b.id &&
+                void basis.run(post({ type: "maintenance_set_basis", basis: b.id, hours: m.interval_hours }))
+              }
               className={cx(
                 "rounded border px-2.5 py-1.5 font-mono text-[11px] transition-colors",
                 m.basis === b.id
@@ -115,6 +121,7 @@ export function MaintenanceSection() {
             </button>
           ))}
         </div>
+        <ActionStatus pending={basis.pending} error={basis.error} className="mt-1.5" />
         <Hint className="mt-1.5">
           {hoursBasis
             ? "Hours the belt has run, from the treadmill's own timer."
@@ -189,9 +196,15 @@ export function MaintenanceSection() {
       <Hint>Slightly oily is fine and a dry deck needs oil.</Hint>
 
       <div>
-        <NeonButton tone={m.due ? "magenta" : "cyan"} className="px-4 py-2" onClick={confirmServiced}>
+        <NeonButton
+          tone={m.due ? "magenta" : "cyan"}
+          className="px-4 py-2"
+          disabled={serviced.pending}
+          onClick={() => confirmServiced(() => void serviced.run(post({ type: "maintenance_mark_serviced" })))}
+        >
           Mark serviced
         </NeonButton>
+        <ActionStatus pending={serviced.pending} error={serviced.error} className="mt-1" />
       </div>
     </Section>
   );

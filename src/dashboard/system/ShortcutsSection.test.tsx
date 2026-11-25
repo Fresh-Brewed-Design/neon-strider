@@ -11,6 +11,7 @@ vi.mock("../../state/useAppState", () => ({
 
 const { snapshot: mock } = await import("../../dev/mockBackend");
 const { ShortcutsSection } = await import("./ShortcutsSection");
+const { useTreadmillStore } = await import("../../store/treadmillStore");
 
 const dispatched = () =>
   vi
@@ -79,7 +80,16 @@ describe("System -> Shortcuts", () => {
     render(<ShortcutsSection />);
     expect(screen.getByText("Alt+=")).toHaveClass("line-through");
     expect(screen.getByText(/Another app already uses the crossed-out key/)).toBeInTheDocument();
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Reset to the defaults" })));
+    fireEvent.click(screen.getByRole("button", { name: "Reset to the defaults" }));
+    // Asks first: a reset loses every key the user picked.
+    expect(dispatched()).toEqual([]);
+    const ask = useTreadmillStore.getState().pendingConfirmation;
+    expect(ask).toMatchObject({
+      message: "Every shortcut you changed goes back to its default keys.",
+      confirmLabel: "Reset",
+      tone: "danger",
+    });
+    await act(async () => ask?.onConfirm());
     expect(dispatched()).toEqual([{ type: "shortcuts_reset" }]);
   });
 });

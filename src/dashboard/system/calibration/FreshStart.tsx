@@ -47,12 +47,16 @@ export function PointsAside({ count, newPoints }: { count: number; newPoints: nu
       : confirm({
           title: "Restore the old points",
           message: `RESTORE drops the ${plural(newPoints, "new point", "new points")}.`,
+          confirmLabel: "Restore",
+          tone: "danger",
           onConfirm: restore,
         });
   const askKeepNew = () =>
     confirm({
       title: "Delete the old points",
       message: `KEEP NEW deletes the ${plural(count, "old point", "old points")} for good.`,
+      confirmLabel: "Delete",
+      tone: "danger",
       onConfirm: keepNew,
     });
   return (

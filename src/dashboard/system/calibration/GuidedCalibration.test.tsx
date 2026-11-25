@@ -12,6 +12,7 @@ vi.mock("../../../state/useAppState", () => ({
 const { snapshot: mock } = await import("../../../dev/mockBackend");
 const { useTreadmillStore } = await import("../../../store/treadmillStore");
 const { GuidedCalibration } = await import("./GuidedCalibration");
+const { ConfirmDialog } = await import("../../ConfirmDialog");
 
 const dispatched = () =>
   vi
@@ -133,6 +134,25 @@ describe("GuidedCalibration", () => {
     expect(taps()).toHaveLength(2);
   });
 
+  it("Space is not a tap while a dialog is open", async () => {
+    current!.calibration.run = runView({ phase: "tapping", passes: 2, kept: 1 });
+    useTreadmillStore.setState({ pendingConfirmation: null });
+    render(
+      <>
+        <GuidedCalibration />
+        <ConfirmDialog />
+      </>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Delete the 3.0 km/h point" }));
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    await act(async () => fireEvent.keyDown(window, { key: " " }));
+    expect(taps()).toHaveLength(0);
+    // Closed again, Space taps as before.
+    await act(async () => fireEvent.keyDown(window, { key: "Escape" }));
+    await act(async () => fireEvent.keyDown(window, { key: " " }));
+    expect(taps()).toHaveLength(1);
+  });
+
   it("Space typed into a field is not a tap", async () => {
     current!.calibration.run = runView({ phase: "tapping", passes: 2, kept: 1 });
     render(<GuidedCalibration />);
@@ -240,6 +260,22 @@ describe("GuidedCalibration", () => {
     expect((screen.getByText("STOP") as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it("asks before deleting a measured point, naming its speed and runs", () => {
+    useTreadmillStore.setState({ calibrationPoints: [{ ...saved, runs: 3 }], pendingConfirmation: null });
+    render(<GuidedCalibration />);
+    fireEvent.click(screen.getByRole("button", { name: "Delete the 3.0 km/h point" }));
+    expect(useTreadmillStore.getState().calibrationPoints).toHaveLength(1);
+    const ask = useTreadmillStore.getState().pendingConfirmation;
+    expect(ask).toMatchObject({
+      title: "Delete the 3.0 km/h point",
+      message: "The 3.0 km/h point and its 3 runs are deleted for good.",
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    act(() => ask?.onConfirm());
+    expect(useTreadmillStore.getState().calibrationPoints).toEqual([]);
+  });
+
   it("ADD sends the speed to Rust and shows the list Rust keeps", async () => {
     const { rerender } = render(<GuidedCalibration />);
     openAdvanced();
@@ -280,5 +316,16 @@ describe("GuidedCalibration", () => {
     const runs = screen.getAllByText("RUN") as HTMLButtonElement[];
     expect(runs[runs.length - 1].disabled).toBe(true);
     expect(screen.getByLabelText("Remove 14.0 km/h from the target list")).toBeTruthy();
+  });
+});
+
+describe("GuidedCalibration Close", () => {
+  it("shows a refused Close under the run's buttons", async () => {
+    current!.calibration.run = runView({ phase: "measured", passes: 9, kept: 8, result: result() });
+    render(<GuidedCalibration />);
+    vi.mocked(invoke).mockRejectedValueOnce("Treadmill not connected");
+    await act(async () => fireEvent.click(screen.getByText("Close")));
+    expect(dispatched()).toContainEqual({ type: "calibration_run_close" });
+    expect(screen.getByText("Treadmill not connected")).toBeTruthy();
   });
 });

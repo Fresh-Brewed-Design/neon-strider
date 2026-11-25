@@ -1,10 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { Axis } from "./Axis";
 import { sliderValue, thumbCentre, trackPct } from "./sliderValue";
 
 /** The Live page's speed axis with a 0.93 km/h floor (the deck's 0.6 on a calibrated belt). */
-function speedAxis(onSet: (v: number) => void, target = 3) {
+function speedAxis(onSet: (v: number) => Promise<unknown> | void, target = 3, onNudge: (up: boolean) => Promise<unknown> | void = () => {}) {
   render(
     <Axis
       title="Velocity"
@@ -19,7 +19,7 @@ function speedAxis(onSet: (v: number) => void, target = 3) {
       formatPreset={(v) => v.toFixed(1)}
       disabled={false}
       onSet={onSet}
-      onNudge={() => {}}
+      onNudge={onNudge}
       pin={{ widget: "VELOCITY", pinned: false }}
     />,
   );
@@ -52,6 +52,39 @@ describe("speed slider", () => {
     expect(sliderValue("1.03", 0.93, 6.2)).toBe(1);
     expect(sliderValue("9", 0.93, 6.2)).toBe(6.2);
     expect(sliderValue("x", 0.93, 6.2)).toBe(0.93);
+  });
+});
+
+describe("slider access", () => {
+  it("is named after its axis", () => {
+    expect(speedAxis(() => {})).toHaveAccessibleName("Velocity target");
+  });
+
+  it("is really disabled when offline", () => {
+    render(
+      <Axis
+        title="Tilt"
+        tone="magenta"
+        unit="%"
+        actual={1}
+        target={1}
+        min={0}
+        max={10}
+        step={0.5}
+        presets={[]}
+        formatPreset={(v) => `${v}%`}
+        disabled
+        onSet={() => {}}
+        onNudge={() => {}}
+        pin={{ widget: "INCLINE", pinned: false }}
+      />,
+    );
+    expect(screen.getByRole("slider", { name: "Tilt target" })).toBeDisabled();
+  });
+
+  it("shows the unit in lower case beside the upper-case TARGET label", () => {
+    speedAxis(() => {});
+    expect(screen.getByText("km/h", { selector: "span.normal-case" })).toBeInTheDocument();
   });
 });
 
@@ -96,5 +129,27 @@ describe("STRIDE_FIT mark on the speed slider", () => {
     axis({ value: 8, label: "FIT 8.0", title: "STRIDE_FIT 8.0 km/h" });
     expect(screen.queryByTestId("slider-mark")).toBeNull();
     expect(screen.queryByText("FIT 8.0")).toBeNull();
+  });
+});
+
+describe("Axis status", () => {
+  it("shows a refused preset under the presets", async () => {
+    speedAxis(() => Promise.reject("Treadmill not connected"));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "1.5" })));
+    expect(screen.getByRole("alert")).toHaveTextContent("Treadmill not connected");
+  });
+
+  it("shows a refused nudge, and clears it on the next press that goes through", async () => {
+    let fail = true;
+    speedAxis(
+      () => Promise.resolve(),
+      3,
+      () => (fail ? Promise.reject("Treadmill not connected") : Promise.resolve()),
+    );
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Velocity up" })));
+    expect(screen.getByRole("alert")).toHaveTextContent("Treadmill not connected");
+    fail = false;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Velocity up" })));
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

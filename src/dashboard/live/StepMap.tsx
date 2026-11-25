@@ -58,13 +58,13 @@ function Row({ row }: { row: PlanRow }) {
       aria-current={current ? "step" : undefined}
       className={cx(
         "step-map-row grid grid-cols-[1.5rem_minmax(0,1fr)_5.5rem_6.5rem_3.5rem_6rem] items-center gap-2 rounded px-1.5 font-mono text-[11px] leading-4",
-        current ? "bg-neon-yellow/10 text-neon-yellow" : row.state === "done" ? "text-white/30" : "text-white/70",
+        current ? "bg-neon-yellow/10 text-neon-yellow" : row.state === "done" ? "text-white/50" : "text-white/70",
       )}
     >
       <span>{current ? "▶" : row.number != null ? String(row.number).padStart(2, "0") : ""}</span>
       <span className="truncate font-bold tracking-[0.08em]">{row.code}</span>
       <span>{rowTime(row.minutes)}</span>
-      <span>{row.speedKmh != null ? `${row.speedKmh.toFixed(1)} km/h` : "speed as before"}</span>
+      <span>{row.speedKmh != null ? `${row.speedKmh.toFixed(1)} km/h` : "speed before program"}</span>
       <span>{row.inclinePct != null ? `${num(row.inclinePct)}%` : ""}</span>
       <span className="truncate">{row.zone ? zoneText(row.zone) : ""}</span>
     </li>
@@ -104,11 +104,21 @@ export function StepMap({ a, readout }: { a: ActiveProgram; readout?: ReactNode 
           </span>
         )}
         {readout}
-        {/* Each axis top in its line's colour, so the labels double as the legend. */}
-        <span className="ml-auto text-neon-cyan/80">{chart.maxSpeed.toFixed(1)} km/h</span>
-        <span className="text-neon-magenta/80">{chart.maxIncline.toFixed(1)}% tilt</span>
       </div>
-      <Chart c={chart} />
+      <div className="relative shrink-0">
+        <Chart c={chart} />
+        {/* The chart's legend: each line's colour with the top of its axis, on the chart itself. */}
+        <div className="pointer-events-none absolute right-1 top-1 flex gap-2 rounded bg-black/60 px-1 font-mono text-[11px] leading-4">
+          <span className="flex items-center gap-1.5 text-neon-cyan">
+            <span aria-hidden className="h-0.5 w-3 bg-neon-cyan" />
+            Max {chart.maxSpeed.toFixed(1)} km/h
+          </span>
+          <span className="flex items-center gap-1.5 text-neon-magenta">
+            <span aria-hidden className="h-0.5 w-3 bg-neon-magenta" />
+            Max {chart.maxIncline.toFixed(1)}%
+          </span>
+        </div>
+      </div>
       <ol ref={listRef} aria-label="Program steps" className="step-map-list relative min-h-0 flex-1 overflow-y-auto">
         {rows.map((r) => (
           <Row key={r.key} row={r} />

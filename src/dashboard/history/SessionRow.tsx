@@ -149,6 +149,7 @@ export function SessionRow({
         : uploadState === "error"
           ? `${error ?? "Upload failed."} Click to try again.`
           : "Upload to Strava";
+  const deleteLabel = live ? "Still recording. Delete once the walk has ended." : "Delete session";
   const markHere = expanded && save.done && showSavedLine;
   const time = new Date(s.start_time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const wpm = s.neural_ticks > 0 ? Math.round((s.neural_heat / s.neural_ticks) * 2.4) : 0;
@@ -197,7 +198,7 @@ export function SessionRow({
               disabled={uploaded || live || uploadState === "uploading"}
               onClick={onUpload}
               className={cx(
-                "px-2!",
+                "min-h-6 min-w-6 px-2!",
                 uploaded && "text-emerald-400! opacity-100!",
                 uploadState === "error" && "text-red-400!",
               )}
@@ -214,10 +215,11 @@ export function SessionRow({
             </GhostButton>
           )}
           <GhostButton
-            aria-label="Delete session"
-            title="Delete session"
+            aria-label={deleteLabel}
+            title={deleteLabel}
+            disabled={live}
             onClick={onDelete}
-            className="px-2! hover:bg-red-500/10! hover:text-red-400!"
+            className="ml-2 min-h-6 min-w-6 px-2! hover:bg-red-500/10! hover:text-red-400!"
           >
             <Trash2 size={15} />
           </GhostButton>

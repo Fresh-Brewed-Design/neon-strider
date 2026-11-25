@@ -20,6 +20,8 @@ export function DeckProfile() {
   const ask = () =>
     useTreadmillStore.getState().confirm({
       title: "Forget DECK_PROFILE",
+      confirmLabel: "Forget",
+      tone: "danger",
       message: "The controls offer every speed and incline level again until the treadmill answers new targets.",
       onConfirm: () => void forget.run(() => dispatch({ type: "deck_profile_forget" })),
     });

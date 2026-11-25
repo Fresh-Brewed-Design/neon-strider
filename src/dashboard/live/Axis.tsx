@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Minus, Plus } from "lucide-react";
 import { ActionStatus } from "../../components/ActionStatus";
+import { useAction } from "../../components/useAction";
 import type { HudWidget } from "../../ipc";
 import { Label, Panel } from "../ui";
 import { cx, TONE_TEXT } from "../util";
@@ -75,8 +76,9 @@ export function Axis({
   presets: number[];
   formatPreset: (v: number) => string;
   disabled: boolean;
-  onSet: (v: number) => void;
-  onNudge: (up: boolean) => void;
+  /** Sends the value; a rejection shows under the control. */
+  onSet: (v: number) => Promise<unknown> | void;
+  onNudge: (up: boolean) => Promise<unknown> | void;
   /** Moves a chosen value to one the deck runs, so the slider lands where the belt will. */
   snap?: (v: number) => number;
   /** What the deck said about the target this control sent (DECK_ADJUSTED / DECK_REFUSED). */
@@ -85,12 +87,15 @@ export function Axis({
   mark?: SliderMark | null;
 }) {
   const [value, setDraft] = useDraft(target);
-  const wheel = useWheelSteps<HTMLDivElement>(onNudge, disabled);
+  // The last press, drag or scroll: its refusal shows under the presets.
+  const sent = useAction();
+  const nudge = (up: boolean) => void sent.run(async () => onNudge(up));
+  const wheel = useWheelSteps<HTMLDivElement>(nudge, disabled);
   const hex = tone === "cyan" ? "#00f3ff" : "#ff00ff";
   const set = (v: number) => {
     const snapped = snap(v);
     setDraft(snapped);
-    onSet(snapped);
+    void sent.run(async () => onSet(snapped));
   };
 
   return (
@@ -98,13 +103,14 @@ export function Axis({
       <div className="flex flex-wrap items-center justify-between gap-x-2">
         <Label>{title}</Label>
         <span className="flex flex-wrap items-center gap-1 font-mono text-xs uppercase tracking-[0.15em] text-white/60">
-          target <span className={cx("font-digital text-xs", TONE_TEXT[tone])}>{value.toFixed(1)}</span> {unit}
+          target <span className={cx("font-digital text-xs", TONE_TEXT[tone])}>{value.toFixed(1)}</span>{" "}
+          <span className="normal-case">{unit}</span>
           <PinToggle widget={pin.widget} pinned={pin.pinned} />
         </span>
       </div>
 
       <div className="flex items-center gap-2">
-        <Nudge label={`${title} down`} disabled={disabled} onClick={() => onNudge(false)} icon={<Minus size={16} />} />
+        <Nudge label={`${title} down`} disabled={disabled} onClick={() => nudge(false)} icon={<Minus size={16} />} />
         <div ref={wheel} title={wheelHint} className="flex min-w-0 flex-1 items-end justify-center gap-2">
           <SegmentedDisplay
             value={actual}
@@ -114,11 +120,21 @@ export function Axis({
           />
           <span className="pb-1 font-mono text-xs text-white/60">{unit}</span>
         </div>
-        <Nudge label={`${title} up`} disabled={disabled} onClick={() => onNudge(true)} icon={<Plus size={16} />} />
+        <Nudge label={`${title} up`} disabled={disabled} onClick={() => nudge(true)} icon={<Plus size={16} />} />
       </div>
 
-      <div className={cx(disabled && "pointer-events-none opacity-30")}>
-        <StylizedSlider min={min} max={max} step={step} value={value} onChange={set} color={tone} mark={mark} />
+      <div className={cx(disabled && "opacity-30")}>
+        <StylizedSlider
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={set}
+          color={tone}
+          mark={mark}
+          label={`${title} target`}
+          disabled={disabled}
+        />
       </div>
 
       <div className="flex flex-wrap gap-1">
@@ -144,7 +160,7 @@ export function Axis({
             </button>
           ))}
       </div>
-      <ActionStatus error={note} />
+      <ActionStatus error={sent.error ?? note} />
     </Panel>
   );
 }

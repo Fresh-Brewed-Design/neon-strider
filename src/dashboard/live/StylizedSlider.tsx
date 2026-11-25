@@ -12,6 +12,8 @@ export function StylizedSlider({
   onChange,
   color,
   mark = null,
+  label,
+  disabled = false,
 }: {
   min: number;
   max: number;
@@ -20,6 +22,10 @@ export function StylizedSlider({
   onChange: (val: number) => void;
   color: "cyan" | "magenta";
   mark?: SliderMark | null;
+  /** The control's accessible name. */
+  label: string;
+  /** Offline: the input is really disabled, so the keyboard can't move it either. */
+  disabled?: boolean;
 }) {
   const isCyan = color === "cyan";
   // The 16 px thumb travels the track minus its own width so it never pokes past either end.
@@ -53,12 +59,14 @@ export function StylizedSlider({
           max={max}
           step={step}
           value={value}
+          disabled={disabled}
+          aria-label={label}
           onChange={(e) => onChange(sliderValue(e.target.value, min, max))}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+          className="peer absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-10"
         />
 
         <div
-          className="absolute h-4 w-4 rounded-sm border-2 pointer-events-none z-0"
+          className="absolute h-4 w-4 rounded-sm border-2 pointer-events-none z-0 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-white"
           style={{
             left: `calc(${pct}% - ${pct * 0.16}px)`,
             borderColor: isCyan ? "var(--color-neon-cyan)" : "var(--color-neon-magenta)",

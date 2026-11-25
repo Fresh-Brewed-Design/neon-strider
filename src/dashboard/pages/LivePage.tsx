@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import type { AppSnapshot, DeckSnapshot } from "../../ipc";
+import { dispatch, type AppSnapshot, type DeckSnapshot } from "../../ipc";
 import { linkView } from "../../state/linkStatus";
 import { snapToDeck, snapToLevel } from "../../state/deckSpeeds";
 import { useAppSnapshot } from "../../state/useAppState";
@@ -17,7 +17,7 @@ import { readPref, writePref } from "../localPrefs";
 import { StatusPill } from "../StatusPill";
 import { MaintenanceBanner } from "../system/MaintenanceBanner";
 import { Codename, Label, Page, Panel, Waiting } from "../ui";
-import { cx, send, TONE_TEXT } from "../util";
+import { cx, TONE_TEXT } from "../util";
 
 const SPEED_PRESETS = [1.5, 2.5, 3, 4, 5, 6];
 
@@ -167,11 +167,11 @@ export function LivePage() {
             disabled={offline}
             onSet={(kmh) => {
               sentFrom("speed");
-              send({ type: "set_speed", kmh });
+              return dispatch({ type: "set_speed", kmh });
             }}
             onNudge={(up) => {
               sentFrom("speed");
-              send({ type: "nudge_speed", up });
+              return dispatch({ type: "nudge_speed", up });
             }}
             note={noteFor("speed")}
             snap={(kmh) => snapToDeck(kmh, deck)}
@@ -193,11 +193,11 @@ export function LivePage() {
             disabled={offline}
             onSet={(pct) => {
               sentFrom("tilt");
-              send({ type: "set_incline_level", level: levelForPct(deck, pct) });
+              return dispatch({ type: "set_incline_level", level: levelForPct(deck, pct) });
             }}
             onNudge={(up) => {
               sentFrom("tilt");
-              send({ type: "nudge_incline", up });
+              return dispatch({ type: "nudge_incline", up });
             }}
             note={noteFor("tilt")}
             pin={{ widget: "INCLINE", pinned: pinned.has("INCLINE") }}

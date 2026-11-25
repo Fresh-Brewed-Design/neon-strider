@@ -20,6 +20,7 @@ import {
 } from "./HudPanel";
 import { RunStripRow, StripRow } from "./HudStrip";
 import { linkLabel } from "./status";
+import { waitHeadline } from "../dashboard/programs/format";
 import { ToastCard } from "./ToastCard";
 import { useHitRegion } from "./useHitRegion";
 import { useLogoDrag, usePlacement } from "./useHudDrag";
@@ -32,8 +33,9 @@ import "./hud.css";
  * The always-on-top overlay: the panel (header, pinned stats, modules), the
  * persistent cards, then transient toasts. Only this content takes the
  * pointer; the rest of the window is click-through. While the belt is still,
- * Rust may ask for the panel as a strip or not at all, and minified for the
- * running strip (`hud_view`); the cards and toasts show either way.
+ * the live stats dim, and Rust may ask for the panel as a strip or not at all,
+ * and minified for the running strip (`hud_view`); the cards and toasts show
+ * either way.
  */
 export function HudApp() {
   const snapshot = useAppSnapshot();
@@ -53,15 +55,19 @@ export function HudApp() {
   const view = snapshot?.hud_view ?? "full";
   const full = view === "full";
   const minified = view === "minified";
+  const wait = snapshot?.active_program?.wait ?? null;
   // A program waiting for GO keeps the whole panel (Rust ignores minify then).
-  const canMinify = full && !snapshot?.active_program?.wait;
-  // A readout toast is redundant while the panel already shows that value live
+  const canMinify = full && !wait;
+  // The program card's headline is the one prompt while it shows.
+  const promptOnProgramCard = full && wait !== null && widgets.includes("PROGRAMS");
+  // A toast is redundant while the panel already shows the same thing live
   // (the running strip shows speed; the still strip shows neither).
   const toasts = allToasts.filter(
     (t) =>
       !(full && t.type === "VELOCITY" && widgets.includes("VELOCITY")) &&
       !(minified && t.type === "VELOCITY") &&
-      !(full && t.type === "ELEVATION" && widgets.includes("INCLINE")),
+      !(full && t.type === "ELEVATION" && widgets.includes("INCLINE")) &&
+      !(promptOnProgramCard && t.type === "AUTOMATION" && t.message === waitHeadline(wait)),
   );
   const stats = widgets.filter((w) => statWidget(w) !== undefined);
   const hasPanel = snapshot !== null && widgets.length > 0 && view !== "hidden";
@@ -83,7 +89,9 @@ export function HudApp() {
   const base = snapshot ? linkLabel(snapshot) : null;
   // A relink click in flight reads as working (LINKING…) until the state moves.
   const link = base && relink.view?.text ? { text: relink.view.text, tone: "warn" as const } : base;
-  const resting = link?.tone !== "live";
+  // While the belt rests the live stats recede. Never while the link is down
+  // or a program waits for GO; a note on the panel keeps them up too (hud.css).
+  const resting = link?.tone === "idle" && wait === null;
 
   return (
     <div className={`hud-root anchor-${custom ? "custom" : placement.anchor}`}>
@@ -123,7 +131,9 @@ export function HudApp() {
                 <QuietNowLine snapshot={snapshot} />
                 <PresentingLine snapshot={snapshot} />
                 {widgets.includes("CONTROLS") && <Controls snapshot={snapshot} />}
-                {widgets.includes("PROGRAMS") && <ProgramsModule snapshot={snapshot} />}
+                {widgets.includes("PROGRAMS") && (
+                  <ProgramsModule snapshot={snapshot} offlineShown={widgets.includes("CONTROLS")} />
+                )}
               </>
             ) : minified ? (
               <RunStripRow snapshot={snapshot} />

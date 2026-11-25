@@ -12,6 +12,7 @@ import { useAction } from "../../../components/useAction";
 import { useAppSnapshot } from "../../../state/useAppState";
 import { useTreadmillStore } from "../../../store/treadmillStore";
 import { useGuidedTask } from "../../guided/useGuidedTask";
+import { dialogOpen } from "../../useDialog";
 import { GhostButton, Hint, Label, NeonButton } from "../../ui";
 import { cx, send } from "../../util";
 import { INPUT_CLASS } from "../fields";
@@ -65,6 +66,20 @@ export function GuidedCalibration() {
   const snap = useAppSnapshot();
   const points = useTreadmillStore((s) => s.calibrationPoints);
   const removePoint = useTreadmillStore((s) => s.removeCalibrationPoint);
+  // A measured point holds every run timed at its speed, so deleting one asks first.
+  const askRemovePoint = (row: CalibrationRow) => {
+    if (row.index === null || !row.point) return;
+    const index = row.index;
+    const kmh = row.targetKmh.toFixed(1);
+    const runs = row.point.runs ?? 1;
+    useTreadmillStore.getState().confirm({
+      title: `Delete the ${kmh} km/h point`,
+      message: `The ${kmh} km/h point and its ${runs === 1 ? "1 run" : `${runs} runs`} are deleted for good.`,
+      confirmLabel: "Delete",
+      tone: "danger",
+      onConfirm: () => removePoint(index),
+    });
+  };
   // Which RUN was pressed, only for its status line; the open run itself is Rust's.
   const [pressed, setPressed] = useState<number | null>(null);
   const runAction = useAction();
@@ -218,7 +233,7 @@ export function GuidedCalibration() {
                 {row.point && row.index !== null && (
                   <button
                     type="button"
-                    onClick={() => removePoint(row.index as number)}
+                    onClick={() => askRemovePoint(row)}
                     aria-label={`Delete the ${row.targetKmh.toFixed(1)} km/h point`}
                     title="Delete"
                     className="p-2 text-white/60 transition-colors hover:text-neon-magenta"
@@ -421,6 +436,7 @@ function RunPanel({
   const tap = useAction();
   const again = useAction();
   const undo = useAction();
+  const closing = useAction();
   const listening = run.phase !== "measured";
   // GAIT_SYNC's footsteps take the same keys once the belt is measured.
   const keysListening = listening || (run.steps !== null && run.steps.phase !== "measured");
@@ -435,7 +451,8 @@ function RunPanel({
   useEffect(() => {
     if (!keysListening) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== " " || e.altKey || e.ctrlKey || e.metaKey || typingInto(e.target)) return;
+      // While a dialog is open, Space presses its focused button and is not a tap.
+      if (e.key !== " " || e.altKey || e.ctrlKey || e.metaKey || typingInto(e.target) || dialogOpen()) return;
       // Also keeps a focused button from treating Space as its own click.
       e.preventDefault();
       if (e.repeat) return;
@@ -453,7 +470,7 @@ function RunPanel({
         : walk === "guide"
           ? ({ type: "calibration_guide_skip" } as const)
           : ({ type: "calibration_run_close" } as const);
-    void dispatch(command).finally(onClosed);
+    void closing.run(() => dispatch(command)).finally(onClosed);
   };
 
   const phaseLabel = { settling: "SPIN_UP", tapping: "TAPPING", measured: "MEASURED" }[run.phase];
@@ -525,8 +542,11 @@ function RunPanel({
           {dropped && <Hint>{dropped}</Hint>}
           {run.note && <div className="font-mono text-[11px] text-neon-yellow">{run.note}</div>}
           <div className="flex justify-end">
-            <GhostButton onClick={close}>{inSweep ? "SKIP" : "Close"}</GhostButton>
+            <GhostButton disabled={closing.pending} onClick={close}>
+              {inSweep ? "SKIP" : "Close"}
+            </GhostButton>
           </div>
+          <ActionStatus pending={closing.pending} error={closing.error} className="justify-end text-right" />
         </div>
       )}
 
@@ -560,8 +580,13 @@ function RunPanel({
               TAP AGAIN
             </GhostButton>
             {/* In a sweep or the walk, the panel above has RUN and SKIP for the speed. */}
-            {!inSweep && <GhostButton onClick={close}>Close</GhostButton>}
+            {!inSweep && (
+              <GhostButton disabled={closing.pending} onClick={close}>
+                Close
+              </GhostButton>
+            )}
           </div>
+          <ActionStatus pending={closing.pending} error={closing.error} />
           <ActionStatus pending={undo.pending} error={undo.error} />
           <ActionStatus pending={again.pending} error={again.error} />
           <StepPanel run={run} limits={limits} />
@@ -590,7 +615,7 @@ function StopButton() {
 
 const MARK_CLASS: Record<SweepMark | "current", string> = {
   saved: "border-emerald-400/60 text-emerald-400",
-  skipped: "border-white/10 text-white/40 line-through",
+  skipped: "border-white/10 text-white/60 line-through",
   pending: "border-white/15 text-white/60",
   current: "border-neon-yellow/70 text-neon-yellow",
 };
