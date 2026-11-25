@@ -1,1 +1,0 @@
-- While a program runs, STEP_MAP on the Live page shows the walk's time, distance and today's distance in its top line.
