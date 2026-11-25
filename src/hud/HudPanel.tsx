@@ -1,6 +1,6 @@
 import { Fragment } from "react";
 import type { AppSnapshot, Command, HudWidget, PulseTarget, ZoneBand } from "../ipc";
-import { describeActive, describePlan, describeTimeLeft, waitHeadline, waitReason } from "../dashboard/programs/format";
+import { describeActive, describePlan, describeTimeLeft, waitHeadline } from "../dashboard/programs/format";
 import { nextStepLine } from "../dashboard/programs/stepMap";
 import { statWidget } from "../widgets/registry";
 import { Sparkline } from "../widgets/Sparkline";
@@ -8,7 +8,7 @@ import { targetAccent, targetRange, ZONE_ACCENT, zoneRange } from "../widgets/zo
 import { HudNote } from "./HudNote";
 import { isMoving, startFailure } from "../state/linkStatus";
 import { SmallButton } from "./SmallButton";
-import { engageLabel, engageSub, engageTitle } from "./status";
+import { dumpTitle, engageLabel, engageSub, engageTitle } from "./status";
 import { useHudSend } from "./useHudSend";
 import { useRelink } from "./useRelink";
 import { useWheelSteps } from "./useWheelSteps";
@@ -273,21 +273,26 @@ function QuietButton({ snapshot, send }: { snapshot: AppSnapshot; send: (c: Comm
   );
 }
 
-/** Engage / Stasis, Dump, QUIET and the speed and tilt steppers. */
+/**
+ * Engage / Stasis, Dump, QUIET and the speed and tilt steppers. While no
+ * treadmill is linked, a line under them says why they are off.
+ */
 export function Controls({ snapshot }: { snapshot: AppSnapshot }) {
   const { send, error } = useHudSend();
+  const relink = useRelink(snapshot.connection);
   const { deck, connection } = snapshot;
   // Every button sends one command to Rust. Nothing here derives the next value
   // from what is on screen, so rapid clicks can't collapse into one step.
   return (
     <div className="hud-module">
       <div className="hud-transport">
+        {/* Engage keeps its slot in every state, GO included, so a press from habit never lands on DUMP. */}
         <EngageButton snapshot={snapshot} send={send} sub />
         <button
           type="button"
           className="hud-btn hud-btn-stop hud-btn-stack accent-magenta"
           disabled={!connection.connected || deck.status === "Stopped" || deck.status === "Stopping"}
-          title={snapshot.easy_stop.easing ? "Stop the belt at once." : "Stop the belt and end the session."}
+          title={dumpTitle(snapshot)}
           onClick={() => send({ type: "stop" })}
         >
           DUMP{" "}
@@ -315,13 +320,18 @@ export function Controls({ snapshot }: { snapshot: AppSnapshot }) {
           wheelHint="Scroll to change incline."
         />
       </div>
-      <HudNote error={error ?? startFailure(snapshot) ?? deck.target_note} />
+      {!connection.connected && <OfflineLine connection={connection} relink={relink} />}
+      <HudNote error={error ?? relink.error ?? startFailure(snapshot) ?? deck.target_note} />
     </div>
   );
 }
 
 /** The running program's controls, or one button per saved program. */
-export function ProgramsModule({ snapshot }: { snapshot: AppSnapshot }) {
+export function ProgramsModule({ snapshot, offlineShown = false }: {
+  snapshot: AppSnapshot;
+  /** The controls above already say the treadmill is not connected. */
+  offlineShown?: boolean;
+}) {
   const { send, error } = useHudSend();
   const relink = useRelink(snapshot.connection);
   const a = snapshot.active_program;
@@ -335,9 +345,10 @@ export function ProgramsModule({ snapshot }: { snapshot: AppSnapshot }) {
     const timeLeft = describeTimeLeft(a);
     return (
       <div className={`hud-module accent-yellow${wait ? " hud-ready" : ""}`} role={wait ? "alert" : undefined}>
+        {/* Waiting for GO: the headline is the one prompt, in place of the label. */}
         {wait && <span className="hud-ready-headline">{waitHeadline(wait)}</span>}
         <div className="hud-auto-readout">
-          <span className="hud-label">{wait ? "READY" : a.paused ? "PAUSED" : "PROGRAM"}</span>
+          {!wait && <span className="hud-label">{a.paused ? "PAUSED" : "PROGRAM"}</span>}
           <span className="hud-value hud-value-sm">{a.name}</span>
           <span className="hud-sub hud-run-status">{describeActive(a)}</span>
           {timeLeft && (
@@ -360,13 +371,12 @@ export function ProgramsModule({ snapshot }: { snapshot: AppSnapshot }) {
               ))}
             </span>
           )}
-          {wait && <span className="hud-sub">{waitReason(wait)}</span>}
         </div>
         <div className="hud-auto-actions">
           <SmallButton
             className={wait ? "hud-btn-go" : undefined}
-            sub={a.paused ? "resume" : "pause"}
-            title={a.paused ? "Resume the program." : "Hold the program."}
+            sub={wait ? "start belt" : a.paused ? "resume" : "pause"}
+            title={wait ? "Start the belt and carry on with the program." : a.paused ? "Resume the program." : "Hold the program."}
             onClick={() => send({ type: a.paused ? "program_resume" : "program_pause" })}
           >
             {a.paused ? "GO" : "HOLD"}
@@ -387,7 +397,7 @@ export function ProgramsModule({ snapshot }: { snapshot: AppSnapshot }) {
   return (
     <div className="hud-module accent-yellow">
       <span className="hud-label">RUN PROGRAM</span>
-      {!snapshot.connection.connected && <OfflineLine connection={snapshot.connection} relink={relink} />}
+      {!snapshot.connection.connected && !offlineShown && <OfflineLine connection={snapshot.connection} relink={relink} />}
       <div className="hud-programs">
         {snapshot.programs.slice(0, 6).map((p) => (
           <button
@@ -407,8 +417,8 @@ export function ProgramsModule({ snapshot }: { snapshot: AppSnapshot }) {
   );
 }
 
-/** Why the program buttons are off while no treadmill is linked, with the same
- *  relink the header's link label does. It only links; it never starts the belt. */
+/** Why the belt and program buttons are off while no treadmill is linked, with
+ *  the same relink the header's link label does. It only links; it never starts the belt. */
 function OfflineLine({ connection, relink }: { connection: AppSnapshot["connection"]; relink: ReturnType<typeof useRelink> }) {
   const state = linkState(connection).state;
   const linking = state === "connecting" || state === "scanning";

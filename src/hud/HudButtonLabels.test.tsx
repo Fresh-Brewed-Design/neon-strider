@@ -44,10 +44,12 @@ describe("HUD belt buttons", () => {
   it("name what each does in plain words under the codename", () => {
     const { unmount } = show(panel());
     expect(screen.getByRole("button", { name: "ENGAGE start" })).toHaveAttribute("title", "Start the belt.");
-    expect(screen.getByRole("button", { name: "DUMP end walk" })).toHaveAttribute("title", "Stop the belt and end the session.");
+    // DUMP is off on a stopped belt, and its tooltip says why.
+    expect(screen.getByRole("button", { name: "DUMP end walk" })).toHaveAttribute("title", "The belt is already stopped.");
     unmount();
     show(panel((s) => (s.deck.status = "Running")));
     expect(screen.getByRole("button", { name: "STASIS pause" })).toHaveAttribute("title", "Pause the belt.");
+    expect(screen.getByRole("button", { name: "DUMP end walk" })).toHaveAttribute("title", "Stop the belt and end the session.");
   });
 
   it("covers every state of the main button's line", () => {
