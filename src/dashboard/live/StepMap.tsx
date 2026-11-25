@@ -64,7 +64,7 @@ function Row({ row }: { row: PlanRow }) {
       <span>{current ? "▶" : row.number != null ? String(row.number).padStart(2, "0") : ""}</span>
       <span className="truncate font-bold tracking-[0.08em]">{row.code}</span>
       <span>{rowTime(row.minutes)}</span>
-      <span>{row.speedKmh != null ? `${row.speedKmh.toFixed(1)} km/h` : "previous speed"}</span>
+      <span>{row.speedKmh != null ? `${row.speedKmh.toFixed(1)} km/h` : "speed before program"}</span>
       <span>{row.inclinePct != null ? `${num(row.inclinePct)}%` : ""}</span>
       <span className="truncate">{row.zone ? zoneText(row.zone) : ""}</span>
     </li>

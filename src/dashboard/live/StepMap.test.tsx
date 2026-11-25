@@ -42,7 +42,7 @@ describe("STEP_MAP", () => {
     const rows = screen.getAllByRole("listitem");
     expect(rows[rows.length - 1]).toHaveTextContent("CYCLE_REST");
     expect(rows[rows.length - 1]).toHaveTextContent("25 min");
-    expect(rows[rows.length - 1]).toHaveTextContent("previous speed");
+    expect(rows[rows.length - 1]).toHaveTextContent("speed before program");
     expect(rows[1]).toHaveTextContent("HR 85-95%");
   });
 
