@@ -100,3 +100,12 @@ export function engageTitle(snapshot: AppSnapshot): string {
   if (a?.phase === "walking" && a.paused) return "Resume the program.";
   return deck.status === "Paused" ? "Resume the belt." : "Start the belt.";
 }
+
+/** DUMP's tooltip on the panel and the running strip: what it does, or why it is off. */
+export function dumpTitle(snapshot: AppSnapshot): string {
+  const { deck, connection } = snapshot;
+  if (!connection.connected) return "Treadmill not connected.";
+  if (deck.status === "Stopped") return "The belt is already stopped.";
+  if (deck.status === "Stopping") return "The belt is already stopping.";
+  return snapshot.easy_stop.easing ? "Stop the belt at once." : "Stop the belt and end the session.";
+}

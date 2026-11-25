@@ -141,7 +141,25 @@ describe("HUD header end group at 340 px", () => {
 
   it("keeps negative margins off the children, so they stay inside the group's box", () => {
     expect(rule(".hud-relink")).not.toMatch(/margin:[^;]*-\d+px\s+-\d+px/);
-    expect(rule(".hud-btn.hud-btn-minify")).toMatch(/margin:\s*-2px 0;/);
+    expect(rule(".hud-btn.hud-btn-minify")).toMatch(/margin:\s*-4px 0;/);
     expect(css).toMatch(/\.hud-header-end:has\(\.hud-btn-minify\)\s*\{\s*margin-right:\s*-6px/);
+  });
+});
+
+// While the belt rests only the live stats dim: errors, notes, the link state and GO stay readable.
+describe("HUD at rest", () => {
+  it("dims only the stats, and not while a note shows", () => {
+    expect(rule(".hud-panel.is-resting")).toBe("");
+    expect(rule(".hud-panel.is-resting:not(:has(.hud-note)) .hud-stats")).toMatch(/opacity:\s*0\.8/);
+    expect(rule(".hud-panel.is-resting:not(:has(.hud-note)) .hud-strip-total")).toMatch(/opacity:\s*0\.8/);
+  });
+
+  it("keeps GO's plain-words line dark on its yellow fill", () => {
+    expect(rule(".hud-btn.hud-btn-go .hud-btn-sub")).toMatch(/color:\s*color-mix\(in srgb, #05080c 75%/);
+  });
+
+  it("gives the header's relink and minify buttons a 24px target", () => {
+    expect(rule(".hud-relink")).toMatch(/min-height:\s*24px/);
+    expect(rule(".hud-btn.hud-btn-minify")).toMatch(/height:\s*24px/);
   });
 });

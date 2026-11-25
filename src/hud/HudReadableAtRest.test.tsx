@@ -1,0 +1,174 @@
+import { act, render, screen } from "@testing-library/react";
+import { listen } from "@tauri-apps/api/event";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import type { AppSnapshot } from "../ipc";
+import type { ToastPayload } from "./useToasts";
+
+let current: AppSnapshot | null = null;
+vi.mock("../state/useAppState", () => ({ useAppSnapshot: () => current }));
+
+const { snapshot: mock } = await import("../dev/mockBackend");
+const { HudApp } = await import("./HudApp");
+const { UpdateCard } = await import("./HudCards");
+const { dumpTitle } = await import("./status");
+
+beforeAll(() => {
+  globalThis.ResizeObserver ??= class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+});
+
+afterEach(() => {
+  current = null;
+});
+
+/** The whole panel with the belt stopped and no program, then `patch`. */
+function panel(patch: (s: AppSnapshot) => void = () => {}): AppSnapshot {
+  const s = structuredClone(mock);
+  s.deck = { ...s.deck, status: "Stopped", speed_kmh: 0 };
+  s.active_program = null;
+  s.hud_view = "full";
+  s.hud = { ...s.hud, idle_mode: "full" };
+  patch(s);
+  return s;
+}
+
+/** Workday's rest is over on a still belt and cycle 4 waits for GO (as `?program=ready`). */
+const waiting = (s: AppSnapshot) => {
+  s.deck.status = "Paused";
+  s.active_program = { ...structuredClone(mock.active_program!), cycle: 4, paused: true, wait: "rest_complete" };
+};
+
+const offline = (s: AppSnapshot) => Object.assign(s.connection, { connected: false, link: { state: "failed" } });
+
+const show = (s: AppSnapshot) => {
+  current = s;
+  return render(<HudApp />);
+};
+
+const panelEl = (c: HTMLElement) => c.querySelector(".hud-panel");
+
+describe("HUD panel at rest", () => {
+  it("marks the panel resting while the linked belt is still", () => {
+    const { container } = show(panel());
+    expect(panelEl(container)).toHaveClass("is-resting");
+  });
+
+  it("never rests while the link is down", () => {
+    const { container } = show(panel(offline));
+    expect(panelEl(container)).not.toHaveClass("is-resting");
+  });
+
+  it("never rests while a program waits for GO", () => {
+    const { container } = show(panel(waiting));
+    expect(panelEl(container)).not.toHaveClass("is-resting");
+  });
+
+  it("does not rest while the belt runs", () => {
+    const { container } = show(panel((s) => (s.deck.status = "Running")));
+    expect(panelEl(container)).not.toHaveClass("is-resting");
+  });
+});
+
+describe("HUD waiting for GO", () => {
+  it("keeps one prompt and one GO on the program card, with what comes next, SKIP and END", () => {
+    show(panel(waiting));
+    expect(screen.getByText("REST COMPLETE // PRESS GO")).toBeInTheDocument();
+    expect(screen.queryByText("READY")).not.toBeInTheDocument();
+    expect(screen.queryByText(/GO starts the belt/)).not.toBeInTheDocument();
+    const go = screen.getAllByRole("button", { name: /^GO/ });
+    expect(go).toHaveLength(1);
+    expect(go[0]).toHaveAccessibleName("GO start belt");
+    expect(go[0]).toHaveAttribute("title", "Start the belt and carry on with the program.");
+    expect(go[0]).toHaveClass("hud-btn-go");
+    expect(screen.getByText(/cycle 4/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "SKIP next step" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "END end program" })).toBeInTheDocument();
+    // DUMP stays with the belt controls.
+    expect(screen.getByRole("button", { name: "DUMP end walk" })).toBeInTheDocument();
+  });
+
+  it("keeps Engage's GO when the program card is not pinned", () => {
+    show(
+      panel((s) => {
+        waiting(s);
+        s.hud.widgets = s.hud.widgets.filter((w) => w !== "PROGRAMS");
+      }),
+    );
+    expect(screen.getByRole("button", { name: "GO resume" })).toBeInTheDocument();
+  });
+
+  it("drops the toast that repeats the card's prompt, and keeps other toasts", async () => {
+    let handler: ((e: { payload: ToastPayload }) => void) | undefined;
+    vi.mocked(listen).mockImplementation((event, cb) => {
+      if (event === "hud-update") handler = cb as typeof handler;
+      return Promise.resolve(() => {});
+    });
+    try {
+      show(panel(waiting));
+      await act(async () => {
+        handler?.({ payload: { type: "AUTOMATION", message: "REST COMPLETE // PRESS GO", isActionable: false } });
+        handler?.({ payload: { type: "STRAVA", message: "UPLOADED" } });
+      });
+      expect(handler).toBeDefined();
+      expect(screen.getAllByText("REST COMPLETE // PRESS GO")).toHaveLength(1);
+      expect(screen.queryByText("SYS // AUTOMATION")).not.toBeInTheDocument();
+      expect(screen.getByText("UPLOADED")).toBeInTheDocument();
+    } finally {
+      vi.mocked(listen).mockImplementation(() => Promise.resolve(() => {}));
+    }
+  });
+});
+
+describe("HUD controls offline", () => {
+  it("says under the controls why they are off, once for the whole panel", () => {
+    show(panel(offline));
+    const lines = screen.getAllByTestId("hud-offline");
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toHaveTextContent("Treadmill not connected.");
+    expect(lines[0].closest(".hud-module")?.querySelector(".hud-transport")).not.toBeNull();
+  });
+
+  it("keeps the program list's own line when the controls are not pinned", () => {
+    show(
+      panel((s) => {
+        offline(s);
+        s.hud.widgets = s.hud.widgets.filter((w) => w !== "CONTROLS");
+      }),
+    );
+    expect(screen.getByTestId("hud-offline").closest(".hud-module")).toHaveTextContent("RUN PROGRAM");
+  });
+});
+
+describe("HUD DUMP tooltip", () => {
+  it("says why DUMP is off", () => {
+    expect(dumpTitle(panel())).toBe("The belt is already stopped.");
+    expect(dumpTitle(panel((s) => (s.deck.status = "Stopping")))).toBe("The belt is already stopping.");
+    expect(dumpTitle(panel(offline))).toBe("Treadmill not connected.");
+    expect(dumpTitle(panel((s) => (s.deck.status = "Running")))).toBe("Stop the belt and end the session.");
+  });
+
+  it("gives the running strip's DUMP a tooltip too", () => {
+    show(
+      panel((s) => {
+        s.deck.status = "Running";
+        s.hud_view = "minified";
+      }),
+    );
+    expect(screen.getByRole("button", { name: "DUMP" })).toHaveAttribute("title", "Stop the belt and end the session.");
+  });
+});
+
+describe("HUD update card", () => {
+  it("names the button for opening the notes, and the line agrees", () => {
+    const s = panel((x) => {
+      x.update = { ...x.update, hud_card: true, offer: { version: "1.3.0", notes: "", published: null } };
+    });
+    render(<UpdateCard snapshot={s} />);
+    expect(screen.getByRole("button", { name: "NOTES" })).toHaveAttribute("title", "Open the release notes in the dashboard.");
+    expect(screen.getByText("Read the release notes in the dashboard, then press Install.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "INSTALL" })).not.toBeInTheDocument();
+  });
+});
