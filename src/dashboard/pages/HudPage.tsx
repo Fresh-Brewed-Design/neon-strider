@@ -168,7 +168,7 @@ function MinifyShortcutNote({ shortcuts }: { shortcuts: ShortcutsSnapshot }) {
     <div className="flex flex-col gap-1">
       <Label>Minify shortcut</Label>
       <Hint>
-        {key ? `${key} shrinks the HUD to a strip and back, set in System, ROUTINE, Shortcuts.` : "Off. Set in System, ROUTINE, Shortcuts."}
+        {key ? `${key} shrinks the HUD to a strip and back. Change the key in System, ROUTINE, Shortcuts.` : "The minify shortcut is off. Set a key in System, ROUTINE, Shortcuts."}
       </Hint>
     </div>
   );

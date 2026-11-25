@@ -146,7 +146,7 @@ function EyeBreakSettings() {
               tone="cyan"
               checked={e.pause_belt}
               onChange={(pause_belt) => void pauseAction.run(() => dispatch(config({ pause_belt })))}
-              description="A break pauses a walking belt and the HUD then offers RESUME or STAY STILL."
+              description="A break pauses a walking belt, and the HUD then offers RESUME or STAY STILL."
             />
             <ActionStatus pending={pauseAction.pending} error={pauseAction.error} className="mt-1" />
           </div>

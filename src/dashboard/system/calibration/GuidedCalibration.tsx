@@ -502,7 +502,7 @@ function RunPanel({
           </button>
           <ActionStatus pending={false} error={tap.error} />
           <Hint>
-            {tapKey ? `Space taps in the dashboard and ${tapKey} taps from any window.` : "Space taps in the dashboard."}
+            {tapKey ? `Space taps in the dashboard. ${tapKey} taps from any window.` : "Space taps in the dashboard."}
           </Hint>
           <div
             className="h-1.5 overflow-hidden rounded bg-white/10"

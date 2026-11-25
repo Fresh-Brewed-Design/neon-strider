@@ -177,8 +177,8 @@ export function ShortcutsSection() {
       title="Shortcuts"
       description={
         mac
-          ? "Work from any app and need ⌃ or ⌘, with ⌥ and ⇧ optional."
-          : "Work from any app and need Ctrl, Alt or the Windows key, with Shift optional."
+          ? "Shortcuts work from any app and need ⌃ or ⌘, with ⌥ and ⇧ optional."
+          : "Shortcuts work from any app and need Ctrl, Alt or the Windows key, with Shift optional."
       }
     >
       {s.shortcuts.list.map((view) => (
