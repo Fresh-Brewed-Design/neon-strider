@@ -42,13 +42,14 @@ describe("STEP_MAP", () => {
     const rows = screen.getAllByRole("listitem");
     expect(rows[rows.length - 1]).toHaveTextContent("CYCLE_REST");
     expect(rows[rows.length - 1]).toHaveTextContent("25 min");
+    expect(rows[rows.length - 1]).toHaveTextContent("previous speed");
     expect(rows[1]).toHaveTextContent("HR 85-95%");
   });
 
-  it("draws the chart with the axis tops", () => {
+  it("draws the chart with a legend of the axis tops", () => {
     render(<StepMap a={intervalRound()} />);
     expect(screen.getByRole("img", { name: /speed and incline/i })).toBeInTheDocument();
-    expect(screen.getByText("6.6 km/h")).toBeInTheDocument();
-    expect(screen.getByText("8.0% tilt")).toBeInTheDocument();
+    expect(screen.getByText("Max 6.6 km/h")).toBeInTheDocument();
+    expect(screen.getByText("Max 8.0%")).toBeInTheDocument();
   });
 });

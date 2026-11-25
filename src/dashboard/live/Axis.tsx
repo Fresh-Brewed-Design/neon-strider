@@ -98,7 +98,8 @@ export function Axis({
       <div className="flex flex-wrap items-center justify-between gap-x-2">
         <Label>{title}</Label>
         <span className="flex flex-wrap items-center gap-1 font-mono text-xs uppercase tracking-[0.15em] text-white/60">
-          target <span className={cx("font-digital text-xs", TONE_TEXT[tone])}>{value.toFixed(1)}</span> {unit}
+          target <span className={cx("font-digital text-xs", TONE_TEXT[tone])}>{value.toFixed(1)}</span>{" "}
+          <span className="normal-case">{unit}</span>
           <PinToggle widget={pin.widget} pinned={pin.pinned} />
         </span>
       </div>
@@ -117,8 +118,18 @@ export function Axis({
         <Nudge label={`${title} up`} disabled={disabled} onClick={() => onNudge(true)} icon={<Plus size={16} />} />
       </div>
 
-      <div className={cx(disabled && "pointer-events-none opacity-30")}>
-        <StylizedSlider min={min} max={max} step={step} value={value} onChange={set} color={tone} mark={mark} />
+      <div className={cx(disabled && "opacity-30")}>
+        <StylizedSlider
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={set}
+          color={tone}
+          mark={mark}
+          label={`${title} target`}
+          disabled={disabled}
+        />
       </div>
 
       <div className="flex flex-wrap gap-1">
