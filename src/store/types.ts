@@ -55,6 +55,10 @@ export interface ConfirmState {
   message: string;
   /** Optional detail line under the message, in small type. */
   hint?: string;
+  /** The confirm button's own verb, such as "Delete" or "Disconnect"; "Confirm" when unset. */
+  confirmLabel?: string;
+  /** "danger" for an action that loses something: the dialog and its button turn magenta. */
+  tone?: "default" | "danger";
   onConfirm: () => void;
   onCancel?: () => void;
 }
