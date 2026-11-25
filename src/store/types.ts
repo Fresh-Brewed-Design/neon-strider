@@ -71,6 +71,13 @@ export interface UISlice {
   /** Shows the Programs page with this program open in the editor. */
   openProgram: (id: number) => void;
   clearProgramRequest: () => void;
+
+  /**
+   * Run before the dashboard shows another page: an editor with unsaved edits asks first and
+   * calls `go` only if the user discards them. Null when nothing needs asking.
+   */
+  leaveGuard: ((go: () => void) => void) | null;
+  setLeaveGuard: (guard: ((go: () => void) => void) | null) => void;
 }
 
 export type TreadmillStore = SettingsSlice & HistorySlice & UISlice;

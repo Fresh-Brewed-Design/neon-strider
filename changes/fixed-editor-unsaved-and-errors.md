@@ -1,0 +1,2 @@
+- The program editor asks before discarding unsaved edits on X, Cancel, Escape or a change of page.
+- Program steps show a mistyped minutes, speed or incline value as an error under the step.
