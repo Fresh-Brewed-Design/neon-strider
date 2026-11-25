@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Bluetooth, BluetoothOff, Link2, Loader2, RefreshCw, SearchX, X } from "lucide-react";
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAppSnapshot } from "../../state/useAppState";
+import { useDialog } from "../useDialog";
 
 export interface BleDevice {
   id: string;
@@ -31,7 +32,10 @@ interface BleDiscoveryModalProps {
   onConnect: (id: string) => void;
 }
 
-/** The scan-and-connect dialog: found treadmills, each with its own linking state and error. */
+/**
+ * The scan-and-connect dialog: found treadmills, each with its own linking
+ * state and error. Escape closes it, like Close and a click outside.
+ */
 export function BleDiscoveryModal({
   show,
   onClose,
@@ -47,6 +51,7 @@ export function BleDiscoveryModal({
 }: BleDiscoveryModalProps) {
   const busy = isScanning || connectingId !== null;
   const settings = useAppSnapshot()?.platform.settings ?? "Windows settings";
+  const boxRef = useDialog(show, onClose);
   return (
     <AnimatePresence>
       {show && (
@@ -60,15 +65,20 @@ export function BleDiscoveryModal({
           />
 
           <motion.div
+            ref={boxRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ble-discovery-title"
+            tabIndex={-1}
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="relative w-full max-w-md bg-[#0a0a0a] border border-neon-cyan/30 rounded-2xl overflow-hidden shadow-[0_0_50px_rgba(0,243,255,0.15)]"
+            className="relative outline-none w-full max-w-md bg-[#0a0a0a] border border-neon-cyan/30 rounded-2xl overflow-hidden shadow-[0_0_50px_rgba(0,243,255,0.15)]"
           >
             <div className="flex justify-between items-center p-4 border-b border-white/5 bg-white/5">
               <div className="flex items-center gap-2">
                 <Bluetooth className="text-neon-cyan" size={18} />
-                <h2 className="text-xs font-black uppercase tracking-[0.2em]">Hardware_Link</h2>
+                <h2 id="ble-discovery-title" className="text-xs font-black uppercase tracking-[0.2em]">Hardware_Link</h2>
               </div>
               <button
                 onClick={onClose}

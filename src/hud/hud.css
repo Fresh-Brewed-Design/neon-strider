@@ -86,7 +86,6 @@ body,
     var(--hud-cut) 100%,
     0 calc(100% - var(--hud-cut))
   );
-  transition: opacity 200ms ease;
 }
 
 /* Scanlines. Nothing on the HUD loops: an endless animation on an always-on-top
@@ -105,9 +104,15 @@ body,
   pointer-events: none;
 }
 
-/* Recede while the belt is idle; come forward on hover. */
-.hud-panel.is-resting { opacity: 0.6; }
-.hud-panel.is-resting:hover { opacity: 1; }
+/* While the belt rests only the live stats recede, back on hover. The header,
+   notes, buttons and program card stay full strength, and a note anywhere on
+   the panel keeps the stats up too. HudApp never marks the panel resting while
+   the link is down or a program waits for GO. At 0.8 the 11px labels keep
+   4.5:1 on a dark or light desktop and the values 3:1 (large text). */
+.hud-panel.is-resting:not(:has(.hud-note)) .hud-stats,
+.hud-panel.is-resting:not(:has(.hud-note)) .hud-strip-total { opacity: 0.8; }
+.hud-panel.is-resting:hover .hud-stats,
+.hud-panel.is-resting:hover .hud-strip-total { opacity: 1; }
 
 .hud-header {
   display: flex;
@@ -142,7 +147,10 @@ body,
 /* The link label as a "reconnect now" button while the link is down. Its
    colour comes from the .tone-* rule below. */
 .hud-relink {
-  margin: -3px 0;
+  /* 24px tall like the HUD's other small targets; the negative margin keeps
+     the header its height. */
+  min-height: 24px;
+  margin: -4px 0;
   padding: 3px 6px;
   appearance: none;
   border: 1px solid currentColor;
@@ -272,6 +280,7 @@ body,
   flex-direction: column;
   gap: 1px;
   white-space: nowrap;
+  transition: opacity 200ms ease;
 }
 
 .hud-strip-total .hud-label { line-height: 1.2; }
@@ -343,8 +352,8 @@ body,
 .hud-btn.hud-btn-minify {
   flex-shrink: 0;
   width: 24px;
-  height: 20px;
-  margin: -2px 0;
+  height: 24px;
+  margin: -4px 0;
   padding: 0;
   display: inline-flex;
   align-items: center;
@@ -415,6 +424,7 @@ body,
   gap: 1px;
   background: var(--hud-line);
   border-bottom: 1px solid var(--hud-line);
+  transition: opacity 200ms ease;
 }
 
 .hud-stat {
@@ -654,6 +664,8 @@ body,
   background: var(--hud-yellow);
   box-shadow: 0 0 18px var(--hud-yellow);
 }
+/* The plain-words line in dark ink: the usual light grey vanishes on the fill. */
+.hud-btn.hud-btn-go .hud-btn-sub { color: color-mix(in srgb, #05080c 75%, var(--hud-yellow)); }
 @keyframes hud-go-pulse {
   50% { box-shadow: 0 0 20px color-mix(in srgb, var(--hud-yellow) 85%, transparent); }
 }
