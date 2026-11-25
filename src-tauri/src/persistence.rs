@@ -2075,42 +2075,32 @@ pub fn local_midnight_ms(now: chrono::DateTime<chrono::Local>) -> i64 {
         .unwrap_or_else(|| now.timestamp_millis() - 24 * 60 * 60 * 1000)
 }
 
-/// Sum of distance_meters for sessions started at or after `since` (local
-/// midnight, from `local_midnight_ms`), optionally skipping one session (the
-/// live one, whose distance the snapshot adds itself).
-pub fn daily_distance_m(app: &tauri::AppHandle, since: i64, exclude_id: Option<i64>) -> f64 {
-    let sum = with_conn(app, |conn| {
-        conn.query_row(
-            "SELECT COALESCE(SUM(distance_meters), 0.0) FROM sessions
-             WHERE start_time >= ?1 AND (?2 IS NULL OR id != ?2)",
-            params![since, exclude_id],
-            |row| row.get::<_, f64>(0),
-        )
-    });
-    sum.unwrap_or_else(|e| {
-        log::warn!("daily distance query failed: {}", e);
-        0.0
-    })
-}
-
 /// (metres, seconds) summed over sessions started at or after `since_ms` (epoch
 /// ms), optionally skipping one session (the live one). The seconds are the
-/// deck's own timer, which runs while the belt does. For the maintenance reminder.
+/// deck's own timer, which runs while the belt does. For the maintenance reminder
+/// and today's totals (DAILY_TOTAL distance and walking time).
 pub fn usage_since(app: &tauri::AppHandle, since_ms: i64, exclude_id: Option<i64>) -> (f64, i64) {
-    with_conn(app, |conn| {
-        conn.query_row(
-            "SELECT COALESCE(SUM(distance_meters), 0.0),
-                    CAST(COALESCE(SUM(duration_seconds), 0) AS INTEGER)
-             FROM sessions
-             WHERE start_time >= ?1 AND (?2 IS NULL OR id != ?2)",
-            params![since_ms, exclude_id],
-            |row| Ok((row.get::<_, f64>(0)?, row.get::<_, i64>(1)?)),
-        )
-    })
-    .unwrap_or_else(|e| {
+    with_conn(app, |conn| usage_since_in(conn, since_ms, exclude_id)).unwrap_or_else(|e| {
         log::warn!("usage-since query failed: {}", e);
         (0.0, 0)
     })
+}
+
+/// `usage_since` on a given connection. A session counts by its start, so a
+/// walk that ran past `since_ms` from before it adds nothing.
+fn usage_since_in(
+    conn: &Connection,
+    since_ms: i64,
+    exclude_id: Option<i64>,
+) -> rusqlite::Result<(f64, i64)> {
+    conn.query_row(
+        "SELECT COALESCE(SUM(distance_meters), 0.0),
+                CAST(COALESCE(SUM(duration_seconds), 0) AS INTEGER)
+         FROM sessions
+         WHERE start_time >= ?1 AND (?2 IS NULL OR id != ?2)",
+        params![since_ms, exclude_id],
+        |row| Ok((row.get::<_, f64>(0)?, row.get::<_, i64>(1)?)),
+    )
 }
 
 /// Everything ever saved: (metres, seconds, start of the earliest session in
@@ -2380,6 +2370,42 @@ pub fn backfill_session_averages(app: &AppHandle, tilt_multiplier: f32, incline_
 #[cfg(test)]
 mod db_tests {
     use super::*;
+
+    /// Today's totals count a walk by the day it started: one that began
+    /// before midnight and ran past it stays yesterday's, and the live
+    /// session is left out for the snapshot to add itself.
+    #[test]
+    fn usage_since_counts_walks_from_their_start() {
+        let conn = memory_db();
+        let midnight: i64 = 1_700_000_000_000;
+        conn.execute_batch(&format!(
+            "INSERT INTO sessions (id, start_time, end_time, duration_seconds, distance_meters)
+             VALUES (1, {y}, {e1}, 3600, 3000.0),
+                    (2, {t1}, {e2}, 1800, 1500.0),
+                    (3, {t2}, {e3}, 600, 400.0);",
+            y = midnight - 30 * 60 * 1000,
+            e1 = midnight + 30 * 60 * 1000,
+            t1 = midnight + 60 * 60 * 1000,
+            e2 = midnight + 90 * 60 * 1000,
+            t2 = midnight + 120 * 60 * 1000,
+            e3 = midnight + 130 * 60 * 1000,
+        ))
+        .unwrap();
+        assert_eq!(
+            usage_since_in(&conn, midnight, None).unwrap(),
+            (1900.0, 2400),
+            "the walk past midnight stays yesterday's"
+        );
+        assert_eq!(
+            usage_since_in(&conn, midnight, Some(3)).unwrap(),
+            (1500.0, 1800),
+            "the live session is left out"
+        );
+        assert_eq!(
+            usage_since_in(&conn, midnight + 200 * 60 * 1000, None).unwrap(),
+            (0.0, 0)
+        );
+    }
 
     /// The schema exactly as the previous `init_db` created it (no automation_state,
     /// no indexes), which is what a database from the last build looks like.

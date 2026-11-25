@@ -350,6 +350,10 @@ pub struct SessionSnapshot {
     pub calories: f32,
     /// Today's saved sessions plus the live one.
     pub daily_distance_m: f64,
+    /// Seconds walked today, from the same sessions as `daily_distance_m`
+    /// (a walk counts toward the day it started).
+    #[ts(type = "number")]
+    pub daily_time_s: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS)]

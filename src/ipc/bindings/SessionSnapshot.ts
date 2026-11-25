@@ -4,4 +4,9 @@ export type SessionSnapshot = { active_id: number | null, duration_s: number, di
 /**
  * Today's saved sessions plus the live one.
  */
-daily_distance_m: number, };
+daily_distance_m: number, 
+/**
+ * Seconds walked today, from the same sessions as `daily_distance_m`
+ * (a walk counts toward the day it started).
+ */
+daily_time_s: number, };
