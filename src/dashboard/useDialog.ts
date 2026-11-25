@@ -6,6 +6,11 @@ const FOCUSABLE =
 /** The dialogs open right now, newest last: only the top one answers Escape and Tab. */
 const stack: symbol[] = [];
 
+/** A dialog from `useDialog` is open, so page-wide keys (Space as a calibration tap) stand down. */
+export function dialogOpen(): boolean {
+  return stack.length > 0;
+}
+
 function focusables(root: HTMLElement): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE));
 }

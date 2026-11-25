@@ -12,6 +12,7 @@ import { useAction } from "../../../components/useAction";
 import { useAppSnapshot } from "../../../state/useAppState";
 import { useTreadmillStore } from "../../../store/treadmillStore";
 import { useGuidedTask } from "../../guided/useGuidedTask";
+import { dialogOpen } from "../../useDialog";
 import { GhostButton, Hint, Label, NeonButton } from "../../ui";
 import { cx, send } from "../../util";
 import { INPUT_CLASS } from "../fields";
@@ -449,7 +450,8 @@ function RunPanel({
   useEffect(() => {
     if (!keysListening) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== " " || e.altKey || e.ctrlKey || e.metaKey || typingInto(e.target)) return;
+      // While a dialog is open, Space presses its focused button and is not a tap.
+      if (e.key !== " " || e.altKey || e.ctrlKey || e.metaKey || typingInto(e.target) || dialogOpen()) return;
       // Also keeps a focused button from treating Space as its own click.
       e.preventDefault();
       if (e.repeat) return;

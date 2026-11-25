@@ -12,6 +12,7 @@ vi.mock("../../../state/useAppState", () => ({
 const { snapshot: mock } = await import("../../../dev/mockBackend");
 const { useTreadmillStore } = await import("../../../store/treadmillStore");
 const { GuidedCalibration } = await import("./GuidedCalibration");
+const { ConfirmDialog } = await import("../../ConfirmDialog");
 
 const dispatched = () =>
   vi
@@ -131,6 +132,25 @@ describe("GuidedCalibration", () => {
     await act(async () => fireEvent.keyDown(window, { key: " ", repeat: true }));
     await act(async () => fireEvent.keyDown(window, { key: " ", altKey: true }));
     expect(taps()).toHaveLength(2);
+  });
+
+  it("Space is not a tap while a dialog is open", async () => {
+    current!.calibration.run = runView({ phase: "tapping", passes: 2, kept: 1 });
+    useTreadmillStore.setState({ pendingConfirmation: null });
+    render(
+      <>
+        <GuidedCalibration />
+        <ConfirmDialog />
+      </>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Delete the 3.0 km/h point" }));
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    await act(async () => fireEvent.keyDown(window, { key: " " }));
+    expect(taps()).toHaveLength(0);
+    // Closed again, Space taps as before.
+    await act(async () => fireEvent.keyDown(window, { key: "Escape" }));
+    await act(async () => fireEvent.keyDown(window, { key: " " }));
+    expect(taps()).toHaveLength(1);
   });
 
   it("Space typed into a field is not a tap", async () => {
