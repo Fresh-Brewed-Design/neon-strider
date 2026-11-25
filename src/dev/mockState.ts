@@ -116,6 +116,9 @@ export const snapshot: AppSnapshot = {
   },
   fit_to_deck: [],
   fit_to_time: [],
+  program_tones: { enabled: false, seq: 0, cue: null, at_ms: 0 },
+  // Workday runs above, so it is the program run last (LAST_RUN once it ends).
+  program_last_run_id: 2,
   neural: {
     enabled: true,
     factor: 1,

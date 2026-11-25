@@ -12,7 +12,7 @@
 //!
 //! The feature modules that contribute a part of the snapshot or act on it
 //! (calls, desk, desk_sync, eyebreak, hud_drag, lights_out, maintenance, odometer, pc_walk_share, presenting,
-//! seated, tray, tray_menu,
+//! program_tones, seated, tray, tray_menu,
 //! walkaway, wall_clock, weekly) are declared here rather than in `lib.rs`, so this module owns
 //! their wiring.
 
@@ -36,6 +36,8 @@ pub mod odometer;
 pub mod pc_walk_share;
 #[path = "presenting.rs"]
 pub mod presenting;
+#[path = "program_tones.rs"]
+pub mod program_tones;
 #[path = "seated.rs"]
 pub mod seated;
 #[path = "tray.rs"]
@@ -236,7 +238,7 @@ fn neural_snapshot(state: &OrchestratorState) -> NeuralSnapshot {
 
 /// Build a snapshot from state. Pure (no Tauri, no locks, no I/O) so it can be
 /// unit-tested. `speed_drift`, `desk_sync`, `wall_clock`, `pc_walk_share`, `today_timeline`, `walkaway`, `update`, `traffic`, `lights_out`, `presenting`, `ghost_pod`,
-/// `calibration`, `guided_task` and `hud_view` are left at their defaults: they depend on the clock or shared
+/// `calibration`, `guided_task`, `program_tones` and `hud_view` are left at their defaults: they depend on the clock or shared
 /// state, so the emitter fills them in.
 pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSnapshot {
     let deck = deck_snapshot(state, parts.max_incline_level);
@@ -247,6 +249,8 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         active_program: state.active_program(),
         fit_to_deck: state.fit_to_deck_offers(deck.stride_fit_kmh),
         fit_to_time: crate::programs::fit_to_time::options(&state.programs),
+        program_tones: program_tones::ProgramTonesSnapshot::default(),
+        program_last_run_id: state.program_last_run_id,
         deck,
         neural: neural_snapshot(state),
         speed_drift: crate::speed_drift::SpeedDriftSnapshot::default(),
@@ -651,6 +655,28 @@ mod tests {
         assert_eq!((a.program_id, a.cycle, a.step_count), (2, 1, 1));
         assert_eq!(a.seconds_remaining, Some(300));
         assert_eq!(a.name, "Workday");
+    }
+
+    #[test]
+    fn snapshot_carries_the_program_run_last() {
+        let mut state = OrchestratorState {
+            programs: programs::classic_programs(),
+            ..OrchestratorState::default()
+        };
+        assert_eq!(snap(&state, 0.0, 15).program_last_run_id, None);
+
+        let now = Instant::now();
+        state.run_program(2, now).unwrap();
+        state.end_program(true, now);
+        assert_eq!(snap(&state, 0.0, 15).program_last_run_id, Some(2));
+
+        state.delete_program(2, now).unwrap();
+        assert_eq!(snap(&state, 0.0, 15).program_last_run_id, None);
+    }
+
+    #[test]
+    fn program_run_last_is_a_cold_part() {
+        assert!(super::frame::COLD_KEYS.contains(&"program_last_run_id"));
     }
 
     /// A program run from a belt walking at 3.5 km/h (level 2), paused, then

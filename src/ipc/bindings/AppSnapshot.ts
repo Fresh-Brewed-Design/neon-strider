@@ -24,6 +24,7 @@ import type { PcWalkShare } from "./PcWalkShare";
 import type { PlatformSnapshot } from "./PlatformSnapshot";
 import type { PresentingSnapshot } from "./PresentingSnapshot";
 import type { Program } from "./Program";
+import type { ProgramTonesSnapshot } from "./ProgramTonesSnapshot";
 import type { SeatedSnapshot } from "./SeatedSnapshot";
 import type { SessionSnapshot } from "./SessionSnapshot";
 import type { ShortcutsSnapshot } from "./ShortcutsSnapshot";
@@ -48,7 +49,18 @@ fit_to_deck: Array<FitToDeckOffer>,
  * FIT_TO_TIME (#258): the lengths each program may run at once, for the
  * picker beside its Run. A program whose length can't change has none.
  */
-fit_to_time: Array<FitToTimeOption>, neural: NeuralSnapshot, 
+fit_to_time: Array<FitToTimeOption>, 
+/**
+ * Program tones (off by default): the switch and the latest cue for the
+ * HUD to play (`program_tones.rs`).
+ */
+program_tones: ProgramTonesSnapshot, 
+/**
+ * The program run last (#336), for the LAST_RUN tag on its Programs
+ * row; the "Run or end a program" shortcut starts the same one. None
+ * until a program runs, or once the program run last is deleted.
+ */
+program_last_run_id: number | null, neural: NeuralSnapshot, 
 /**
  * Speed drift (#251): its settings, what it is doing and Rust's sentence
  * for it. The HUD shows a line while it sets the speed.

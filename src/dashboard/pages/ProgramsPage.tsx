@@ -7,6 +7,7 @@ import { ActiveProgramCard } from "../programs/ActiveProgramCard";
 import { NEW_PROGRAM, toDraft, type Draft } from "../programs/draft";
 import { ProgramEditor } from "../programs/ProgramEditor";
 import { ProgramRow } from "../programs/ProgramRow";
+import { ProgramTonesSetting } from "../programs/ProgramTonesSetting";
 import { NeonButton, Page, Panel, Waiting } from "../ui";
 import { linkState } from "../../state/linkStatus";
 import { openLinkDialog, send } from "../util";
@@ -94,6 +95,7 @@ export function ProgramsPage() {
                   <ProgramRow
                     program={p}
                     running={running}
+                    lastRun={p.id === s.program_last_run_id}
                     connected={s.connection.connected}
                     fitToDeck={s.fit_to_deck.find((o) => o.program_id === p.id) ?? null}
                     fitToTime={s.fit_to_time.find((o) => o.program_id === p.id) ?? null}
@@ -105,6 +107,8 @@ export function ProgramsPage() {
             })}
           </ul>
         )}
+
+        {!editing && <ProgramTonesSetting />}
       </div>
     </Page>
   );

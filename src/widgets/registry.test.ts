@@ -61,7 +61,7 @@ describe("PC_WALK_SHARE widget", () => {
 
   it("says how much of the PC time was walked, and nothing before the PC is used", () => {
     const w = statWidget("PC_WALK_SHARE");
-    expect(w?.detail?.(withShare(20_400, 7_800, 38))).toBe("2h 10m of 5h 40m");
+    expect(w?.detail?.(withShare(20_400, 7_800, 38))).toBe("2h\u00a010m of 5h\u00a040m");
     expect(w?.detail?.(withShare(360, 0, null))).toBe("0s of 6m");
     expect(w?.detail?.(withShare(0, 0, null))).toBeNull();
   });

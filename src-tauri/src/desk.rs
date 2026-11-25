@@ -1,6 +1,6 @@
-//! Desk features at runtime: the sit-too-long nudge, eye breaks,
-//! slow-down-on-calls, walk-away safety, lights out, and whether Windows says
-//! the user is presenting (`presenting`, which holds cards back).
+//! Desk features at runtime: the sit-too-long nudge, eye breaks, program
+//! tones, slow-down-on-calls, walk-away safety, lights out, and whether Windows
+//! says the user is presenting (`presenting`, which holds cards back).
 //!
 //! One loop, once a second. It reads the belt and the treadmill link under one
 //! short lock of the orchestrator, runs the pure state machines (`seated.rs`,
@@ -17,7 +17,8 @@ use crate::engine::{DeckAction, OrchestratorState};
 use crate::programs::{self, ProgramPhase};
 use crate::protocol::MachineStatus;
 use crate::snapshot::{
-    calls, desk_sync, eyebreak, lights_out, pc_walk_share, presenting, seated, walkaway,
+    calls, desk_sync, eyebreak, lights_out, pc_walk_share, presenting, program_tones, seated,
+    walkaway,
 };
 use crate::util::{blocking, now_ms_u64 as now_ms};
 use std::time::Duration;
@@ -268,6 +269,14 @@ async fn step(
     };
     eyebreak::with(|rt| eye_break_tick(state, rt, ready, now, screen));
 
+    // Program tones: only reads the program and the belt.
+    let tick = program_tones::Tick {
+        ready,
+        belt_running: belt_running(state),
+        program: state.active_program().as_ref().map(program_tones::View::of),
+    };
+    program_tones::with(|rt| rt.machine.tick(rt.enabled, now, &tick));
+
     // Sit-too-long nudge.
     let tick = seated::Tick {
         idle_ms,
@@ -369,6 +378,7 @@ fn announce(app: &AppHandle, kind: &'static str, message: &'static str) {
 pub fn init(app: &AppHandle) {
     seated::init(app);
     eyebreak::init(app);
+    program_tones::init(app);
     calls::init(app);
     walkaway::init(app);
     lights_out::init(app);

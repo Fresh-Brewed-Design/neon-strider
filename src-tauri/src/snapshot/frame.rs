@@ -60,10 +60,10 @@ snapshot_parts! {
         connection, deck, session, active_program, neural, speed_drift, hud_view,
         maintenance, odometer, seated, eye_break, calls, walkaway, easy_start,
         easy_stop, traffic, calibration, ghost_pod, heart_rate, guided_task,
-        pc_walk_share, presenting,
+        pc_walk_share, presenting, program_tones,
     ],
     cold: [
-        programs, fit_to_deck, fit_to_time, hud, hud_monitors, strava, weekly, desk_sync,
+        programs, fit_to_deck, fit_to_time, program_last_run_id, hud, hud_monitors, strava, weekly, desk_sync,
         wall_clock, lights_out, update, typing_speed, today_timeline, platform, shortcuts,
     ],
 }

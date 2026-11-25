@@ -75,3 +75,35 @@ describe("FIT_TO_TIME", () => {
     expect(screen.getByRole("alert").textContent).toContain("runs from 15 to 95 min");
   });
 });
+
+describe("LAST_RUN", () => {
+  const rowOf = (name: string) => screen.getByLabelText(`Edit ${name}`).closest("li")!;
+
+  it("tags the row of the program run last", () => {
+    const s = structuredClone(mock);
+    s.active_program = null;
+    s.program_last_run_id = 2;
+    current = s;
+    render(<ProgramsPage />);
+    expect(screen.getAllByText("LAST_RUN")).toHaveLength(1);
+    expect(rowOf("Workday").textContent).toContain("LAST_RUN");
+    expect(rowOf("Post-meal").textContent).not.toContain("LAST_RUN");
+  });
+
+  it("shows no tag before any program has run", () => {
+    const s = structuredClone(mock);
+    s.active_program = null;
+    s.program_last_run_id = null;
+    current = s;
+    render(<ProgramsPage />);
+    expect(screen.queryByText("LAST_RUN")).toBeNull();
+  });
+
+  it("leaves the tag off while the program runs", () => {
+    const s = structuredClone(mock);
+    s.program_last_run_id = s.active_program!.program_id;
+    current = s;
+    render(<ProgramsPage />);
+    expect(screen.queryByText("LAST_RUN")).toBeNull();
+  });
+});

@@ -3,6 +3,7 @@ import { useAppSnapshot } from "../state/useAppState";
 import { statWidget } from "../widgets/registry";
 import { EyeBreakCard, MaintenanceCard, SeatedCard, UpdateCard, WalkAwayCard, WeeklyCard } from "./HudCards";
 import { useEyeBreakTones } from "./eyeBreakTones";
+import { useProgramTones } from "./programTones";
 import { HudHeader } from "./HudHeader";
 import { HudNote } from "./HudNote";
 import { shortcutLabel } from "./shortcutLabel";
@@ -45,6 +46,7 @@ export function HudApp() {
   const relink = useRelink(snapshot?.connection ?? null);
 
   useEyeBreakTones(snapshot?.eye_break);
+  useProgramTones(snapshot?.program_tones);
 
   const widgets = snapshot?.hud.widgets ?? [];
   const view = snapshot?.hud_view ?? "full";

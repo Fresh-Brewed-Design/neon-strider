@@ -1,30 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { BlinkStep, EyeBreakSnapshot } from "../ipc";
-
-let context: AudioContext | null = null;
-
-/** One short sine beep per entry of `pitches` (Hz), 180 ms apart. Silent if audio is unavailable. */
-export function playTones(pitches: number[]): void {
-  try {
-    context ??= new AudioContext();
-    const ctx = context;
-    void ctx.resume();
-    pitches.forEach((hz, i) => {
-      const start = ctx.currentTime + i * 0.18;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.frequency.value = hz;
-      gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.exponentialRampToValueAtTime(0.18, start + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.15);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(start);
-      osc.stop(start + 0.16);
-    });
-  } catch {
-    // No audio device: the card still says what to do.
-  }
-}
+import { HIGH, LOW, MID, playTones } from "./tones";
 
 /**
  * Guided full blink cues, one per step (each step lasts 2 s, set in Rust).
@@ -32,13 +8,13 @@ export function playTones(pitches: number[]): void {
  * sine beep stays calm, and it needs no voice or language on the PC.
  * Falling pair: close your eyes and hold.
  */
-export const CLOSE_TONE = [660, 440];
+export const CLOSE_TONE = [MID, LOW];
 /** One low beep: squeeze the eyelids gently. */
-export const SQUEEZE_TONE = [440];
+export const SQUEEZE_TONE = [LOW];
 /** One high beep: open your eyes (the old blink beep). */
-export const OPEN_TONE = [660];
+export const OPEN_TONE = [MID];
 /** Two rising beeps: the break is over. */
-export const END_TONE = [660, 880];
+export const END_TONE = [MID, HIGH];
 
 const STEP_TONE: Record<BlinkStep, number[]> = {
   close: CLOSE_TONE,
