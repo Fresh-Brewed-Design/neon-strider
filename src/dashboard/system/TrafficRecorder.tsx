@@ -25,7 +25,7 @@ export function TrafficRecorder() {
       <Toggle
         label="TRAFFIC_TAP: Record treadmill traffic"
         description="Saves every packet sent to and received from the treadmill, with timestamps, to a file in the log folder."
-        hint="TRAFFIC_TAP only listens, starts off at every launch, and stops by itself after 4 hours or 20 MB."
+        hint="TRAFFIC_TAP only listens, starts off at every launch and stops by itself after 4 hours or 20 MB."
         checked={t.recording}
         onChange={(on) => void record.run(() => dispatch({ type: "traffic_record", on }))}
       />

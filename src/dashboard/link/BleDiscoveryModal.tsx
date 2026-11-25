@@ -103,7 +103,7 @@ export function BleDiscoveryModal({
                   ) : isScanning ? (
                     <div className="flex flex-col gap-1">
                       <p className="text-[11px] font-bold text-neon-yellow uppercase tracking-widest">Scanning for treadmills…</p>
-                      <p className="text-xs text-white/60">This takes about 5 seconds.</p>
+                      <p className="text-xs text-white/60">Scanning takes about 5 seconds.</p>
                     </div>
                   ) : scanError ? (
                     <div className="flex flex-col gap-1">
@@ -143,7 +143,7 @@ export function BleDiscoveryModal({
                         )}
                       </button>
                       <ActionStatus
-                        pending={linking ? "Linking to the treadmill. This can take up to 20 seconds." : null}
+                        pending={linking ? "Linking to the treadmill takes up to 20 seconds." : null}
                         error={failure}
                         className="px-1"
                       >

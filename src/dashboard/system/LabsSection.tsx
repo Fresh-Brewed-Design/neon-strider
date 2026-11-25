@@ -93,9 +93,8 @@ export function LabsSection() {
                 />
               )
             )}
-            <Hint className="mt-0.5">
-              Watts come from the METABOLIC_BURN estimate and your weight. Switching power leaves the watch's foot pod link up.
-            </Hint>
+            <Hint className="mt-0.5">Watts come from the METABOLIC_BURN estimate and your weight.</Hint>
+            <Hint className="mt-0.5">Switching power leaves the watch's foot pod link up.</Hint>
           </div>
         )}
       </div>

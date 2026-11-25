@@ -41,7 +41,7 @@ export function DeckProfile() {
       <div className="mt-3">
         <Toggle
           label="LABS // DECK_SWEEP: Sweep the deck's speeds and incline levels"
-          description="DECK_SWEEP steps a moving belt through each unlearned speed up to Top speed, or each incline level up to Highest incline level, then back."
+          description="DECK_SWEEP steps a moving belt through each unlearned speed up to Top speed or each incline level up to Highest incline level, then back."
           checked={profile.sweep_enabled}
           onChange={(on) => void toggle.run(() => dispatch({ type: "deck_profile_sweep_set", on }))}
         />
@@ -52,7 +52,7 @@ export function DeckProfile() {
         />
         {profile.sweep_enabled && (
           <>
-            <Hint className="mt-1">Stopping the belt, a new speed or incline, or a program ends DECK_SWEEP at once.</Hint>
+            <Hint className="mt-1">DECK_SWEEP ends at once when the belt stops or a speed, incline or program changes.</Hint>
             <div className="mt-2 flex flex-wrap items-center gap-3">
               {profile.sweep ? (
                 <>

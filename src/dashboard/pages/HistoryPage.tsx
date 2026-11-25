@@ -166,8 +166,8 @@ export function HistoryPage() {
         ) : groups.length === 0 ? (
           <p className="py-6 text-center font-mono text-xs text-white/60">
             {sessions.length === 0 && stats?.oldest_start_ms == null
-              ? "No sessions recorded yet. Every walk shows up in History."
-              : "No sessions in this time frame."}
+              ? "No sessions yet: ENGAGE on Live or run a program to record a walk."
+              : "No sessions in the chosen time frame."}
           </p>
         ) : (
           groups.map((g) => (

@@ -14,12 +14,12 @@ const SHORTCUT_TEXT: Record<Shortcut, { name: string; does: string }> = {
   speed_down: { name: "Speed down", does: "Lowers the belt speed one step." },
   incline_up: { name: "Incline up", does: "Raises the incline one level." },
   incline_down: { name: "Incline down", does: "Lowers the incline one level." },
-  toggle_start: { name: "Start or pause", does: "Pauses a moving belt, otherwise starts it (GO on a paused program)." },
-  toggle_program: { name: "Run or end a program", does: "Ends the running program, or runs the last one again." },
-  toggle_minified: { name: "Minify the HUD", does: "Shrinks the HUD to a strip, or brings the whole panel back." },
+  toggle_start: { name: "Start or pause", does: "Pauses a moving belt, starts a stopped one and sends GO to a paused program." },
+  toggle_program: { name: "Run or end a program", does: "Ends the running program or runs the last one again." },
+  toggle_minified: { name: "Minify the HUD", does: "Shrinks the HUD to a strip or brings the whole panel back." },
   calibration_tap: {
     name: "GROUND_TRUTH tap",
-    does: "Only while a tap run listens; the rest of the time the keys go to the app in front.",
+    does: "Counts only during a tap run and leaves the keys to the app in front otherwise.",
   },
 };
 
@@ -122,7 +122,7 @@ function ShortcutRow({
           {view.keys.map((k, i) => (
             <span
               key={k.label}
-              title={k.taken ? "Another app already uses this shortcut, so it does nothing here." : undefined}
+              title={k.taken ? "Another app holds the key combination, so the shortcut does nothing." : undefined}
               className={cx(
                 "flex items-center gap-1 rounded border px-2 py-1 font-mono text-xs",
                 k.taken ? "border-red-400/50 text-red-300 line-through" : "border-neon-cyan/40 text-neon-cyan",
@@ -177,8 +177,8 @@ export function ShortcutsSection() {
       title="Shortcuts"
       description={
         mac
-          ? "Work from any app. Each needs ⌃ or ⌘; ⌥ and ⇧ can join them."
-          : "Work from any app. Each needs Ctrl, Alt or the Windows key; Shift can join them."
+          ? "Work from any app and need ⌃ or ⌘, with ⌥ and ⇧ optional."
+          : "Work from any app and need Ctrl, Alt or the Windows key, with Shift optional."
       }
     >
       {s.shortcuts.list.map((view) => (

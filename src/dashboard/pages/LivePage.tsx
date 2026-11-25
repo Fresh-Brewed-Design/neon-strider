@@ -110,7 +110,7 @@ function strideFitMark(deck: DeckSnapshot) {
   return {
     value: fit,
     label: `FIT ${fit.toFixed(1)}`,
-    title: `STRIDE_FIT ${fit.toFixed(1)} km/h is the fastest speed your stride fits the deck.`,
+    title: `STRIDE_FIT: your stride fits the deck up to ${fit.toFixed(1)} km/h.`,
   };
 }
 

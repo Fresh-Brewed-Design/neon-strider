@@ -53,7 +53,7 @@ function WalkAwaySettings() {
           checked={w.idle_enabled}
           onChange={(idle_enabled) => void idleAction.run(() => save({ idle_enabled }))}
           description={`After ${w.idle_minutes} minutes with no keyboard or mouse input, the HUD warns for 30 seconds, then pauses the belt.`}
-          hint="Any input or STAY on the HUD card cancels the pause, and a call never triggers one."
+          hint="Any input or STAY on the HUD card cancels the pause, while a call never starts one."
         />
         <ActionStatus pending={idleAction.pending} error={idleAction.error} className="mt-1" />
       </div>
@@ -120,7 +120,7 @@ function EyeBreakSettings() {
             max={L.eye_break_minutes.max}
             step={5}
             value={e.minutes}
-            hint={`${L.eye_break_minutes.min} to ${L.eye_break_minutes.max}. The 20-minute habit is popular, but studies on myopia favour 5 minutes an hour.`}
+            hint={`${L.eye_break_minutes.min} to ${L.eye_break_minutes.max}. Studies on myopia favour 5 minutes an hour.`}
             onCommit={(minutes) => save({ minutes })}
           />
           <NumberField
@@ -130,7 +130,7 @@ function EyeBreakSettings() {
             max={L.eye_break_seconds.max}
             step={10}
             value={e.seconds}
-            hint={`${L.eye_break_seconds.min} to ${L.eye_break_seconds.max}. Focusing needs about 90 seconds to relax; 20 seconds is often too short.`}
+            hint={`${L.eye_break_seconds.min} to ${L.eye_break_seconds.max}. Focusing needs about 90 seconds to relax.`}
             onCommit={(seconds) => save({ seconds })}
           />
           <Toggle
@@ -146,7 +146,7 @@ function EyeBreakSettings() {
               tone="cyan"
               checked={e.pause_belt}
               onChange={(pause_belt) => void pauseAction.run(() => dispatch(config({ pause_belt })))}
-              description="A break pauses a walking belt, and the HUD then offers RESUME or STAY STILL."
+              description="A break pauses a walking belt and the HUD then offers RESUME or STAY STILL."
             />
             <ActionStatus pending={pauseAction.pending} error={pauseAction.error} className="mt-1" />
           </div>
@@ -208,7 +208,7 @@ export function DeskSection() {
         checked={seated.enabled}
         onChange={(enabled) => saveSeated({ enabled })}
         description={`After a stretch of ${pc} use without walking, a HUD card offers a walk or a program.`}
-        hint="A program picked on the card waits until the treadmill connects. Only the time of the last input is kept, never which keys."
+        hint="Only the time of the last input is kept, never which keys."
       />
       {seated.enabled && (
         <>
@@ -219,7 +219,7 @@ export function DeskSection() {
             max={L.seated_minutes.max}
             step={5}
             value={seated.minutes}
-            hint={`${L.seated_minutes.min} to ${L.seated_minutes.max}. Walking for 2 minutes, or being away from the ${pc} for 15, starts the count again.`}
+            hint={`${L.seated_minutes.min} to ${L.seated_minutes.max}. Walking for 2 minutes or being away from the ${pc} for 15 starts the count again.`}
             onCommit={(minutes) => saveSeated({ minutes })}
           />
           <div>
@@ -259,6 +259,7 @@ export function DeskSection() {
                 })}
               </ul>
             )}
+            <Hint className="mt-1.5">A program picked on the card waits until the treadmill connects.</Hint>
             <Hint className="mt-1.5">
               Up to {MAX_PROGRAM_BUTTONS}.{" "}
               {seated.custom_programs
@@ -298,7 +299,7 @@ export function DeskSection() {
           checked={calls.enabled}
           onChange={(enabled) => saveCalls({ enabled })}
           description="While an app uses the microphone, a running belt eases to the quiet speed until 10 seconds after the call."
-          hint="The belt never speeds up for a call, and a speed changed during the call stays."
+          hint="The belt never speeds up for a call and keeps a speed changed during the call."
         />
       )}
       {/* The HUD's QUIET button (Quiet now) uses the same speed, with or without call detection. */}
@@ -309,7 +310,10 @@ export function DeskSection() {
         max={L.calls_quiet_kmh.max}
         step={0.1}
         value={calls.quiet_kmh}
-        hint={`${s.platform.microphone ? "Calls and QUIET on the HUD ease" : "QUIET on the HUD eases"} a running belt to this speed. A running program eases for the current step only, and the saved program stays as it was.`}
+        hint={[
+          `${s.platform.microphone ? "Calls and QUIET on the HUD ease" : "QUIET on the HUD eases"} a running belt to the quiet speed.`,
+          "A running program eases for the current step only.",
+        ]}
         snap={(kmh) => roundSpeed(snapToDeck(kmh, s.deck))}
         onCommit={(quiet_kmh) => saveCalls({ quiet_kmh: Math.round(quiet_kmh * 100) / 100 })}
       />
@@ -321,8 +325,8 @@ export function DeskSection() {
               ? "Microphone in use."
               : "Microphone is free."}{" "}
           {s.platform.os === "macos"
-            ? "This asks macOS which apps are taking microphone input; no audio is recorded or heard."
-            : "This uses the list Windows keeps of apps using the microphone; no audio is recorded or heard."}
+            ? "Asks macOS which apps take microphone input and never records or hears audio."
+            : "Reads the list Windows keeps of apps using the microphone and never records or hears audio."}
         </Hint>
       )}
     </Section>

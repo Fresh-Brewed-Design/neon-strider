@@ -143,7 +143,7 @@ export function SessionRow({
   const uploadLabel = uploaded
     ? "Uploaded to Strava"
     : live
-      ? "Still recording. Upload once the walk has ended."
+      ? "Still recording: upload once the walk has ended."
       : uploadState === "uploading"
         ? (step ?? "Uploading to Strava…")
         : uploadState === "error"
@@ -280,7 +280,7 @@ export function SessionRow({
                   active={saved}
                   onClick={() =>
                     void save.run(onSave, {
-                      done: (f) => `Saved ${f.file_name}. Drop it on the Strava page that just opened.`,
+                      done: (f) => `Saved ${f.file_name}. Drop the file on the open Strava page.`,
                     })
                   }
                 />

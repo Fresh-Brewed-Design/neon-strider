@@ -60,13 +60,13 @@ describe("SeatedCard", () => {
   it("with the treadmill off, ENGAGE waits and the line says why; programs can still be queued", () => {
     render(<SeatedCard snapshot={seated(offline)} />);
     expect(screen.getByRole("button", { name: "ENGAGE" })).toBeDisabled();
-    expect(screen.getByText("Treadmill off. Switch it on, or queue a program.")).toBeInTheDocument();
+    expect(screen.getByText("Treadmill off. Turn the treadmill on or queue a program.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: mock.programs[0].name })).toBeEnabled();
   });
 
   it("with the treadmill off and no programs, says to switch it on", () => {
     render(<SeatedCard snapshot={seated((x) => (offline(x), (x.seated.program_ids = [])))} />);
-    expect(screen.getByText("Treadmill off. Switch it on to engage.")).toBeInTheDocument();
+    expect(screen.getByText("Treadmill off. Turn the treadmill on to engage.")).toBeInTheDocument();
   });
 
   it("says nothing extra while linked", () => {
@@ -94,12 +94,12 @@ describe("SeatedCard", () => {
     const card = screen.getAllByRole("alert")[0];
     expect(within(card).getByText(message)).toBeInTheDocument();
     // The refusal replaces the standing hint rather than repeating it.
-    expect(screen.queryByText("Treadmill off. Switch it on to engage.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Treadmill off. Turn the treadmill on to engage.")).not.toBeInTheDocument();
   });
 
   it("says the deck is off while it sleeps, before any press", () => {
     render(<SeatedCard snapshot={seated((x) => (x.deck.standby = true))} />);
-    expect(screen.getByText("Treadmill off. Switch it on to engage.")).toBeInTheDocument();
+    expect(screen.getByText("Treadmill off. Turn the treadmill on to engage.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "ENGAGE" })).toBeEnabled();
   });
 

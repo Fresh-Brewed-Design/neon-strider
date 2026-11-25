@@ -19,7 +19,7 @@ export function activityText(a: StravaActivity): string | null {
     case "uploading":
       return a.label ? `${STEP_TEXT[a.step]} ${a.label}` : STEP_TEXT[a.step];
     case "checking_duplicates":
-      return "Checking Strava for a copy of this walk…";
+      return "Checking Strava for a duplicate upload…";
     case "backing_off":
       return `Trying again in ${mmss(a.retry_in_s)}. ${a.reason}`;
     case "paused":

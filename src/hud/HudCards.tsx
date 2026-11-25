@@ -81,8 +81,8 @@ function seatedLine(snapshot: AppSnapshot, programs: number): string | null {
   const queued = snapshot.programs.find((p) => p.id === snapshot.seated.pending_program_id);
   if (queued) return `${queued.name} starts when the treadmill is on.`;
   // Only an unlinked treadmill queues a program; one linked but asleep refuses every start.
-  if (!snapshot.connection.connected && programs > 0) return "Treadmill off. Switch it on, or queue a program.";
-  if (!snapshot.connection.connected || snapshot.deck.standby) return "Treadmill off. Switch it on to engage.";
+  if (!snapshot.connection.connected && programs > 0) return "Treadmill off. Turn the treadmill on or queue a program.";
+  if (!snapshot.connection.connected || snapshot.deck.standby) return "Treadmill off. Turn the treadmill on to engage.";
   return null;
 }
 
@@ -164,7 +164,7 @@ export function EyeBreakCard({ snapshot }: { snapshot: AppSnapshot }) {
       <div className="hud-toast hud-eyebreak accent-cyan" role="alert">
         <div className="hud-toast-body">
           <span className="hud-toast-message">OCULAR_IMPLANT // RECALIBRATED</span>
-          <span className="hud-sub">Break over. The belt stays paused until you resume.</span>
+          <span className="hud-sub">The belt stays paused until you resume.</span>
         </div>
         <HudNote error={error} />
         <div className="hud-seated-actions">
@@ -247,7 +247,7 @@ export function WalkAwayCard({ snapshot }: { snapshot: AppSnapshot }) {
         <div className="hud-toast-body">
           <span className="hud-toast-message">WALK-AWAY // PAUSING IN {w.pause_in_s}s</span>
           <span className="hud-sub">
-            No keyboard or mouse input for {w.idle_minutes} minutes. Move the mouse or press STAY to keep walking.
+            No input for {w.idle_minutes} minutes: move the mouse or press STAY to keep walking.
           </span>
           <HudNote error={error} />
         </div>

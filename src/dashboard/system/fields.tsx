@@ -64,8 +64,8 @@ export function Toggle({
 }: {
   label: string;
   description?: string;
-  /** A second line for caveats and detail, under the description. */
-  hint?: string;
+  /** A second line for caveats and detail, under the description. A list is one line per item. */
+  hint?: string | string[];
   checked: boolean;
   onChange: (next: boolean) => void;
   tone?: Tone;
@@ -75,7 +75,11 @@ export function Toggle({
       <div className="min-w-0">
         <div className="font-mono text-xs font-bold uppercase tracking-[0.12em] text-white/85">{label}</div>
         {description && <Hint>{description}</Hint>}
-        {hint && <Hint className="mt-1">{hint}</Hint>}
+        {[hint ?? []].flat().map((line) => (
+          <Hint key={line} className="mt-1">
+            {line}
+          </Hint>
+        ))}
       </div>
       <button
         type="button"
@@ -235,7 +239,7 @@ export function NumberField({
   onCommit,
 }: {
   label: string;
-  hint?: string;
+  hint?: string | string[];
   value: number;
   min: number;
   max: number;
@@ -280,7 +284,11 @@ export function NumberField({
         {unit && <span className="font-mono text-xs text-white/60">{unit}</span>}
       </div>
       <ActionStatus pending={action.pending} error={action.error} className="mt-1" />
-      {hint && <Hint className="mt-1">{hint}</Hint>}
+      {[hint ?? []].flat().map((line) => (
+        <Hint key={line} className="mt-1">
+          {line}
+        </Hint>
+      ))}
     </label>
   );
 }

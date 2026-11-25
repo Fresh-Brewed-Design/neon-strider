@@ -185,9 +185,8 @@ export function MaintenanceSection() {
         </Hint>
       </div>
 
-      <Hint>
-        To check: unplug, lift the belt edge and touch the deck. Slightly oily is fine; dry means it needs oil.
-      </Hint>
+      <Hint>To check, unplug, lift the belt edge and touch the deck.</Hint>
+      <Hint>Slightly oily is fine and a dry deck needs oil.</Hint>
 
       <div>
         <NeonButton tone={m.due ? "magenta" : "cyan"} className="px-4 py-2" onClick={confirmServiced}>
