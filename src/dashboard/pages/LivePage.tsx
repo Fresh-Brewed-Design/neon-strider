@@ -237,7 +237,8 @@ export function LivePage() {
                     {target && <TargetReadout target={target} />}
                     <PinToggle widget={w.id} pinned={pinned.has(w.id)} />
                   </div>
-                  <div className="flex items-center gap-3">
+                  {/* A detail drops under the value when the tile is too narrow for both (large text). */}
+                  <div className={cx("flex items-center gap-x-3 gap-y-0.5", detail && "flex-wrap")}>
                     <span className={cx("shrink-0 font-digital text-base tracking-wider", TONE_TEXT[w.accent])}>
                       {value}
                       {unit && <span className="ml-1 font-mono text-xs text-white/60">{unit}</span>}
