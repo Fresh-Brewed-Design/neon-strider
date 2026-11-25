@@ -31,6 +31,8 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: "./src/test/setup.ts",
+    // A test that passes alone can run past the 5 s default while other builds load the PC (#343).
+    testTimeout: 30_000,
     include: ["src/**/*.{test,spec}.{ts,tsx}", "scripts/**/*.test.ts"],
   },
 });
