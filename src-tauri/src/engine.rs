@@ -1045,6 +1045,16 @@ impl OrchestratorState {
         true
     }
 
+    /// How long the belt has been paused (the STASIS clock); `None` unless
+    /// the deck's last known status is Paused.
+    pub(crate) fn paused_for(&self) -> Option<Duration> {
+        if self.last_status != MachineStatus::Paused {
+            return None;
+        }
+        self.paused_since
+            .map(|since| self.now().saturating_duration_since(since))
+    }
+
     pub fn should_stop_session(&self) -> bool {
         self.session.active_session_id.is_some() && self.last_status == MachineStatus::Stopped
     }
@@ -1057,8 +1067,15 @@ impl OrchestratorState {
     pub(crate) fn take_status(&mut self, t: &protocol::Telemetry) {
         if t.status_known {
             self.last_status = t.status;
-            if t.status != MachineStatus::Paused {
+            if t.status == MachineStatus::Paused {
+                // From the first frame of the pause, session or not, so the
+                // STASIS clock and the long-pause save both count from it.
+                if self.paused_since.is_none() {
+                    self.paused_since = Some(self.now());
+                }
+            } else {
                 self.hand_epoch_before_pause = self.speed_hand_epoch;
+                self.paused_since = None;
             }
             self.unknown_status_code = None;
             self.deck_standby = t.status_code == protocol::STATUS_STANDBY;

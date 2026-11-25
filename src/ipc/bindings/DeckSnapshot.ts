@@ -71,4 +71,10 @@ stride_fit_kmh: number | null,
  * or from a program (`stride_fit::above`). False while it is unset. A
  * hint only; nothing changes the speed.
  */
-above_stride_fit: boolean, };
+above_stride_fit: boolean, 
+/**
+ * The STASIS clock: whole seconds since the belt paused, counted from
+ * the first paused frame. None unless the deck reports Paused; it
+ * clears on resume and on stop. Only shown.
+ */
+paused_for_s: number | null, };

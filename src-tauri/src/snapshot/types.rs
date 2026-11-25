@@ -298,6 +298,10 @@ pub struct DeckSnapshot {
     /// or from a program (`stride_fit::above`). False while it is unset. A
     /// hint only; nothing changes the speed.
     pub above_stride_fit: bool,
+    /// The STASIS clock: whole seconds since the belt paused, counted from
+    /// the first paused frame. None unless the deck reports Paused; it
+    /// clears on resume and on stop. Only shown.
+    pub paused_for_s: Option<u32>,
 }
 
 /// One speed the deck runs, or has not been asked yet.
