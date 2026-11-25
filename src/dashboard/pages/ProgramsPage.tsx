@@ -94,6 +94,7 @@ export function ProgramsPage() {
                   <ProgramRow
                     program={p}
                     running={running}
+                    lastRun={p.id === s.program_last_run_id}
                     connected={s.connection.connected}
                     fitToDeck={s.fit_to_deck.find((o) => o.program_id === p.id) ?? null}
                     fitToTime={s.fit_to_time.find((o) => o.program_id === p.id) ?? null}

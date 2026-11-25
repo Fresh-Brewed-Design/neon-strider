@@ -27,6 +27,7 @@ VIEWS = [
     ("live-offline", "Live", "offline", None),
     ("live-guided", "Live", "guided&noprogram", None),
     ("programs", "Programs", "stridefit=4.5", None),
+    ("programs-lastrun", "Programs", "noprogram", None),
     ("programs-editor", "Programs", "", "New"),
     ("history", "History", "", None),
     ("history-walk", "History", "heart=on", "expand"),

@@ -6,6 +6,7 @@ export const COLD_KEYS = [
   "programs",
   "fit_to_deck",
   "fit_to_time",
+  "program_last_run_id",
   "hud",
   "hud_monitors",
   "strava",
