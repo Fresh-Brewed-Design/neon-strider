@@ -1,20 +1,14 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Check, Clipboard, X } from "lucide-react";
 import type { MergedSession } from "../../services/sessionMerge";
 import { GhostButton, Label } from "../ui";
+import { useDialog } from "../useDialog";
 import { cx } from "../util";
 
 /** Read-only look at the TCX that would be uploaded, for checking distances before a Strava upload. */
 export function TcxModal({ session, tcx, onClose }: { session: MergedSession; tcx: string; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const boxRef = useDialog(true, onClose);
 
   const copy = () => {
     navigator.clipboard
@@ -36,10 +30,12 @@ export function TcxModal({ session, tcx, onClose }: { session: MergedSession; tc
 
   return (
     <div
+      ref={boxRef}
       role="dialog"
       aria-modal="true"
       aria-label="TCX preview"
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm"
+      tabIndex={-1}
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 p-4 outline-none backdrop-blur-sm"
     >
       <div className="flex h-full max-h-[34rem] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-white/10 bg-[#050505]">
         <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">

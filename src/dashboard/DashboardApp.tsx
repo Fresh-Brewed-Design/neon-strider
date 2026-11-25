@@ -5,6 +5,7 @@ import { subscribeAppSnapshot, useAppState } from "../state/useAppState";
 import { useTreadmillStore } from "../store/treadmillStore";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { GuidedPinMarker } from "./guided/GuidedPinMarker";
+import { leavePage } from "./leavePage";
 import { LinkControl } from "./link/LinkControl";
 import { readPref, writePref } from "./localPrefs";
 import { cx, send } from "./util";
@@ -83,16 +84,18 @@ export function DashboardApp() {
     [],
   );
 
-  // INSTALL on the HUD's update card: open System, CORE, Updates on the notes, once per request.
+  // NOTES on the HUD's update card: open System, CORE, Updates on the notes, once per request.
   useEffect(
     () =>
       subscribeAppSnapshot((s) => {
         const at = s.update.show_notes_at_ms;
         if (at === null || String(at) === readPref(NOTES_SHOWN_KEY)) return;
         writePref(NOTES_SHOWN_KEY, String(at));
-        writePref(PAGE_KEY, "system");
-        setPage("system");
-        showSystemSection("sys-updates");
+        leavePage(() => {
+          writePref(PAGE_KEY, "system");
+          setPage("system");
+          showSystemSection("sys-updates");
+        });
       }),
     [],
   );
@@ -121,10 +124,12 @@ export function DashboardApp() {
                   type="button"
                   aria-current={active ? "page" : undefined}
                   title={label}
-                  onClick={() => {
-                    useTreadmillStore.getState().clearProgramRequest();
-                    openPage(id);
-                  }}
+                  onClick={() =>
+                    leavePage(() => {
+                      useTreadmillStore.getState().clearProgramRequest();
+                      openPage(id);
+                    })
+                  }
                   className={cx(
                     "dash-rail-item relative flex w-full items-center gap-3 rounded px-3 py-2.5 text-left transition-colors",
                     active ? "bg-neon-cyan/10 text-neon-cyan" : "text-white/55 hover:bg-white/5 hover:text-white",
@@ -170,10 +175,12 @@ export function DashboardApp() {
         </div>
         {page !== "system" && (
           <CalibrateOffer
-            onCalibrate={() => {
-              openPage("system");
-              showSystemSection("sys-calibration");
-            }}
+            onCalibrate={() =>
+              leavePage(() => {
+                openPage("system");
+                showSystemSection("sys-calibration");
+              })
+            }
           />
         )}
         <div className="min-h-0 flex-1">

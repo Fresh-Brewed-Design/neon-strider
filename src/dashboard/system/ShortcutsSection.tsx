@@ -4,6 +4,7 @@ import { dispatch, type KeyCombo, type Shortcut, type ShortcutView } from "../..
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { useAppSnapshot } from "../../state/useAppState";
+import { useTreadmillStore } from "../../store/treadmillStore";
 import { GhostButton, Hint } from "../ui";
 import { cx } from "../util";
 import { Section } from "./fields";
@@ -194,7 +195,15 @@ export function ShortcutsSection() {
         <div className="flex flex-col items-start gap-1">
           <GhostButton
             disabled={reset.pending || recording !== null}
-            onClick={() => void reset.run(() => dispatch({ type: "shortcuts_reset" }))}
+            onClick={() =>
+              useTreadmillStore.getState().confirm({
+                title: "Reset shortcuts",
+                message: "Every shortcut you changed goes back to its default keys.",
+                confirmLabel: "Reset",
+                tone: "danger",
+                onConfirm: () => void reset.run(() => dispatch({ type: "shortcuts_reset" })),
+              })
+            }
           >
             Reset to the defaults
           </GhostButton>

@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { Program } from "../../ipc";
-import { fromDraft, NEW_PROGRAM, pulseSummary, strideFitFlag, toDraft, withZoneUnit, zoneSummary } from "./draft";
+import {
+  draftChanged,
+  draftErrors,
+  errorPlaces,
+  fromDraft,
+  NEW_PROGRAM,
+  pulseSummary,
+  rustStepError,
+  strideFitFlag,
+  toDraft,
+  withZoneUnit,
+  zoneSummary,
+  type StepDraft,
+} from "./draft";
 
 const PROGRAM: Program = {
   id: 7,
@@ -113,5 +126,102 @@ describe("strideFitFlag", () => {
     expect(strideFitFlag("6", null)).toBeNull();
     expect(strideFitFlag("", 5.4)).toBeNull();
     expect(strideFitFlag("fast", 5.4)).toBeNull();
+  });
+});
+
+describe("draftChanged", () => {
+  it("sees no change in a draft saved as it opened", () => {
+    const d = toDraft(PROGRAM);
+    expect(draftChanged(d, structuredClone(d), 190)).toBe(false);
+    // "3" for "3.0" and a zone unit switch save the same program.
+    const same = structuredClone(d);
+    same.steps[0].speed = "3";
+    expect(draftChanged(d, withZoneUnit(same, "bpm", 190), 190)).toBe(false);
+  });
+
+  it("sees an edit, and an edit typed back as no change", () => {
+    const d = toDraft(PROGRAM);
+    const edited = structuredClone(d);
+    edited.steps[0].speed = "3.5";
+    expect(draftChanged(d, edited, 190)).toBe(true);
+    edited.steps[0].speed = "3.0";
+    expect(draftChanged(d, edited, 190)).toBe(false);
+  });
+
+  it("counts text that doesn't parse yet as a change", () => {
+    const d = toDraft(PROGRAM);
+    expect(draftChanged(d, { ...d, steps: [{ ...d.steps[0], speed: "abc" }, d.steps[1]] }, 190)).toBe(true);
+  });
+});
+
+describe("draftErrors", () => {
+  const range = { min: 0.6, max: 10.5 };
+  const step = (patch: Partial<StepDraft>) => ({ ...NEW_PROGRAM, name: "Walk", steps: [{ ...NEW_PROGRAM.steps[0], ...patch }] });
+
+  it("finds nothing wrong with a valid draft", () => {
+    const e = draftErrors(toDraft(PROGRAM), range, 190, true);
+    expect(e).toEqual({ steps: [{}, {}] });
+    expect(errorPlaces(e)).toBeNull();
+  });
+
+  it("flags text that isn't a number at its field", () => {
+    expect(draftErrors(step({ speed: "abc", minutes: "x", incline: "?" }), range, 190, false).steps[0]).toEqual({
+      minutes: "Minutes need a number.",
+      speed: "Speed needs a number.",
+      incline: "Incline needs a number.",
+    });
+  });
+
+  it("flags a speed outside the deck's range, and lets 0 through", () => {
+    expect(draftErrors(step({ speed: "99" }), range, 190, false).steps[0].speed).toBe("Speed must be 0 or 0.6 to 10.5 km/h.");
+    expect(draftErrors(step({ speed: "0.3" }), range, 190, false).steps[0].speed).toBe("Speed must be 0 or 0.6 to 10.5 km/h.");
+    expect(draftErrors(step({ speed: "0" }), range, 190, false).steps[0]).toEqual({});
+    // A calibrated floor shows to 0.01 km/h; the floor as shown is in range.
+    expect(draftErrors(step({ speed: "0.63" }), { min: 0.634, max: 6 }, 190, false).steps[0]).toEqual({});
+    expect(draftErrors(step({ speed: "0.5" }), { min: 0.634, max: 6 }, 190, false).steps[0].speed).toBe(
+      "Speed must be 0 or 0.63 to 6.0 km/h.",
+    );
+  });
+
+  it("only counts an empty field once Save was pressed", () => {
+    const d = { ...step({ speed: "" }), name: "" };
+    expect(draftErrors(d, range, 190, false)).toEqual({ steps: [{}] });
+    const e = draftErrors(d, range, 190, true);
+    expect(e).toEqual({ name: "Enter a name.", steps: [{ speed: "Speed needs a number." }] });
+    expect(errorPlaces(e)).toBe("the name and step 1");
+  });
+
+  it("checks a zone's bounds and a pulse target in the unit shown", () => {
+    expect(draftErrors(step({ zone: true, zoneLow: "70", zoneHigh: "60" }), range, 190, false).steps[0].zone).toBe(
+      "Heart zone low must be less than high.",
+    );
+    expect(draftErrors(step({ zone: true, zoneLow: "70", zoneHigh: "" }), range, 190, true).steps[0].zone).toBe(
+      "Heart zone needs both bounds.",
+    );
+    const cool = { kind: "cool_down" as const, pulse: true };
+    expect(draftErrors(step({ ...cool, pulseTarget: "90" }), range, 190, false).steps[0].pulse).toBe("Pulse target must be 50 to 76 % of max.");
+    const bpm = { ...step({ ...cool, pulseTarget: "200" }), zoneUnit: "bpm" as const };
+    expect(draftErrors(bpm, range, 190, false).steps[0].pulse).toBe("Pulse target must be 95 to 144 bpm.");
+    // A pulse target on a step that is no longer COOL_DOWN isn't saved, so it isn't checked.
+    expect(draftErrors(step({ pulse: true, pulseTarget: "abc" }), range, 190, false).steps[0]).toEqual({});
+  });
+
+  it("checks the repeat minutes only while repeat is on", () => {
+    expect(draftErrors({ ...step({}), repeatMinutes: "abc" }, range, 190, false).repeat).toBeUndefined();
+    expect(draftErrors({ ...step({}), repeat: true, repeatMinutes: "abc" }, range, 190, false).repeat).toBe(
+      "Repeat needs a number of minutes.",
+    );
+  });
+
+  it("lists the steps with errors for Save's line", () => {
+    expect(errorPlaces({ steps: [{ speed: "x" }, {}, { minutes: "y" }] })).toBe("steps 1 and 3");
+    expect(errorPlaces({ steps: [{}], repeat: "x" })).toBe("the repeat minutes");
+  });
+});
+
+describe("rustStepError", () => {
+  it("splits Rust's step error into its step and a sentence", () => {
+    expect(rustStepError("Step 2: a zone needs a walking speed")).toEqual({ step: 2, text: "A zone needs a walking speed." });
+    expect(rustStepError("Name is required")).toBeNull();
   });
 });

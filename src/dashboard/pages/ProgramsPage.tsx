@@ -50,6 +50,8 @@ export function ProgramsPage() {
   const remove = (p: Program) =>
     confirm({
       title: "Delete program",
+      confirmLabel: "Delete",
+      tone: "danger",
       message: `Delete "${p.name}"? A deleted program can't be restored.`,
       onConfirm: () => send({ type: "program_delete", id: p.id }),
     });

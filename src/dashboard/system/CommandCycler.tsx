@@ -162,7 +162,7 @@ export function CommandCycler({ onSend }: { onSend: (body: number[]) => Promise<
           tone="magenta"
           disabled={!template && !isRunning}
           onClick={() => setIsRunning(!isRunning)}
-          className={cx("ml-auto flex items-center gap-2 px-4 py-2", isRunning && "animate-pulse")}
+          className={cx("ml-auto flex items-center gap-2 px-4 py-2", isRunning && "motion-safe:animate-pulse")}
         >
           {isRunning ? <Square size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
           {isRunning ? "Stop stepping" : "Auto-step"}

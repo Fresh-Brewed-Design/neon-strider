@@ -42,7 +42,7 @@ function WalkAwaySettings() {
               ? "Locking the Mac (⌃⌘Q) pauses a moving belt and any running program."
               : "Locking Windows (Win+L) pauses a moving belt and any running program."
           }
-          hint="The session is kept and the belt never restarts by itself: the HUD asks to resume or end."
+          hint="The session is kept and the belt never restarts by itself. The HUD asks for RE-JACK or DUMP."
         />
         <ActionStatus pending={lockAction.pending} error={lockAction.error} className="mt-1" />
       </div>
@@ -146,7 +146,7 @@ function EyeBreakSettings() {
               tone="cyan"
               checked={e.pause_belt}
               onChange={(pause_belt) => void pauseAction.run(() => dispatch(config({ pause_belt })))}
-              description="A break pauses a walking belt, and the HUD then offers RESUME or STAY STILL."
+              description="A break pauses a walking belt. The HUD then offers RE-JACK or STAY STILL."
             />
             <ActionStatus pending={pauseAction.pending} error={pauseAction.error} className="mt-1" />
           </div>

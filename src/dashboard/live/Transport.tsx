@@ -68,7 +68,7 @@ export function Transport({ s }: { s: AppSnapshot }) {
             {waiting && <Loader2 size={14} className="animate-spin" />}
             {moving ? "Stasis" : programGo ? "GO" : paused ? "Re-jack" : "Engage"}
           </span>{" "}
-          <span className="font-mono text-[11px] font-normal normal-case leading-tight tracking-normal opacity-70">
+          <span className="font-mono text-[11px] font-normal normal-case leading-tight tracking-normal opacity-90">
             {moving ? "pause" : programGo || paused ? "resume" : "start"}
           </span>
         </NeonButton>
@@ -80,7 +80,7 @@ export function Transport({ s }: { s: AppSnapshot }) {
           title={s.easy_stop.easing ? "Stop the belt at once" : "Stop the belt and end the session"}
         >
           Dump{" "}
-          <span className="font-mono text-[11px] font-normal normal-case leading-tight tracking-normal opacity-70">
+          <span className="font-mono text-[11px] font-normal normal-case leading-tight tracking-normal opacity-90">
             {s.easy_stop.easing ? "stop now" : "end walk"}
           </span>
         </NeonButton>
