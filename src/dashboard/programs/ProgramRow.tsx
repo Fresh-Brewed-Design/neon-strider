@@ -4,7 +4,7 @@ import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { dispatch, type Command, type FitToDeckOffer, type FitToTimeOption, type Program } from "../../ipc";
 import { GhostButton, NeonButton, Panel } from "../ui";
-import { cx } from "../util";
+import { cx, post } from "../util";
 import { FitToDeck } from "./FitToDeck";
 import { describePlan, describeProgram } from "./format";
 
@@ -37,10 +37,12 @@ export function ProgramRow({
   fitToDeck: FitToDeckOffer | null;
   fitToTime: FitToTimeOption | null;
   onEdit: () => void;
-  onDelete: () => void;
+  /** Asks before deleting; `onConfirm` sends the delete. */
+  onDelete: (onConfirm: () => void) => void;
 }) {
   const [picked, setPicked] = useState<number | null>(null);
   const run = useAction();
+  const remove = useAction();
   // A pick Rust no longer offers (the program was edited) falls back to the saved length.
   const minutes = picked !== null && fitToTime?.lengths.includes(picked) ? picked : null;
   const note = minutes !== null ? (fitToTime?.note.split("\n") ?? []) : [];
@@ -70,7 +72,12 @@ export function ProgramRow({
           <GhostButton aria-label={`Edit ${p.name}`} onClick={onEdit}>
             <Pencil size={14} />
           </GhostButton>
-          <GhostButton aria-label={`Delete ${p.name}`} className="hover:text-neon-magenta" onClick={onDelete}>
+          <GhostButton
+            aria-label={`Delete ${p.name}`}
+            className="hover:text-neon-magenta"
+            disabled={remove.pending}
+            onClick={() => onDelete(() => void remove.run(post({ type: "program_delete", id: p.id })))}
+          >
             <Trash2 size={14} />
           </GhostButton>
           {fitToTime && (
@@ -115,6 +122,7 @@ export function ProgramRow({
           ))}
         </div>
       )}
+      <ActionStatus pending={remove.pending} error={remove.error} className="justify-end text-right" />
       <ActionStatus pending={run.pending} error={run.error} className="justify-end text-right" />
     </Panel>
   );
