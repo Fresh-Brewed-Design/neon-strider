@@ -1,6 +1,6 @@
 [package]
 name = "neon-strider"
-version = "1.73.0"
+version = "1.74.0"
 description = "Desktop controller for FitShow Bluetooth treadmills"
 authors = ["Fresh Brewed Design"]
 license = "MIT"
