@@ -805,7 +805,7 @@ pub enum Command {
     UpdateInstall,
     /// "Not now": hide the offer for this version until the next daily check.
     UpdateDismiss,
-    /// INSTALL (`open`) or LATER on the HUD's update card. INSTALL opens the
+    /// NOTES (`open`) or LATER on the HUD's update card. NOTES opens the
     /// dashboard on the notes; it never installs by itself.
     UpdateHudCard {
         open: bool,

@@ -211,8 +211,9 @@ export function EyeBreakCard({ snapshot }: { snapshot: AppSnapshot }) {
 }
 
 /**
- * A new version is ready, shown once per version. INSTALL opens the dashboard
- * on the notes (it never installs blind); LATER just hides the card.
+ * A new version is ready, shown once per version. NOTES opens the dashboard
+ * on the release notes, where Install is (the HUD never installs blind);
+ * LATER just hides the card.
  */
 export function UpdateCard({ snapshot }: { snapshot: AppSnapshot }) {
   const { send, error } = useHudSend();
@@ -222,11 +223,13 @@ export function UpdateCard({ snapshot }: { snapshot: AppSnapshot }) {
     <div className="hud-toast hud-update accent-cyan" role="status">
       <div className="hud-toast-body">
         <span className="hud-toast-message">UPDATE READY // v{version}</span>
-        <span className="hud-sub">Read what&apos;s new, then install from the dashboard.</span>
+        <span className="hud-sub">Read the release notes in the dashboard, then press Install.</span>
         <HudNote error={error} />
       </div>
       <div className="hud-walkaway-actions">
-        <SmallButton onClick={() => send({ type: "update_hud_card", open: true })}>INSTALL</SmallButton>
+        <SmallButton title="Open the release notes in the dashboard." onClick={() => send({ type: "update_hud_card", open: true })}>
+          NOTES
+        </SmallButton>
         <SmallButton onClick={() => send({ type: "update_hud_card", open: false })}>LATER</SmallButton>
       </div>
     </div>
