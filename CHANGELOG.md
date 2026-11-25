@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.76.4 (2026-11-25)
+
+### Fixed
+
+- Dashboard dialogs take keyboard focus and close on Escape. Dashboard animations follow the system setting to reduce motion.
+- Strava Disconnect, template reset, shortcut reset, Forget heart rate sensor and deleting a calibration point now ask before they run.
+
 ## 1.76.3 (2026-11-25)
 
 ### Fixed
