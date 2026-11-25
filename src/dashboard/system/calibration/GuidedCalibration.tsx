@@ -590,7 +590,7 @@ function StopButton() {
 
 const MARK_CLASS: Record<SweepMark | "current", string> = {
   saved: "border-emerald-400/60 text-emerald-400",
-  skipped: "border-white/10 text-white/40 line-through",
+  skipped: "border-white/10 text-white/60 line-through",
   pending: "border-white/15 text-white/60",
   current: "border-neon-yellow/70 text-neon-yellow",
 };

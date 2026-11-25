@@ -248,6 +248,7 @@ export function NumberField({
 }) {
   const [text, setText] = useState<string | null>(null);
   const action = useAction();
+  const unitSuffix = unit ? ` ${unit}` : "";
 
   const apply = () => {
     if (text === null) return;
@@ -256,7 +257,15 @@ export function NumberField({
     if (text.trim() === "" || !Number.isFinite(n)) return;
     const clamped = Math.min(max, Math.max(min, n));
     const next = snap ? Math.min(max, Math.max(min, snap(clamped))) : clamped;
-    if (next !== value) void action.run(async () => onCommit(next));
+    if (next === value && clamped === n) return;
+    const held = n > max ? `Kept to ${max}${unitSuffix}, the most allowed.` : n < min ? `Kept to ${min}${unitSuffix}, the least allowed.` : null;
+    if (next === value) {
+      // Held to a limit and already there: nothing to save, but the field shows the held value.
+      action.reset();
+      void action.run(async () => undefined, { done: held ?? "Saved." });
+      return;
+    }
+    void action.run(async () => onCommit(next), { done: held ?? "Saved." });
   };
 
   return (
@@ -279,7 +288,7 @@ export function NumberField({
         />
         {unit && <span className="font-mono text-xs text-white/60">{unit}</span>}
       </div>
-      <ActionStatus pending={action.pending} error={action.error} className="mt-1" />
+      <ActionStatus pending={action.pending} error={action.error} done={action.done} className="mt-1" />
       {hint && <Hint className="mt-1">{hint}</Hint>}
     </label>
   );

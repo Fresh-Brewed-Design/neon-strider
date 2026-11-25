@@ -146,6 +146,7 @@ export function DashboardApp() {
           </div>
           <button
             type="button"
+            aria-pressed={pinned}
             onClick={() => send({ type: "dashboard_set_pinned", pinned: !pinned })}
             title={pinned ? "Close the dashboard when it loses focus" : "Keep the dashboard open when it loses focus"}
             className={cx(

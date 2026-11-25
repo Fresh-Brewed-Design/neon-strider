@@ -11,11 +11,11 @@ export function PinToggle({ widget, pinned }: { widget: HudWidget; pinned: boole
       title={pinned ? "Remove from HUD" : "Show on HUD"}
       onClick={() => send({ type: "hud_toggle_widget", widget })}
       className={cx(
-        "shrink-0 rounded p-0.5 transition-colors hover:bg-white/10",
-        pinned ? "text-neon-cyan" : "text-white/25 hover:text-white/70",
+        "flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors hover:bg-white/10",
+        pinned ? "text-neon-cyan" : "text-white/60 hover:text-white",
       )}
     >
-      <Pin size={12} fill={pinned ? "currentColor" : "none"} />
+      <Pin size={14} fill={pinned ? "currentColor" : "none"} />
     </button>
   );
 }

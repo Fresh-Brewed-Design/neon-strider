@@ -169,7 +169,7 @@ function LastResult({ result }: { result: NonNullable<StravaSnapshot["last_resul
   return (
     <Hint className="min-w-0 break-words" role="status">
       Last result: <span className={result.ok ? "text-emerald-400/80" : "text-red-400/80"}>{result.message}</span>
-      <span className="text-white/35"> · {new Date(result.at_ms).toLocaleString()}</span>
+      <span className="text-white/60"> · {new Date(result.at_ms).toLocaleString()}</span>
     </Hint>
   );
 }

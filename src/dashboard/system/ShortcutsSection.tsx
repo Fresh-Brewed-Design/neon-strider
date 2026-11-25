@@ -117,7 +117,7 @@ function ShortcutRow({
         </div>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
           {view.keys.length === 0 && !recording && (
-            <span className="font-mono text-xs uppercase tracking-[0.15em] text-white/40">Off</span>
+            <span className="font-mono text-xs uppercase tracking-[0.15em] text-white/60">Off</span>
           )}
           {view.keys.map((k, i) => (
             <span
@@ -134,7 +134,7 @@ function ShortcutRow({
                 aria-label={`Remove ${k.label} from ${text.name}`}
                 disabled={change.pending || recording}
                 onClick={() => save(combos.filter((_, j) => j !== i))}
-                className="rounded text-white/50 hover:text-white disabled:opacity-30"
+                className="rounded text-white/60 hover:text-white disabled:opacity-30"
               >
                 <X size={12} />
               </button>

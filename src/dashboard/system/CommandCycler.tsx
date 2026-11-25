@@ -6,6 +6,9 @@ import { ActionStatus } from "../../components/ActionStatus";
 import { INPUT_CLASS } from "./fields";
 import { DEFAULT_TEMPLATE, fillTemplate, frameBody, hex, parseTemplate } from "./rawFrame";
 
+/** The shortest step the cycler allows, so a typo cannot flood the treadmill. */
+const MIN_DELAY_MS = 200;
+
 /**
  * Protocol discovery tool: fills the `XX` slot of a body template with each
  * byte in a range, one step at a time or on a timer, so you can watch what the
@@ -20,6 +23,7 @@ export function CommandCycler({ onSend }: { onSend: (body: number[]) => Promise<
   const [endByte, setEndByte] = useState(0x20);
   const [currentByte, setCurrentByte] = useState(0x00);
   const [delay, setDelay] = useState(2000);
+  const [delayText, setDelayText] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
 
   const parsed = parseTemplate(templateText);
@@ -139,8 +143,18 @@ export function CommandCycler({ onSend }: { onSend: (body: number[]) => Promise<
           <Label>Step every (ms)</Label>
           <input
             type="number"
-            value={delay}
-            onChange={(e) => setDelay(parseInt(e.target.value) || 1000)}
+            min={MIN_DELAY_MS}
+            value={delayText ?? delay}
+            onChange={(e) => {
+              setDelayText(e.target.value);
+              const n = parseInt(e.target.value);
+              if (n >= MIN_DELAY_MS) setDelay(n);
+            }}
+            onBlur={() => {
+              const n = parseInt(delayText ?? "");
+              if (delayText !== null) setDelay(Math.max(MIN_DELAY_MS, Number.isFinite(n) ? n : 1000));
+              setDelayText(null);
+            }}
             className={cx(INPUT_CLASS, "mt-1 block w-24")}
           />
         </label>
