@@ -4,6 +4,8 @@ import { statWidget } from "../widgets/registry";
 import { EyeBreakCard, MaintenanceCard, SeatedCard, UpdateCard, WalkAwayCard, WeeklyCard } from "./HudCards";
 import { useEyeBreakTones } from "./eyeBreakTones";
 import { useProgramTones } from "./programTones";
+import { useLinkUp, useStepSweep } from "./hudMotion";
+import { StepSweep } from "./StepSweep";
 import { HudHeader, type HeaderToggle } from "./HudHeader";
 import type { PanelNote } from "./HudNote";
 import { hotkeyTitle } from "./shortcutLabel";
@@ -43,6 +45,10 @@ export function HudApp() {
 
   useEyeBreakTones(snapshot?.eye_break);
   useProgramTones(snapshot?.program_tones);
+  // LINK UP: the logo decodes once per connect (display only).
+  const linkUp = useLinkUp(snapshot?.connection.connected);
+  // A program step change sweeps the panel once with the step's name (display only).
+  const stepSweep = useStepSweep(snapshot === null ? undefined : snapshot.active_program);
 
   const widgets = snapshot?.hud.widgets ?? [];
   const view = snapshot?.hud_view ?? "full";
@@ -141,6 +147,7 @@ export function HudApp() {
               dragging={placement.dragging}
               toggle={toggle}
               simulated={snapshot.connection.simulated}
+              linkUp={linkUp}
             />
             {full ? (
               <>
@@ -160,6 +167,7 @@ export function HudApp() {
             ) : (
               <StripRow snapshot={snapshot} send={panel.send} note={note} />
             )}
+            <StepSweep sweep={stepSweep} />
           </section>
         )}
         {walkawayCard && snapshot && <WalkAwayCard snapshot={snapshot} />}
