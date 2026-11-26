@@ -1,0 +1,1 @@
+- Live no longer scrolls with a program running and the STATS view open: the stat tiles sit a little tighter, and LIFETIME_ODOMETER keeps its name on one line.
