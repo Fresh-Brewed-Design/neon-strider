@@ -24,6 +24,7 @@ import { hrCool } from "./hrcool";
 import { hrSpark } from "./hrspark";
 import { hrZone } from "./hrzone";
 import { hud } from "./hud";
+import { hudMotion } from "./hudmotion";
 import { lightsOut } from "./lightsout";
 import { link } from "./link";
 import { maintenance } from "./maintenance";
@@ -88,6 +89,8 @@ export const SCENARIOS: Scenario[] = [
   easyStop,
   fitToTime,
   programTones,
+  // After link and programs: it replays their connect and step changes.
+  hudMotion,
   // After platform: the keys follow ?mac.
   shortcuts,
   // Last: it holds the cards the scenarios above put up.
