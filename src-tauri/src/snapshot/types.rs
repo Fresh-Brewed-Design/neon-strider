@@ -280,6 +280,9 @@ pub struct DeckSnapshot {
     /// The deck changed or refused the last target ("asked X, got Y"), for a
     /// few seconds; the HUD shows it under the speed controls.
     pub target_note: Option<String>,
+    /// Plain words under `target_note`: what the deck did and, where known,
+    /// the limit it met (its top or slowest speed, its top tilt).
+    pub target_note_hint: Option<String>,
     /// The speeds the controls may offer, slowest first: every speed from
     /// the floor to the top that DECK_PROFILE does not know the deck skips.
     /// Empty until the deck has answered a target, and the controls then

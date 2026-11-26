@@ -291,6 +291,9 @@ pub struct OrchestratorState {
     /// What the deck did with the last target when it was not what we asked:
     /// plain words and when, for the windows to show for a while.
     pub(crate) target_note: Option<(String, Instant)>,
+    /// The plain reason under `target_note` and what to do, from what the
+    /// engine knew when the deck answered (`deck_note_hint`).
+    pub(crate) target_note_hint: Option<String>,
     /// The last target packet changed the speed byte (not only the incline):
     /// a nack on it can be filed against that speed.
     pub(crate) target_speed_changed: bool,
@@ -517,6 +520,7 @@ impl Default for OrchestratorState {
             unknown_status_logged: Vec::new(),
             target_pending: None,
             target_note: None,
+            target_note_hint: None,
             target_speed_changed: false,
             target_incline_changed: false,
             deck_profile: Default::default(),
@@ -1777,10 +1781,98 @@ impl OrchestratorState {
             }
             protocol::DeckReply::TargetEcho { .. } => None,
         };
+        self.target_note_hint = note
+            .as_ref()
+            .map(|_| self.deck_note_hint(asked_speed, asked_incline, reply));
         match note {
             Some(n) => self.target_note = Some((n, now)),
             // The deck took it as asked: an older complaint is stale.
             None => self.target_note = None,
+        }
+    }
+
+    /// The plain words under a DECK_REFUSED or DECK_ADJUSTED note: what the
+    /// deck did and, where the engine knows one, the limit it met. Called
+    /// after `learn_deck_reply`, so a limit just learned counts.
+    fn deck_note_hint(
+        &self,
+        asked_speed: u8,
+        asked_incline: u8,
+        reply: protocol::DeckReply,
+    ) -> String {
+        let kmh = |b: u8| self.to_physical_speed(b as f32 / 10.0);
+        let tilt = |level: u8| self.incline_pct(level);
+        let top_speed = self.deck_profile.ceiling();
+        let top_level = self.deck_profile.incline_ceiling();
+        match reply {
+            protocol::DeckReply::Nack if self.target_speed_changed => {
+                let next = match top_speed.filter(|c| asked_speed > *c) {
+                    Some(c) => format!("The treadmill's top speed is {:.1} km/h.", kmh(c)),
+                    None => "Pick another speed.".to_string(),
+                };
+                format!(
+                    "The treadmill turned down {:.1} km/h. {next}",
+                    kmh(asked_speed)
+                )
+            }
+            protocol::DeckReply::Nack if self.target_incline_changed => {
+                let next = match top_level.filter(|c| asked_incline > *c) {
+                    Some(c) => format!("The treadmill's top tilt is {:.1} %.", tilt(c)),
+                    None => "Pick another tilt.".to_string(),
+                };
+                format!(
+                    "The treadmill turned down tilt {:.1} %. {next}",
+                    tilt(asked_incline)
+                )
+            }
+            protocol::DeckReply::Nack => {
+                "The treadmill turned down the new target. Pick another speed or tilt.".to_string()
+            }
+            protocol::DeckReply::TargetEcho { speed, incline } => {
+                let speed_moved = speed != asked_speed;
+                let incline_moved = incline != asked_incline;
+                let took = if speed_moved && incline_moved {
+                    format!(
+                        "The treadmill took {:.1} km/h and tilt {:.1} % in place of the targets sent.",
+                        kmh(speed),
+                        tilt(incline)
+                    )
+                } else if speed_moved {
+                    format!(
+                        "The treadmill took {:.1} km/h in place of {:.1} km/h.",
+                        kmh(speed),
+                        kmh(asked_speed)
+                    )
+                } else {
+                    format!(
+                        "The treadmill took tilt {:.1} % in place of {:.1} %.",
+                        tilt(incline),
+                        tilt(asked_incline)
+                    )
+                };
+                let limit = if speed_moved && top_speed == Some(speed) {
+                    Some(format!(
+                        "{:.1} km/h is the treadmill's top speed.",
+                        kmh(speed)
+                    ))
+                } else if speed_moved && self.deck_profile.floor() == Some(speed) {
+                    Some(format!(
+                        "{:.1} km/h is the treadmill's slowest speed.",
+                        kmh(speed)
+                    ))
+                } else if incline_moved && !speed_moved && top_level == Some(incline) {
+                    Some(format!(
+                        "Tilt {:.1} % is the treadmill's top tilt.",
+                        tilt(incline)
+                    ))
+                } else {
+                    None
+                };
+                match limit {
+                    Some(l) => format!("{took} {l}"),
+                    None => took,
+                }
+            }
         }
     }
 
@@ -1918,6 +2010,12 @@ impl OrchestratorState {
         (self.now().saturating_duration_since(*at) < TARGET_NOTE_SHOWN).then(|| note.clone())
     }
 
+    /// The plain words under the note on the last target, while the note shows.
+    pub fn current_target_note_hint(&self) -> Option<String> {
+        self.current_target_note()?;
+        self.target_note_hint.clone()
+    }
+
     pub fn reset_connection(&mut self) {
         self.awaiting_first_packet = true;
         self.session_evaluated_on_connect = false;
@@ -1934,6 +2032,7 @@ impl OrchestratorState {
         self.unknown_status_code = None;
         self.target_pending = None;
         self.target_note = None;
+        self.target_note_hint = None;
         self.deck_standby = false;
         self.last_handshake_tx = None;
         self.deck_set_speed = None;

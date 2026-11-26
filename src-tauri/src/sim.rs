@@ -1985,6 +1985,11 @@ mod tests {
         r.run(2.0);
         let note = r.state.current_target_note().expect("a note");
         assert!(note.contains("5.0") && note.contains("4.0"), "{note}");
+        let hint = r.state.current_target_note_hint().expect("plain words");
+        assert!(
+            hint.ends_with("4.0 km/h is the treadmill's top speed."),
+            "{hint}"
+        );
         r.run(20.0);
         assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
         r.run(10.0);
@@ -1999,6 +2004,7 @@ mod tests {
         let mut r = Rig::new();
         r.state.set_test_now(r.t);
         r.state.target_pending = Some((30, 0, r.t));
+        r.state.target_speed_changed = true;
         r.state.on_deck_reply(protocol::DeckReply::Nack);
         let note = r.state.current_target_note().expect("a note");
         assert!(note.starts_with("DECK_REFUSED"), "{note}");
@@ -2006,6 +2012,9 @@ mod tests {
             note.contains("KM/H, TILT") && note.ends_with(" %"),
             "{note}"
         );
+        let hint = r.state.current_target_note_hint().expect("plain words");
+        assert!(hint.starts_with("The treadmill turned down"), "{hint}");
+        assert!(hint.ends_with("Pick another speed."), "{hint}");
         // A nack with no target in flight says nothing.
         r.state.target_note = None;
         r.state.on_deck_reply(protocol::DeckReply::Nack);
@@ -2264,6 +2273,10 @@ mod tests {
         let note = r.state.current_target_note().expect("a note");
         let (a, b) = (r.state.incline_pct(3), r.state.incline_pct(4));
         assert_eq!(note, format!("DECK_ADJUSTED // TILT {a:.1} % -> {b:.1} %"));
+        assert_eq!(
+            r.state.current_target_note_hint().as_deref(),
+            Some(format!("The treadmill took tilt {b:.1} % in place of {a:.1} %.").as_str())
+        );
     }
 
     #[test]

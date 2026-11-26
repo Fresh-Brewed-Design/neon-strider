@@ -151,6 +151,7 @@ fn deck_snapshot(state: &OrchestratorState, max_incline_level: u8) -> DeckSnapsh
         incline_offset_pct: state.incline_offset,
         incline_pct_per_level: state.tilt_multiplier,
         target_note: state.current_target_note(),
+        target_note_hint: state.current_target_note_hint(),
         speed_steps: state
             .deck_speeds()
             .into_iter()

@@ -42,7 +42,7 @@ describe("EyeBreakCard", () => {
     expect(screen.getByText("OCULAR_IMPLANT // COOLDOWN")).toBeInTheDocument();
     expect(screen.getByText("72 S")).toBeInTheDocument();
     expect(screen.getByText("Look away from the screen.")).toBeInTheDocument();
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "SKIP" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "SKIP BREAK" })));
     expect(sent()).toEqual([{ command: { type: "eye_break_skip" } }]);
   });
 
@@ -58,6 +58,13 @@ describe("EyeBreakCard", () => {
     );
     expect(screen.getByText("SHUTTER // OPEN")).toBeInTheDocument();
     expect(screen.getByText("Open your eyes and look far away. The belt is paused.")).toBeInTheDocument();
+  });
+
+  it("says the end tone ends the break only while tones are on", () => {
+    const { rerender } = render(<EyeBreakCard snapshot={withEye({ phase: "break", remaining_s: 30, sound: true })} />);
+    expect(screen.getByText("Two rising tones end the break.")).toBeInTheDocument();
+    rerender(<EyeBreakCard snapshot={withEye({ phase: "break", remaining_s: 30, sound: false })} />);
+    expect(screen.queryByText("Two rising tones end the break.")).toBeNull();
   });
 
   it("says the belt is paused while the break holds it", () => {
@@ -77,7 +84,7 @@ describe("EyeBreakCard", () => {
   it("asks before the belt moves again after a break", async () => {
     render(<EyeBreakCard snapshot={withEye({ phase: "complete", holds_belt: true })} />);
     expect(screen.getByText("OCULAR_IMPLANT // RECALIBRATED")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "SKIP" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "SKIP BREAK" })).toBeNull();
     expect(screen.getByText("The belt stays paused until you press RE-JACK.")).toBeInTheDocument();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "RE-JACK" })));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "STAY STILL" })));
