@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.78.0 (2026-11-26)
+
+### Changed
+
+- System: a calibrated treadmill shows its Calibration as one status line with a GROUND_TRUTH details expander, and RUN says on its own row why it is off.
+- System: each tab has links to its sections, and each switch has one short sentence with a collapsed More for the rest.
+
 ## 1.77.0 (2026-11-26)
 
 ### Changed
