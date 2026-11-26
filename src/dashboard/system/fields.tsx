@@ -64,7 +64,7 @@ function More({ lines, label }: { lines: string[]; label: string }) {
       <button
         type="button"
         aria-expanded={open}
-        aria-controls={panel}
+        aria-controls={open ? panel : undefined}
         aria-label={`More about ${label}`}
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-1 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-white/60 transition-colors hover:text-neon-cyan"
@@ -72,11 +72,13 @@ function More({ lines, label }: { lines: string[]; label: string }) {
         {open ? <ChevronDown size={12} aria-hidden /> : <ChevronRight size={12} aria-hidden />}
         More
       </button>
-      <div id={panel} hidden={!open} className="mt-1 flex flex-col gap-1">
-        {lines.map((line) => (
-          <Hint key={line}>{line}</Hint>
-        ))}
-      </div>
+      {open && (
+        <div id={panel} className="mt-1 flex flex-col gap-1">
+          {lines.map((line) => (
+            <Hint key={line}>{line}</Hint>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

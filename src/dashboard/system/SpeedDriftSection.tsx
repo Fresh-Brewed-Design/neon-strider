@@ -64,7 +64,7 @@ export function SpeedDriftSection() {
           tone="cyan"
           checked={d.enabled}
           onChange={(enabled) => void toggle.run(() => save({ enabled }))}
-          description="Only a belt already running at a speed you set is adjusted."
+          description="Adjusts only a belt already running at a speed you set."
           hint={[
             "A speed you set by hand ends speed drift until the next walk.",
             "Programs, pauses, calls and Neural flow take over from speed drift.",

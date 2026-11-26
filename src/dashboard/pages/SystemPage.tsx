@@ -94,7 +94,7 @@ export function SystemTabs({ tab, onChange }: { tab: SystemTab; onChange: (next:
 export function SectionLinks({ sections }: { sections: readonly string[] }) {
   if (sections.length < 2) return null;
   return (
-    <nav aria-label="Sections on this tab" className="mb-3 flex flex-wrap gap-x-4 gap-y-1">
+    <nav aria-label="Sections of the open tab" className="mb-3 flex flex-wrap gap-x-4 gap-y-1">
       {sections.map((id) => (
         <button
           key={id}
