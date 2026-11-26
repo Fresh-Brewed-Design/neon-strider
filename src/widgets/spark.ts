@@ -3,6 +3,8 @@ import type { ZoneBand } from "../ipc";
 /** What a spark chart draws: Rust's points, oldest first, `null` for a gap. */
 export interface SparkData {
   points: (number | null)[];
+  /** The smallest range the scale spans, in the points' unit (`MIN_SPAN_BPM`, `MIN_SPAN_KMH`). */
+  minSpan: number;
   /** A heart rate zone shown as a band behind the line. */
   zone: ZoneBand | null;
   /** A cool-down's pulse target (bpm), shown as a band from the target down. */
@@ -18,9 +20,16 @@ export interface SparkGeometry {
 
 /**
  * A steady walk drifts by a few bpm. Stretched to the full height that drift
- * would look like a climb, so the scale always spans at least 20 bpm.
+ * would look like a climb, so PULSE_RATE's scale always spans at least 20 bpm.
  */
 export const MIN_SPAN_BPM = 20;
+
+/**
+ * The belt's speed on a steady walk wobbles by a tenth or two around the
+ * target. Over 1 km/h that stays a near-flat line, while a 0.5 km/h step from
+ * Neural flow or a call still shows as half the chart's height.
+ */
+export const MIN_SPAN_KMH = 1;
 
 /** Kept clear at the top and bottom so the stroke is never cut in half. */
 const EDGE = 1.5;
@@ -32,7 +41,7 @@ const fmt = (n: number) => String(Math.round(n * 100) / 100);
  * the right edge. No points (no sensor picked) is no chart: `null`.
  */
 export function sparkGeometry(data: SparkData, width: number, height: number): SparkGeometry | null {
-  const { points, zone } = data;
+  const { points, zone, minSpan } = data;
   const target = data.target ?? null;
   if (points.length === 0) return null;
   const values = points.filter((p): p is number => p !== null);
@@ -41,15 +50,15 @@ export function sparkGeometry(data: SparkData, width: number, height: number): S
   let hi = Math.max(...bounds);
   if (bounds.length === 0) {
     lo = 0;
-    hi = MIN_SPAN_BPM;
+    hi = minSpan;
   }
-  if (hi - lo < MIN_SPAN_BPM) {
+  if (hi - lo < minSpan) {
     const mid = (hi + lo) / 2;
-    lo = mid - MIN_SPAN_BPM / 2;
-    hi = mid + MIN_SPAN_BPM / 2;
+    lo = mid - minSpan / 2;
+    hi = mid + minSpan / 2;
   }
   const inner = height - EDGE * 2;
-  const y = (bpm: number) => EDGE + ((hi - bpm) / (hi - lo)) * inner;
+  const y = (v: number) => EDGE + ((hi - v) / (hi - lo)) * inner;
   const step = points.length > 1 ? width / (points.length - 1) : 0;
   const x = (i: number) => (points.length > 1 ? i * step : width);
 
