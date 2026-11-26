@@ -22,6 +22,8 @@ pub mod calls;
 pub mod card_queue;
 #[path = "desk.rs"]
 pub mod desk;
+#[path = "desk_resume.rs"]
+pub mod desk_resume;
 #[path = "desk_sync.rs"]
 pub mod desk_sync;
 #[path = "eyebreak.rs"]
@@ -300,6 +302,16 @@ pub fn refresh_daily_base(app: &AppHandle, exclude: Option<i64>) {
         None => false,
     };
     *DAILY_BASE.lock().unwrap_or_else(|e| e.into_inner()) = (v, live_counts);
+}
+
+/// A saved walk changed (cut after a walk-away): re-read every cached total
+/// that sums saved walks. Blocking.
+pub fn refresh_after_session_edit(app: &AppHandle) {
+    weekly::refresh(app, None);
+    desk_sync::refresh(app, None);
+    crate::typing_speed::refresh(app);
+    odometer::refresh_current(app);
+    maintenance::refresh(app, None);
 }
 
 /// A session started at or after local midnight belongs to today, the same

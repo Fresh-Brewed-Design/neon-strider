@@ -200,9 +200,9 @@ export const snapshot: AppSnapshot = {
     progress: 0.42,
   },
   weekly: {
-    this_week: { distance_km: 12.4, duration_s: 11_460, active_days: 3, sessions: 4, calories: 740, longest_day_km: 5.1 },
-    last_week: { distance_km: 31.6, duration_s: 29_700, active_days: 5, sessions: 9, calories: 1_890, longest_day_km: 8.2 },
-    week_before: { distance_km: 28.2, duration_s: 26_100, active_days: 4, sessions: 7, calories: 1_650, longest_day_km: 7.4 },
+    this_week: { distance_km: 12.4, duration_s: 11_460, active_days: 3, desk_days: 3, sessions: 4, calories: 740, longest_day_km: 5.1 },
+    last_week: { distance_km: 31.6, duration_s: 29_700, active_days: 5, desk_days: 5, sessions: 9, calories: 1_890, longest_day_km: 8.2 },
+    week_before: { distance_km: 28.2, duration_s: 26_100, active_days: 4, desk_days: 5, sessions: 7, calories: 1_650, longest_day_km: 7.4 },
     last_week_id: "2026-W45",
     distance_change: { pct: 12, is_new: false },
     show_card: false,

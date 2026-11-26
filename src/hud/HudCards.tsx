@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import type { AppSnapshot, BlinkStep, HudCard } from "../ipc";
 import { formatDuration, mmss } from "../format";
 import { PLAIN } from "../names";
-import { formatChange } from "../dashboard/history/weekly";
+import { formatChange, formatDeskDays } from "../dashboard/history/weekly";
 import { describePlan } from "../dashboard/programs/format";
 import { startFailure } from "../state/linkStatus";
 import { resumeWord } from "./status";
@@ -71,7 +71,7 @@ export function WeeklyCard({ snapshot }: { snapshot: AppSnapshot }) {
           {change && <span className={`hud-weekly-change tone-${change.tone}`}>{change.text}</span>}
         </div>
         <span className="hud-sub">
-          {w.active_days} / 7 DAYS · {formatDuration(w.duration_s).toUpperCase()}
+          {formatDeskDays(w).toUpperCase()} · {formatDuration(w.duration_s).toUpperCase()}
         </span>
         <HudNote error={error} />
       </div>

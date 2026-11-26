@@ -2,9 +2,11 @@
 //!
 //! When the display turns off (`platform::display_off`: the power plan's
 //! timeout, the lock screen's, a monitor-off tool) while the treadmill is
-//! awake, the app sends the normal Stop, whatever the belt is doing: a walk,
-//! a manual pause, a program walking, resting or paused (it ends, as END
-//! does), or a belt that is already still. The session is saved once, and the
+//! awake, the app sends the normal Stop: on a walk, a manual pause, a program
+//! walking or paused by hand (it ends, as END does), or a belt that is already
+//! still. A program that holds the belt still by itself (its rest, a wait for
+//! GO, a 0 km/h step) gets nothing: the belt is already still, and a Stop
+//! would only end the program (#426). The session is saved once, and the
 //! deck then goes to its own sleep, screen off (status byte 6, about 14
 //! minutes after a stop; docs/protocol.md). The deck has no known command for
 //! standby or power-off, so Stop is all it gets. A deck that is already still
@@ -59,6 +61,9 @@ pub enum Belt {
     Starting,
     /// Nothing to send: in standby, already stopping, or a stop in flight.
     Asleep,
+    /// A running program holds the belt still (a rest, a wait for GO, a
+    /// 0 km/h step): nothing to send, and the program carries on.
+    Held,
 }
 
 /// What the desk loop tells the machine each second.
@@ -115,7 +120,7 @@ impl LightsOut {
                     self.phase = Phase::Armed;
                     None
                 }
-                Belt::Asleep => {
+                Belt::Asleep | Belt::Held => {
                     self.phase = Phase::Spent { acted: false };
                     None
                 }
@@ -133,6 +138,9 @@ pub fn belt(state: &OrchestratorState) -> Belt {
     if state.stop_requested || state.deck_standby || state.last_status == MachineStatus::Stopping {
         return Belt::Asleep;
     }
+    if program_holds_belt_still(state) {
+        return Belt::Held;
+    }
     let starting = state.last_status == MachineStatus::Starting
         || (state.last_status == MachineStatus::Stopped && state.start_requested_at.is_some());
     if starting {
@@ -140,6 +148,22 @@ pub fn belt(state: &OrchestratorState) -> Belt {
     } else {
         Belt::Awake
     }
+}
+
+/// A running program holds a still belt by itself: resting on it, waiting
+/// for GO, or on a 0 km/h step. A program paused by hand is not holding it.
+fn program_holds_belt_still(state: &OrchestratorState) -> bool {
+    let Some(run) = state.program.as_ref() else {
+        return false;
+    };
+    let still = !state.last_status.is_moving();
+    let holds = match run.phase {
+        crate::programs::ProgramPhase::Resting => true,
+        crate::programs::ProgramPhase::Walking => {
+            run.wait.is_some() || (run.on_hold_step() && !run.paused)
+        }
+    };
+    still && holds
 }
 
 /// The HUD toast for an effect.
@@ -253,6 +277,11 @@ mod tests {
     #[test]
     fn a_deck_asleep_or_stopping_gets_nothing() {
         assert_eq!(off_with(true, Belt::Asleep), None);
+    }
+
+    #[test]
+    fn a_belt_a_program_holds_still_gets_nothing() {
+        assert_eq!(off_with(true, Belt::Held), None);
     }
 
     #[test]

@@ -1,0 +1,2 @@
+- A restart keeps the desk timers, LIGHTS_OUT leaves a program at rest alone and DUMP ends a walk where the walk-away began.
+- Week cards count desk days and compare km per desk day, so a day off the PC never counts against a week.

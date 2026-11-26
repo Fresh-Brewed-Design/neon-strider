@@ -118,8 +118,8 @@ pub enum Action {
 // ---------------------------------------------------------------------------
 
 /// A speed change the machine made, remembered for the restore.
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct Adjusted {
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Adjusted {
     saved_kmh: f32,
     set_kmh: f32,
     program: bool,
@@ -269,6 +269,35 @@ impl CallMachine {
         )
     }
 
+    /// What a restart keeps (`desk_resume.rs`): whether a call is on, the
+    /// speed its end puts back, and Quiet now's.
+    pub fn kept(&self) -> Kept {
+        let (call, adjusted) = match self.phase {
+            Phase::Idle => (false, None),
+            Phase::Call { adjusted, .. } => (true, adjusted),
+        };
+        Kept {
+            call,
+            adjusted,
+            manual: self.manual,
+        }
+    }
+
+    /// Put back what a restart kept. A call still on carries on: its end
+    /// puts the speed back as before, and a belt it left alone stays alone.
+    pub fn restore(&mut self, kept: Kept) {
+        self.phase = if kept.call {
+            Phase::Call {
+                adjusted: kept.adjusted,
+                free_since_ms: None,
+            }
+        } else {
+            Phase::Idle
+        };
+        self.mic_since_ms = None;
+        self.manual = kept.manual;
+    }
+
     /// Advance to `now_ms`. Returns a speed change to apply, if any.
     pub fn tick(&mut self, cfg: &Config, now_ms: u64, input: &Input) -> Option<Action> {
         self.check_quiet_now(&input.belt);
@@ -325,6 +354,16 @@ impl CallMachine {
             }
         }
     }
+}
+
+/// The call state a restart keeps.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub struct Kept {
+    pub call: bool,
+    #[serde(default)]
+    pub adjusted: Option<Adjusted>,
+    #[serde(default)]
+    pub manual: Option<Adjusted>,
 }
 
 /// Put the speed back, unless the user (or a program step change) already
