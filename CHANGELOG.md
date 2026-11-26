@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.85.0 (2026-11-26)
+
+### Changed
+
+- While the treadmill is asleep, ENGAGE, GO, the sit-too-long card's buttons and a program's 30-second warning say "wake deck first" before you press.
+- The HUD strip shows a program's rest with the time to its next walk. An unanswered GO folds the HUD back to the strip after 30 seconds, with GO as the strip's main button. Toasts no longer repeat the belt and link states the HUD header already shows.
+
 ## 1.84.1 (2026-11-26)
 
 ### Fixed
