@@ -22,10 +22,13 @@ const CORNERS: { anchor: HudAnchor; label: string; className: string }[] = [
   { anchor: "bottom_right", label: "Bottom right", className: "bottom-2 right-2" },
 ];
 
+/** A stat's HUD label, kept on one line: "HUD: VEL". */
+const hudShort = (label: string) => `HUD:\u00a0${label}`;
+
 /** Each widget's line under its name, in both lists: a stat's plain meaning and its HUD label ("belt speed · HUD: VEL"). */
 const ALL: { id: HudWidget; description: string }[] = [
   ...MODULE_WIDGETS.map((m) => ({ id: m.id, description: m.description })),
-  ...STAT_WIDGETS.map((w) => ({ id: w.id, description: w.plain ? `${w.plain} · HUD: ${w.label}` : `HUD: ${w.label}` })),
+  ...STAT_WIDGETS.map((w) => ({ id: w.id, description: w.plain ? `${w.plain} · ${hudShort(w.label)}` : hudShort(w.label) })),
 ];
 
 const rowLine = (id: HudWidget) => ALL.find((w) => w.id === id)?.description ?? "";

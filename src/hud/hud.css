@@ -348,6 +348,15 @@ body,
 }
 .hud-header-end:has(.hud-btn-minify) { margin-right: -6px; }
 
+/* The link chip stays on one line up to 225 % text size (NO_CARRIER, RELINK 12S):
+   where the header leaves it under 120px, the letters close up and the button
+   pads less. */
+.hud-header { container-type: inline-size; }
+@container (max-width: 120px) {
+  .hud-header-live > .hud-status { letter-spacing: 0; }
+  .hud-header-live > .hud-relink { padding: 3px 2px; }
+}
+
 /* The header's minify button: small, after the link status. */
 .hud-btn.hud-btn-minify {
   flex-shrink: 0;

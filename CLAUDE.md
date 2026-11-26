@@ -321,7 +321,7 @@ by Fresh Brewed Design): each reading has one codename, the name on Live tiles a
 everywhere in the UI. The HUD panel keeps its short labels (VEL, TILT, TIME, DIST, TODAY, STEPS,
 BURN, FLOW, ODO, HR). Each codename's plain meaning is in `src/names.ts` (`PLAIN`): a small grey
 line under the codename on Live tiles and cards (`PlainLine`, `.hud-plain`), `plain meaning ·
-HUD: SHORT` on the HUD page's rows, and `CODENAME: Plain phrase` in System labels
+HUD: SHORT` on the HUD page's rows; `CODENAME: Plain phrase` in System labels
 (`systemLabel`). Add a codename there before giving it a plain line. The treadmill link reads
 LINKED, RELINK 11S or NO_CARRIER (plain line: treadmill offline) on the HUD chip and the
 dashboard rail and banner; the HEART_LINK and GHOST_POD chips say NO_CARRIER too. The HUD chip

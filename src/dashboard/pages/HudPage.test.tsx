@@ -40,7 +40,8 @@ describe("HUD page widget rows", () => {
     current!.hud.widgets = ["VELOCITY", "CONTROLS"];
     render(<HudPage />);
     // Pinned.
-    expect(screen.getByText("belt speed · HUD: VEL")).toBeInTheDocument();
+    // "HUD: VEL" never breaks between its words.
+    expect(screen.getByText("belt speed · HUD: VEL").textContent).toBe("belt speed · HUD:\u00a0VEL");
     // Available.
     expect(screen.getByText("incline · HUD: TILT")).toBeInTheDocument();
     expect(screen.getByText("walk time · HUD: TIME")).toBeInTheDocument();

@@ -163,3 +163,13 @@ describe("HUD at rest", () => {
     expect(rule(".hud-btn.hud-btn-minify")).toMatch(/height:\s*24px/);
   });
 });
+
+// NO_CARRIER and RELINK 12S stay on one line up to 225 % text size (#392).
+describe("HUD link chip in a narrow header", () => {
+  it("closes up its letters and padding under 120px", () => {
+    expect(css).toMatch(/\.hud-header\s*\{\s*container-type:\s*inline-size;\s*\}/);
+    const narrow = css.match(/@container \(max-width: 120px\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
+    expect(narrow).toMatch(/\.hud-header-live > \.hud-status\s*\{\s*letter-spacing:\s*0;/);
+    expect(narrow).toMatch(/\.hud-header-live > \.hud-relink\s*\{\s*padding:\s*3px 2px;/);
+  });
+});
