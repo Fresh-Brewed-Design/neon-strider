@@ -154,6 +154,8 @@ pub(crate) struct EyeScreen {
     pub display_off: bool,
     /// The HUD holds its non-urgent cards back (`presenting`).
     pub held: bool,
+    /// Some app uses the microphone (a call): the break plays no tones.
+    pub mic_in_use: bool,
 }
 
 /// One eye-break tick against the belt: runs the machine and applies a pause.
@@ -175,6 +177,7 @@ pub(crate) fn eye_break_tick(
         belt,
         rest_in_ms,
         rest_len_ms,
+        mic_in_use: screen.mic_in_use,
     };
     if let Some(eyebreak::Effect::Pause(hold)) = rt.machine.tick(&rt.cfg, now, &tick) {
         eye_break_pause(state, hold);
@@ -262,6 +265,7 @@ async fn step(connected: bool, now: u64, idle_ms: Option<u64>) -> Outcome {
         locked,
         display_off: crate::platform::display_off(),
         held: presenting::holding(),
+        mic_in_use: calls::mic::in_use_now(),
     };
     eyebreak::with(|rt| eye_break_tick(state, rt, ready, now, screen));
 
