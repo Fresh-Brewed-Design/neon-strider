@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Minus, Plus } from "lucide-react";
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
@@ -34,7 +34,7 @@ function Nudge({ label, icon, disabled, onClick }: { label: string; icon: ReactN
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className="flex h-10 w-9 shrink-0 items-center justify-center rounded border border-white/10 text-white/60 transition-colors hover:border-white/30 hover:text-white disabled:opacity-30"
+      className="flex h-10 w-9 shrink-0 items-center justify-center rounded border @max-[14rem]:h-9 @max-[14rem]:w-8 border-white/10 text-white/60 transition-colors hover:border-white/30 hover:text-white disabled:opacity-30"
     >
       {icon}
     </button>
@@ -98,69 +98,87 @@ export function Axis({
     void sent.run(async () => onSet(snapped));
   };
 
+  // A preset the deck skips is left out.
+  const shown = presets.filter((p) => p >= min - 1e-6 && p <= max + 1e-6 && Math.abs(snap(p) - p) < 1e-6);
+  // In a narrow panel (two side by side at a large Windows text size) six presets take two rows of three.
+  const cols = { "--cols": shown.length, "--cols-narrow": shown.length > 4 ? Math.ceil(shown.length / 2) : shown.length } as CSSProperties;
+
   return (
-    <Panel className="flex flex-col gap-2 p-3">
-      <div className="flex flex-wrap items-center justify-between gap-x-2">
-        <Label>{title}</Label>
-        <span className="flex flex-wrap items-center gap-1 font-mono text-xs uppercase tracking-[0.15em] text-white/60">
-          target <span className={cx("font-digital text-xs", TONE_TEXT[tone])}>{value.toFixed(1)}</span>{" "}
-          <span className="normal-case">{unit}</span>
+    // The panel is a container so its own width decides the narrow layout: two panels side by side
+    // at 150 % Windows text get under 14rem each, where the padding, readout and nudges shrink.
+    <Panel className="@container">
+      <div className="flex flex-col gap-2 p-3 @max-[14rem]:gap-1.5 @max-[14rem]:p-2">
+        <div className="flex items-center justify-between gap-x-2">
+          <Label>{title}</Label>
           <PinToggle widget={pin.widget} pinned={pin.pinned} />
-        </span>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <Nudge label={`${title} down`} disabled={disabled} onClick={() => nudge(false)} icon={<Minus size={16} />} />
-        <div ref={wheel} title={wheelHint} className="flex min-w-0 flex-1 items-end justify-center gap-2">
-          <SegmentedDisplay
-            value={actual}
-            length={2}
-            color={hex}
-            className={actual >= 9.95 ? "h-9 max-w-full" : "h-12 max-w-full"}
-          />
-          <span className="pb-1 font-mono text-xs text-white/60">{unit}</span>
         </div>
-        <Nudge label={`${title} up`} disabled={disabled} onClick={() => nudge(true)} icon={<Plus size={16} />} />
-      </div>
 
-      <div className={cx(disabled && "opacity-30")}>
-        <StylizedSlider
-          min={min}
-          max={max}
-          step={step}
-          value={value}
-          onChange={set}
-          color={tone}
-          mark={mark}
-          label={`${title} target`}
-          disabled={disabled}
-        />
-      </div>
+        <div className="flex items-center gap-2 @max-[14rem]:gap-1">
+          <Nudge label={`${title} down`} disabled={disabled} onClick={() => nudge(false)} icon={<Minus size={16} />} />
+          <div ref={wheel} title={wheelHint} className="flex min-w-0 flex-1 items-end justify-center gap-2 @max-[14rem]:gap-1">
+            <SegmentedDisplay
+              value={actual}
+              length={2}
+              color={hex}
+              className={actual >= 9.95 ? "h-9 max-w-full @max-[14rem]:h-7" : "h-12 max-w-full @max-[14rem]:h-9"}
+            />
+            <span className="pb-1 font-mono text-xs text-white/60">{unit}</span>
+          </div>
+          <Nudge label={`${title} up`} disabled={disabled} onClick={() => nudge(true)} icon={<Plus size={16} />} />
+        </div>
 
-      <div className="flex flex-wrap gap-1">
-        {presets
-          // A preset the deck skips is left out.
-          .filter((p) => p >= min - 1e-6 && p <= max + 1e-6 && Math.abs(snap(p) - p) < 1e-6)
-          .map((p) => (
-            <button
-              key={p}
-              type="button"
-              disabled={disabled}
-              onClick={() => set(p)}
-              className={cx(
-                "flex-1 min-h-8 rounded border py-1 font-mono text-xs font-bold transition-colors disabled:opacity-30",
-                Math.abs(value - p) < step / 2 + 1e-6
-                  ? tone === "cyan"
-                    ? "border-neon-cyan/60 bg-neon-cyan/15 text-neon-cyan"
-                    : "border-neon-magenta/60 bg-neon-magenta/15 text-neon-magenta"
-                  : "border-white/10 text-white/60 hover:border-white/25 hover:text-white",
-              )}
-            >
-              {formatPreset(p)}
-            </button>
-          ))}
+        {/* The slider's own caption: it sets the target, which the big reading only follows. */}
+        <div className={cx("flex flex-col gap-0.5", disabled && "opacity-30")}>
+          <div className="flex flex-wrap items-baseline justify-between gap-x-2 font-mono text-[11px] uppercase tracking-[0.15em] text-white/60">
+            <span>Set target</span>
+            <span>
+              <span className={cx("font-digital text-xs", TONE_TEXT[tone])}>{value.toFixed(1)}</span>{" "}
+              <span className="normal-case">{unit}</span>
+            </span>
+          </div>
+          <StylizedSlider
+            min={min}
+            max={max}
+            step={step}
+            value={value}
+            onChange={set}
+            color={tone}
+            mark={mark}
+            label={`${title} target`}
+            disabled={disabled}
+          />
+        </div>
+
+        <div
+          style={cols}
+          className="grid grid-cols-[repeat(var(--cols),minmax(0,1fr))] gap-1 @max-[14rem]:grid-cols-[repeat(var(--cols-narrow),minmax(0,1fr))]"
+        >
+          {shown.map((p) => {
+            // The preset the target is on shows as pressed: filled, with a bar along its foot.
+            const current = Math.abs(value - p) < step / 2 + 1e-6;
+            return (
+              <button
+                key={p}
+                type="button"
+                disabled={disabled}
+                aria-pressed={current}
+                onClick={() => set(p)}
+                className={cx(
+                  "min-h-8 min-w-0 rounded border py-1 font-mono text-xs font-bold transition-colors disabled:opacity-30",
+                  current
+                    ? tone === "cyan"
+                      ? "border-neon-cyan bg-neon-cyan/20 text-neon-cyan shadow-[inset_0_-3px_0_var(--color-neon-cyan)]"
+                      : "border-neon-magenta bg-neon-magenta/20 text-neon-magenta shadow-[inset_0_-3px_0_var(--color-neon-magenta)]"
+                    : "border-white/10 text-white/60 hover:border-white/25 hover:text-white",
+                )}
+              >
+                {formatPreset(p)}
+              </button>
+            );
+          })}
+        </div>
+        <ActionStatus error={sent.error ?? note} />
       </div>
-      <ActionStatus error={sent.error ?? note} />
     </Panel>
   );
 }
