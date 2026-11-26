@@ -425,7 +425,7 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
           />
           <span className={cx(!d.repeat && "opacity-40")}>minutes</span>
         </div>
-        <Hint className={cx(!d.repeat && "opacity-40")}>Between cycles the belt rests at the speed from before the program.</Hint>
+        <Hint className={cx(!d.repeat && "opacity-40")}>Between cycles the belt goes back to the speed from before the program.</Hint>
         <FieldErrors id={`${ids}-repeat`} lines={[errors.repeat]} indent={false} />
       </div>
 

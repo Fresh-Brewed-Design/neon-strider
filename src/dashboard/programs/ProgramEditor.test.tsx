@@ -361,7 +361,7 @@ describe("ProgramEditor labels", () => {
 
   it("says what the belt does between cycles", () => {
     render(<ProgramEditor initial={toDraft(vo2Max())} onDone={() => {}} />);
-    expect(screen.getByText("Between cycles the belt rests at the speed from before the program.")).toBeInTheDocument();
+    expect(screen.getByText("Between cycles the belt goes back to the speed from before the program.")).toBeInTheDocument();
     expect(screen.queryByText(/back to normal/)).toBeNull();
   });
 
