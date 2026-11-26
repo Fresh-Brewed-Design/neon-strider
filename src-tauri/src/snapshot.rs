@@ -301,6 +301,16 @@ pub fn refresh_daily_base(app: &AppHandle, exclude: Option<i64>) {
     *DAILY_BASE.lock().unwrap_or_else(|e| e.into_inner()) = (v, live_counts);
 }
 
+/// A saved walk changed (cut after a walk-away): re-read every cached total
+/// that sums saved walks. Blocking.
+pub fn refresh_after_session_edit(app: &AppHandle) {
+    weekly::refresh(app, None);
+    desk_sync::refresh(app, None);
+    crate::typing_speed::refresh(app);
+    odometer::refresh_current(app);
+    maintenance::refresh(app, None);
+}
+
 /// A session started at or after local midnight belongs to today, the same
 /// rule as the saved base. If its start can't be read, count it.
 fn started_today(start_ms: Option<i64>, midnight_ms: i64) -> bool {

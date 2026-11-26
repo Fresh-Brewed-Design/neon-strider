@@ -1872,6 +1872,139 @@ pub async fn delete_session(app: tauri::AppHandle, id: i64) -> Result<(), String
     Ok(())
 }
 
+/// What a walk adds up to after `db_cut_session`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CutTotals {
+    pub duration_s: i64,
+    pub distance_m: f64,
+}
+
+/// End walk `id` at `at_ms`: DUMP after a walk-away, where the belt ran with
+/// nobody on it for its last `empty_s` seconds of running. The samples after
+/// `at_ms` go, distance and steps become the last kept sample's, the deck's
+/// time loses `empty_s`, calories and the raw distance shrink with the
+/// distance, the heart rate is worked out again from the samples left, and
+/// the walk ends at `at_ms`. So History, the totals and a Strava upload (TCX
+/// included) all see the same, shorter walk. `None` when `at_ms` is not
+/// inside the walk (nothing to cut).
+pub fn db_cut_session(
+    app: &tauri::AppHandle,
+    id: i64,
+    at_ms: i64,
+    empty_s: i64,
+) -> Result<Option<CutTotals>, String> {
+    with_conn(app, |conn| {
+        let tx = conn.transaction()?;
+        let out = cut_session(&tx, id, at_ms, empty_s)?;
+        tx.commit()?;
+        Ok(out)
+    })
+}
+
+/// `db_cut_session` inside a transaction.
+fn cut_session(
+    tx: &Connection,
+    id: i64,
+    at_ms: i64,
+    empty_s: i64,
+) -> rusqlite::Result<Option<CutTotals>> {
+    let row = tx
+        .query_row(
+            "SELECT start_time, end_time, duration_seconds, distance_meters,
+                    raw_distance_meters, calories
+             FROM sessions WHERE id = ?1",
+            params![id],
+            |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, Option<i64>>(2)?.unwrap_or(0),
+                    r.get::<_, Option<f64>>(3)?.unwrap_or(0.0),
+                    r.get::<_, Option<f64>>(4)?.unwrap_or(0.0),
+                    r.get::<_, Option<f64>>(5)?.unwrap_or(0.0),
+                ))
+            },
+        )
+        .ok();
+    let Some((start, end, duration, distance, raw_distance, calories)) = row else {
+        return Ok(None);
+    };
+    if at_ms <= start || at_ms >= end {
+        return Ok(None);
+    }
+    let (kept_m, kept_steps) = tx
+        .query_row(
+            "SELECT distance, steps FROM samples
+             WHERE session_id = ?1 AND timestamp <= ?2
+             ORDER BY timestamp DESC LIMIT 1",
+            params![id, at_ms],
+            |r| {
+                Ok((
+                    r.get::<_, Option<f64>>(0)?.unwrap_or(0.0),
+                    r.get::<_, Option<f64>>(1)?.unwrap_or(0.0),
+                ))
+            },
+        )
+        .unwrap_or((0.0, 0.0));
+    let kept_m = kept_m.clamp(0.0, distance.max(0.0));
+    let ratio = if distance > 0.0 {
+        kept_m / distance
+    } else {
+        1.0
+    };
+    let duration_s = (duration - empty_s.max(0)).max(0);
+    tx.execute(
+        "DELETE FROM samples WHERE session_id = ?1 AND timestamp > ?2",
+        params![id, at_ms],
+    )?;
+    let (avg_hr, max_hr) = tx.query_row(
+        "SELECT CAST(ROUND(AVG(heart_rate)) AS INTEGER), MAX(heart_rate)
+         FROM samples WHERE session_id = ?1",
+        params![id],
+        |r| Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, Option<i64>>(1)?)),
+    )?;
+    let per_hour = |m: f64| {
+        if duration_s > 0 {
+            m / duration_s as f64 * 3.6
+        } else {
+            0.0
+        }
+    };
+    let raw_m = raw_distance * ratio;
+    tx.execute(
+        "UPDATE sessions SET
+            end_time = ?2,
+            duration_seconds = ?3,
+            distance_meters = ?4,
+            raw_distance_meters = ?5,
+            calories = ?6,
+            steps = ?7,
+            raw_steps = ?7,
+            avg_speed = ?8,
+            raw_avg_speed = ?9,
+            avg_heart_rate = ?10,
+            max_heart_rate = ?11
+         WHERE id = ?1",
+        params![
+            id,
+            at_ms,
+            duration_s,
+            kept_m,
+            raw_m,
+            calories * ratio,
+            kept_steps,
+            per_hour(kept_m),
+            per_hour(raw_m),
+            avg_hr,
+            max_hr
+        ],
+    )?;
+    Ok(Some(CutTotals {
+        duration_s,
+        distance_m: kept_m,
+    }))
+}
+
 /// Record the Strava activity id on a session (the "uploaded" marker).
 pub fn db_mark_uploaded(app: &tauri::AppHandle, id: i64, strava_id: &str) -> Result<(), String> {
     with_conn(app, |conn| {
@@ -4489,5 +4622,102 @@ mod settings_tests {
         assert!(midnight <= now_ms);
         // 25h tolerates a DST day.
         assert!(now_ms - midnight < 25 * 60 * 60 * 1000);
+    }
+
+    /// DUMP after a walk-away: 10 minutes walked, then 10 minutes the belt
+    /// ran empty before the pause, then 5 minutes paused. The cut keeps the
+    /// first 10 minutes only, samples and totals alike.
+    #[test]
+    fn a_cut_walk_ends_where_the_walk_away_began() {
+        let conn = memory_db();
+        let min = 60_000;
+        conn.execute(
+            "INSERT INTO sessions (id, start_time, end_time, duration_seconds, distance_meters,
+                raw_distance_meters, calories, steps, raw_steps)
+             VALUES (1, 0, ?1, 1200, 1333.0, 1300.0, 80.0, 2000.0, 2000.0)",
+            params![25 * min],
+        )
+        .unwrap();
+        // One sample a minute: 66.65 m and 100 steps each while running, with
+        // a heart rate only while he walked; still while paused.
+        for m in 1..=25i64 {
+            let running = m <= 20;
+            let walked = m <= 10;
+            let sample = Sample {
+                distance: (66.65 * m.min(20) as f64) as f32,
+                steps: (100 * m.min(20)) as f32,
+                speed: if running { 4.0 } else { 0.0 },
+                heart_rate: walked.then_some(100 + m as u16),
+                timestamp: None,
+                incline: 0.0,
+                raw_distance: 0.0,
+                raw_steps: 0.0,
+                raw_speed: 4.0,
+                key_presses: None,
+            };
+            insert_sample(&conn, 1, &sample, m * min).unwrap();
+        }
+        let out = cut_session(&conn, 1, 10 * min, 600).unwrap().unwrap();
+        assert_eq!(out.duration_s, 600);
+        assert!((out.distance_m - 666.5).abs() < 0.01, "{}", out.distance_m);
+
+        let samples = samples_of(&conn, 1).unwrap();
+        assert_eq!(samples.len(), 10, "only the walked minutes are left");
+        assert_eq!(samples.last().unwrap().timestamp, Some(10 * min));
+        let (end, dur, dist, raw, kcal, steps, avg, max, speed): (
+            i64,
+            i64,
+            f64,
+            f64,
+            f64,
+            f64,
+            Option<i64>,
+            Option<i64>,
+            f64,
+        ) = conn
+            .query_row(
+                "SELECT end_time, duration_seconds, distance_meters, raw_distance_meters,
+                        calories, steps, avg_heart_rate, max_heart_rate, avg_speed
+                 FROM sessions WHERE id = 1",
+                [],
+                |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                        r.get(6)?,
+                        r.get(7)?,
+                        r.get(8)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!((end, dur), (10 * min, 600));
+        assert!((dist - 666.5).abs() < 0.01);
+        assert!((raw - 650.0).abs() < 0.5, "{raw}");
+        assert!((kcal - 40.0).abs() < 0.1, "{kcal}");
+        assert_eq!(steps, 1000.0);
+        assert_eq!((avg, max), (Some(106), Some(110)));
+        assert!((speed - 666.5 / 600.0 * 3.6).abs() < 0.01);
+    }
+
+    #[test]
+    fn a_cut_outside_the_walk_changes_nothing() {
+        let conn = memory_db();
+        conn.execute_batch(
+            "INSERT INTO sessions (id, start_time, end_time, duration_seconds, distance_meters)
+             VALUES (1, 1000, 5000, 4, 10.0);",
+        )
+        .unwrap();
+        assert_eq!(cut_session(&conn, 1, 5000, 1).unwrap(), None);
+        assert_eq!(cut_session(&conn, 1, 1000, 1).unwrap(), None);
+        assert_eq!(
+            cut_session(&conn, 2, 3000, 1).unwrap(),
+            None,
+            "no such walk"
+        );
     }
 }

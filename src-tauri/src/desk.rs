@@ -13,7 +13,7 @@
 //! This file is declared from `snapshot.rs` (`#[path]`), not `lib.rs`.
 
 use crate::bluetooth::{self, ORCHESTRATOR};
-use crate::engine::{DeckAction, OrchestratorState};
+use crate::engine::{DeckAction, OrchestratorState, SessionCut};
 use crate::programs::{self, ProgramPhase};
 use crate::protocol::MachineStatus;
 use crate::snapshot::{
@@ -507,12 +507,30 @@ pub async fn walkaway_resume() -> Result<(), String> {
     }
 }
 
-/// END on the walk-away paused card: stop, which ends the session (and any
-/// program).
+/// Where DUMP cuts the open walk: at the start of the stretch the belt ran
+/// empty (`walkaway::WalkAway::empty_stretch`), taking off its running time.
+fn walkaway_cut(stretch: Option<(u64, u64)>, session_id: Option<i64>) -> Option<SessionCut> {
+    let (from_ms, paused_ms) = stretch?;
+    Some(SessionCut {
+        session_id: session_id?,
+        at_ms: from_ms as i64,
+        empty_s: (paused_ms.saturating_sub(from_ms) / 1000) as i64,
+    })
+}
+
+/// DUMP on the walk-away paused card: stop, which ends the session (and any
+/// program). The walk ends where the walk-away began, so the minutes the
+/// belt ran with nobody on it are not in it.
 pub async fn walkaway_end() -> Result<(), String> {
-    walkaway::with(|rt| rt.machine.acknowledge(now_ms()));
+    let stretch = walkaway::with(|rt| {
+        let s = rt.machine.empty_stretch();
+        rt.machine.acknowledge(now_ms());
+        s
+    });
     log::info!("Walk-away: ending the session");
-    ORCHESTRATOR.lock().await.trigger_action(DeckAction::Stop);
+    let mut state = ORCHESTRATOR.lock().await;
+    state.session_cut = walkaway_cut(stretch, state.session.active_session_id);
+    state.trigger_action(DeckAction::Stop);
     Ok(())
 }
 
@@ -642,6 +660,30 @@ mod tests {
             hold_auto_start: true,
             ..OrchestratorState::default()
         }
+    }
+
+    #[test]
+    fn dump_cuts_the_walk_where_the_walk_away_began() {
+        let from = T0;
+        let paused = T0 + 10 * MIN + 30_000;
+        assert_eq!(
+            walkaway_cut(Some((from, paused)), Some(7)),
+            Some(SessionCut {
+                session_id: 7,
+                at_ms: T0 as i64,
+                empty_s: 630,
+            })
+        );
+        assert_eq!(
+            walkaway_cut(None, Some(7)),
+            None,
+            "a lock: nothing ran empty"
+        );
+        assert_eq!(
+            walkaway_cut(Some((from, paused)), None),
+            None,
+            "no walk open"
+        );
     }
 
     #[test]
