@@ -37,6 +37,33 @@ describe("EyeBreakCard", () => {
     expect(screen.queryByText(/The belt will pause/)).toBeNull();
   });
 
+  it("says a break moved earlier to fit the program's rest", () => {
+    render(
+      <EyeBreakCard snapshot={withEye({ phase: "upcoming", remaining_s: 52, at_rest: true, moved_to_rest: true })} />,
+    );
+    expect(screen.getByText("IMPLANT COOLDOWN IN 52 S")).toBeInTheDocument();
+    expect(
+      screen.getByText("Finish what you are typing, then look away. The break moved earlier to fit the program's rest."),
+    ).toBeInTheDocument();
+  });
+
+  it("shows a break waiting for the walk to end, with the time before the pause", async () => {
+    const s = withEye({ phase: "waiting", remaining_s: 492 });
+    s.deck.status = "Running";
+    render(<EyeBreakCard snapshot={s} />);
+    expect(screen.getByText("OCULAR_IMPLANT // DEFERRED")).toBeInTheDocument();
+    expect(screen.getByText("The break starts once the belt stops.")).toBeInTheDocument();
+    expect(screen.getByText("The belt pauses for the break in 8:12.")).toBeInTheDocument();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "SKIP BREAK" })));
+    expect(sent()).toEqual([{ command: { type: "eye_break_skip" } }]);
+  });
+
+  it("says no tones play while the microphone is in use", () => {
+    render(<EyeBreakCard snapshot={withEye({ phase: "break", remaining_s: 30, sound: true, silent: true })} />);
+    expect(screen.getByText("No tones while the microphone is on.")).toBeInTheDocument();
+    expect(screen.queryByText("Two rising tones end the break.")).toBeNull();
+  });
+
   it("counts down a break and SKIP sends one command", async () => {
     render(<EyeBreakCard snapshot={withEye({ phase: "break", remaining_s: 72 })} />);
     expect(screen.getByText("OCULAR_IMPLANT // COOLDOWN")).toBeInTheDocument();

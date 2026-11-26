@@ -31,9 +31,20 @@ holds_belt: boolean,
  * Upcoming: the break is set for the program's next rest, so the belt
  * won't be paused for it.
  */
-at_rest: boolean, phase: EyeBreakPhase, 
+at_rest: boolean, 
 /**
- * Seconds until the break (upcoming) or until it ends (break).
+ * Upcoming at a rest: the break was moved earlier than its time to fit
+ * the program's rest.
+ */
+moved_to_rest: boolean, 
+/**
+ * The microphone is in use (a call): the HUD plays no tones. The card
+ * shows as usual.
+ */
+silent: boolean, phase: EyeBreakPhase, 
+/**
+ * Seconds until the break (upcoming), until it ends (break), or until the
+ * belt is paused for it (waiting).
  */
 remaining_s: number, 
 /**

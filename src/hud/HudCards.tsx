@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { AppSnapshot, BlinkStep } from "../ipc";
-import { formatDuration } from "../format";
+import { formatDuration, mmss } from "../format";
 import { PLAIN } from "../names";
 import { formatChange } from "../dashboard/history/weekly";
 import { describePlan } from "../dashboard/programs/format";
@@ -146,8 +146,11 @@ export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
 /**
  * Eye break (OCULAR_IMPLANT): a quiet heads-up a minute ahead, then the
  * cooldown with its countdown and SKIP. A break set for a running program's
- * rest (`at_rest`) waits for it and pauses nothing. Otherwise a walking belt is
- * paused for it (with "Pause the belt" on); after the break, while that pause holds, the card asks
+ * rest (`at_rest`) waits for it and pauses nothing; one moved earlier to fit
+ * the rest (`moved_to_rest`) says so. A break due while the belt walks waits
+ * for the walk to end (`waiting`, DEFERRED, with the time left before the belt
+ * is paused for it); past that wait the belt is paused (with "Pause the belt"
+ * on). No tones while the microphone is in use (`silent`). After the break, while that pause holds, the card asks
  * GO or RE-JACK (the word for what the press resumes) or STAY STILL. Nothing here
  * starts the belt by itself. During the break the card shows the guided blink
  * step (`blink`: SHUTTER // CLOSE, SQUEEZE, OPEN). Rust counts the time and owns
@@ -180,7 +183,6 @@ export function EyeBreakCard({ snapshot }: { snapshot: AppSnapshot }) {
     );
   }
   const onBreak = e.phase === "break";
-  const walking = snapshot.deck.status === "Running";
   return (
     <div className="hud-toast hud-eyebreak accent-cyan" role="alert">
       {onBreak ? (
@@ -193,8 +195,16 @@ export function EyeBreakCard({ snapshot }: { snapshot: AppSnapshot }) {
             {e.blink ? BLINK_HINT[e.blink] : "Look away from the screen."}
             {e.holds_belt ? " The belt is paused." : ""}
           </span>
-          {/* END_TONE (eyeBreakTones.ts) plays as the break ends, only while tones are on. */}
-          {e.sound && <span className="hud-sub">Two rising tones end the break.</span>}
+          {/* END_TONE (eyeBreakTones.ts) plays as the break ends, only while tones are on and the mic is free. */}
+          {e.sound && !e.silent && <span className="hud-sub">Two rising tones end the break.</span>}
+          {e.sound && e.silent && <span className="hud-sub">No tones while the microphone is on.</span>}
+        </div>
+      ) : e.phase === "waiting" ? (
+        <div className="hud-toast-body">
+          <span className="hud-toast-message">OCULAR_IMPLANT // DEFERRED</span>
+          <span className="hud-plain">{PLAIN.OCULAR_IMPLANT}</span>
+          <span className="hud-sub">The break starts once the belt stops.</span>
+          <span className="hud-sub">The belt pauses for the break in {mmss(e.remaining_s)}.</span>
         </div>
       ) : (
         <div className="hud-toast-body">
@@ -203,10 +213,10 @@ export function EyeBreakCard({ snapshot }: { snapshot: AppSnapshot }) {
           <span className="hud-toast-message">IMPLANT COOLDOWN IN {e.remaining_s} S</span>
           <span className="hud-sub">
             Finish what you are typing, then look away.
-            {e.at_rest
-              ? " The break starts at the program's rest."
-              : e.pause_belt && walking
-                ? " The belt will pause."
+            {e.moved_to_rest
+              ? " The break moved earlier to fit the program's rest."
+              : e.at_rest
+                ? " The break starts at the program's rest."
                 : ""}
           </span>
         </div>
