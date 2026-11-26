@@ -1057,6 +1057,27 @@ const OLD_AUTOMATION_STATE_V17: [&str; 7] = [
     "walkDuration",
 ];
 
+/// Migration 18: the belt's own share of a walk (#426). DUMP after a
+/// walk-away cuts the walk where the walk-away began (`cut_session`), but the
+/// belt really ran those minutes: `belt_extra_meters` and
+/// `belt_extra_seconds` keep what was cut, so LIFETIME_ODOMETER and the
+/// belt-service count (`lifetime_totals`, `usage_since`) still add it. Zero
+/// for every walk not cut.
+fn migration_18_belt_extra(tx: &Transaction) -> rusqlite::Result<()> {
+    for (column, decl) in [
+        ("belt_extra_meters", "REAL DEFAULT 0"),
+        ("belt_extra_seconds", "INTEGER DEFAULT 0"),
+    ] {
+        if !has_column(tx, "sessions", column)? {
+            tx.execute_batch(&format!(
+                "ALTER TABLE sessions ADD COLUMN {} {}",
+                column, decl
+            ))?;
+        }
+    }
+    Ok(())
+}
+
 type Migration = fn(&Transaction) -> rusqlite::Result<()>;
 
 /// Append new migrations at the end; never reorder or edit a shipped one.
@@ -1079,6 +1100,7 @@ const MIGRATIONS: &[Migration] = &[
     migration_15_session_program,
     migration_16_samples_session_time,
     migration_17_dead_settings,
+    migration_18_belt_extra,
 ];
 
 fn schema_version(conn: &Connection) -> rusqlite::Result<u32> {
@@ -1943,7 +1965,9 @@ pub struct CutTotals {
 /// time loses `empty_s`, calories and the raw distance shrink with the
 /// distance, the heart rate is worked out again from the samples left, and
 /// the walk ends at `at_ms`. So History, the totals and a Strava upload (TCX
-/// included) all see the same, shorter walk. `None` when `at_ms` is not
+/// included) all see the same, shorter walk. The belt still ran: what was cut
+/// goes to `belt_extra_meters` and `belt_extra_seconds` (migration 18), which
+/// the odometer and the belt-service count add. `None` when `at_ms` is not
 /// inside the walk (nothing to cut).
 pub fn db_cut_session(
     app: &tauri::AppHandle,
@@ -2041,7 +2065,9 @@ fn cut_session(
             avg_speed = ?8,
             raw_avg_speed = ?9,
             avg_heart_rate = ?10,
-            max_heart_rate = ?11
+            max_heart_rate = ?11,
+            belt_extra_meters = COALESCE(belt_extra_meters, 0) + ?12,
+            belt_extra_seconds = COALESCE(belt_extra_seconds, 0) + ?13
          WHERE id = ?1",
         params![
             id,
@@ -2054,7 +2080,9 @@ fn cut_session(
             per_hour(kept_m),
             per_hour(raw_m),
             avg_hr,
-            max_hr
+            max_hr,
+            distance.max(0.0) - kept_m,
+            duration - duration_s
         ],
     )?;
     Ok(Some(CutTotals {
@@ -2315,17 +2343,7 @@ pub fn daily_distance_m(app: &tauri::AppHandle, since: i64, exclude_id: Option<i
 /// ms), optionally skipping one session (the live one). The seconds are the
 /// deck's own timer, which runs while the belt does. For the maintenance reminder.
 pub fn usage_since(app: &tauri::AppHandle, since_ms: i64, exclude_id: Option<i64>) -> (f64, i64) {
-    with_conn(app, |conn| {
-        conn.query_row(
-            "SELECT COALESCE(SUM(distance_meters), 0.0),
-                    CAST(COALESCE(SUM(duration_seconds), 0) AS INTEGER)
-             FROM sessions
-             WHERE start_time >= ?1 AND (?2 IS NULL OR id != ?2)",
-            params![since_ms, exclude_id],
-            |row| Ok((row.get::<_, f64>(0)?, row.get::<_, i64>(1)?)),
-        )
-    })
-    .unwrap_or_else(|e| {
+    with_conn(app, |conn| usage_since_on(conn, since_ms, exclude_id)).unwrap_or_else(|e| {
         log::warn!("usage-since query failed: {}", e);
         (0.0, 0)
     })
@@ -2337,23 +2355,47 @@ pub fn lifetime_totals(
     app: &tauri::AppHandle,
     exclude_id: Option<i64>,
 ) -> Result<(f64, i64, Option<i64>), String> {
-    with_conn(app, |conn| {
-        conn.query_row(
-            "SELECT COALESCE(SUM(distance_meters), 0.0),
-                    CAST(COALESCE(SUM(duration_seconds), 0) AS INTEGER),
-                    MIN(start_time)
-             FROM sessions
-             WHERE ?1 IS NULL OR id != ?1",
-            params![exclude_id],
-            |row| {
-                Ok((
-                    row.get::<_, f64>(0)?,
-                    row.get::<_, i64>(1)?,
-                    row.get::<_, Option<i64>>(2)?,
-                ))
-            },
-        )
-    })
+    with_conn(app, |conn| lifetime_totals_on(conn, exclude_id))
+}
+
+/// `usage_since` on a connection. The belt's share a cut walk no longer
+/// counts (`belt_extra_*`) is added: the belt ran it.
+fn usage_since_on(
+    conn: &Connection,
+    since_ms: i64,
+    exclude_id: Option<i64>,
+) -> rusqlite::Result<(f64, i64)> {
+    conn.query_row(
+        "SELECT COALESCE(SUM(distance_meters + COALESCE(belt_extra_meters, 0)), 0.0),
+                CAST(COALESCE(SUM(duration_seconds + COALESCE(belt_extra_seconds, 0)), 0) AS INTEGER)
+         FROM sessions
+         WHERE start_time >= ?1 AND (?2 IS NULL OR id != ?2)",
+        params![since_ms, exclude_id],
+        |row| Ok((row.get::<_, f64>(0)?, row.get::<_, i64>(1)?)),
+    )
+}
+
+/// `lifetime_totals` on a connection, with the belt's share a cut walk no
+/// longer counts (`belt_extra_*`).
+fn lifetime_totals_on(
+    conn: &Connection,
+    exclude_id: Option<i64>,
+) -> rusqlite::Result<(f64, i64, Option<i64>)> {
+    conn.query_row(
+        "SELECT COALESCE(SUM(distance_meters + COALESCE(belt_extra_meters, 0)), 0.0),
+                CAST(COALESCE(SUM(duration_seconds + COALESCE(belt_extra_seconds, 0)), 0) AS INTEGER),
+                MIN(start_time)
+         FROM sessions
+         WHERE ?1 IS NULL OR id != ?1",
+        params![exclude_id],
+        |row| {
+            Ok((
+                row.get::<_, f64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, Option<i64>>(2)?,
+            ))
+        },
+    )
 }
 
 /// (start_time ms, distance_meters, duration_seconds, calories) of every session
@@ -4862,6 +4904,62 @@ mod settings_tests {
         assert_eq!(steps, 1000.0);
         assert_eq!((avg, max), (Some(106), Some(110)));
         assert!((speed - 666.5 / 600.0 * 3.6).abs() < 0.01);
+    }
+
+    /// The cut shortens the walk, not the belt: LIFETIME_ODOMETER and the
+    /// belt-service count still add the minutes the belt ran empty.
+    #[test]
+    fn a_cut_walk_lowers_the_walk_but_not_the_odometer_or_the_service_count() {
+        let conn = memory_db();
+        let min = 60_000;
+        conn.execute(
+            "INSERT INTO sessions (id, start_time, end_time, duration_seconds, distance_meters,
+                raw_distance_meters, calories, steps, raw_steps)
+             VALUES (1, 1000, ?1, 1200, 1333.0, 1300.0, 80.0, 2000.0, 2000.0)",
+            params![1000 + 25 * min],
+        )
+        .unwrap();
+        for m in 1..=20i64 {
+            let sample = Sample {
+                timestamp: None,
+                speed: 4.0,
+                incline: 0.0,
+                distance: (66.65 * m as f64) as f32,
+                raw_distance: 0.0,
+                steps: (100 * m) as f32,
+                raw_steps: 0.0,
+                raw_speed: 4.0,
+                heart_rate: None,
+                key_presses: None,
+            };
+            insert_sample(&conn, 1, &sample, 1000 + m * min).unwrap();
+        }
+        let odometer = lifetime_totals_on(&conn, None).unwrap();
+        let service = usage_since_on(&conn, 0, None).unwrap();
+        assert_eq!((odometer.0, odometer.1), (1333.0, 1200));
+
+        let walk = cut_session(&conn, 1, 1000 + 10 * min, 600)
+            .unwrap()
+            .unwrap();
+        assert_eq!(walk.duration_s, 600);
+        assert!((walk.distance_m - 666.5).abs() < 0.01);
+        // The walk itself is shorter wherever the walk is read...
+        let row = conn
+            .query_row(
+                "SELECT distance_meters, duration_seconds FROM sessions WHERE id = 1",
+                [],
+                |r| Ok((r.get::<_, f64>(0)?, r.get::<_, i64>(1)?)),
+            )
+            .unwrap();
+        assert!((row.0 - 666.5).abs() < 0.01);
+        assert_eq!(row.1, 600);
+        // ...but the belt's figures are those of the uncut run.
+        let after = lifetime_totals_on(&conn, None).unwrap();
+        assert!((after.0 - odometer.0).abs() < 0.01, "{after:?}");
+        assert_eq!(after.1, odometer.1);
+        let after = usage_since_on(&conn, 0, None).unwrap();
+        assert!((after.0 - service.0).abs() < 0.01, "{after:?}");
+        assert_eq!(after.1, service.1);
     }
 
     #[test]
