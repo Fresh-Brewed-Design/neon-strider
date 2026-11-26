@@ -1,0 +1,3 @@
+- Programs and History now label their controls: the run length, heart zone and remove buttons, the Strava upload state and the totals range.
+- A new History starts with one line instead of cards of zeros, and Save stays in view in the program editor.
+- Program tones moved to System, ROUTINE.
