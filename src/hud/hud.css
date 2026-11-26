@@ -433,7 +433,7 @@ body,
 
 .hud-strip-total .hud-value { color: var(--accent); }
 
-/* A folded ATROPHY_WARNING beside today's total: the label is the codename,
+/* A folded ATROPHY_WARNING in today's total's place: the label is the codename,
    so it may shorten with an ellipsis before Engage is squeezed. */
 .hud-seated-readout { flex: 0 1 auto; min-width: 0; }
 .hud-seated-readout .hud-label { color: var(--accent); overflow: hidden; text-overflow: ellipsis; }

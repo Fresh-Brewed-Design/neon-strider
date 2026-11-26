@@ -64,12 +64,12 @@ describe("HUD cards, one at a time (#421)", () => {
 });
 
 describe("ATROPHY_WARNING folded into the strip (#422)", () => {
-  it("shows the seated time in yellow beside today's total, with Engage where it was", () => {
+  it("shows the seated time in yellow in today's total's place, with Engage where it was", () => {
     const { container } = show(allDue("none", (s) => (s.seated.folded = true)));
     const readout = screen.getByTestId("hud-seated-readout");
     expect(readout).toHaveClass("accent-yellow");
     expect(readout.textContent).toBe("ATROPHY_WARNING46MIN IDLE");
-    expect(screen.getByText("TODAY")).toBeInTheDocument();
+    expect(screen.queryByText("TODAY")).toBeNull();
     expect(screen.getByRole("button", { name: "ENGAGE start" })).toBeInTheDocument();
     expect(container.querySelector(".hud-seated")).toBeNull();
   });

@@ -66,6 +66,6 @@ export function applyCardQueue(s: AppSnapshot, now = Date.now()) {
     }
   }
   s.hud_card = card;
-  s.seated.folded = seatedDue && seated.kind === "folded";
+  s.seated.folded = seatedDue && seated.kind === "folded" && !starting;
   return card;
 }

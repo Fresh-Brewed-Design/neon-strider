@@ -15,7 +15,8 @@ type Send = (c: Command) => Promise<boolean>;
  * (whose expand button shows the whole panel until the belt next moves),
  * today's total (DAILY_TOTAL) and Engage. A note covers the total and the
  * logo above it, beside Engage, so Engage never moves for it. A folded
- * ATROPHY_WARNING card sits beside the total (`SeatedReadout`).
+ * ATROPHY_WARNING card takes the total's place (`SeatedReadout`): today's
+ * total can't change while the belt is still. A walk lets the card go.
  */
 export function StripRow({ snapshot, send, note }: { snapshot: AppSnapshot; send: Send; note: PanelNote | null }) {
   const daily = statWidget("DAILY");
@@ -24,15 +25,19 @@ export function StripRow({ snapshot, send, note }: { snapshot: AppSnapshot; send
     <div className="hud-strip">
       <div className="hud-strip-row">
         <div className="hud-strip-cell">
-          <SeatedReadout snapshot={snapshot} />
-          {daily && total && (
-            <div className={`hud-strip-total accent-${daily.accent}`} title={statTitle(daily)}>
-              <span className="hud-label">{daily.label}</span>
-              <span className="hud-value hud-value-sm">
-                {total.value}
-                {total.unit && <span className="hud-unit">{total.unit}</span>}
-              </span>
-            </div>
+          {snapshot.seated.folded ? (
+            <SeatedReadout snapshot={snapshot} />
+          ) : (
+            daily &&
+            total && (
+              <div className={`hud-strip-total accent-${daily.accent}`} title={statTitle(daily)}>
+                <span className="hud-label">{daily.label}</span>
+                <span className="hud-value hud-value-sm">
+                  {total.value}
+                  {total.unit && <span className="hud-unit">{total.unit}</span>}
+                </span>
+              </div>
+            )
           )}
           <NotePop note={note} />
         </div>
@@ -44,9 +49,9 @@ export function StripRow({ snapshot, send, note }: { snapshot: AppSnapshot; send
 
 /**
  * ATROPHY_WARNING folded into the strip (#422): the card showed once and went
- * unanswered, so the seated time stays here, in yellow, until a walk. Rust
- * decides when (`seated.folded`, `card_queue.rs`). It takes no room from
- * Engage: the cell beside it shrinks first.
+ * unanswered, so the seated time stays in today's total's place, in yellow,
+ * until a walk. Rust decides when (`seated.folded`, `card_queue.rs`). Engage
+ * keeps its place: the label shortens first.
  */
 export function SeatedReadout({ snapshot }: { snapshot: AppSnapshot }) {
   const s = snapshot.seated;

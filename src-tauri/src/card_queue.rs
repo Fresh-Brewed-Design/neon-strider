@@ -245,7 +245,8 @@ impl Queue {
 
         Decision {
             card,
-            seated_folded: i.seated && self.seated == SeatedShowing::Folded,
+            // No readout while the belt starts: it goes once the belt runs.
+            seated_folded: i.seated && self.seated == SeatedShowing::Folded && !i.belt_starting,
             eye_break_waits: card != HudCard::EyeBreak
                 && (i.walkaway || i.program_go || i.eye == EyeBreakPhase::Complete || in_grace),
         }
@@ -451,7 +452,7 @@ mod tests {
             HudCard::None,
             "no flash between GO and the belt running"
         );
-        assert!(d.seated_folded);
+        assert!(!d.seated_folded, "nor a readout for the countdown");
         // The machine lets the card go once the belt runs.
         let d = run(&mut q, 64 * S, 70 * S, |i| Input {
             belt_running: true,
