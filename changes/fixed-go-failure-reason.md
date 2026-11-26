@@ -1,0 +1,1 @@
+- When the treadmill doesn't start after GO on the Live page's program card, the reason now shows under that GO, not under Engage.

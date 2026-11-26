@@ -103,3 +103,48 @@ describe("ActiveProgramCard view switch", () => {
     expect(screen.queryByRole("group", { name: "Step map or stats" })).toBeNull();
   });
 });
+
+// #385: GO waits for the deck like Engage, and its failure shows under GO.
+describe("ActiveProgramCard GO", () => {
+  const NO_ANSWER = "The treadmill didn't respond.";
+  const waiting = () => {
+    current!.active_program = { ...current!.active_program!, phase: "walking", paused: true, wait: "rest_complete" };
+    current!.deck = { ...current!.deck, status: "Paused", speed_kmh: 0 };
+  };
+
+  it("shows the deck's later failure under GO", async () => {
+    waiting();
+    const view = render(<ActiveProgramCard />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /GO/ }));
+    });
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith("dispatch", { command: { type: "program_resume" } });
+    // Rust takes the start: GO waits for the deck.
+    current = { ...current!, connection: { ...current!.connection, start_pending: true, start_press: "program_go", start_result: null } };
+    view.rerender(<ActiveProgramCard />);
+    expect(screen.getByText("Waiting for the treadmill to start…")).toBeInTheDocument();
+    // The deck never answers.
+    current = {
+      ...current!,
+      connection: {
+        ...current!.connection,
+        start_pending: false,
+        start_result: { ok: false, message: NO_ANSWER, at_ms: Date.now() + 1000 },
+      },
+    };
+    view.rerender(<ActiveProgramCard />);
+    expect(screen.getByText(NO_ANSWER)).toBeInTheDocument();
+  });
+
+  it("leaves an Engage failure to Engage", () => {
+    waiting();
+    current!.connection = {
+      ...current!.connection,
+      start_pending: false,
+      start_press: "engage",
+      start_result: { ok: false, message: NO_ANSWER, at_ms: 1 },
+    };
+    render(<ActiveProgramCard />);
+    expect(screen.queryByText(NO_ANSWER)).toBeNull();
+  });
+});

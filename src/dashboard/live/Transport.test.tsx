@@ -44,4 +44,32 @@ describe("Transport belt buttons", () => {
     expect(dump.className).toContain("border-neon-magenta");
     expect(dump.querySelector(".bg-current")).not.toBeNull();
   });
+
+  // #385: a start a program's GO made shows under that GO, so Engage never repeats it.
+  it("shows its own start failure but not one a program's GO made", () => {
+    const failed = (s: AppSnapshot, press: "engage" | "program_go") => {
+      s.deck = { ...s.deck, status: "Stopped", speed_kmh: 0 };
+      s.connection = {
+        ...s.connection,
+        start_pending: false,
+        start_press: press,
+        start_result: { ok: false, message: "The treadmill didn't respond.", at_ms: 1 },
+      };
+    };
+    const own = show((s) => failed(s, "engage"));
+    expect(screen.getByText("The treadmill didn't respond.")).toBeInTheDocument();
+    own.unmount();
+    show((s) => failed(s, "program_go"));
+    expect(screen.queryByText("The treadmill didn't respond.")).toBeNull();
+  });
+
+  it("leaves the waiting line to GO while GO's start is in flight", () => {
+    show((s) => {
+      s.deck = { ...s.deck, status: "Paused", speed_kmh: 0 };
+      s.connection = { ...s.connection, start_pending: true, start_press: "program_go", start_result: null };
+    });
+    expect(screen.queryByText("Waiting for the treadmill to start…")).toBeNull();
+    // Still held, so a second start is never sent over GO's.
+    expect(screen.getByRole("button", { name: "Re-jack resume" })).toBeDisabled();
+  });
 });
