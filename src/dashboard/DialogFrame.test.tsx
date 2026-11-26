@@ -27,6 +27,16 @@ function frame(tone: "cyan" | "magenta" = "cyan", onClose = vi.fn()) {
 }
 
 describe("DialogFrame", () => {
+  it("keeps a version and a unit in the case written", () => {
+    render(
+      <DialogFrame boxRef={() => {}} titleId="t2" icon={Bluetooth} title="Delete the 2.8 km/h point, v1.2.0" onClose={() => {}}>
+        body
+      </DialogFrame>,
+    );
+    expect(screen.getByText("km/h", { selector: "h2 span" })).toHaveClass("normal-case");
+    expect(screen.getByText("v1.2.0", { selector: "h2 span" })).toHaveClass("normal-case");
+  });
+
   it("is named by its title and shows the plain sub-line", () => {
     frame();
     expect(screen.getByRole("dialog", { name: "HARDWARE_LINK" })).toBeInTheDocument();

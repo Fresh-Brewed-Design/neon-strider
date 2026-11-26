@@ -30,6 +30,13 @@ describe("What's new", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "OK" }));
   });
 
+  it("keeps the version's case in the title", () => {
+    render(<WhatsNewDialog />);
+    const version = screen.getByText("v1.77.0", { selector: "h2 span" });
+    expect(version).toHaveClass("normal-case");
+    expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent("UPGRADE_COMPLETE // v1.77.0");
+  });
+
   it("Escape is OK", async () => {
     render(<WhatsNewDialog />);
     await act(async () => fireEvent.keyDown(window, { key: "Escape" }));

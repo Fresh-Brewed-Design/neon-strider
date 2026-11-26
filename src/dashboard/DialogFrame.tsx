@@ -4,6 +4,16 @@ import { X, type LucideIcon } from "lucide-react";
 import { NeonButton, PlainLine } from "./ui";
 import { cx } from "./util";
 
+/** A version or a unit keeps the case it was written in; the rest of a title is uppercased by the frame. */
+const KEEP_CASE = /((?<![A-Za-z])v\d+(?:\.\d+)*(?![A-Za-z])|(?<![A-Za-z])km\/h(?![A-Za-z])|(?<![A-Za-z])km(?![A-Za-z])|(?<![A-Za-z])kg(?![A-Za-z]))/g;
+
+function keepCase(title: ReactNode): ReactNode {
+  if (typeof title !== "string") return title;
+  return title
+    .split(KEEP_CASE)
+    .map((part, i) => (i % 2 === 1 ? <span key={i} className="normal-case">{part}</span> : part));
+}
+
 const WIDTH = { md: "max-w-md", lg: "max-w-lg", xl: "max-w-2xl" } as const;
 
 /**
@@ -106,7 +116,7 @@ export function DialogFrame({
                 magenta ? "text-neon-magenta" : "text-neon-cyan",
               )}
             >
-              {title}
+              {keepCase(title)}
             </h2>
             {subline && <PlainLine text={subline} />}
           </div>
