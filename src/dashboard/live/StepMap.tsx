@@ -64,8 +64,15 @@ function Row({ row }: { row: PlanRow }) {
       <span>{current ? "▶" : row.number != null ? String(row.number).padStart(2, "0") : ""}</span>
       <span className="truncate font-bold tracking-[0.08em]">{row.code}</span>
       <span>{rowTime(row.minutes)}</span>
-      <span>{row.speedKmh != null ? `${row.speedKmh.toFixed(1)} km/h` : "speed before program"}</span>
-      <span>{row.inclinePct != null ? `${num(row.inclinePct)}%` : ""}</span>
+      {row.speedKmh != null ? (
+        <>
+          <span>{`${row.speedKmh.toFixed(1)} km/h`}</span>
+          <span>{row.inclinePct != null ? `${num(row.inclinePct)}%` : ""}</span>
+        </>
+      ) : (
+        // A rest row has no speed or incline of its own: its words take both columns on one line.
+        <span className="col-span-2 truncate">speed before program</span>
+      )}
       <span className="truncate">{row.zone ? zoneText(row.zone) : ""}</span>
     </li>
   );
@@ -74,8 +81,8 @@ function Row({ row }: { row: PlanRow }) {
 /**
  * STEP_MAP on the Live page: the running program's steps and a stepped speed
  * and incline chart with a "you are here" line. It takes the stats' place and
- * the height left on the page (at least two list rows), so the page still fits
- * 760x600; the list scrolls inside it. `readout` sits in its header (the Live
+ * the height left on the page (at least three list rows: the step before, the current one and
+ * the next), so the page still fits 760x600; the list scrolls inside it. `readout` sits in its header (the Live
  * page's time and distances), so those stay in view while the map is open.
  */
 export function StepMap({ a, readout }: { a: ActiveProgram; readout?: ReactNode }) {
@@ -95,7 +102,7 @@ export function StepMap({ a, readout }: { a: ActiveProgram; readout?: ReactNode 
   const repeat = a.repeat_every_minutes;
   const chart = stepChart(a, W, H);
   return (
-    <Panel className="flex min-h-[130px] flex-1 basis-0 flex-col gap-1.5 px-3 py-2">
+    <Panel className="flex min-h-min flex-1 basis-0 flex-col gap-1.5 px-3 py-2">
       <div className="flex shrink-0 flex-wrap items-baseline gap-x-3 font-mono text-[11px]">
         <Label className="text-neon-yellow/80">STEP_MAP</Label>
         {repeat != null && (
@@ -119,11 +126,15 @@ export function StepMap({ a, readout }: { a: ActiveProgram; readout?: ReactNode 
           </span>
         </div>
       </div>
-      <ol ref={listRef} aria-label="Program steps" className="step-map-list relative min-h-0 flex-1 overflow-y-auto">
-        {rows.map((r) => (
-          <Row key={r.key} row={r} />
-        ))}
-      </ol>
+      {/* The list's box keeps three rows of height however short the page is; the list scrolls
+          inside it, so its length never adds to the panel's own minimum. */}
+      <div className="relative min-h-12 flex-1">
+        <ol ref={listRef} aria-label="Program steps" className="step-map-list absolute inset-0 overflow-y-auto">
+          {rows.map((r) => (
+            <Row key={r.key} row={r} />
+          ))}
+        </ol>
+      </div>
     </Panel>
   );
 }

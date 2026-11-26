@@ -43,6 +43,8 @@ describe("STEP_MAP", () => {
     expect(rows[rows.length - 1]).toHaveTextContent("CYCLE_REST");
     expect(rows[rows.length - 1]).toHaveTextContent("25 min");
     expect(rows[rows.length - 1]).toHaveTextContent("speed before program");
+    // The rest row's words take the speed and incline columns together, so they stay on one line.
+    expect(screen.getByText("speed before program")).toHaveClass("col-span-2");
     expect(rows[1]).toHaveTextContent("HR 85-95%");
   });
 
