@@ -229,6 +229,8 @@ export const snapshot: AppSnapshot = {
     fit_rests: true,
     holds_belt: false,
     at_rest: false,
+    moved_to_rest: false,
+    silent: false,
     phase: "idle",
     remaining_s: 0,
     blink: null,
@@ -255,6 +257,7 @@ export const snapshot: AppSnapshot = {
     last_result: null,
     whats_new: null,
     auto_install: true,
+    auto_installed_today: false,
   },
   traffic: { recording: false, file_path: null, file_name: null, packets: 0, bytes: 0, elapsed_s: 0, stop_reason: null },
   // Same limits as src-tauri/src/calibration.rs.

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.82.0 (2026-11-26)
+
+### Changed
+
+- With Install automatically on, updates install at most once a day with no UPDATE READY card on the HUD and never during a call or presentation.
+- What's new now waits until you open the dashboard yourself and keeps any notes you haven't read yet.
+
 ## 1.81.0 (2026-11-26)
 
 ### Changed

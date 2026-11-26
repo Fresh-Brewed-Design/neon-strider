@@ -6,7 +6,7 @@
 //!
 //! 1. belt safety: walk-away, then the eye-break resume card;
 //! 2. a program waiting for GO (its prompt lives on the panel, so no card);
-//! 3. the eye break (heads-up and break);
+//! 3. the eye break (heads-up, DEFERRED while a walk runs, and the break);
 //! 4. ATROPHY_WARNING (sit-too-long);
 //! 5. last week;
 //! 6. the belt service;
@@ -87,7 +87,7 @@ impl HudCard {
         match self {
             HudCard::None | HudCard::WalkAway => false,
             // The resume card holds the belt; a break under way is running.
-            HudCard::EyeBreak => eye == EyeBreakPhase::Upcoming,
+            HudCard::EyeBreak => matches!(eye, EyeBreakPhase::Upcoming | EyeBreakPhase::Waiting),
             _ => true,
         }
     }
@@ -198,6 +198,10 @@ impl Queue {
                 i.eye == EyeBreakPhase::Upcoming && !eye_deferred && !i.holding,
                 HudCard::EyeBreak,
             ),
+            // DEFERRED: due mid-walk, waiting for the walk to end. Shown while
+            // the walk runs (it says when the belt will pause); the presenting
+            // hold never reaches it, as `presenting::hold_cards` keeps it too.
+            (i.eye == EyeBreakPhase::Waiting, HudCard::EyeBreak),
             (
                 i.seated && self.seated != SeatedShowing::Folded && !i.holding,
                 HudCard::Seated,
@@ -245,9 +249,15 @@ impl Queue {
 
         Decision {
             card,
-            // No readout while the belt starts: it goes once the belt runs.
-            seated_folded: i.seated && self.seated == SeatedShowing::Folded && !i.belt_starting,
+            // No readout while the belt starts or runs: a walk lets the card go.
+            seated_folded: i.seated
+                && self.seated == SeatedShowing::Folded
+                && !i.belt_starting
+                && !i.belt_running,
+            // Never a break already due (DEFERRED) or under way: holding the
+            // machine then would start its wait, and its cap, again.
             eye_break_waits: card != HudCard::EyeBreak
+                && !matches!(i.eye, EyeBreakPhase::Waiting | EyeBreakPhase::Break)
                 && (i.walkaway || i.program_go || i.eye == EyeBreakPhase::Complete || in_grace),
         }
     }
@@ -679,6 +689,91 @@ mod tests {
         let d = run(&mut q, 12 * S, 11 * S + GRACE_MS, both);
         assert_eq!(d.card, HudCard::EyeBreak);
         assert!(!d.eye_break_waits);
+    }
+
+    #[test]
+    fn a_deferred_break_shows_while_the_walk_runs_and_atrophy_warning_is_moot() {
+        let mut q = Queue::default();
+        // Walking: the seated machine has let its card go; the queue drops it.
+        let walking = |i: Input| Input {
+            eye: EyeBreakPhase::Waiting,
+            belt_running: true,
+            update: true,
+            ..i
+        };
+        let d = run(&mut q, 0, 30 * S, walking);
+        assert_eq!(d.card, HudCard::EyeBreak, "DEFERRED, above the update");
+        assert!(!d.eye_break_waits, "a break already due is never held back");
+        // A seated card due in the same breath (the belt only just started)
+        // is moot: the walk under way removed its reason.
+        let d = run(&mut q, 31 * S, 40 * S, |i| Input {
+            seated: true,
+            ..walking(i)
+        });
+        assert_eq!(d.card, HudCard::EyeBreak);
+        assert!(!d.seated_folded, "no readout while the belt runs");
+        // The walk ends: the break begins where DEFERRED was, no grace.
+        let d = run(&mut q, 41 * S, 41 * S, |i| Input {
+            eye: EyeBreakPhase::Break,
+            update: true,
+            ..i
+        });
+        assert_eq!(d.card, HudCard::EyeBreak);
+    }
+
+    #[test]
+    fn a_deferred_break_waits_out_a_grace_without_its_machine_held() {
+        let mut q = Queue::default();
+        let weekly = |i: Input| Input {
+            weekly: true,
+            belt_running: true,
+            ..i
+        };
+        run(&mut q, 0, 5 * S, weekly);
+        let d = run(&mut q, 6 * S, 6 * S, |i| Input {
+            eye: EyeBreakPhase::Waiting,
+            ..weekly(i)
+        });
+        assert_eq!(d.card, HudCard::None, "a short gap before DEFERRED");
+        assert!(!d.eye_break_waits, "its wait and cap keep running");
+        let d = run(&mut q, 7 * S, 6 * S + GRACE_MS, |i| Input {
+            eye: EyeBreakPhase::Waiting,
+            ..weekly(i)
+        });
+        assert_eq!(d.card, HudCard::EyeBreak);
+    }
+
+    #[test]
+    fn the_hold_keeps_a_deferred_break() {
+        let mut q = Queue::default();
+        let d = q.step(&Input {
+            now_ms: T0,
+            holding: true,
+            eye: EyeBreakPhase::Waiting,
+            belt_running: true,
+            ..Input::default()
+        });
+        assert_eq!(d.card, HudCard::EyeBreak);
+    }
+
+    #[test]
+    fn the_update_card_ranks_last_and_shows_only_when_offered() {
+        // With "Install automatically" on, `update.hud_card` stays false (#424),
+        // so nothing shows; off, the offer comes after every other card.
+        let mut q = Queue::default();
+        let d = run(&mut q, 0, 10 * S, |i| i);
+        assert_eq!(d.card, HudCard::None);
+        let d = run(&mut q, 11 * S, 11 * S, |i| Input {
+            update: true,
+            weekly: true,
+            ..i
+        });
+        assert_eq!(d.card, HudCard::Weekly);
+        let d = run(&mut q, 12 * S, 12 * S + GRACE_MS, |i| Input {
+            update: true,
+            ..i
+        });
+        assert_eq!(d.card, HudCard::Update);
     }
 
     #[test]

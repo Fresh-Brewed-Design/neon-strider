@@ -56,6 +56,17 @@ describe("HUD cards, one at a time (#421)", () => {
     expect(cards()).toHaveLength(1);
   });
 
+  it("shows the DEFERRED eye break while a walk runs, and no ATROPHY_WARNING", () => {
+    show(
+      allDue("eye_break", (s) => {
+        s.deck = { ...s.deck, status: "Running", speed_kmh: 4 };
+        s.hud_view = "full";
+        s.eye_break = { ...s.eye_break, phase: "waiting", remaining_s: 492 };
+      }),
+    );
+    expect(cards().map((c) => c.textContent)).toEqual(["OCULAR_IMPLANT // DEFERRED"]);
+  });
+
   it("shows none while Rust names none, with the panel still up", () => {
     show(allDue("none"));
     expect(cards()).toHaveLength(0);

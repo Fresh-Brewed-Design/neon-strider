@@ -46,6 +46,7 @@ export function applyCardQueue(s: AppSnapshot, now = Date.now()) {
     [eye === "complete" || eye === "break", "eye_break"],
     [s.active_program?.wait != null, "none"],
     [eye === "upcoming" && !eyeDeferred && !holding, "eye_break"],
+    [eye === "waiting", "eye_break"],
     [seatedDue && seated.kind !== "folded" && !holding, "seated"],
     [s.weekly.show_card && !holding, "weekly"],
     [s.maintenance.hud_card && !holding, "maintenance"],
@@ -53,7 +54,7 @@ export function applyCardQueue(s: AppSnapshot, now = Date.now()) {
   ];
   const top = ranked.find(([due]) => due)?.[1] ?? "none";
   if (shown !== "none" && top !== shown) leftAt = now;
-  const waits = top !== "none" && top !== "walk_away" && (top !== "eye_break" || eye === "upcoming");
+  const waits = top !== "none" && top !== "walk_away" && (top !== "eye_break" || eye === "upcoming" || eye === "waiting");
   const inGrace = within(now, leftAt, GRACE_MS) || within(now, holdEndedAt, GRACE_MS);
   let card: HudCard = top !== shown && waits && inGrace ? "none" : top;
   shown = card;
@@ -66,6 +67,6 @@ export function applyCardQueue(s: AppSnapshot, now = Date.now()) {
     }
   }
   s.hud_card = card;
-  s.seated.folded = seatedDue && seated.kind === "folded" && !starting;
+  s.seated.folded = seatedDue && seated.kind === "folded" && !starting && !running;
   return card;
 }

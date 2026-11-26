@@ -91,6 +91,12 @@ pub fn observe(presenting: bool) {
     }
 }
 
+/// Windows says the user is presenting or full screen now, whatever the
+/// switch (auto-update never installs then).
+pub fn presenting_now() -> bool {
+    with(|rt| rt.presenting)
+}
+
 /// Cards and toasts are held back now.
 pub fn holding() -> bool {
     with(|rt| rt.enabled && rt.presenting)
