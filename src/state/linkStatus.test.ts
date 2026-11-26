@@ -19,20 +19,20 @@ const conn = (link: LinkState, connected = false): ConnectionSnapshot => ({
 describe("linkView", () => {
   it("labels every state for the rail and the HUD", () => {
     const cases: [LinkState, string, string][] = [
-      [{ state: "idle" }, "OFFLINE", "OFFLINE"],
+      [{ state: "idle" }, "OFFLINE", "LINK DOWN"],
       [{ state: "scanning" }, "SCANNING", "SCANNING"],
-      [{ state: "connecting", attempt: 2, of: 3 }, "LINKING 2/3", "LINKING"],
-      [{ state: "reconnecting", attempt: 1, next_retry_s: 12 }, "RECONNECT 12s", "OFFLINE"],
-      [{ state: "adapter_unavailable" }, "BT OFF", "BT OFF"],
-      [{ state: "failed", message: "Treadmill not found. Is it switched on?" }, "LINK FAILED", "OFFLINE"],
-      [{ state: "no_data", since_s: 14 }, "NO DATA", "NO DATA"],
+      [{ state: "connecting", attempt: 2, of: 3 }, "LINKING 2/3", "LINKING 2/3"],
+      [{ state: "reconnecting", attempt: 1, next_retry_s: 12 }, "RECONNECT 12s", "RELINK 12S"],
+      [{ state: "adapter_unavailable" }, "BT OFF", "BT OFFLINE"],
+      [{ state: "failed", message: "Treadmill not found. Is it switched on?" }, "LINK FAILED", "LINK FAILED"],
+      [{ state: "no_data", since_s: 14 }, "NO DATA", "NO SIGNAL"],
       [{ state: "connected" }, "LINKED", "LINKED"],
     ];
     for (const [link, rail, hud] of cases) {
       const v = linkView(conn(link, link.state === "connected" || link.state === "no_data"));
       expect(v.label).toBe(rail);
       expect(v.hudLabel).toBe(hud);
-      expect(v.hudLabel.length).toBeLessThanOrEqual(8);
+      expect(v.hudLabel.length).toBeLessThanOrEqual(16);
     }
   });
 

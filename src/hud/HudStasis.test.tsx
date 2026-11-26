@@ -79,7 +79,7 @@ describe("HUD strip", () => {
     );
     expect(screen.getByRole("button", { name: "ENGAGE start" })).toBeDisabled();
     // Offline, the link status is still the relink button.
-    expect(screen.getByRole("button", { name: "OFFLINE" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "RELINK 9S" })).toBeInTheDocument();
   });
 
   it("shows a rejected Engage right under the strip", async () => {

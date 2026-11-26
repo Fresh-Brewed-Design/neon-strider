@@ -168,6 +168,14 @@ body,
   cursor: pointer;
   transition: background-color 120ms ease, box-shadow 120ms ease;
 }
+/* While the link is down or being made the logo and the link word close up
+   their letter spacing, so a word of up to 11 letters (LINK FAILED,
+   LINKING 2/3, RELINK 12S) keeps the header one line at 100 % text size and
+   nothing under it moves. */
+.hud-header:has(.hud-led.tone-down, .hud-led.tone-warn) .hud-title { letter-spacing: 0.14em; }
+.hud-header:has(.hud-led.tone-down, .hud-led.tone-warn) .hud-status { letter-spacing: 0.08em; }
+.hud-status.hud-relink { padding: 3px 4px; }
+
 .hud-relink:hover,
 .hud-relink:focus-visible {
   outline: none;

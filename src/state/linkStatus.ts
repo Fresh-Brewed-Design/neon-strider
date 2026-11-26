@@ -10,8 +10,7 @@ export interface LinkView {
   tone: StatusTone;
   /** The rail pill: short, upper case. */
   label: string;
-  /** The HUD header: the rail's word, short enough for one line beside the logo at 340 px
-   *  (the HUD's status row gives the try count or countdown). */
+  /** The HUD header: themed, one line at 340 px. */
   hudLabel: string;
   /** A plain sentence for the Live page. */
   headline: string;
@@ -47,7 +46,7 @@ export function linkView(c: ConnectionSnapshot, settings = "Windows settings"): 
       return {
         tone: "working",
         label: `LINKING ${l.attempt}/${l.of}`,
-        hudLabel: "LINKING",
+        hudLabel: `LINKING ${l.attempt}/${l.of}`,
         headline: `Linking to treadmill… try ${l.attempt} of ${l.of}`,
         title: `Linking to the treadmill, try ${l.attempt} of ${l.of}.`,
         canRetry: false,
@@ -65,7 +64,7 @@ export function linkView(c: ConnectionSnapshot, settings = "Windows settings"): 
       return {
         tone: "working",
         label: `RECONNECT ${l.next_retry_s}s`,
-        hudLabel: "OFFLINE",
+        hudLabel: `RELINK ${l.next_retry_s}S`,
         headline: `Treadmill link is down. Trying again in ${l.next_retry_s} s (try ${l.attempt}).`,
         title: withError(`Trying again in ${l.next_retry_s} s.`),
         canRetry: true,
@@ -74,7 +73,7 @@ export function linkView(c: ConnectionSnapshot, settings = "Windows settings"): 
       return {
         tone: "problem",
         label: "BT OFF",
-        hudLabel: "BT OFF",
+        hudLabel: "BT OFFLINE",
         headline: `Bluetooth is off. Turn it on in ${settings}.`,
         title: c.last_error?.message ?? "Bluetooth is off or there is no Bluetooth adapter.",
         canRetry: true,
@@ -83,7 +82,7 @@ export function linkView(c: ConnectionSnapshot, settings = "Windows settings"): 
       return {
         tone: "problem",
         label: "LINK FAILED",
-        hudLabel: "OFFLINE",
+        hudLabel: "LINK FAILED",
         headline: l.message,
         title: `${l.message} Click to try again.`,
         canRetry: false,
@@ -92,7 +91,7 @@ export function linkView(c: ConnectionSnapshot, settings = "Windows settings"): 
       return {
         tone: "working",
         label: "NO DATA",
-        hudLabel: "NO DATA",
+        hudLabel: "NO SIGNAL",
         headline: "Treadmill asleep? Press a button on it or the remote.",
         title: `Linked, but no data for ${l.since_s} s. The treadmill may be asleep or out of range.`,
         canRetry: false,
@@ -101,7 +100,7 @@ export function linkView(c: ConnectionSnapshot, settings = "Windows settings"): 
       return {
         tone: "problem",
         label: "OFFLINE",
-        hudLabel: "OFFLINE",
+        hudLabel: "LINK DOWN",
         headline: "Treadmill offline",
         title: c.last_error?.message ?? "Find and connect a treadmill",
         canRetry: false,

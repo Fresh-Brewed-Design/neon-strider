@@ -183,6 +183,10 @@ describe("HUD controls stay put", () => {
     expect(rule(".hud-swap > :not(.is-shown)")).toMatch(/visibility:\s*hidden/);
   });
 
+  it("keeps the header one line while the link word is long", () => {
+    expect(css).toMatch(/\.hud-header:has\(\.hud-led\.tone-down, \.hud-led\.tone-warn\) \.hud-status \{ letter-spacing: 0\.08em; \}/);
+  });
+
   it("dims the readings while no treadmill is linked", () => {
     expect(rule(".hud-panel.is-offline .hud-stats")).toMatch(/opacity:\s*0\.45/);
   });
