@@ -279,6 +279,32 @@ impl Seated {
     pub fn pending_program_id(&self) -> Option<u32> {
         self.pending.map(|p| p.program_id)
     }
+
+    /// What a restart keeps (`desk_resume.rs`): the time seated and a snooze.
+    /// A program queued from the card is not kept: its press was for that
+    /// moment, not for after a restart.
+    pub fn kept(&self) -> Kept {
+        Kept {
+            seated_ms: self.seated_ms,
+            quiet_until_ms: self.quiet_until_ms,
+        }
+    }
+
+    /// Put back what a restart kept. The first tick after it counts from
+    /// itself, so the time the app was closed is not counted as seated.
+    pub fn restore(&mut self, kept: Kept) {
+        self.seated_ms = kept.seated_ms;
+        self.quiet_until_ms = kept.quiet_until_ms;
+    }
+}
+
+/// The sit-too-long state a restart keeps.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Kept {
+    pub seated_ms: u64,
+    /// A snooze (or a just-started program's quiet time) still running.
+    #[serde(default)]
+    pub quiet_until_ms: Option<u64>,
 }
 
 // ---------------------------------------------------------------------------

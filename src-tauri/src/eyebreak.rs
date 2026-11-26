@@ -481,6 +481,20 @@ impl EyeBreak {
         (self.phase == EyeBreakPhase::Break).then(|| blink_step(self.break_ms))
     }
 
+    /// What a restart keeps (`desk_resume.rs`): the screen time counted
+    /// towards the next break. A break under way is not kept as such; its
+    /// count is already full, so it starts again after the restart.
+    pub fn kept(&self) -> Kept {
+        Kept {
+            active_ms: self.active_ms,
+        }
+    }
+
+    /// Put back what a restart kept.
+    pub fn restore(&mut self, kept: Kept) {
+        self.active_ms = kept.active_ms;
+    }
+
     fn remaining_s(&self, cfg: &Config) -> u32 {
         let ms = match self.phase {
             EyeBreakPhase::Idle | EyeBreakPhase::Complete => return 0,
@@ -489,6 +503,12 @@ impl EyeBreak {
         };
         ms.div_ceil(SECOND) as u32
     }
+}
+
+/// The eye-break state a restart keeps.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Kept {
+    pub active_ms: u64,
 }
 
 // ---------------------------------------------------------------------------

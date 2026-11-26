@@ -20,6 +20,8 @@
 pub mod calls;
 #[path = "desk.rs"]
 pub mod desk;
+#[path = "desk_resume.rs"]
+pub mod desk_resume;
 #[path = "desk_sync.rs"]
 pub mod desk_sync;
 #[path = "eyebreak.rs"]

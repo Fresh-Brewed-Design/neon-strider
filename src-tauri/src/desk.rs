@@ -17,8 +17,8 @@ use crate::engine::{DeckAction, OrchestratorState};
 use crate::programs::{self, ProgramPhase};
 use crate::protocol::MachineStatus;
 use crate::snapshot::{
-    calls, desk_sync, eyebreak, lights_out, pc_walk_share, presenting, program_tones, seated,
-    walkaway,
+    calls, desk_resume, desk_sync, eyebreak, lights_out, pc_walk_share, presenting, program_tones,
+    seated, walkaway,
 };
 use crate::util::{blocking, now_ms_u64 as now_ms};
 use std::time::Duration;
@@ -378,6 +378,8 @@ pub fn init(app: &AppHandle) {
     walkaway::init(app);
     lights_out::init(app);
     presenting::init(app);
+    // After the settings: a restart carries on the timers where they were.
+    desk_resume::restore(app);
 }
 
 /// Start the microphone poller and the one-second loop.
@@ -387,6 +389,7 @@ pub fn spawn(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let mut ticker = tokio::time::interval(TICK);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut saver = desk_resume::Saver::default();
         loop {
             ticker.tick().await;
             // Asked before the orchestrator lock is taken (see snapshot.rs's locking rule).
@@ -413,6 +416,16 @@ pub fn spawn(app: AppHandle) {
             }
             if let Some((kind, message)) = out.toast {
                 announce(&app, kind, message);
+            }
+            // Keep the timers on disk so a restart carries them on.
+            let kept = desk_resume::capture(now);
+            if saver.due(kept, std::time::Instant::now()) {
+                let app_c = app.clone();
+                let _ = blocking(move || {
+                    desk_resume::write(&app_c, &kept);
+                    Ok(())
+                })
+                .await;
             }
         }
     });

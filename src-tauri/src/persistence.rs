@@ -1988,6 +1988,33 @@ pub fn delete_setting(app: &tauri::AppHandle, key: &str) -> Result<(), String> {
     })
 }
 
+/// Read one raw value from the `automation_state` table (runtime state kept
+/// across a restart, not a setting). None when the DB or key is missing.
+pub fn read_state(app: &tauri::AppHandle, key: &str) -> Option<String> {
+    with_conn(app, |conn| {
+        Ok(conn
+            .query_row(
+                "SELECT value FROM automation_state WHERE key = ?1",
+                params![key],
+                |row| row.get::<_, String>(0),
+            )
+            .ok())
+    })
+    .ok()
+    .flatten()
+}
+
+/// Upsert one raw value in the `automation_state` table.
+pub fn write_state(app: &tauri::AppHandle, key: &str, value: &str) -> Result<(), String> {
+    with_conn(app, |conn| {
+        conn.execute(
+            "INSERT OR REPLACE INTO automation_state (key, value) VALUES (?1, ?2)",
+            params![key, value],
+        )
+        .map(|_| ())
+    })
+}
+
 /// Upsert one raw value in the `settings` table (same shape set_db_setting writes).
 pub fn write_setting(app: &tauri::AppHandle, key: &str, value: &str) -> Result<(), String> {
     with_conn(app, |conn| {
