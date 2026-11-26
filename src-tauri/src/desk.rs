@@ -17,8 +17,8 @@ use crate::engine::{DeckAction, OrchestratorState, SessionCut};
 use crate::programs::{self, ProgramPhase};
 use crate::protocol::MachineStatus;
 use crate::snapshot::{
-    calls, desk_resume, desk_sync, eyebreak, lights_out, pc_walk_share, presenting, program_tones,
-    seated, walkaway,
+    calls, card_queue, desk_resume, desk_sync, eyebreak, lights_out, pc_walk_share, presenting,
+    program_tones, seated, walkaway,
 };
 use crate::util::{blocking, now_ms_u64 as now_ms};
 use std::time::Duration;
@@ -154,6 +154,8 @@ pub(crate) struct EyeScreen {
     pub display_off: bool,
     /// The HUD holds its non-urgent cards back (`presenting`).
     pub held: bool,
+    /// Some app uses the microphone (a call): the break plays no tones.
+    pub mic_in_use: bool,
 }
 
 /// One eye-break tick against the belt: runs the machine and applies a pause.
@@ -175,6 +177,7 @@ pub(crate) fn eye_break_tick(
         belt,
         rest_in_ms,
         rest_len_ms,
+        mic_in_use: screen.mic_in_use,
     };
     if let Some(eyebreak::Effect::Pause(hold)) = rt.machine.tick(&rt.cfg, now, &tick) {
         eye_break_pause(state, hold);
@@ -261,7 +264,10 @@ async fn step(connected: bool, now: u64, idle_ms: Option<u64>) -> Outcome {
         idle_ms,
         locked,
         display_off: crate::platform::display_off(),
-        held: presenting::holding(),
+        // The presenting hold, or a card above the eye break holding its card
+        // back (`card_queue`, decided with the last snapshot).
+        held: presenting::holding() || card_queue::eye_break_waits(),
+        mic_in_use: calls::mic::in_use_now(),
     };
     eyebreak::with(|rt| eye_break_tick(state, rt, ready, now, screen));
 
@@ -278,7 +284,6 @@ async fn step(connected: bool, now: u64, idle_ms: Option<u64>) -> Outcome {
         idle_ms,
         belt_running: belt_running(state),
         ready: treadmill_ready(connected, state),
-        program_waiting: state.program.as_ref().is_some_and(|r| r.wait.is_some()),
     };
     let effect = seated::with(|rt| rt.machine.tick(&rt.cfg, now, &tick));
     if let Some(seated::Effect::StartProgram(id)) = effect {
@@ -550,7 +555,7 @@ pub fn eye_break_stay_still() {
     }
 }
 
-/// SNOOZE 15 MIN.
+/// SNOOZE on the card (15, 30, then 60 minutes).
 pub fn snooze() {
     seated::with(|rt| rt.machine.snooze(now_ms()));
 }
@@ -645,7 +650,6 @@ mod tests {
                     idle_ms: Some(0),
                     belt_running: false,
                     ready: true,
-                    program_waiting: false,
                 },
             );
             t += 1000;

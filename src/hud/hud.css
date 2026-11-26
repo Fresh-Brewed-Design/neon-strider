@@ -335,6 +335,7 @@ body,
 .hud-drift,
 .hud-easystop,
 .hud-quiet,
+.hud-seated-line,
 .hud-presenting {
   display: flex;
   flex-wrap: wrap;
@@ -350,6 +351,7 @@ body,
 .hud-drift .hud-label,
 .hud-easystop .hud-label,
 .hud-quiet .hud-label,
+.hud-seated-line .hud-label,
 .hud-presenting .hud-label {
   color: var(--accent);
   letter-spacing: 0.14em;
@@ -360,7 +362,8 @@ body,
 .hud-stride-speed,
 .hud-drift-speed,
 .hud-easystop-speed,
-.hud-quiet-speed {
+.hud-quiet-speed,
+.hud-seated-mins {
   display: flex;
   align-items: baseline;
   gap: 4px;
@@ -429,6 +432,11 @@ body,
 .hud-strip-total .hud-label { line-height: 1.2; }
 
 .hud-strip-total .hud-value { color: var(--accent); }
+
+/* A folded ATROPHY_WARNING in today's total's place: the label is the codename,
+   so it may shorten with an ellipsis before Engage is squeezed. */
+.hud-seated-readout { flex: 0 1 auto; min-width: 0; }
+.hud-seated-readout .hud-label { color: var(--accent); overflow: hidden; text-overflow: ellipsis; }
 
 .hud-strip .hud-btn-main {
   flex: 0 0 auto;

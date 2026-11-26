@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.83.0 (2026-11-26)
+
+### Changed
+
+- An eye break that comes due while you walk now waits for the belt to stop. After 10 minutes of waiting the belt pauses for the break as before.
+- Eye breaks play no tones while the microphone is in use. A break moved earlier to fit a program rest now gets its heads-up.
+
+## 1.82.0 (2026-11-26)
+
+### Changed
+
+- With Install automatically on, updates install at most once a day with no UPDATE READY card on the HUD and never during a call or presentation.
+- What's new now waits until you open the dashboard yourself and keeps any notes you haven't read yet.
+
 ## 1.81.0 (2026-11-26)
 
 ### Changed

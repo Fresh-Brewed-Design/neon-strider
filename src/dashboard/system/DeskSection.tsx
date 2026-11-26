@@ -147,7 +147,7 @@ function EyeBreakSettings() {
               label="Tones"
               checked={e.sound}
               onChange={(sound) => void soundAction.run(() => save({ sound }))}
-              description="Beeps guide each full blink."
+              description="Beeps guide each full blink except during calls."
               hint="A falling tone closes the eyes, a low one squeezes, a high one opens and a rising one ends the blink."
             />
             <ActionStatus pending={soundAction.pending} error={soundAction.error} className="mt-1" />
@@ -157,7 +157,7 @@ function EyeBreakSettings() {
               label="Pause the belt for breaks"
               checked={e.pause_belt}
               onChange={(pause_belt) => void pauseAction.run(() => save({ pause_belt }))}
-              description="A break pauses a walking belt."
+              description="A break waits up to 10 minutes for a walk to end, then pauses the belt."
               hint="The HUD then offers RE-JACK or STAY STILL."
             />
             <ActionStatus pending={pauseAction.pending} error={pauseAction.error} className="mt-1" />

@@ -159,7 +159,10 @@ describe("HUD controls keep one place in every program state", () => {
 
 describe("HUD cards and toasts", () => {
   it("gives ATROPHY_WARNING's ENGAGE the cyan ENGAGE has everywhere", () => {
-    show((s) => (s.seated.show_card = true));
+    show((s) => {
+      s.seated.show_card = true;
+      s.hud_card = "seated";
+    });
     expect(screen.getByRole("button", { name: "ENGAGE" })).toHaveClass("accent-cyan");
   });
 

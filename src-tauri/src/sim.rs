@@ -3601,6 +3601,10 @@ mod tests {
             self.rt.machine.shown_phase()
         }
 
+        fn snapshot(&self) -> crate::snapshot::EyeBreakSnapshot {
+            crate::snapshot::eyebreak::snapshot_of(&self.rt)
+        }
+
         /// RESUME on the card.
         fn resume(&mut self, r: &mut Rig) {
             r.state.set_test_now(r.t);
@@ -3609,8 +3613,29 @@ mod tests {
         }
     }
 
+    /// A 30 minute step at 4.0 km/h, so a walk outlasts a break's wait.
+    const LONG_WALK: u32 = 11;
+    fn long_walk(r: &mut Rig) {
+        r.state.programs.push(Program {
+            id: LONG_WALK,
+            name: "Long walk".into(),
+            steps: vec![ProgramStep {
+                duration_minutes: Some(30.0),
+                speed_kmh: 4.0,
+                incline_pct: 0.0,
+                zone: None,
+                kind: None,
+                pulse_end: None,
+            }],
+            repeat_every_minutes: None,
+            note: None,
+        });
+    }
+
+    /// #423: a break due mid-walk waits for the stop. The walk is never paused
+    /// and nothing starts the belt.
     #[test]
-    fn an_eye_break_pauses_a_walk_and_only_resume_starts_it_again() {
+    fn an_eye_break_due_mid_walk_waits_for_the_stop_and_never_pauses_it() {
         use crate::snapshot::eyebreak::EyeBreakPhase;
         let mut r = Rig::new();
         let mut eyes = Eyes::new(&r);
@@ -3621,9 +3646,52 @@ mod tests {
         r.set_speed(3.0);
         eyes.run(&mut r, 20);
         assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
-        assert_eq!(eyes.shown(), EyeBreakPhase::Upcoming);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Idle, "no heads-up mid-walk");
         let mark = r.mark();
-        // The break starts at ten minutes and pauses the belt.
+        // Due at ten minutes: it waits, and the belt walks on.
+        eyes.run(&mut r, 15);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Waiting);
+        assert!(eyes.snapshot().remaining_s > 500);
+        eyes.run(&mut r, 240);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+        assert_eq!(eyes.shown(), EyeBreakPhase::Waiting);
+        assert_eq!(r.controls_since(mark, Control::Pause), 0);
+        // STOP: the break begins once the belt is still, and pauses nothing.
+        r.press(DeckAction::Stop);
+        eyes.run(&mut r, 10);
+        assert!(r.deck.belt_still());
+        assert_eq!(eyes.shown(), EyeBreakPhase::Break);
+        assert!(!eyes.rt.machine.holds_belt());
+        eyes.run(&mut r, 30);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Idle, "no resume card");
+        assert_eq!(eyes.rt.machine.end_seq(), 1);
+        assert_eq!(r.controls_since(mark, Control::Pause), 0);
+        let sent = r.commands_since(mark);
+        assert!(!app_starts(&sent), "{:?}", sent);
+        assert!(r.deck.belt_still());
+    }
+
+    /// #423: past the 10 minute wait the walk is paused; only RESUME (RE-JACK)
+    /// starts it again.
+    #[test]
+    fn an_eye_break_still_waiting_after_ten_minutes_pauses_and_only_resume_starts_it_again() {
+        use crate::snapshot::eyebreak::EyeBreakPhase;
+        let mut r = Rig::new();
+        let mut eyes = Eyes::new(&r);
+        // Nine and a half minutes at the screen, then a walk at 3 km/h.
+        eyes.run(&mut r, 570);
+        r.press(DeckAction::Start);
+        eyes.run(&mut r, 5);
+        r.set_speed(3.0);
+        eyes.run(&mut r, 20);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+        let mark = r.mark();
+        // Due at ten minutes, still walking almost ten minutes later.
+        eyes.run(&mut r, 600);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Waiting);
+        assert!(r.deck.running_at(3.0));
+        assert_eq!(r.controls_since(mark, Control::Pause), 0);
+        // The cap: the break starts and pauses the belt.
         eyes.run(&mut r, 15);
         assert_eq!(eyes.shown(), EyeBreakPhase::Break);
         assert!(r.deck.belt_still() && r.deck.status_code() == 10);
@@ -3650,15 +3718,19 @@ mod tests {
     }
 
     #[test]
-    fn an_eye_break_pauses_a_program_at_its_step_and_resume_is_its_go() {
+    fn an_eye_break_pauses_a_program_at_its_step_past_the_wait_and_resume_is_its_go() {
         use crate::snapshot::eyebreak::EyeBreakPhase;
         let mut r = Rig::new();
+        long_walk(&mut r);
         let mut eyes = Eyes::new(&r);
         eyes.run(&mut r, 570);
-        r.run_program(POST_MEAL);
+        r.run_program(LONG_WALK);
         eyes.run(&mut r, 25);
         assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
         let mark = r.mark();
+        eyes.run(&mut r, 600);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Waiting);
+        assert!(!r.program().paused);
         eyes.run(&mut r, 15);
         assert_eq!(eyes.shown(), EyeBreakPhase::Break);
         let a = r.program();
@@ -3687,14 +3759,53 @@ mod tests {
         assert_eq!(r.sessions_started, 1);
     }
 
+    /// #423: Post-meal (10 minutes) started just before a break's time ends
+    /// before the wait does: the break comes at its end and pauses nothing.
     #[test]
-    fn go_during_an_eye_break_takes_the_belt_back_and_no_card_follows() {
+    fn an_eye_break_due_mid_program_waits_for_the_program_to_end() {
         use crate::snapshot::eyebreak::EyeBreakPhase;
         let mut r = Rig::new();
         let mut eyes = Eyes::new(&r);
         eyes.run(&mut r, 570);
         r.run_program(POST_MEAL);
-        eyes.run(&mut r, 40);
+        eyes.run(&mut r, 25);
+        let mark = r.mark();
+        eyes.run(&mut r, 275);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Waiting);
+        assert!(r.deck.running_at(4.0), "{} km/h", r.deck.speed_kmh());
+        // The program ends at about 10 minutes and stops the belt.
+        eyes.run(&mut r, 320);
+        assert!(r.deck.belt_still());
+        assert_eq!(eyes.shown(), EyeBreakPhase::Break);
+        assert!(!eyes.rt.machine.holds_belt());
+        eyes.run(&mut r, 30);
+        assert_eq!(eyes.shown(), EyeBreakPhase::Idle, "no resume card");
+        let sent = r.commands_since(mark);
+        assert!(!app_starts(&sent), "{:?}", sent);
+        // Only the program's own end: the same as Post-meal with no eye breaks.
+        let mut plain = Rig::new();
+        let mut off = Eyes::new(&plain);
+        off.rt.cfg.enabled = false;
+        off.run(&mut plain, 570);
+        plain.run_program(POST_MEAL);
+        off.run(&mut plain, 25);
+        let plain_mark = plain.mark();
+        off.run(&mut plain, 625);
+        assert_eq!(
+            r.controls_since(mark, Control::Pause),
+            plain.controls_since(plain_mark, Control::Pause)
+        );
+    }
+
+    #[test]
+    fn go_during_an_eye_break_takes_the_belt_back_and_no_card_follows() {
+        use crate::snapshot::eyebreak::EyeBreakPhase;
+        let mut r = Rig::new();
+        long_walk(&mut r);
+        let mut eyes = Eyes::new(&r);
+        eyes.run(&mut r, 570);
+        r.run_program(LONG_WALK);
+        eyes.run(&mut r, 640);
         assert_eq!(eyes.shown(), EyeBreakPhase::Break);
         assert!(r.program().paused);
         // GO on the HUD in the middle of the break.

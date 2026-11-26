@@ -4,6 +4,7 @@
 import { emit } from "@tauri-apps/api/event";
 import type { AppSnapshot, DeskSync, WallClock } from "../ipc";
 import type { RustConfig } from "../services/controlOrchestrator";
+import { applyCardQueue } from "./cardQueue";
 
 // Same defaults as src-tauri/src/strava_template.rs.
 export const DEFAULT_TITLE = "NEON STRIDER // {distance_km} KM UPLINK";
@@ -152,6 +153,7 @@ export const snapshot: AppSnapshot = {
     minified: false,
   },
   hud_view: "full",
+  hud_card: "none",
   hud_monitors: [
     { name: "\\\\.\\DISPLAY1", label: "Display 1 · 1920×1080", is_primary: true, active: true, width: 1920, height: 1080 },
     { name: "\\\\.\\DISPLAY2", label: "Display 2 · 2560×1440", is_primary: false, active: false, width: 2560, height: 1440 },
@@ -213,6 +215,8 @@ export const snapshot: AppSnapshot = {
     program_ids: [1, 2, 3],
     custom_programs: false,
     show_card: false,
+    folded: false,
+    snooze_minutes: 15,
     seated_minutes: 60,
     pending_program_id: null,
   },
@@ -225,6 +229,8 @@ export const snapshot: AppSnapshot = {
     fit_rests: true,
     holds_belt: false,
     at_rest: false,
+    moved_to_rest: false,
+    silent: false,
     phase: "idle",
     remaining_s: 0,
     blink: null,
@@ -251,6 +257,7 @@ export const snapshot: AppSnapshot = {
     last_result: null,
     whats_new: null,
     auto_install: true,
+    auto_installed_today: false,
   },
   traffic: { recording: false, file_path: null, file_name: null, packets: 0, bytes: 0, elapsed_s: 0, stop_reason: null },
   // Same limits as src-tauri/src/calibration.rs.
@@ -339,6 +346,7 @@ export const PREVIEW_CONFIG: RustConfig = {
 /** Send the current snapshot to every listener, as Rust's `app-state` event does. */
 export function publish() {
   snapshot.hud_view = hudView();
+  applyCardQueue(snapshot);
   snapshot.update.dot = updateDot();
   void emit("app-state", { full: true, ...structuredClone(snapshot) });
 }
