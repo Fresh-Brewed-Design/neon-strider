@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { snapshot as mock } from "../../../dev/mockBackend";
 import type { AppSnapshot, UpdateSnapshot } from "../../../ipc";
 import { Markdown } from "./Markdown";
-import { installConfirmText, installProgress, showUpdateBadge, updateBusy } from "./updates";
+import { autoInstallTag, installConfirmText, installProgress, showUpdateBadge, updateBusy } from "./updates";
 
 const base = (): AppSnapshot => structuredClone(mock);
 
@@ -23,6 +23,15 @@ describe("update helpers", () => {
     expect(showUpdateBadge({ ...withStatus(available, true), dot: false })).toBe(false);
     expect(showUpdateBadge({ ...withStatus({ state: "up_to_date" }), dot: false })).toBe(false);
     expect(showUpdateBadge(undefined)).toBe(false);
+  });
+
+  it("says when an automatic install goes in, and tomorrow after today's", () => {
+    const on = { ...withStatus(available), auto_install: true };
+    expect(autoInstallTag(on)).toBe("Installs when idle");
+    expect(autoInstallTag({ ...on, auto_installed_today: true })).toBe("Installs tomorrow");
+    expect(autoInstallTag({ ...on, auto_install: false })).toBeNull();
+    expect(autoInstallTag({ ...withStatus(available, true), auto_install: true })).toBeNull();
+    expect(autoInstallTag({ ...withStatus({ state: "downloading", percent: 10 }), auto_install: true })).toBeNull();
   });
 
   it("reports progress while busy", () => {
