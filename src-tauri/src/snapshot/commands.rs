@@ -231,7 +231,7 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         // ---- Weekly summary ----
         Command::WeeklySummaryAck => blocking(move || weekly::acknowledge(&app)).await,
 
-        // ---- Idle nudge (STASIS_ALERT) ----
+        // ---- Idle nudge (ATROPHY_WARNING) ----
         Command::SeatedSetConfig {
             enabled,
             minutes,

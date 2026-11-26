@@ -1,4 +1,4 @@
-// ?seated shows the idle-nudge HUD card (STASIS_ALERT). Variants, comma-separated: off (treadmill off,
+// ?seated shows the sit-too-long HUD card (ATROPHY_WARNING). Variants, comma-separated: off (treadmill off,
 // nothing picked yet), queued (treadmill off, second program remembered), long (long
 // program names, to check wrapping), none / one (no or one saved program), many (six
 // saved programs with long names; the card shows the first three).

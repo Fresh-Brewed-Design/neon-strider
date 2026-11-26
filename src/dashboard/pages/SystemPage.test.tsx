@@ -23,11 +23,11 @@ describe("System's group tabs", () => {
     current = null;
   });
 
-  it("offers DECK, LINKS, ROUTINE and CORE, with the open one checked", () => {
+  it("offers DECK, LINKS, AUTOMATION and CORE, with the open one checked", () => {
     current = withDot(false);
     render(<SystemTabs tab="links" onChange={() => {}} />);
     const group = screen.getByRole("radiogroup", { name: "System groups" });
-    expect(within(group).getAllByRole("radio").map((b) => b.textContent)).toEqual(["DECK", "LINKS", "ROUTINE", "CORE"]);
+    expect(within(group).getAllByRole("radio").map((b) => b.textContent)).toEqual(["DECK", "LINKS", "AUTOMATION", "CORE"]);
     expect(tab("LINKS").getAttribute("aria-checked")).toBe("true");
     expect(tab("DECK").getAttribute("aria-checked")).toBe("false");
   });
@@ -36,7 +36,7 @@ describe("System's group tabs", () => {
     current = withDot(false);
     const onChange = vi.fn();
     render(<SystemTabs tab="deck" onChange={onChange} />);
-    tab("ROUTINE").click();
+    tab("AUTOMATION").click();
     expect(onChange).toHaveBeenCalledWith("routine");
   });
 

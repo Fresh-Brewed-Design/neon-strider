@@ -23,9 +23,12 @@ const buttons = () => screen.getAllByRole("button").map((b) => b.textContent);
 beforeEach(() => vi.mocked(invoke).mockClear());
 
 describe("SeatedCard", () => {
-  it("says the belt has been idle, never that you are sitting", () => {
+  it("says the belt has been idle; only the plain line under ATROPHY_WARNING names sitting", () => {
     const { container } = render(<SeatedCard snapshot={seated()} />);
     expect(screen.getByText("63 MIN IDLE")).toBeInTheDocument();
+    expect(screen.getByText("ATROPHY_WARNING")).toBeInTheDocument();
+    // The card's name and its plain line are Fresh Brewed Design's (#392).
+    screen.getByText("sit-too-long reminder").remove();
     expect(container.textContent).not.toMatch(/seat|sitting|\bsit\b|\bsat\b/i);
   });
 

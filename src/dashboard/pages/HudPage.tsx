@@ -22,10 +22,13 @@ const CORNERS: { anchor: HudAnchor; label: string; className: string }[] = [
   { anchor: "bottom_right", label: "Bottom right", className: "bottom-2 right-2" },
 ];
 
+/** Each widget's line under its name, in both lists: a stat's plain meaning and its HUD label ("belt speed · HUD: VEL"). */
 const ALL: { id: HudWidget; description: string }[] = [
   ...MODULE_WIDGETS.map((m) => ({ id: m.id, description: m.description })),
-  ...STAT_WIDGETS.map((w) => ({ id: w.id, description: `Shown as ${w.label}` })),
+  ...STAT_WIDGETS.map((w) => ({ id: w.id, description: w.plain ? `${w.plain} · HUD: ${w.label}` : `HUD: ${w.label}` })),
 ];
+
+const rowLine = (id: HudWidget) => ALL.find((w) => w.id === id)?.description ?? "";
 
 function CornerPicker({ anchor, custom }: { anchor: HudAnchor; custom: boolean }) {
   const set = useAction();
@@ -178,7 +181,7 @@ function MinifyShortcutNote({ shortcuts }: { shortcuts: ShortcutsSnapshot }) {
     <div className="flex flex-col gap-1">
       <Label>Minify shortcut</Label>
       <Hint>
-        {key ? `${key} shrinks the HUD to a strip and back. Change the key in System, ROUTINE, Shortcuts.` : "The minify shortcut is off. Set a key in System, ROUTINE, Shortcuts."}
+        {key ? `${key} shrinks the HUD to a strip and back. Change the key in System, CORE, Shortcuts.` : "The minify shortcut is off. Set a key in System, CORE, Shortcuts."}
       </Hint>
     </div>
   );
@@ -198,8 +201,11 @@ function PinnedRow({ widgets, index: i }: { widgets: HudWidget[]; index: number 
   return (
     <li className="flex flex-col gap-1 rounded border border-white/10 bg-black/30 px-3 py-1.5">
       <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 font-mono text-xs font-bold uppercase tracking-[0.15em] text-neon-cyan [overflow-wrap:anywhere]">
-          <Codename text={widgetName(id)} />
+        <span className="min-w-0 flex-1">
+          <span className="block font-mono text-xs font-bold uppercase tracking-[0.15em] text-neon-cyan [overflow-wrap:anywhere]">
+            <Codename text={widgetName(id)} />
+          </span>
+          <span className="block font-mono text-xs text-white/60">{rowLine(id)}</span>
         </span>
         <GhostButton aria-label="Move up" title="Move up" className="min-h-6 min-w-6" disabled={i === 0 || action.pending} onClick={() => move(-1)}>
           <ArrowUp size={14} />

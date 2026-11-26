@@ -1,5 +1,6 @@
 import type { WallClock } from "../../ipc";
-import { Label, Panel } from "../ui";
+import { PLAIN } from "../../names";
+import { Label, Panel, PlainLine } from "../ui";
 import { hourLabel, wallClockText } from "./wallClockText";
 
 /** An hour label under every third cell, from the first: enough to read the row without crowding it. */
@@ -19,7 +20,10 @@ export function WallClockPanel({ clock }: { clock: WallClock }) {
   return (
     <Panel className="flex flex-col gap-2 p-3">
       <div className="flex flex-wrap items-baseline gap-x-3">
-        <Label>WALL_CLOCK</Label>
+        <div className="shrink-0">
+          <Label>WALL_CLOCK</Label>
+          <PlainLine text={PLAIN.WALL_CLOCK} />
+        </div>
         <p className="min-w-0 flex-1 font-mono text-xs leading-snug text-white/60">{wallClockText(clock)}</p>
       </div>
       {days > 0 && (

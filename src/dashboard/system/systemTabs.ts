@@ -9,11 +9,12 @@ export type SystemTab = "deck" | "links" | "routine" | "core";
 export const SYSTEM_TABS: readonly { id: SystemTab; label: string; sections: readonly string[] }[] = [
   { id: "deck", label: "DECK", sections: ["sys-treadmill", "sys-calibration", "sys-drift", "sys-maintenance"] },
   { id: "links", label: "LINKS", sections: ["sys-strava", "sys-heart"] },
-  { id: "routine", label: "ROUTINE", sections: ["sys-neural", "sys-sessions", "sys-desk", "sys-shortcuts"] },
+  // AUTOMATION keeps the id "routine", so the tab remembered from before still opens.
+  { id: "routine", label: "AUTOMATION", sections: ["sys-neural", "sys-sessions", "sys-desk"] },
   {
     id: "core",
     label: "CORE",
-    sections: ["sys-startup", "sys-permissions", "sys-updates", "sys-labs", "sys-diagnostics"],
+    sections: ["sys-startup", "sys-shortcuts", "sys-permissions", "sys-updates", "sys-labs", "sys-diagnostics"],
   },
 ];
 

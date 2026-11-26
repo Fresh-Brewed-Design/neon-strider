@@ -343,7 +343,7 @@ pub struct GhostPodSnapshot {
 /// The status word, in the deck's voice.
 pub fn status_label(status: PodStatus) -> &'static str {
     match status {
-        PodStatus::Off => "OFFLINE",
+        PodStatus::Off => "NO_CARRIER",
         PodStatus::Starting => "BOOTING",
         PodStatus::Advertising => "BROADCASTING",
         PodStatus::Connected => "LINKED",

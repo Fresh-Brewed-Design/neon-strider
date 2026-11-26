@@ -2,7 +2,7 @@ import { Fragment, useLayoutEffect, useRef } from "react";
 import type { AppSnapshot, HudWidget } from "../ipc";
 import { describeActive } from "../dashboard/programs/format";
 import { startFailure } from "../state/linkStatus";
-import { statWidget } from "../widgets/registry";
+import { statTitle, statWidget } from "../widgets/registry";
 import { Sparkline } from "../widgets/Sparkline";
 import { HudNote } from "./HudNote";
 import { EngageButton } from "./HudPanel";
@@ -38,7 +38,7 @@ export function StripRow({ snapshot }: { snapshot: AppSnapshot }) {
     <div className="hud-strip">
       <div className="hud-strip-row">
         {daily && total && (
-          <div className={`hud-strip-total accent-${daily.accent}`} title={daily.codename}>
+          <div className={`hud-strip-total accent-${daily.accent}`} title={statTitle(daily)}>
             <span className="hud-label">{daily.label}</span>
             <span className="hud-value hud-value-sm">
               {total.value}
@@ -118,7 +118,7 @@ function PulseRow({ snapshot }: { snapshot: AppSnapshot }) {
   const { value, unit } = def.read(snapshot);
   const spark = def.spark?.(snapshot);
   return (
-    <div className={`hud-run-pulse accent-${def.accent}`} title={def.codename} data-testid="hud-run-pulse">
+    <div className={`hud-run-pulse accent-${def.accent}`} title={statTitle(def)} data-testid="hud-run-pulse">
       <div className="hud-strip-total">
         <span className="hud-label">{def.label}</span>
         <span className="hud-value hud-value-sm">
@@ -149,7 +149,7 @@ export function RunStripRow({ snapshot }: { snapshot: AppSnapshot }) {
           if (!def) return null;
           const { value, unit } = def.read(snapshot);
           return (
-            <div key={id} className={`hud-strip-total accent-${def.accent}`} title={def.codename}>
+            <div key={id} className={`hud-strip-total accent-${def.accent}`} title={statTitle(def)}>
               <span className="hud-label">{def.label}</span>
               <span className="hud-value hud-value-sm">
                 {value}

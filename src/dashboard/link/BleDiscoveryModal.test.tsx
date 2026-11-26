@@ -24,7 +24,7 @@ function open(onClose = vi.fn()) {
 describe("BleDiscoveryModal", () => {
   it("is a labelled dialog that takes focus", () => {
     open();
-    const dialog = screen.getByRole("dialog", { name: "Hardware_Link" });
+    const dialog = screen.getByRole("dialog", { name: "HARDWARE_LINK" });
     expect(dialog.contains(document.activeElement)).toBe(true);
   });
 

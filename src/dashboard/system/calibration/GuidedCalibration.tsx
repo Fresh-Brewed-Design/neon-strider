@@ -13,7 +13,8 @@ import { useAppSnapshot } from "../../../state/useAppState";
 import { useTreadmillStore } from "../../../store/treadmillStore";
 import { useGuidedTask } from "../../guided/useGuidedTask";
 import { dialogOpen } from "../../useDialog";
-import { GhostButton, Hint, Label, NeonButton } from "../../ui";
+import { PLAIN } from "../../../names";
+import { GhostButton, Hint, Label, NeonButton, PlainLine } from "../../ui";
 import { cx, send } from "../../util";
 import { INPUT_CLASS } from "../fields";
 import {
@@ -133,12 +134,15 @@ export function GuidedCalibration() {
 
   return (
     <div className="space-y-3">
-      <div className="font-digital text-xs font-bold uppercase tracking-[0.18em] text-neon-cyan">
-        NEON STRIDER // GROUND_TRUTH
+      <div>
+        <div className="font-digital text-xs font-bold uppercase tracking-[0.18em] text-neon-cyan">
+          NEON STRIDER // GROUND_TRUTH
+        </div>
+        <PlainLine text={PLAIN.GROUND_TRUTH} />
       </div>
       {run && (
         <div ref={activeRef} className="hacker-panel scroll-mt-2 rounded-lg border-neon-cyan/30 bg-white/[0.02] p-3">
-          <Readout label="DECK_VELOCITY" value={`${(ranKmh ?? run.target_kmh).toFixed(1)} km/h`} className="text-neon-cyan" />
+          <Readout label="VELOCITY" value={`${(ranKmh ?? run.target_kmh).toFixed(1)} km/h`} className="text-neon-cyan" />
           <RunPanel
             run={run}
             limits={cal.limits}
@@ -188,7 +192,7 @@ export function GuidedCalibration() {
           <div key={row.targetKmh} className="hacker-panel rounded-lg border-white/5 bg-white/[0.02] p-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
-                <Readout label="DECK_VELOCITY" value={`${row.targetKmh.toFixed(1)} km/h`} className="text-neon-cyan" />
+                <Readout label="VELOCITY" value={`${row.targetKmh.toFixed(1)} km/h`} className="text-neon-cyan" />
                 {row.point ? (
                   <>
                     <Readout label="STRIDE" value={`${row.point.stride_length_cm.toFixed(1)} cm`} className="text-white" />
@@ -557,7 +561,7 @@ function RunPanel({
           </div>
           <div className="flex flex-wrap gap-4 rounded border border-white/5 bg-white/5 p-2">
             <Readout label="TRUE_VELOCITY" value={`${r.real_kmh.toFixed(2)} km/h`} className="text-neon-cyan" />
-            <Readout label="DECK_VELOCITY" value={`${r.reported_kmh.toFixed(2)} km/h`} className="text-white" />
+            <Readout label="VELOCITY" value={`${r.reported_kmh.toFixed(2)} km/h`} className="text-white" />
             <Readout label="FACTOR" value={`${r.point.distance_scale.toFixed(3)}x`} className="text-neon-magenta" />
             <Readout label="PASSES" value={String(run.passes)} className="text-white" />
           </div>

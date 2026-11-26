@@ -68,6 +68,11 @@ export function Codename({ text }: { text: string }) {
   ));
 }
 
+/** A codename's plain meaning: the small grey line under it (`PLAIN` in src/names.ts). */
+export function PlainLine({ text, className }: { text: string; className?: string }) {
+  return <span className={cx("block font-mono text-[11px] font-normal normal-case leading-tight tracking-normal text-white/60", className)}>{text}</span>;
+}
+
 /** Small grey explanation under or beside a control. */
 export function Hint({ className, ...rest }: HTMLAttributes<HTMLParagraphElement>) {
   return <p className={cx("font-mono text-xs leading-relaxed text-white/60", className)} {...rest} />;

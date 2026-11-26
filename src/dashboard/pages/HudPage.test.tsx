@@ -23,7 +23,7 @@ describe("HUD page minify shortcut", () => {
   it("names the minify shortcut and where to change it", () => {
     render(<HudPage />);
     expect(
-      screen.getByText("Alt+Insert shrinks the HUD to a strip and back. Change the key in System, ROUTINE, Shortcuts."),
+      screen.getByText("Alt+Insert shrinks the HUD to a strip and back. Change the key in System, CORE, Shortcuts."),
     ).toBeInTheDocument();
   });
 
@@ -31,7 +31,20 @@ describe("HUD page minify shortcut", () => {
     const minify = current!.shortcuts.list.find((v) => v.shortcut === "toggle_minified")!;
     minify.keys = [];
     render(<HudPage />);
-    expect(screen.getByText("The minify shortcut is off. Set a key in System, ROUTINE, Shortcuts.")).toBeInTheDocument();
+    expect(screen.getByText("The minify shortcut is off. Set a key in System, CORE, Shortcuts.")).toBeInTheDocument();
+  });
+});
+
+describe("HUD page widget rows", () => {
+  it("reads 'plain meaning · HUD: SHORT' in both lists", () => {
+    current!.hud.widgets = ["VELOCITY", "CONTROLS"];
+    render(<HudPage />);
+    // Pinned.
+    expect(screen.getByText("belt speed · HUD: VEL")).toBeInTheDocument();
+    // Available.
+    expect(screen.getByText("incline · HUD: TILT")).toBeInTheDocument();
+    expect(screen.getByText("walk time · HUD: TIME")).toBeInTheDocument();
+    expect(screen.getByText("HUD: WALKED")).toBeInTheDocument();
   });
 });
 

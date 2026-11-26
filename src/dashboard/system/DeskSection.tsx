@@ -3,6 +3,7 @@ import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { roundSpeed, snapToDeck } from "../../state/deckSpeeds";
 import { useAppSnapshot } from "../../state/useAppState";
+import { systemLabel } from "../../names";
 import { GhostButton, Hint, Label } from "../ui";
 import { cx } from "../util";
 import { NumberField, Section, Toggle } from "./fields";
@@ -108,7 +109,7 @@ function EyeBreakSettings() {
     <>
       <div>
         <Toggle
-          label="OCULAR_IMPLANT"
+          label={systemLabel("OCULAR_IMPLANT")}
           tone="cyan"
           checked={e.enabled}
           onChange={(enabled) => void enableAction.run(() => save({ enabled }))}
@@ -216,7 +217,7 @@ export function DeskSection() {
     >
       <div>
         <Toggle
-          label="Idle nudge"
+          label={systemLabel("ATROPHY_WARNING")}
           tone="yellow"
           checked={seated.enabled}
           onChange={(enabled) => void nudgeAction.run(() => saveSeated({ enabled }))}

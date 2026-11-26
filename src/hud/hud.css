@@ -601,6 +601,15 @@ body,
   color: var(--hud-dim);
 }
 
+/* A card codename's plain meaning, the small grey line under it (src/names.ts). */
+.hud-plain {
+  font-family: var(--hud-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  color: var(--hud-dim);
+}
+
 /* STEP_MAP's next step under the running one: whole parts wrap, never mid-part.
    A part wider than the module (NEXT // REST 3/5 at 225 % text size) wraps inside itself instead of overflowing:
    it keeps its whole width while it fits, and max-width stops it past the module. */

@@ -1,7 +1,9 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Bluetooth, BluetoothOff, Link2, Loader2, RefreshCw, SearchX, X } from "lucide-react";
 import { ActionStatus } from "../../components/ActionStatus";
+import { PLAIN } from "../../names";
 import { useAppSnapshot } from "../../state/useAppState";
+import { PlainLine } from "../ui";
 import { useDialog } from "../useDialog";
 
 export interface BleDevice {
@@ -78,7 +80,10 @@ export function BleDiscoveryModal({
             <div className="flex justify-between items-center p-4 border-b border-white/5 bg-white/5">
               <div className="flex items-center gap-2">
                 <Bluetooth className="text-neon-cyan" size={18} />
-                <h2 id="ble-discovery-title" className="text-xs font-black uppercase tracking-[0.2em]">Hardware_Link</h2>
+                <div>
+                  <h2 id="ble-discovery-title" className="text-xs font-black uppercase tracking-[0.2em]">HARDWARE_LINK</h2>
+                  <PlainLine text={PLAIN.HARDWARE_LINK} />
+                </div>
               </div>
               <button
                 onClick={onClose}
