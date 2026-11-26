@@ -59,7 +59,7 @@ export function StripRow({ snapshot, send, note }: { snapshot: AppSnapshot; send
           )}
           <NotePop note={note} />
         </div>
-        <EngageButton snapshot={snapshot} send={send} sub />
+        <EngageButton snapshot={snapshot} send={send} sub strip />
       </div>
     </div>
   );
@@ -176,7 +176,7 @@ export function RunStripRow({ snapshot, send, note }: { snapshot: AppSnapshot; s
       )}
       <div className="hud-strip-row">
         <NotePop note={note} />
-        <EngageButton snapshot={snapshot} send={send} sub />
+        <EngageButton snapshot={snapshot} send={send} sub strip />
         <button
           type="button"
           className="hud-btn hud-btn-stop hud-btn-stack hud-btn-dump"

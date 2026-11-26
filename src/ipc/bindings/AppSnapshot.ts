@@ -72,6 +72,11 @@ speed_drift: SpeedDriftSnapshot, hud: HudConfig,
  */
 hud_view: HudView, 
 /**
+ * A program's wait for GO holds the whole panel (its first 30 s,
+ * `stasis::GO_HOLD`): the HUD keeps minify off meanwhile.
+ */
+hud_go_hold: boolean, 
+/**
  * Displays the HUD can be placed on. Refreshed every few seconds, not per tick.
  */
 hud_monitors: Array<HudMonitor>, strava: StravaSnapshot, maintenance: MaintenanceSnapshot, 

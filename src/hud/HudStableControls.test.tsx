@@ -89,6 +89,8 @@ describe("HUD controls keep one place in every program state", () => {
   const waiting = (s: AppSnapshot) => {
     s.deck.status = "Paused";
     s.active_program = { ...structuredClone(mock.active_program!), paused: true, wait: "rest_complete" };
+    // The first 30 s of the wait, while the prompt holds the whole panel.
+    s.hud_go_hold = true;
   };
 
   it("lays the RUN PROGRAM grid unseen under a running program, and a blank running program under the grid", () => {

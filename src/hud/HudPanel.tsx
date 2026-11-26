@@ -246,21 +246,28 @@ export function PresentingLine({ snapshot }: { snapshot: AppSnapshot }) {
   );
 }
 
-/** Engage / Stasis: one `toggle_start` to Rust, the same press as the shortcut. */
+/**
+ * Engage / Stasis: one `toggle_start` to Rust, the same press as the shortcut.
+ * On a strip, where no program card shows, its GO takes the programs' yellow.
+ */
 export function EngageButton({
   snapshot,
   send,
   sub = false,
+  strip = false,
 }: {
   snapshot: AppSnapshot;
   send: Send;
   /** A plain line under the codename (the panel and both strips). */
   sub?: boolean;
+  /** On the still strip or the running strip. */
+  strip?: boolean;
 }) {
+  const go = strip && engageLabel(snapshot) === "GO";
   return (
     <button
       type="button"
-      className={`hud-btn hud-btn-main${sub ? " hud-btn-stack" : ""} accent-cyan`}
+      className={`hud-btn hud-btn-main${sub ? " hud-btn-stack" : ""} accent-${go ? "yellow" : "cyan"}`}
       disabled={!snapshot.connection.connected}
       title={engageTitle(snapshot)}
       onClick={() => void send({ type: "toggle_start" })}

@@ -93,17 +93,17 @@ export function HudApp() {
       : deckNote?.target_note
         ? { text: deckNote.target_note, detail: deckNote.target_note_hint }
         : null;
-  // The size button sits in the header's corner in every view. A program
-  // waiting for GO keeps the whole panel (Rust ignores minify then), so the
-  // button stays in place but off until GO.
+  // The size button sits in the header's corner in every view. A program's
+  // first 30 s waiting for GO keep the whole panel (Rust ignores minify then,
+  // `hud_go_hold`), so the button stays in place but off until GO or the hold ends.
   const toggle: HeaderToggle | undefined =
     snapshot === null
       ? undefined
       : full
         ? {
             kind: "minify",
-            disabled: wait !== null,
-            title: wait ? "The whole HUD stays up while a program waits for GO." : hotkeyTitle("Shrink the HUD to a strip", snapshot.shortcuts),
+            disabled: snapshot.hud_go_hold,
+            title: snapshot.hud_go_hold ? "The whole HUD stays up for 30 seconds while a program waits for GO." : hotkeyTitle("Shrink the HUD to a strip", snapshot.shortcuts),
             onClick: () => void minify.send({ type: "hud_set_minified", minified: true }),
           }
         : minified

@@ -268,16 +268,44 @@ describe("HUD minified", () => {
     expect(dispatched()).toEqual([{ command: { type: "hud_set_minified", minified: true } }]);
   });
 
-  it("keeps the minify button in its place but off while a program waits for GO (the panel stays whole)", () => {
+  it("keeps the minify button in its place but off for the first 30 s a program waits for GO (the panel stays whole)", () => {
     show(
       still("full", (s) => {
         s.deck.status = "Paused";
         s.active_program = { ...structuredClone(mock.active_program!), paused: true, wait: "rest_complete" };
+        s.hud_go_hold = true;
       }),
     );
     const minify = screen.getByRole("button", { name: "Minify the HUD" });
     expect(minify).toBeDisabled();
-    expect(minify).toHaveAttribute("title", "The whole HUD stays up while a program waits for GO.");
+    expect(minify).toHaveAttribute("title", "The whole HUD stays up for 30 seconds while a program waits for GO.");
+  });
+
+  it("lets minify work again once an unanswered GO's hold is over", () => {
+    show(
+      still("full", (s) => {
+        s.deck.status = "Paused";
+        s.active_program = { ...structuredClone(mock.active_program!), paused: true, wait: "rest_complete" };
+        s.hud_go_hold = false;
+      }),
+    );
+    expect(screen.getByRole("button", { name: "Minify the HUD" })).toBeEnabled();
+  });
+
+  it("falls back to the strip with a yellow GO as its main button after the hold", async () => {
+    vi.mocked(invoke).mockClear();
+    show(
+      still("strip", (s) => {
+        s.deck.status = "Paused";
+        s.active_program = { ...structuredClone(mock.active_program!), paused: true, wait: "rest_complete" };
+      }),
+    );
+    const go = screen.getByRole("button", { name: "GO start belt" });
+    expect(go).toHaveClass("accent-yellow");
+    expect(go).toHaveAttribute("title", "Start the belt and carry on with the program.");
+    // The same one press as before: nothing starts the belt but GO.
+    await act(async () => fireEvent.click(go));
+    expect(dispatched()).toEqual([{ command: { type: "toggle_start" } }]);
   });
 });
 
