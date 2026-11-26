@@ -93,7 +93,11 @@ export function Joined({ text, sep = "·", className }: { text: string; sep?: ke
       <span className="flex flex-wrap" style={{ marginLeft: `-${width}` }}>
         {parts.map((part, i) => (
           <span key={i} className="min-w-0" style={i === 0 ? { paddingLeft: width } : undefined}>
-            {i > 0 && <span className="whitespace-pre">{` ${sep} `}</span>}
+            {i > 0 && (
+              <span data-joined-sep className="whitespace-pre">
+                {` ${sep} `}
+              </span>
+            )}
             {part}
           </span>
         ))}
