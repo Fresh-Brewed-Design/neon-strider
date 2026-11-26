@@ -134,7 +134,7 @@ export function offlineText(connection: AppSnapshot["connection"]): string {
     case "connecting":
       return `Linking, try ${l.attempt} of ${l.of}.`;
     case "reconnecting":
-      return `${OFFLINE} RELINK in ${l.next_retry_s} s.`;
+      return `Link lost. RELINK ${l.next_retry_s}S.`;
     case "adapter_unavailable":
       return "Bluetooth is off.";
     case "failed":

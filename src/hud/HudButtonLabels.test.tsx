@@ -92,7 +92,7 @@ describe("HUD program list offline", () => {
   it("says why the program buttons are off and offers Connect", async () => {
     vi.mocked(invoke).mockClear();
     show(offline({ state: "reconnecting", attempt: 1, next_retry_s: 9 }));
-    expect(screen.getByTestId("hud-offline")).toHaveTextContent("Treadmill offline. RELINK in 9 s.");
+    expect(screen.getByTestId("hud-offline")).toHaveTextContent("Link lost. RELINK 9S.");
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "CONNECT" })));
     expect(dispatched()).toEqual([{ command: { type: "connect_now" } }]);
   });
