@@ -115,7 +115,13 @@ export function Axis({
 
         <div className="flex items-center gap-2 @max-[14rem]:gap-1">
           <Nudge label={`${title} down`} disabled={disabled} onClick={() => nudge(false)} icon={<Minus size={16} />} />
-          <div ref={wheel} title={wheelHint} className="flex min-w-0 flex-1 items-end justify-center gap-2 @max-[14rem]:gap-1">
+          {/* Disabled means no treadmill is linked: the reading is the last one it sent, so it
+              recedes as the HUD's readings do. */}
+          <div
+            ref={wheel}
+            title={wheelHint}
+            className={cx("flex min-w-0 flex-1 items-end justify-center gap-2 @max-[14rem]:gap-1", disabled && "opacity-45")}
+          >
             <SegmentedDisplay
               value={actual}
               length={2}

@@ -101,6 +101,30 @@ describe("Live page STEP_MAP", () => {
   });
 });
 
+describe("Live page offline", () => {
+  it("dims the last readings the treadmill sent, as the HUD does", () => {
+    current!.connection.connected = false;
+    current!.active_program = null;
+    render(<LivePage />);
+    for (const title of ["Scroll to change speed.", "Scroll to change incline."]) {
+      expect(screen.getByTitle(title)).toHaveClass("opacity-45");
+    }
+    expect(screen.getByText("DISPLACEMENT").closest(".hacker-panel")!.querySelector(".opacity-45")).not.toBeNull();
+  });
+
+  it("dims the walk stats beside STEP_MAP", () => {
+    current!.connection.connected = false;
+    render(<LivePage />);
+    expect(screen.getByRole("group", { name: "Walk stats" })).toHaveClass("opacity-45");
+  });
+
+  it("leaves the readings bright while linked", () => {
+    render(<LivePage />);
+    expect(screen.getByTitle("Scroll to change speed.")).not.toHaveClass("opacity-45");
+    expect(screen.getByRole("group", { name: "Walk stats" })).not.toHaveClass("opacity-45");
+  });
+});
+
 describe("Live page maintenance banner", () => {
   it("sits in the header, so the page keeps its height at 760x600", () => {
     current!.maintenance.due = true;

@@ -44,4 +44,9 @@ describe("Transport belt buttons", () => {
     expect(dump.className).toContain("border-neon-magenta");
     expect(dump.querySelector(".bg-current")).not.toBeNull();
   });
+
+  it("gives the offline line at least the belt buttons' height, so nothing under it jumps", () => {
+    show((s) => (s.connection = { ...s.connection, connected: false }));
+    expect(screen.getByText("Connect").closest(".hacker-panel")).toHaveClass("min-h-12");
+  });
 });

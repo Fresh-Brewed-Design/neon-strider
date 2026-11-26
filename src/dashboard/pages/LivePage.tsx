@@ -250,7 +250,8 @@ export function LivePage({ onCalibrate }: { onCalibrate?: () => void } = {}) {
                     {target && <TargetReadout target={target} />}
                     <PinToggle widget={w.id} pinned={pinned.has(w.id)} />
                   </div>
-                  <div className="flex items-center gap-3">
+                  {/* Offline, the reading is the treadmill's last one, dimmed as on the HUD. */}
+                  <div className={cx("flex items-center gap-3", offline && "opacity-45")}>
                     <span className={cx("shrink-0 font-digital text-base tracking-wider", TONE_TEXT[w.accent])}>
                       {value}
                       {unit && <span className="ml-1 font-mono text-xs text-white/60">{unit}</span>}
