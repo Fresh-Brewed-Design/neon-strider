@@ -12,7 +12,7 @@
 //!
 //! The feature modules that contribute a part of the snapshot or act on it
 //! (calls, desk, desk_sync, eyebreak, hud_drag, lights_out, maintenance, odometer, pc_walk_share, presenting,
-//! program_tones, seated, tray, tray_menu,
+//! program_tones, seated, speed_trace, tray, tray_menu,
 //! walkaway, wall_clock, weekly) are declared here rather than in `lib.rs`, so this module owns
 //! their wiring.
 
@@ -40,6 +40,8 @@ pub mod presenting;
 pub mod program_tones;
 #[path = "seated.rs"]
 pub mod seated;
+#[path = "speed_trace.rs"]
+pub mod speed_trace;
 #[path = "tray.rs"]
 pub mod tray;
 #[path = "tray_menu.rs"]
@@ -238,7 +240,7 @@ fn neural_snapshot(state: &OrchestratorState) -> NeuralSnapshot {
 }
 
 /// Build a snapshot from state. Pure (no Tauri, no locks, no I/O) so it can be
-/// unit-tested. `speed_drift`, `desk_sync`, `wall_clock`, `pc_walk_share`, `today_timeline`, `walkaway`, `update`, `traffic`, `lights_out`, `presenting`, `ghost_pod`,
+/// unit-tested. `speed_drift`, `desk_sync`, `wall_clock`, `pc_walk_share`, `today_timeline`, `speed_trace`, `walkaway`, `update`, `traffic`, `lights_out`, `presenting`, `ghost_pod`,
 /// `calibration`, `guided_task`, `program_tones` and `hud_view` are left at their defaults: they depend on the clock or shared
 /// state, so the emitter fills them in.
 pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSnapshot {
@@ -246,6 +248,7 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
     AppSnapshot {
         connection: parts.connection,
         session: session_snapshot(state, parts.daily_base_m, parts.live_counts_today),
+        speed_trace: Vec::new(),
         programs: state.programs.clone(),
         active_program: state.active_program(),
         fit_to_deck: state.fit_to_deck_offers(deck.stride_fit_kmh),

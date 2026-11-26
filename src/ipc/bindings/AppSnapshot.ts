@@ -38,7 +38,15 @@ import type { WalkAwaySnapshot } from "./WalkAwaySnapshot";
 import type { WallClock } from "./WallClock";
 import type { WeeklySummary } from "./WeeklySummary";
 
-export type AppSnapshot = { connection: ConnectionSnapshot, deck: DeckSnapshot, session: SessionSnapshot, programs: Array<Program>, active_program: ActiveProgram | null, 
+export type AppSnapshot = { connection: ConnectionSnapshot, deck: DeckSnapshot, session: SessionSnapshot, 
+/**
+ * VELOCITY's spark chart (#362, `speed_trace.rs`): the belt's speed in
+ * km/h over the last 10 minutes, one point per 5 s, oldest first, always
+ * a full window; `None` is a step with the link down or no walk open.
+ * Empty while the window holds no speed, so there is no chart. Hot: it
+ * moves every 5 s while walking.
+ */
+speed_trace: Array<number | null>, programs: Array<Program>, active_program: ActiveProgram | null, 
 /**
  * FIT_TO_DECK (#225): the seeded programs that may trade speed above
  * STRIDE_FIT for incline, with Rust's words for the card and the
