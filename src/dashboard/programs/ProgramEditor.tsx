@@ -368,7 +368,6 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
             <Label>{anyZone ? "Heart zones in" : "Pulse target in"}</Label>
             <ChoiceGroup
               label="Heart zone unit"
-              tone="magenta"
               options={ZONE_UNITS}
               value={d.zoneUnit}
               onChange={(unit) => setD(withZoneUnit(d, unit, maxBpm))}
@@ -563,7 +562,6 @@ function ZoneRow({
             <span>trims</span>
             <ChoiceGroup
               label={`Step ${n} heart zone trims`}
-              tone="magenta"
               options={ZONE_TRIMS}
               value={step.zoneTrim}
               onChange={(zoneTrim) => onChange({ zoneTrim })}

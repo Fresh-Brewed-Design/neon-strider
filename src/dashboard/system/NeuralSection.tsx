@@ -55,7 +55,6 @@ function SensitivityChoice() {
       <Label>Sensitivity</Label>
       <ChoiceGroup
         label="Sensitivity"
-        tone="green"
         options={SENSITIVITY_CHOICES}
         value={value}
         onChange={(neuralSensitivity) => useTreadmillStore.getState().updateSettings({ neuralSensitivity })}
@@ -79,7 +78,6 @@ export function NeuralSection() {
     >
       <Toggle
         label="Neural flow"
-        tone="green"
         checked={enabled}
         onChange={(v) => updateSettings({ focusStabilityEnabled: v })}
         description="Works on any walk, set by hand or by a program."

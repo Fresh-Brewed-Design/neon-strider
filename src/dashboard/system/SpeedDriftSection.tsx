@@ -61,7 +61,6 @@ export function SpeedDriftSection() {
       <div>
         <Toggle
           label="Speed drift"
-          tone="cyan"
           checked={d.enabled}
           onChange={(enabled) => void toggle.run(() => save({ enabled }))}
           description="Speed drift only adjusts a belt already running at a speed you set."

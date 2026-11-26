@@ -6,7 +6,7 @@ import { statWidget } from "../widgets/registry";
 import { Sparkline } from "../widgets/Sparkline";
 import { targetAccent, targetRange, ZONE_ACCENT, zoneRange } from "../widgets/zone";
 import { HudNote } from "./HudNote";
-import { isMoving, startFailure } from "../state/linkStatus";
+import { startFailure } from "../state/linkStatus";
 import { SmallButton } from "./SmallButton";
 import { DumpName } from "./DumpName";
 import { dumpTitle, engageLabel, engageSub, engageTitle } from "./status";
@@ -235,7 +235,6 @@ export function EngageButton({
   /** The panel adds a plain line under the codename; the strips are too short for it. */
   sub?: boolean;
 }) {
-  const moving = isMoving(snapshot.deck);
   return (
     <button
       type="button"

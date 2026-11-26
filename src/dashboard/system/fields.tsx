@@ -13,13 +13,6 @@ const ACCENT: Record<Tone, string> = {
   green: "accent-emerald-400",
 };
 
-const SWITCH_ON: Record<Tone, string> = {
-  cyan: "bg-neon-cyan",
-  magenta: "bg-neon-magenta",
-  yellow: "bg-neon-yellow",
-  green: "bg-emerald-400",
-};
-
 export const INPUT_CLASS =
   "rounded border border-white/15 bg-black/40 px-2.5 py-1.5 font-mono text-xs text-white outline-none focus:border-neon-cyan";
 
@@ -54,13 +47,13 @@ export function Section({
   );
 }
 
+/** An on/off switch. Every switch turns on cyan (the colour for on), whatever its section's colour. */
 export function Toggle({
   label,
   description,
   hint,
   checked,
   onChange,
-  tone = "cyan",
 }: {
   label: string;
   description?: string;
@@ -68,7 +61,6 @@ export function Toggle({
   hint?: string | string[];
   checked: boolean;
   onChange: (next: boolean) => void;
-  tone?: Tone;
 }) {
   return (
     <div className="flex items-center justify-between gap-4">
@@ -89,7 +81,7 @@ export function Toggle({
         onClick={() => onChange(!checked)}
         className={cx(
           "relative h-5 w-10 shrink-0 rounded-full transition-colors",
-          checked ? SWITCH_ON[tone] : "bg-white/15",
+          checked ? "bg-neon-cyan" : "bg-white/15",
         )}
       >
         <span
@@ -103,30 +95,21 @@ export function Toggle({
   );
 }
 
-const CHOICE_ON: Record<"magenta" | "green", string> = {
-  magenta: "border-neon-magenta bg-neon-magenta/15 text-neon-magenta",
-  green: "border-emerald-400 bg-emerald-400/15 text-emerald-400",
-};
+const CHOICE_ON = "border-neon-cyan bg-neon-cyan/15 text-neon-cyan";
+const CHOICE_OFF = "border-white/15 bg-black/40 text-white/60 hover:border-neon-cyan/50";
 
-const CHOICE_OFF: Record<"magenta" | "green", string> = {
-  magenta: "border-white/15 bg-black/40 text-white/60 hover:border-neon-magenta/50",
-  green: "border-white/15 bg-black/40 text-white/60 hover:border-emerald-400/50",
-};
-
-/** A row of radio buttons for picking one of a few named options. */
+/** A row of radio buttons for picking one of a few named options. The chosen one is cyan (selected). */
 export function ChoiceGroup<T extends string>({
   label,
   options,
   value,
   onChange,
-  tone,
 }: {
   /** The group's accessible name. */
   label: string;
   options: readonly { value: T; label: string }[];
   value: T;
   onChange: (next: T) => void;
-  tone: "magenta" | "green";
 }) {
   return (
     <OptionPicker
@@ -138,7 +121,7 @@ export function ChoiceGroup<T extends string>({
       optionClassName={(active) =>
         cx(
           "rounded border px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.12em] transition-colors",
-          active ? CHOICE_ON[tone] : CHOICE_OFF[tone],
+          active ? CHOICE_ON : CHOICE_OFF,
         )
       }
     />
