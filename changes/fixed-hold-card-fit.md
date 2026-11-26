@@ -1,0 +1,1 @@
+- Live no longer scrolls with a program waiting for GO after a hold and the STATS view open: the program card shows the step and the time left on one line.

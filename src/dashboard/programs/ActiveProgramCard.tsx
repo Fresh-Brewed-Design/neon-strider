@@ -139,13 +139,16 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
       <ActionStatus error={control.error} className="basis-full justify-end text-right" />
       {/* The step lines, with the Live page's view switch at their end, a row apart from the program's buttons. */}
       <div className="flex min-w-0 basis-full flex-wrap items-end justify-between gap-x-3 gap-y-1">
-        <div className="min-w-0">
-          <div className="font-mono text-xs text-white/60">{describeActive(a)}</div>
-          {timeLeft && (
-            <div className="font-mono text-xs text-neon-yellow/70" data-testid="program-time-left">
-              {timeLeft}
-            </div>
-          )}
+        <div className="min-w-0 flex-1 basis-48">
+          {/* The step and the time left share a line while they fit, and wrap apart when they do not. */}
+          <div className="flex flex-wrap gap-x-3 font-mono text-xs">
+            <span className="text-white/60">{describeActive(a)}</span>
+            {timeLeft && (
+              <span className="text-neon-yellow/70" data-testid="program-time-left">
+                {timeLeft}
+              </span>
+            )}
+          </div>
           {wait && <div className="font-mono text-xs text-white/70">{waitReason(wait)}</div>}
         </div>
         {stepMap && <ViewSwitch {...stepMap} />}
