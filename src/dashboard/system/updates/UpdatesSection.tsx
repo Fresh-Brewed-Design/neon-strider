@@ -6,7 +6,7 @@ import { useTreadmillStore } from "../../../store/treadmillStore";
 import { GhostButton, Hint, Label, NeonButton } from "../../ui";
 import { Section, Toggle } from "../fields";
 import { Markdown } from "./Markdown";
-import { formatPublished, installConfirmText, installProgress, updateBusy } from "./updates";
+import { autoInstallTag, formatPublished, installConfirmText, installProgress, updateBusy } from "./updates";
 
 function formatChecked(ms: number | null): string {
   if (ms === null) return "not yet";
@@ -34,6 +34,7 @@ export function UpdatesSection() {
   const busy = updateBusy(u);
   const offer = u.offer;
   const progress = installProgress(u);
+  const autoTag = autoInstallTag(u);
   const published = formatPublished(offer?.published ?? null);
   // A background check's failure: shown here, quietly, when no button owns it.
   const backgroundFailure = u.status.state === "failed" && !check.error && !install.error ? u.status.message : null;
@@ -83,7 +84,7 @@ export function UpdatesSection() {
       <div>
         <Toggle
           label="Install automatically"
-          description={`Only after the belt is still for 10 minutes and the ${s?.platform.computer ?? "PC"} idle for 5.`}
+          description={`At most once a day, never on a call or while presenting, after the belt is still for 10 minutes and the ${s?.platform.computer ?? "PC"} idle for 5.`}
           checked={u.auto_install}
           onChange={(on) => void autoToggle.run(() => dispatch({ type: "update_auto_install", on }))}
         />
@@ -112,9 +113,9 @@ export function UpdatesSection() {
               </GhostButton>
             )}
             {u.dismissed && <Hint>Update put off for a day.</Hint>}
-            {!u.dismissed && u.auto_install && !busy && (
+            {autoTag && (
               <span className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-neon-cyan/80">
-                Installs when idle
+                {autoTag}
               </span>
             )}
           </div>
