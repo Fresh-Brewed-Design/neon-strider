@@ -1,9 +1,9 @@
-import { AnimatePresence, motion } from "framer-motion";
-import { Bluetooth, BluetoothOff, Link2, Loader2, RefreshCw, SearchX, X } from "lucide-react";
+import { AnimatePresence } from "framer-motion";
+import { Bluetooth, BluetoothOff, Link2, Loader2, RefreshCw, SearchX } from "lucide-react";
 import { ActionStatus } from "../../components/ActionStatus";
 import { PLAIN } from "../../names";
 import { useAppSnapshot } from "../../state/useAppState";
-import { PlainLine } from "../ui";
+import { DialogButtons, DialogCancelButton, DialogConfirmButton, DialogFrame } from "../DialogFrame";
 import { useDialog } from "../useDialog";
 
 export interface BleDevice {
@@ -57,44 +57,26 @@ export function BleDiscoveryModal({
   return (
     <AnimatePresence>
       {show && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="absolute inset-0 bg-black/80 backdrop-blur-md"
-          />
-
-          <motion.div
-            ref={boxRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="ble-discovery-title"
-            tabIndex={-1}
-            initial={{ opacity: 0, scale: 0.9, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="relative outline-none w-full max-w-md bg-[#0a0a0a] border border-neon-cyan/30 rounded-2xl overflow-hidden shadow-[0_0_50px_rgba(0,243,255,0.15)]"
-          >
-            <div className="flex justify-between items-center p-4 border-b border-white/5 bg-white/5">
-              <div className="flex items-center gap-2">
-                <Bluetooth className="text-neon-cyan" size={18} />
-                <div>
-                  <h2 id="ble-discovery-title" className="text-xs font-black uppercase tracking-[0.2em]">HARDWARE_LINK</h2>
-                  <PlainLine text={PLAIN.HARDWARE_LINK} />
-                </div>
-              </div>
-              <button
-                onClick={onClose}
-                aria-label="Close"
-                className="p-1 hover:bg-white/10 rounded transition-colors"
-              >
-                <X size={18} className="text-white/60" />
-              </button>
-            </div>
-
-            <div className="p-4 max-h-[60vh] overflow-y-auto flex flex-col gap-2">
+        <DialogFrame
+          key="ble-discovery"
+          boxRef={boxRef}
+          titleId="ble-discovery-title"
+          icon={Bluetooth}
+          title="HARDWARE_LINK"
+          subline={PLAIN.HARDWARE_LINK}
+          onClose={onClose}
+          onBackdrop={onClose}
+          bodyClassName="max-h-[60vh] flex flex-col gap-2 p-4"
+          footer={
+            <DialogButtons>
+              <DialogCancelButton onClick={onClose}>Cancel</DialogCancelButton>
+              <DialogConfirmButton onClick={onScan} disabled={busy}>
+                <RefreshCw size={14} className={isScanning ? "animate-spin" : ""} />
+                Scan again
+              </DialogConfirmButton>
+            </DialogButtons>
+          }
+        >
               {devices.length === 0 ? (
                 <div className="py-10 flex flex-col items-center justify-center gap-3 text-center" role="status">
                   <div className="w-12 h-12 rounded-full border border-dashed border-white/10 flex items-center justify-center">
@@ -146,7 +128,7 @@ export function BleDiscoveryModal({
                         className="w-full p-4 bg-white/5 border border-white/5 rounded-xl hover:bg-neon-cyan/10 hover:border-neon-cyan/30 transition-all flex justify-between items-center group disabled:cursor-default disabled:hover:bg-white/5 disabled:hover:border-white/5"
                       >
                         <div className="flex flex-col items-start gap-1 min-w-0">
-                          <span className="text-xs font-black uppercase tracking-wider">{device.name || 'Unknown Device'}</span>
+                          <span className="font-digital text-xs font-bold uppercase tracking-[0.12em]">{device.name || 'Unknown Device'}</span>
                           <span className="text-xs font-mono text-white/60 truncate max-w-[200px]">{device.id}</span>
                         </div>
                         {linking ? (
@@ -177,31 +159,7 @@ export function BleDiscoveryModal({
                 })
               )}
               {devices.length > 0 && scanError && <ActionStatus error={scanError} className="px-1" />}
-            </div>
-
-            {/* The centre of the dialog names a running scan, so the button keeps its own name. */}
-            <div className="flex items-center justify-end gap-2 p-4 bg-black/40 border-t border-white/5">
-              <button
-                onClick={onClose}
-                className="px-4 py-2 rounded-lg font-bold text-[11px] uppercase tracking-[0.2em] text-white/60 hover:bg-white/5 hover:text-white transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={onScan}
-                disabled={busy}
-                className="px-4 py-2 rounded-lg font-black text-[11px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 border border-neon-cyan text-neon-cyan hover:bg-neon-cyan/20 active:scale-[0.98] disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
-              >
-                <RefreshCw size={14} className={isScanning ? 'animate-spin' : ''} />
-                {scanError || scanned && devices.length === 0 ? 'Scan_Again' : 'Refresh_Scan'}
-              </button>
-            </div>
-
-            <div className="absolute top-0 right-0 w-16 h-16 pointer-events-none overflow-hidden">
-              <div className="absolute top-[-32px] right-[-32px] w-16 h-16 bg-neon-cyan/10 rotate-45 border border-neon-cyan/20" />
-            </div>
-          </motion.div>
-        </div>
+        </DialogFrame>
       )}
     </AnimatePresence>
   );

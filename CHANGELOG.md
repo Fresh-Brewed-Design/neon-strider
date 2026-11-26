@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.79.1 (2026-11-26)
+
+### Changed
+
+- Connect, delete, What's new and TCX preview dialogs now share one look.
+- The connect dialog's scan button reads "Scan again".
+
 ## 1.79.0 (2026-11-26)
 
 ### Changed
