@@ -55,6 +55,23 @@ describe("HUD strip", () => {
     expect(container.querySelector(".hud-stats")).toBeNull();
   });
 
+  it("shows a program's rest and its countdown in the total's place, Engage where it was", () => {
+    const { container } = show(
+      still("strip", (s) => {
+        s.active_program = { ...structuredClone(mock.active_program!), name: "Workday", phase: "resting", seconds_remaining: 1294, paused: false, wait: null };
+      }),
+    );
+    const rest = screen.getByTestId("hud-strip-rest");
+    expect(rest).toHaveTextContent("Workday // REST");
+    expect(rest).toHaveTextContent("21:34");
+    expect(rest).toHaveAttribute("title", "Workday · Rest · next walk in 21:34");
+    expect(screen.queryByText("TODAY")).not.toBeInTheDocument();
+    // The rest takes the total's cell, so the row keeps its shape and Engage its slot.
+    const row = container.querySelector(".hud-strip-row")!;
+    expect(Array.from(row.children).map((c) => c.className)).toEqual(["hud-strip-cell", "hud-btn hud-btn-main hud-btn-stack accent-cyan"]);
+    expect(screen.getByRole("button", { name: "ENGAGE start" })).toBeEnabled();
+  });
+
   it("expand and Engage each send one command", async () => {
     vi.mocked(invoke).mockClear();
     show(still("strip"));

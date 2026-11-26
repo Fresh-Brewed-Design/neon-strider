@@ -1,6 +1,7 @@
 import { Fragment, useLayoutEffect, useRef } from "react";
 import type { AppSnapshot, Command, HudWidget } from "../ipc";
 import { describeActive } from "../dashboard/programs/format";
+import { formatClock } from "../format";
 import { statTitle, statWidget } from "../widgets/registry";
 import { Sparkline } from "../widgets/Sparkline";
 import { NotePop, type PanelNote } from "./HudNote";
@@ -11,26 +12,50 @@ import { dumpTitle } from "./status";
 type Send = (c: Command) => Promise<boolean>;
 
 /**
+ * A program's rest in the strip's stat slot: the program's name over the time
+ * to its next walk, in the programs' yellow. A rest outranks today's total
+ * there: it is what the still belt is doing. Same label-over-value shape as
+ * the total, so Engage beside it keeps its place.
+ */
+function RestCell({ name, left }: { name: string; left: number }) {
+  const clock = formatClock(left);
+  return (
+    <div className="hud-strip-total hud-strip-rest accent-yellow" title={`${name} · Rest · next walk in ${clock}`} data-testid="hud-strip-rest">
+      <span className="hud-label">{name} // REST</span>
+      <span className="hud-value hud-value-sm">{clock}</span>
+    </div>
+  );
+}
+
+/**
  * The panel collapsed during stasis (`hud_view` "strip"): under the header
  * (whose expand button shows the whole panel until the belt next moves),
- * today's total (DAILY_TOTAL) and Engage. A note covers the total and the
- * logo above it, beside Engage, so Engage never moves for it.
+ * today's total (DAILY_TOTAL), or a program's rest and its countdown, and
+ * Engage. A note covers the slot and the logo above it, beside Engage, so
+ * Engage never moves for it.
  */
 export function StripRow({ snapshot, send, note }: { snapshot: AppSnapshot; send: Send; note: PanelNote | null }) {
   const daily = statWidget("DAILY");
   const total = daily?.read(snapshot);
+  const a = snapshot.active_program;
+  const rest = a?.phase === "resting" && a.seconds_remaining !== null ? { name: a.name, left: a.seconds_remaining } : null;
   return (
     <div className="hud-strip">
       <div className="hud-strip-row">
         <div className="hud-strip-cell">
-          {daily && total && (
-            <div className={`hud-strip-total accent-${daily.accent}`} title={statTitle(daily)}>
-              <span className="hud-label">{daily.label}</span>
-              <span className="hud-value hud-value-sm">
-                {total.value}
-                {total.unit && <span className="hud-unit">{total.unit}</span>}
-              </span>
-            </div>
+          {rest ? (
+            <RestCell name={rest.name} left={rest.left} />
+          ) : (
+            daily &&
+            total && (
+              <div className={`hud-strip-total accent-${daily.accent}`} title={statTitle(daily)}>
+                <span className="hud-label">{daily.label}</span>
+                <span className="hud-value hud-value-sm">
+                  {total.value}
+                  {total.unit && <span className="hud-unit">{total.unit}</span>}
+                </span>
+              </div>
+            )
           )}
           <NotePop note={note} />
         </div>

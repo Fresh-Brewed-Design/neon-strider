@@ -430,6 +430,11 @@ body,
 
 .hud-strip-total .hud-value { color: var(--accent); }
 
+/* A program's rest in the total's place: a long name ends in an ellipsis (the
+   tooltip has it whole), so the slot never pushes Engage. */
+.hud-strip-total.hud-strip-rest { flex: 1 1 auto; min-width: 0; }
+.hud-strip-rest .hud-label { overflow: hidden; text-overflow: ellipsis; color: var(--accent); }
+
 .hud-strip .hud-btn-main {
   flex: 0 0 auto;
   min-width: 104px;
