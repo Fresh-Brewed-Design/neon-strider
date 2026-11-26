@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.77.0 (2026-11-26)
+
+### Changed
+
+- Programs and History now label their controls: the run length, heart zone and remove buttons, the Strava upload state and the totals range.
+- A new History starts with one line instead of cards of zeros, and Save stays in view in the program editor.
+- Program tones moved to System, ROUTINE.
+
 ## 1.76.9 (2026-11-26)
 
 ### Fixed
