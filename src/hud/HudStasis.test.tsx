@@ -72,6 +72,23 @@ describe("HUD strip", () => {
     expect(screen.getByRole("button", { name: "ENGAGE start" })).toBeEnabled();
   });
 
+  it("puts a program's rest before a folded ATROPHY_WARNING, and that before today's total", () => {
+    const rest = (s: AppSnapshot) =>
+      (s.active_program = { ...structuredClone(mock.active_program!), name: "Workday", phase: "resting", seconds_remaining: 1294, paused: false, wait: null });
+    const { unmount } = show(
+      still("strip", (s) => {
+        rest(s);
+        s.seated.folded = true;
+      }),
+    );
+    expect(screen.getByTestId("hud-strip-rest")).toBeInTheDocument();
+    expect(screen.queryByTestId("hud-seated-readout")).not.toBeInTheDocument();
+    unmount();
+    show(still("strip", (s) => (s.seated.folded = true)));
+    expect(screen.getByTestId("hud-seated-readout")).toBeInTheDocument();
+    expect(screen.queryByText("TODAY")).not.toBeInTheDocument();
+  });
+
   it("expand and Engage each send one command", async () => {
     vi.mocked(invoke).mockClear();
     show(still("strip"));
