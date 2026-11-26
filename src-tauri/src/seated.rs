@@ -2,7 +2,9 @@
 //!
 //! After a set time of PC use without walking, a persistent HUD card asks for a
 //! walk: ENGAGE (a plain walk, Engage's own path), then one-tap programs, then
-//! SNOOZE 15 MIN. Nothing here starts the belt without that press. The
+//! SNOOZE. Repeat snoozes lengthen (15, 30, then 60 minutes) until the seated
+//! time resets. Which card the HUD shows, and the card folding into the strip
+//! after a minute unanswered, is `card_queue.rs`. Nothing here starts the belt without that press. The
 //! treadmill powers itself off when idle: ENGAGE then only says so, while a
 //! program picked while it is off is remembered and started as soon as it
 //! connects (within 15 minutes).
@@ -53,9 +55,9 @@ const AWAY_MS: u64 = 15 * MINUTE;
 /// Two minutes of light walking is the shortest break that helped (Dunstan et al.
 /// 2012, docs/research.md). DeskSection's text quotes it.
 const WALK_MS: u64 = 2 * MINUTE;
-/// What SNOOZE 15 MIN snoozes for.
-/// docs/research.md, Snooze.
-const SNOOZE_MS: u64 = 15 * MINUTE;
+/// What SNOOZE snoozes for: the first, the second, then every later one
+/// until the seated time resets (#422). docs/research.md, Snooze.
+const SNOOZE_MINUTES: [u32; 3] = [15, 30, 60];
 /// Quiet time after starting a program, so the card does not flash back if the
 /// belt takes a moment to spin up.
 /// Covers a program's countdown and a slow connect; as long as a walk that counts.
@@ -100,8 +102,13 @@ pub struct SeatedSnapshot {
     pub program_ids: Vec<u32>,
     /// `program_ids` was chosen by the user, not the default first three.
     pub custom_programs: bool,
-    /// The HUD should show the card.
+    /// The card is due. Which card the HUD shows is `hud_card`.
     pub show_card: bool,
+    /// Due, but shown once and left unanswered: the HUD shows the seated time
+    /// on the strip instead of the card (`card_queue.rs`).
+    pub folded: bool,
+    /// What the card's SNOOZE snoozes for now, in minutes.
+    pub snooze_minutes: u32,
     /// Whole minutes idle (belt still); what the card says.
     pub seated_minutes: u32,
     /// A program that starts as soon as the treadmill connects.
@@ -116,10 +123,6 @@ pub struct Tick {
     pub belt_running: bool,
     /// The treadmill is connected and has reported once, so a program can start.
     pub ready: bool,
-    /// A program is paused waiting for GO. That is not walking, so seated time
-    /// still builds, but the card stays back: the HUD is already asking for
-    /// GO, and one prompt at a time is enough.
-    pub program_waiting: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -146,6 +149,8 @@ pub struct Seated {
     /// The card stays hidden until this time (snooze, or just started a program).
     quiet_until_ms: Option<u64>,
     pending: Option<Pending>,
+    /// Snoozes since the seated time last reset.
+    snoozes: usize,
 }
 
 impl Seated {
@@ -153,6 +158,7 @@ impl Seated {
         self.seated_ms = 0;
         self.showing = false;
         self.quiet_until_ms = None;
+        self.snoozes = 0;
     }
 
     /// Hide the card and keep it away for a moment after a program started.
@@ -218,7 +224,7 @@ impl Seated {
         }
 
         let threshold = cfg.minutes as u64 * MINUTE;
-        if self.seated_ms < threshold || input.program_waiting {
+        if self.seated_ms < threshold {
             self.showing = false;
         } else if !input.belt_running && !self.showing {
             let quiet = self.quiet_until_ms.is_some_and(|q| now_ms < q);
@@ -229,12 +235,19 @@ impl Seated {
         effect
     }
 
-    /// SNOOZE 15 MIN: hide the card for 15 minutes. The time already seated is
-    /// kept, so it comes back at once when the snooze ends.
+    /// SNOOZE: hide the card for `snooze_minutes`, then longer next time. The
+    /// time already seated is kept, so it comes back at once when the snooze
+    /// ends.
     pub fn snooze(&mut self, now_ms: u64) {
         self.showing = false;
-        self.quiet_until_ms = Some(now_ms + SNOOZE_MS);
+        self.quiet_until_ms = Some(now_ms + self.snooze_minutes() as u64 * MINUTE);
+        self.snoozes += 1;
         self.pending = None;
+    }
+
+    /// What the next SNOOZE snoozes for, in minutes.
+    pub fn snooze_minutes(&self) -> u32 {
+        SNOOZE_MINUTES[self.snoozes.min(SNOOZE_MINUTES.len() - 1)]
     }
 
     /// The nudge was switched off: forget the time seated and any remembered
@@ -432,6 +445,8 @@ pub fn snapshot(programs: &[Program]) -> SeatedSnapshot {
         program_ids: effective_program_ids(rt.cfg.program_ids.as_deref(), programs),
         custom_programs: rt.cfg.program_ids.is_some(),
         show_card: rt.cfg.enabled && rt.machine.show_card(),
+        folded: false,
+        snooze_minutes: rt.machine.snooze_minutes(),
         seated_minutes: rt.machine.seated_minutes(),
         pending_program_id: rt.machine.pending_program_id(),
     })
@@ -459,7 +474,6 @@ mod tests {
             idle_ms: Some(0),
             belt_running: false,
             ready: false,
-            program_waiting: false,
         }
     }
 
@@ -493,25 +507,6 @@ mod tests {
         run(&mut m, &c, 59 * M + S, 60 * M + 5 * S, |_| typing());
         assert!(m.show_card());
         assert_eq!(m.seated_minutes(), 60);
-    }
-
-    #[test]
-    fn a_program_waiting_for_go_counts_as_seated_but_holds_the_card_back() {
-        let c = cfg(60);
-        let mut m = Seated::default();
-        let waiting = |_| Tick {
-            program_waiting: true,
-            ..typing()
-        };
-        run(&mut m, &c, 0, 61 * M, waiting);
-        assert_eq!(m.seated_minutes(), 61, "not walking: the time counts");
-        assert!(!m.show_card(), "the HUD is asking for GO instead");
-        // Ended without walking: the card comes up at once.
-        run(&mut m, &c, 61 * M + S, 61 * M + 2 * S, |_| typing());
-        assert!(m.show_card());
-        // A program that starts waiting while the card is up hides it.
-        run(&mut m, &c, 61 * M + 3 * S, 61 * M + 3 * S, waiting);
-        assert!(!m.show_card());
     }
 
     #[test]
@@ -662,6 +657,55 @@ mod tests {
         run(&mut m, &c, 31 * M, 31 * M + 2 * S, |_| typing());
         assert!(m.show_card(), "snooze over");
         assert_eq!(m.seated_minutes(), 31);
+    }
+
+    #[test]
+    fn repeat_snoozes_lengthen_until_the_seated_time_resets() {
+        let c = cfg(30);
+        let mut m = Seated::default();
+        run(&mut m, &c, 0, 30 * M, |_| typing());
+        assert!(m.show_card());
+        let mut t = 30 * M;
+        for minutes in [15, 30, 60, 60] {
+            assert_eq!(m.snooze_minutes(), minutes);
+            m.snooze(T0 + t);
+            let back = t + minutes as u64 * M;
+            run(&mut m, &c, t + S, back - S, |_| typing());
+            assert!(!m.show_card(), "snoozed for {minutes} min");
+            run(&mut m, &c, back, back + S, |_| typing());
+            assert!(m.show_card(), "back after {minutes} min");
+            t = back + S;
+        }
+        // A real walk resets the seated time and the snoozes with it.
+        run(&mut m, &c, t + S, t + 3 * M, |_| Tick {
+            belt_running: true,
+            ..typing()
+        });
+        assert_eq!(m.snooze_minutes(), 15);
+    }
+
+    #[test]
+    fn time_away_resets_the_snoozes_too() {
+        let c = cfg(15);
+        let mut m = Seated::default();
+        run(&mut m, &c, 0, 16 * M, |_| typing());
+        m.snooze(T0 + 16 * M);
+        assert_eq!(m.snooze_minutes(), 30);
+        run(&mut m, &c, 16 * M + S, 16 * M + S, |_| Tick {
+            idle_ms: Some(AWAY_MS + S),
+            ..typing()
+        });
+        assert_eq!(m.snooze_minutes(), 15);
+    }
+
+    #[test]
+    fn a_program_waiting_for_go_counts_as_seated() {
+        // GO outranks the card; `card_queue` holds it back, not this machine.
+        let c = cfg(60);
+        let mut m = Seated::default();
+        run(&mut m, &c, 0, 61 * M, |_| typing());
+        assert_eq!(m.seated_minutes(), 61);
+        assert!(m.show_card());
     }
 
     #[test]

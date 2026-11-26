@@ -229,6 +229,24 @@ export function QuietNowLine({ snapshot }: { snapshot: AppSnapshot }) {
 }
 
 /**
+ * A folded ATROPHY_WARNING on the whole panel (#422): the card showed once and
+ * went unanswered, so the seated time stays in the status row, last in line.
+ * The strip shows the same readout (`SeatedReadout`).
+ */
+export function SeatedLine({ snapshot }: { snapshot: AppSnapshot }) {
+  if (!snapshot.seated.folded) return null;
+  return (
+    <div className="hud-seated-line accent-yellow" data-testid="hud-seated-line" title="Minutes at the PC since the last walk of 2 minutes or more.">
+      <span className="hud-label">ATROPHY_WARNING</span>
+      <span className="hud-seated-mins">
+        {snapshot.seated.seated_minutes}
+        <span className="hud-unit">MIN IDLE</span>
+      </span>
+    </div>
+  );
+}
+
+/**
  * Quiet line while the HUD holds its non-urgent cards and toasts back,
  * because Windows says a presentation or full-screen app is in front. Rust
  * decides when (`presenting.holding`); the held cards show once it ends.
@@ -604,6 +622,7 @@ export function StatusRow({
         <NeuralLine snapshot={snapshot} />
         <SpeedDriftLine snapshot={snapshot} />
         <PresentingLine snapshot={snapshot} />
+        <SeatedLine snapshot={snapshot} />
       </div>
       <NotePop note={note} />
     </div>

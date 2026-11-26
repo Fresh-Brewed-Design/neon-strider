@@ -1,7 +1,8 @@
-// The persistent HUD cards. Unlike toasts, each stays until it is acted on.
+// The persistent HUD cards. Unlike toasts, each stays until it is acted on;
+// Rust names the one that shows (`hud_card`).
 
 import { useEffect, useState } from "react";
-import type { AppSnapshot, BlinkStep } from "../ipc";
+import type { AppSnapshot, BlinkStep, HudCard } from "../ipc";
 import { formatDuration, mmss } from "../format";
 import { PLAIN } from "../names";
 import { formatChange } from "../dashboard/history/weekly";
@@ -94,7 +95,9 @@ function seatedLine(snapshot: AppSnapshot, programs: number): string | null {
  * card: it stays until acted on. ENGAGE is the HUD's Engage (a plain walk), and
  * needs the treadmill on; a program button starts it now, or, with the
  * treadmill off, remembers it and starts it as soon as the treadmill connects
- * (Rust drops it after 15 minutes). SNOOZE brings it back in 15 minutes.
+ * (Rust drops it after 15 minutes). SNOOZE brings it back in 15 minutes, then
+ * 30, then 60. Left unanswered for a minute, it folds into the strip's
+ * ATROPHY_WARNING readout (`SeatedReadout`).
  */
 export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
   const { send, error } = useHudSend();
@@ -137,7 +140,7 @@ export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
       {/* One line at a time: a failed press says more than the standing hint. */}
       {note ? <HudNote error={note} /> : line && <span className="hud-sub">{line}</span>}
       <div className="hud-seated-actions">
-        <SmallButton onClick={() => send({ type: "seated_snooze" })}>SNOOZE 15 MIN</SmallButton>
+        <SmallButton onClick={() => send({ type: "seated_snooze" })}>SNOOZE {s.snooze_minutes} MIN</SmallButton>
       </div>
     </div>
   );
@@ -307,4 +310,24 @@ export function WalkAwayCard({ snapshot }: { snapshot: AppSnapshot }) {
       </div>
     </div>
   );
+}
+
+/** The one card Rust picked (`hud_card`), or nothing. */
+export function HudCardView({ card, snapshot }: { card: HudCard; snapshot: AppSnapshot }) {
+  switch (card) {
+    case "walk_away":
+      return <WalkAwayCard snapshot={snapshot} />;
+    case "eye_break":
+      return snapshot.eye_break.phase === "idle" ? null : <EyeBreakCard snapshot={snapshot} />;
+    case "seated":
+      return <SeatedCard snapshot={snapshot} />;
+    case "weekly":
+      return <WeeklyCard snapshot={snapshot} />;
+    case "maintenance":
+      return <MaintenanceCard snapshot={snapshot} />;
+    case "update":
+      return <UpdateCard snapshot={snapshot} />;
+    case "none":
+      return null;
+  }
 }

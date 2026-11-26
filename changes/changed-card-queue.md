@@ -1,0 +1,2 @@
+- The HUD shows one card at a time, most urgent first. GO, RE-JACK or ENGAGE drops a waiting ATROPHY_WARNING because the belt is starting. Cards held during a presentation come back one by one after the presentation ends.
+- ATROPHY_WARNING shows once: left unanswered for a minute, the card folds into a yellow seated-time readout on the HUD. Snoozes in a row get longer: 15, 30, then 60 minutes.
