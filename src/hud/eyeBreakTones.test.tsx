@@ -70,6 +70,17 @@ describe("useEyeBreakTones", () => {
     expect(played).toEqual([]);
   });
 
+  it("stays quiet while the microphone is in use and plays again once it is free", () => {
+    const { rerender } = renderHook((e: EyeBreakSnapshot) => useEyeBreakTones(e), {
+      initialProps: eye({ phase: "break", blink: "close", blink_seq: 1, silent: true }),
+    });
+    rerender(eye({ phase: "break", blink: "squeeze", blink_seq: 2, silent: true }));
+    rerender(eye({ phase: "idle", blink: null, blink_seq: 2, end_seq: 1, silent: true }));
+    expect(played).toEqual([]);
+    rerender(eye({ phase: "break", blink: "close", blink_seq: 3, end_seq: 1, silent: false }));
+    expect(played).toEqual(CLOSE_TONE);
+  });
+
   it("tells the three steps and the end apart", () => {
     const tones = [CLOSE_TONE, SQUEEZE_TONE, OPEN_TONE, END_TONE].map((t) => t.join(","));
     expect(new Set(tones).size).toBe(4);

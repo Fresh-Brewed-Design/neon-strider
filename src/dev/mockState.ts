@@ -225,6 +225,8 @@ export const snapshot: AppSnapshot = {
     fit_rests: true,
     holds_belt: false,
     at_rest: false,
+    moved_to_rest: false,
+    silent: false,
     phase: "idle",
     remaining_s: 0,
     blink: null,

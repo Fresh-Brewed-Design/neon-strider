@@ -225,7 +225,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?easystop=on|easing`: Easy stop switched on in System -> Treadmill; `=easing` a manual walk easing down after DUMP, 12 s before the Stop (EASY STOP on the HUD, DUMP reads "stop now")
 - `?echo=short`: ECHO on a History walk is refused as too short, with Rust's message
 - `?engage=timeout`: the deck's screen is off, so Engage waits and fails
-- `?eyebreak=upcoming|rest|break|still|resume`: the OCULAR_IMPLANT cards: heads-up, heads-up set for a program rest, cooldown with the belt paused or left alone, RE-JACK card
+- `?eyebreak=upcoming|rest|moved|waiting|break|still|silent|resume`: the OCULAR_IMPLANT cards: heads-up, heads-up set for a program rest, heads-up for a break moved earlier to fit the rest (with `?program=resting`), DEFERRED (due mid-walk, waiting for the belt to stop, 8:12 before the pause), cooldown with the belt paused or left alone, cooldown during a call (no tones), RE-JACK card
 - `?ghostpod=advertising|connected|error`: System -> Labs GHOST_POD
 - `?ghostpower=waiting|linked`: GHOST_POD's power switch on, with no watch or a watch reading 135 W
 - `?guided`: a guided task (GROUND_TRUTH) holding the dashboard open and on top, with UNPIN
