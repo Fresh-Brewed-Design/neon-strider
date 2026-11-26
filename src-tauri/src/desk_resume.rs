@@ -22,7 +22,7 @@
 //! This file is declared from `snapshot.rs` (`#[path]`), not `lib.rs`.
 
 use crate::persistence;
-use crate::snapshot::{calls, eyebreak, seated};
+use crate::snapshot::{calls, card_queue, eyebreak, seated};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 use tauri::AppHandle;
@@ -47,12 +47,18 @@ pub struct Saved {
     pub eye: eyebreak::Kept,
     #[serde(default)]
     pub call: calls::Kept,
+    /// ATROPHY_WARNING was folded into the strip (`card_queue`).
+    #[serde(default)]
+    pub seated_folded: bool,
 }
 
 impl Saved {
     /// The kept state without the time of the save, to tell a change.
     fn same_state(&self, other: &Saved) -> bool {
-        self.seated == other.seated && self.eye == other.eye && self.call == other.call
+        self.seated == other.seated
+            && self.eye == other.eye
+            && self.call == other.call
+            && self.seated_folded == other.seated_folded
     }
 }
 
@@ -70,6 +76,7 @@ pub fn usable(saved: Saved, now_ms: u64, idle_ms: Option<u64>) -> Option<Saved> 
     if idle_ms.is_some_and(|i| i >= MAX_AGE_MS) {
         out.seated = seated::Kept::default();
         out.eye = eyebreak::Kept::default();
+        out.seated_folded = false;
     }
     Some(out)
 }
@@ -81,6 +88,7 @@ pub fn capture(now_ms: u64) -> Saved {
         seated: seated::with(|rt| rt.machine.kept()),
         eye: eyebreak::with(|rt| rt.machine.kept()),
         call: calls::with_machine(|m| m.kept()),
+        seated_folded: card_queue::seated_folded(),
     }
 }
 
@@ -89,6 +97,9 @@ pub fn apply(saved: Saved) {
     seated::with(|rt| rt.machine.restore(saved.seated));
     eyebreak::with(|rt| rt.machine.restore(saved.eye));
     calls::with_machine(|m| m.restore(saved.call));
+    if saved.seated_folded && saved.seated.showing {
+        card_queue::restore_seated_folded();
+    }
 }
 
 /// Read the save and put it back. Blocking; call once after the machines'
@@ -165,14 +176,18 @@ mod tests {
             seated: seated::Kept {
                 seated_ms: 22 * MIN,
                 quiet_until_ms: Some(T0 + 5 * MIN),
+                snoozes: 1,
+                showing: false,
             },
             eye: eyebreak::Kept {
                 active_ms: 14 * MIN,
+                ..Default::default()
             },
             call: calls::Kept {
                 call: true,
                 ..Default::default()
             },
+            seated_folded: true,
         }
     }
 
@@ -193,6 +208,7 @@ mod tests {
         let out = usable(saved(), T0 + MIN, Some(MAX_AGE_MS)).unwrap();
         assert_eq!(out.seated, seated::Kept::default());
         assert_eq!(out.eye, eyebreak::Kept::default());
+        assert!(!out.seated_folded);
         assert!(out.call.call);
     }
 
@@ -228,7 +244,6 @@ mod tests {
             idle_ms: Some(0),
             belt_running: false,
             ready: true,
-            program_waiting: false,
         };
         let mut before = seated::Seated::default();
         let mut t = 0;
@@ -256,6 +271,7 @@ mod tests {
         let mut eye = eyebreak::EyeBreak::default();
         eye.restore(eyebreak::Kept {
             active_ms: 19 * MIN + 30_000,
+            ..Default::default()
         });
         assert_eq!(eye.kept().active_ms, 19 * MIN + 30_000);
 
@@ -327,5 +343,92 @@ mod tests {
         for s in 0..30 {
             assert_eq!(m.tick(&cfg, T0 + s * 1000, &input), None);
         }
+    }
+
+    /// Snoozes lengthen (15, 30, 60 minutes) until the seated time resets; a
+    /// restart in between keeps the count, so the next snooze is as long.
+    #[test]
+    fn a_restart_keeps_how_many_snoozes_there_were() {
+        let cfg = seated::Config::default();
+        let tick = seated::Tick {
+            idle_ms: Some(0),
+            belt_running: false,
+            ready: true,
+        };
+        let mut m = seated::Seated::default();
+        let mut t = 0;
+        while t <= 31 * MIN {
+            m.tick(&cfg, T0 + t, &tick);
+            t += 1000;
+        }
+        assert!(m.show_card());
+        m.snooze(T0 + t);
+        m.snooze(T0 + t);
+        assert_eq!(m.snooze_minutes(), 60);
+        let mut after = seated::Seated::default();
+        after.restore(m.kept());
+        assert_eq!(
+            after.snooze_minutes(),
+            60,
+            "the third snooze is still an hour"
+        );
+        assert_eq!(after.seated_minutes(), m.seated_minutes());
+    }
+
+    /// A break due mid-walk waits for the walk's end, at most 10 minutes
+    /// past its time. A restart while it waits keeps it waiting through the
+    /// reconnect (no break begins on a belt the app can't see yet) and keeps
+    /// its lateness, so it still pauses the walk on time, not 10 minutes on.
+    #[test]
+    fn a_break_waiting_for_the_walk_keeps_waiting_through_a_restart() {
+        let cfg = eyebreak::Config {
+            enabled: true,
+            ..eyebreak::Config::default()
+        };
+        let tick = |belt| eyebreak::Tick {
+            idle_ms: Some(0),
+            locked: false,
+            display_off: false,
+            held: false,
+            belt,
+            rest_in_ms: None,
+            rest_len_ms: None,
+            mic_in_use: false,
+        };
+        let walking = eyebreak::Belt::Walking(eyebreak::Hold::Manual);
+        let mut m = eyebreak::EyeBreak::default();
+        let mut t = 0;
+        while t <= 25 * MIN {
+            assert_eq!(m.tick(&cfg, T0 + t, &tick(walking)), None);
+            t += 1000;
+        }
+        assert_eq!(m.phase(), eyebreak::EyeBreakPhase::Waiting);
+
+        // The app restarts; the treadmill takes 10 s to come back.
+        let mut after = eyebreak::EyeBreak::default();
+        after.restore(m.kept());
+        let back = 25 * MIN + 30_000;
+        for s in 0..10 {
+            let now = T0 + back + s * 1000;
+            assert_eq!(after.tick(&cfg, now, &tick(eyebreak::Belt::Other)), None);
+            assert_eq!(after.phase(), eyebreak::EyeBreakPhase::Waiting, "{s} s");
+        }
+        // Walking again: the wait runs out about 10 minutes past the break's
+        // time (the seconds the app was closed are not counted), not 10
+        // minutes after the reconnect.
+        let mut paused_at = None;
+        let mut t = back + 10_000;
+        while t <= 32 * MIN && paused_at.is_none() {
+            if after.tick(&cfg, T0 + t, &tick(walking)).is_some() {
+                paused_at = Some(t);
+            }
+            t += 1000;
+        }
+        let paused_at = paused_at.expect("the walk is paused for the break");
+        assert!(
+            (30 * MIN..=31 * MIN).contains(&paused_at),
+            "paused at {} s",
+            paused_at / 1000
+        );
     }
 }

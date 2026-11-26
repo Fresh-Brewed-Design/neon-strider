@@ -110,6 +110,10 @@ const MAX_WAIT_FOR_REST_MS: u64 = 10 * MINUTE;
 pub(crate) const MAX_WAIT_FOR_STOP_MS: u64 = 10 * MINUTE;
 /// A break never pauses a walk younger than this (#423).
 pub(crate) const WALK_GRACE_MS: u64 = 10 * MINUTE;
+/// After a restart, the walk and a waiting break carry on this long while the
+/// treadmill reconnects (#426). A reconnect takes seconds; a belt still
+/// unknown after a minute is treated as any belt the app can't see.
+const RESTART_CARRY_MS: u64 = MINUTE;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
@@ -339,6 +343,9 @@ pub struct EyeBreak {
     walk_ms: u64,
     /// The microphone was in use at the last tick.
     silent: bool,
+    /// After a restart (`restore`): how much longer `walk_ms` and a waiting
+    /// break carry on while the treadmill reconnects (the belt reads `Other`).
+    carry_ms: Option<u64>,
 }
 
 impl EyeBreak {
@@ -451,6 +458,15 @@ impl EyeBreak {
         }
         let effect = self.follow(now_ms, input.belt);
         self.silent = input.mic_in_use;
+        // Just restarted, the treadmill still reconnecting: the walk and a
+        // break waiting for its end carry on as they were.
+        if let (Some(left), Belt::Other) = (self.carry_ms, input.belt) {
+            self.carry_ms = Some(left.saturating_sub(step)).filter(|l| *l > 0);
+            if self.carry_ms.is_some() {
+                return effect;
+            }
+        }
+        self.carry_ms = None;
         self.walk_ms = match input.belt {
             Belt::Walking(_) => self.walk_ms + dt,
             _ => 0,
@@ -609,12 +625,24 @@ impl EyeBreak {
     pub fn kept(&self) -> Kept {
         Kept {
             active_ms: self.active_ms,
+            walk_ms: self.walk_ms,
+            waiting: self.phase == EyeBreakPhase::Waiting,
+            next_ms: self.next_ms,
         }
     }
 
-    /// Put back what a restart kept.
+    /// Put back what a restart kept. A break waiting for the walk's end
+    /// waits on: its lateness against `MAX_WAIT_FOR_STOP_MS` is the count
+    /// past the interval, and the walk keeps its length for `WALK_GRACE_MS`,
+    /// held while the treadmill reconnects (`RESTART_CARRY_MS`).
     pub fn restore(&mut self, kept: Kept) {
         self.active_ms = kept.active_ms;
+        self.walk_ms = kept.walk_ms;
+        if kept.waiting {
+            self.phase = EyeBreakPhase::Waiting;
+            self.next_ms = kept.next_ms;
+        }
+        self.carry_ms = Some(RESTART_CARRY_MS);
     }
 
     fn remaining_s(&self, cfg: &Config) -> u32 {
@@ -631,6 +659,15 @@ impl EyeBreak {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Kept {
     pub active_ms: u64,
+    /// How long the belt had walked since it last stood or paused.
+    #[serde(default)]
+    pub walk_ms: u64,
+    /// A break due mid-walk was waiting for the walk's end.
+    #[serde(default)]
+    pub waiting: bool,
+    /// While waiting: milliseconds until it pauses the walk.
+    #[serde(default)]
+    pub next_ms: u64,
 }
 
 // ---------------------------------------------------------------------------

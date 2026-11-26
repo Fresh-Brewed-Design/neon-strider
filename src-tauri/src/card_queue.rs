@@ -307,6 +307,26 @@ pub fn apply(s: &mut AppSnapshot, now_ms: u64) {
     s.seated.folded = d.seated_folded;
 }
 
+/// ATROPHY_WARNING is folded into the strip (`desk_resume.rs` keeps it
+/// across a restart).
+pub fn seated_folded() -> bool {
+    QUEUE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .is_some_and(|q| q.seated == SeatedShowing::Folded)
+}
+
+/// After a restart: ATROPHY_WARNING was folded, so it stays folded and
+/// doesn't come back as a whole card.
+pub fn restore_seated_folded() {
+    QUEUE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get_or_insert_with(Queue::default)
+        .seated = SeatedShowing::Folded;
+}
+
 /// The eye-break machine holds its heads-up and break back (the desk loop).
 pub fn eye_break_waits() -> bool {
     *EYE_BREAK_WAITS.lock().unwrap_or_else(|e| e.into_inner())
