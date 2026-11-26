@@ -531,12 +531,14 @@ function ProgramGrid({
 
 /**
  * The running program's controls, or one button per saved program. Both
- * shapes, and a blank running program, share one cell, so the module is as
- * tall as the tallest of them in every state: nothing on the panel moves when
- * a program starts, waits for GO, rests, pauses or ends, in a top or a bottom
- * corner. HOLD / GO, SKIP and END sit at the module's foot.
+ * shapes, and a blank running program, share one cell. While the panel grows
+ * upward (`reserve`: a bottom corner, or a dragged spot pinned to the
+ * screen's foot) the cell is as tall as the tallest of them in every state,
+ * so nothing over it moves when a program starts, waits for GO, rests, pauses
+ * or ends. In a top corner the module sits under every other control, so the
+ * cell takes only what shows and the panel's foot may move.
  */
-export function ProgramsModule({ snapshot, send }: { snapshot: AppSnapshot; send: Send }) {
+export function ProgramsModule({ snapshot, send, reserve }: { snapshot: AppSnapshot; send: Send; reserve: boolean }) {
   const a = snapshot.active_program;
   // HOLD, GO and SKIP act on the walk, which needs the treadmill; END always works.
   const offline = !snapshot.connection.connected;
@@ -545,7 +547,7 @@ export function ProgramsModule({ snapshot, send }: { snapshot: AppSnapshot; send
   const wait = a?.wait ?? null;
   return (
     <div className={`hud-module hud-program accent-yellow${wait ? " hud-ready" : ""}`} role={wait ? "alert" : undefined}>
-      <div className="hud-program-stack">
+      <div className={`hud-program-stack${reserve ? " is-reserved" : ""}`}>
         <RunReserve />
         {programs.length > 0 && <ProgramGrid programs={programs} offline={offline} send={send} reserve={a !== null} />}
         {a && <RunLayer a={a} offline={offline} send={send} />}

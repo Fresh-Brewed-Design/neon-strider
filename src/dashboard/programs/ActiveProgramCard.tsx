@@ -50,6 +50,11 @@ function ViewSwitch({ open, onToggle }: StepMapToggle) {
   );
 }
 
+/** What HOLD or GO does to the program, in plain words beside the codename (as on the HUD). */
+function ButtonSub({ children }: { children: string }) {
+  return <span className="font-mono text-[11px] font-normal normal-case tracking-normal opacity-70">{children}</span>;
+}
+
 /**
  * The running program, with pause/resume, skip and end. Renders nothing when
  * idle. With `stepMap` (the Live page) it also offers the STEP_MAP switch.
@@ -98,7 +103,7 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
             className="flex items-center gap-1.5 rounded bg-neon-yellow px-3 py-1.5 disabled:opacity-60 font-digital text-xs font-bold tracking-widest text-black shadow-[0_0_14px_rgba(255,243,0,0.6)] hover:shadow-[0_0_20px_rgba(255,243,0,0.9)]"
             title="Start the belt and the next walk"
           >
-            <Play size={14} /> GO
+            <Play size={14} /> GO <span className="font-mono text-[11px] font-normal normal-case tracking-normal">start belt</span>
           </button>
         ) : a.paused ? (
           <GhostButton
@@ -107,7 +112,7 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
             className="flex items-center gap-1.5 text-neon-yellow"
             title="Resume the program."
           >
-            <Play size={14} /> GO
+            <Play size={14} /> GO <ButtonSub>resume program</ButtonSub>
           </GhostButton>
         ) : (
           <GhostButton
@@ -116,7 +121,7 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
             className="flex items-center gap-1.5"
             title="Hold the program."
           >
-            <Pause size={14} /> HOLD
+            <Pause size={14} /> HOLD <ButtonSub>pause program</ButtonSub>
           </GhostButton>
         )}
         <GhostButton

@@ -104,6 +104,15 @@ describe("HUD controls keep one place in every program state", () => {
     expect(document.querySelector(".hud-program-run.hud-reserve")).not.toBeNull();
   });
 
+  it("keeps the programs module's tallest height only while the panel grows upward", () => {
+    const { unmount } = show((s) => (s.hud.anchor = "bottom_right"));
+    expect(document.querySelector(".hud-program-stack")).toHaveClass("is-reserved");
+    unmount();
+    // In a top corner the module sits under every control: only the panel's foot moves.
+    show((s) => (s.hud.anchor = "top_right"));
+    expect(document.querySelector(".hud-program-stack")).not.toHaveClass("is-reserved");
+  });
+
   it("gives STASIS and HOLD every wording they take, so their size never changes", () => {
     const words = (patch: (s: AppSnapshot) => void) => {
       const { unmount } = show(patch);

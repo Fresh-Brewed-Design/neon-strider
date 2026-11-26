@@ -18,6 +18,7 @@ import { useLogoDrag, usePlacement } from "./useHudDrag";
 import { useHudSend } from "./useHudSend";
 import { useRelink } from "./useRelink";
 import { useToasts } from "./useToasts";
+import { useGrowsUp } from "./useGrowsUp";
 import "./hud.css";
 
 /**
@@ -34,6 +35,8 @@ export function HudApp() {
   const contentRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const placement = usePlacement(snapshot?.hud);
+  // A panel that grows upward keeps the programs module's tallest height.
+  const growsUp = useGrowsUp(contentRef, placement.anchor, placement.custom !== null);
   const drag = useHudSend();
   const minify = useHudSend();
   // One sender for every control on the panel, so a refused press shows in the panel's one note.
@@ -156,7 +159,7 @@ export function HudApp() {
                   )}
                   <StatusRow snapshot={snapshot} relink={relink} note={note} />
                   {widgets.includes("CONTROLS") && <Controls snapshot={snapshot} send={panel.send} />}
-                  {widgets.includes("PROGRAMS") && <ProgramsModule snapshot={snapshot} send={panel.send} />}
+                  {widgets.includes("PROGRAMS") && <ProgramsModule snapshot={snapshot} send={panel.send} reserve={growsUp} />}
                 </>
               ) : minified ? (
                 <RunStripRow snapshot={snapshot} send={panel.send} note={note} />

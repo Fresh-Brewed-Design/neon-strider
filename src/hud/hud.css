@@ -752,11 +752,14 @@ body,
 }
 
 /* The programs module: the running program, the RUN PROGRAM grid and a blank
-   running program share one cell (HudPanel), so the module is as tall as the
-   tallest in every state, and nothing on the panel moves when a program
-   starts, walks, rests, pauses, waits for GO or ends. */
+   running program share one cell (HudPanel). While the panel grows upward
+   (is-reserved) the module is as tall as the tallest in every state, so
+   nothing over it moves when a program starts, walks, rests, pauses, waits
+   for GO or ends. Otherwise the unseen shapes take no height (HudApp still
+   measures them, by scrollHeight, for a dragged spot near the screen's foot). */
 .hud-program-stack { display: grid; }
 .hud-program-stack > * { grid-area: 1 / 1; min-width: 0; }
+.hud-program-stack:not(.is-reserved) > .hud-reserve { height: 0; overflow: hidden; }
 .hud-program-run,
 .hud-program-grid { display: flex; flex-direction: column; gap: 8px; }
 /* The readout and a blank readout share one cell, so HOLD / GO, SKIP and END

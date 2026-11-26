@@ -82,7 +82,7 @@ export function Transport({ s }: { s: AppSnapshot }) {
             {moving ? "Stasis" : programGo ? "GO" : paused ? "Re-jack" : "Engage"}
           </span>{" "}
           <span className="font-mono text-[11px] font-normal normal-case leading-tight tracking-normal opacity-90">
-            {moving ? "pause" : programGo || paused ? "resume" : "start"}
+            {moving ? "pause belt" : programGo ? "resume program" : paused ? "resume belt" : "start"}
           </span>
         </NeonButton>
         <button
