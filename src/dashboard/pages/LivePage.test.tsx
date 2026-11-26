@@ -130,7 +130,7 @@ describe("Live page QUIET", () => {
     current!.calls = { ...current!.calls, quiet_kmh: 2, quiet_now: true, quiet_now_back_kmh: 3.5 };
     render(<LivePage />);
     const line = screen.getByText(/QUIET \/\/ HOLD/).closest("[role='status']")!;
-    expect(line).toHaveTextContent("QUIET // HOLD 2.0 km/h");
+    expect(line).toHaveTextContent("QUIET // DAMPED 2.0 km/h");
     expect(line).toHaveTextContent("QUIET again puts 3.5 km/h back.");
   });
 

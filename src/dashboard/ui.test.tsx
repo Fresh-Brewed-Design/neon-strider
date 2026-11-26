@@ -187,7 +187,7 @@ describe("Joined", () => {
     const { container } = render(
       <>
         <Joined text={"T-MINUS 17:08\u00a0· ENDS\u00a09:15"} />
-        <Joined sep="//" text="QUIET // HOLD" />
+        <Joined sep="//" text="QUIET // DAMPED" />
       </>,
     );
     const [a, b] = [...container.querySelectorAll("[data-joined]")].map((l) => l.firstElementChild!);
