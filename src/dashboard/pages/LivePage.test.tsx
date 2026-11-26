@@ -129,7 +129,7 @@ describe("Live page QUIET", () => {
   it("shows the quiet speed and the speed QUIET puts back while it holds the belt", () => {
     current!.calls = { ...current!.calls, quiet_kmh: 2, quiet_now: true, quiet_now_back_kmh: 3.5 };
     render(<LivePage />);
-    const line = screen.getByText(/QUIET \/\/ HOLD/).closest("[role='status']")!;
+    const line = screen.getByText(/QUIET \/\/ DAMPED/).closest("[role='status']")!;
     expect(line).toHaveTextContent("QUIET // DAMPED 2.0 km/h");
     expect(line).toHaveTextContent("QUIET again puts 3.5 km/h back.");
   });
@@ -137,7 +137,7 @@ describe("Live page QUIET", () => {
   it("shows nothing while QUIET is off", () => {
     current!.calls = { ...current!.calls, quiet_now: false, quiet_now_back_kmh: null };
     render(<LivePage />);
-    expect(screen.queryByText(/QUIET \/\/ HOLD/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/QUIET \/\/ DAMPED/)).not.toBeInTheDocument();
   });
 });
 
