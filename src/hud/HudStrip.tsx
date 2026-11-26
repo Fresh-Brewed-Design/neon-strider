@@ -7,6 +7,7 @@ import { Sparkline } from "../widgets/Sparkline";
 import { HudNote } from "./HudNote";
 import { EngageButton } from "./HudPanel";
 import { hotkeyTitle } from "./shortcutLabel";
+import { DumpName } from "./DumpName";
 import { dumpTitle } from "./status";
 import { useHudSend } from "./useHudSend";
 
@@ -179,12 +180,12 @@ export function RunStripRow({ snapshot }: { snapshot: AppSnapshot }) {
         <EngageButton snapshot={snapshot} send={send} />
         <button
           type="button"
-          className="hud-btn hud-btn-stop accent-magenta"
+          className="hud-btn hud-btn-stop hud-btn-dump"
           disabled={!connection.connected || stopped}
           title={dumpTitle(snapshot)}
           onClick={() => void send({ type: "stop" })}
         >
-          DUMP
+          <DumpName />
         </button>
       </div>
       <HudNote error={error ?? startFailure(snapshot)} />

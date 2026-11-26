@@ -409,7 +409,9 @@ body,
 .hud-run-seg-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .hud-run-seg[data-wrapped] .hud-run-dot { visibility: hidden; }
 
-.hud-run-strip .hud-btn-expand { margin-left: 0; }
+/* 12px between STASIS and DUMP, 8px between expand and STASIS: STASIS gives up the 4px. */
+.hud-run-strip .hud-strip-row { column-gap: 12px; }
+.hud-run-strip .hud-btn-expand { margin-left: 0; margin-right: -4px; }
 .hud-run-strip .hud-btn-main { flex: 1 1 auto; min-width: max-content; padding: 0 10px; }
 .hud-run-strip .hud-btn-stop { flex-shrink: 0; height: 32px; }
 .hud-run-strip .hud-note { margin-top: 0; }
@@ -538,13 +540,16 @@ body,
 
 /* The two buttons share the controls' column. When STASIS (never narrower than its label) and DUMP
    don't fit side by side, as at the larger Windows text sizes, DUMP wraps below it at full width
-   instead of pushing the row past the steppers' right edge. */
-.hud-transport { display: flex; flex-wrap: wrap; gap: 8px; }
-.hud-transport .hud-btn-main { flex: 100 1 auto; min-width: max-content; }
+   instead of pushing the row past the steppers' right edge. DUMP has 12px on each side, so it never
+   reads as part of STASIS or QUIET. */
+.hud-transport { display: flex; flex-wrap: wrap; gap: 8px 12px; }
+/* 4px side padding (6px by default) on STASIS and QUIET pays for DUMP's wider gaps: the row wraps at
+   the same text sizes as before. */
+.hud-transport .hud-btn-main { flex: 100 1 auto; min-width: max-content; padding-left: 4px; padding-right: 4px; }
 .hud-transport .hud-btn-stop { flex: 1 0 72px; }
 /* QUIET sits beside DUMP while the row fits (Engage keeps its whole word),
    else wraps under them. Lit while Quiet now holds the belt. */
-.hud-transport .hud-btn-quiet { flex: 1 0 72px; }
+.hud-transport .hud-btn-quiet { flex: 1 0 72px; padding-left: 4px; padding-right: 4px; }
 .hud-btn-quiet.is-on {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 18%, transparent);
@@ -699,6 +704,35 @@ body,
 
 .hud-btn:disabled { opacity: 0.3; cursor: default; }
 
+/* The card's main way on (RE-JACK on the walk-away card): lit with its own colour. */
+.hud-btn.hud-btn-primary { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+
+/* DUMP ends the walk, so it never looks like STASIS: a 2px magenta outline (the inset ring plus the
+   1px border, so the box keeps its size), the dark fill, a magenta label and a stop square. Hover
+   fills a quarter and glows like the digits; pressed is solid magenta with a dark label. Disabled
+   it dims like every button, its outline back to 1px. */
+.hud-btn.hud-btn-dump {
+  --accent: var(--hud-magenta);
+  border-color: var(--hud-magenta);
+  background: var(--hud-bg);
+  color: var(--hud-magenta);
+  box-shadow: inset 0 0 0 1px var(--hud-magenta);
+}
+.hud-btn.hud-btn-dump:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--hud-magenta) 25%, var(--hud-bg));
+  box-shadow: inset 0 0 0 1px var(--hud-magenta), 0 0 12px color-mix(in srgb, var(--hud-magenta) 45%, transparent);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--hud-magenta) 55%, transparent);
+}
+.hud-btn.hud-btn-dump:active:not(:disabled) {
+  background: var(--hud-magenta);
+  color: #05080c;
+  text-shadow: none;
+}
+.hud-btn.hud-btn-dump:active:not(:disabled) .hud-btn-sub { color: #05080c; }
+.hud-btn.hud-btn-dump:disabled { box-shadow: none; }
+.hud-dump-name { display: inline-flex; align-items: center; gap: 6px; }
+.hud-dump-glyph { flex-shrink: 0; width: 8px; height: 8px; background: currentColor; }
+
 .hud-btn-main { flex: 1; height: 36px; }
 .hud-btn-stop { width: 72px; height: 36px; }
 .hud-btn-sm   { height: 32px; padding: 0 12px; }
@@ -801,7 +835,7 @@ body,
    a stronger edge, since it stays until dismissed. */
 .hud-maint {
   border-left-width: 4px;
-  background: color-mix(in srgb, var(--hud-magenta) 10%, var(--hud-bg));
+  background: color-mix(in srgb, var(--hud-yellow) 7%, var(--hud-bg));
 }
 
 /* Last-week summary: the same persistent card in cyan. The 300px column holds
@@ -829,7 +863,7 @@ body,
 }
 
 .hud-weekly-change.tone-up   { color: var(--hud-green); }
-.hud-weekly-change.tone-down { color: var(--hud-magenta); }
+.hud-weekly-change.tone-down { color: var(--hud-yellow); }
 .hud-weekly-change.tone-new  { color: var(--hud-cyan); }
 .hud-weekly-change.tone-flat { color: var(--hud-dim); }
 
@@ -871,7 +905,7 @@ body,
   font-size: 20px;
   font-weight: 700;
   line-height: 1.1;
-  color: var(--hud-magenta);
+  color: var(--hud-ink);
   overflow-wrap: anywhere;
 }
 
@@ -972,6 +1006,9 @@ body,
   gap: 6px;
   flex-shrink: 0;
 }
+
+/* RE-JACK over DUMP: 12px apart, so a press from habit can't land on DUMP. */
+.hud-walkaway .hud-walkaway-actions { gap: 12px; }
 
 /* "PAUSING IN 30s": the source text is already upper case; keep the unit's s. */
 .hud-walkaway .hud-toast-message { text-transform: none; }
