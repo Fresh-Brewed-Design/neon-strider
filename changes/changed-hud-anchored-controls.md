@@ -1,2 +1,0 @@
-- HUD buttons keep their place in every program state, in a top or a bottom corner. The header stays on screen at large text sizes.
-- QUIET lights up during a call and its line reads QUIET // DAMPED. Belt and program buttons say pause belt, pause program, resume belt or resume program. The status row's button reads RETRY NOW while RELINK counts down.
