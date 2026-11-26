@@ -78,3 +78,28 @@ describe("ActiveProgramCard buttons", () => {
     expect(screen.getAllByRole("alert").map((n) => n.textContent)).toContain("No program is running");
   });
 });
+
+describe("ActiveProgramCard view switch", () => {
+  it("offers MAP and STATS as a two-way switch, apart from the program's buttons", () => {
+    const onToggle = vi.fn();
+    current!.active_program = { ...current!.active_program!, paused: false, wait: null };
+    render(<ActiveProgramCard stepMap={{ open: true, onToggle }} />);
+    const view = screen.getByRole("group", { name: "Step map or stats" });
+    expect(within(view).getByRole("button", { name: /map/i })).toHaveAttribute("aria-pressed", "true");
+    expect(within(view).getByRole("button", { name: /stats/i })).toHaveAttribute("aria-pressed", "false");
+    // HOLD, SKIP and END share a row; the switch is not in it.
+    const hold = screen.getByRole("button", { name: /hold/i });
+    expect(hold.parentElement!.contains(view)).toBe(false);
+    expect(hold.parentElement).toContainElement(screen.getByRole("button", { name: /skip/i }));
+
+    fireEvent.click(within(view).getByRole("button", { name: /map/i }));
+    expect(onToggle).not.toHaveBeenCalled();
+    fireEvent.click(within(view).getByRole("button", { name: /stats/i }));
+    expect(onToggle).toHaveBeenCalledOnce();
+  });
+
+  it("shows no switch on the Programs page", () => {
+    render(<ActiveProgramCard />);
+    expect(screen.queryByRole("group", { name: "Step map or stats" })).toBeNull();
+  });
+});

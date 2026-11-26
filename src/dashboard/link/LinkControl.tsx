@@ -101,6 +101,7 @@ export function LinkControl() {
           label={view?.label ?? "OFFLINE"}
           className="tracking-[0.12em]"
           labelClassName="dash-rail-text"
+          toneIconClassName="dash-rail-state"
         />
         {conn?.simulated && (
           <span
