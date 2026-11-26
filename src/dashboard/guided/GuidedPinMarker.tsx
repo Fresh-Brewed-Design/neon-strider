@@ -23,9 +23,9 @@ export function GuidedPinMarker() {
   return (
     <div
       role="status"
-      className="rounded border border-neon-magenta/40 bg-neon-magenta/10 px-2.5 py-2 shadow-[0_0_10px_rgba(255,0,170,0.25)]"
+      className="rounded border border-neon-yellow/40 bg-neon-yellow/10 px-2.5 py-2 shadow-[0_0_10px_rgba(255,243,0,0.2)]"
     >
-      <div className="flex items-center gap-1.5 text-neon-magenta">
+      <div className="flex items-center gap-1.5 text-neon-yellow">
         <Pin size={12} className="shrink-0" />
         <span className="font-mono text-[11px] font-bold uppercase tracking-[0.14em]">LOCKED ON TOP</span>
       </div>
@@ -39,7 +39,7 @@ export function GuidedPinMarker() {
         type="button"
         onClick={() => void unpin.run(post({ type: "guided_task_cancel" }))}
         disabled={unpin.pending}
-        className="mt-1.5 w-full rounded border border-neon-magenta/50 px-2 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-neon-magenta transition-colors hover:bg-neon-magenta/15 disabled:opacity-50"
+        className="mt-1.5 w-full rounded border border-neon-yellow/50 px-2 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-neon-yellow transition-colors hover:bg-neon-yellow/15 disabled:opacity-50"
       >
         UNPIN
       </button>

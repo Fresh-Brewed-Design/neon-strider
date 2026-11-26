@@ -101,7 +101,6 @@ export function SyncActions({
     <div className="flex flex-col gap-2 border-t border-white/10 pt-4">
       <div className="flex flex-wrap items-center gap-2">
         <NeonButton
-          tone="magenta"
           disabled={!connected || !strava.auto_sync || busy || sync.pending}
           onClick={() => void sync.run(post({ type: "strava_sync_now" }))}
           className="flex shrink-0 items-center gap-2 px-3 py-2"

@@ -179,7 +179,7 @@ export function BleDiscoveryModal({
                 onClick={onScan}
                 disabled={busy}
                 className={`w-full py-3 rounded-xl font-black text-[11px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 border ${busy
-                                        ? 'border-neon-magenta/50 text-neon-magenta/50 cursor-wait'
+                                        ? 'border-neon-cyan/50 text-neon-cyan/70 cursor-wait'
                                         : 'border-neon-cyan text-neon-cyan hover:bg-neon-cyan/20 active:scale-[0.98]'
                                     }`}
               >

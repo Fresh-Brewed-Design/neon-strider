@@ -102,7 +102,7 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
         <GhostButton
           disabled={control.pending}
           onClick={() => void control.run(post({ type: "program_end" }))}
-          className="flex items-center gap-1.5 hover:text-neon-magenta"
+          className="flex items-center gap-1.5 hover:text-neon-yellow"
           title="End the program and go back to the earlier speed."
         >
           <Square size={14} /> End

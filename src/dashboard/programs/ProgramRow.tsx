@@ -102,7 +102,7 @@ export function ProgramRow({
             </select>
           )}
           <NeonButton
-            tone={running ? "yellow" : "cyan"}
+            tone="yellow"
             className="flex h-9 w-24 shrink-0 items-center justify-center gap-1.5"
             disabled={!connected || running || run.pending}
             title={connected ? describePlan(p) : "Connect the treadmill first"}

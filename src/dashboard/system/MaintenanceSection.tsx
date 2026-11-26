@@ -73,7 +73,7 @@ export function MaintenanceSection() {
           <span
             className={cx(
               "font-mono text-[11px] font-bold uppercase tracking-[0.2em]",
-              m.due ? "text-neon-magenta" : "text-white/60",
+              m.due ? "text-neon-yellow" : "text-white/60",
             )}
           >
             {m.due ? "Service due" : `${Math.round(m.progress * 100)}% of interval`}
@@ -90,7 +90,7 @@ export function MaintenanceSection() {
           <div
             className={cx(
               "h-full rounded-full transition-all",
-              m.due ? "bg-neon-magenta shadow-[0_0_8px_var(--color-neon-magenta)]" : "bg-neon-cyan",
+              m.due ? "bg-neon-yellow shadow-[0_0_8px_var(--color-neon-yellow)]" : "bg-neon-cyan",
             )}
             style={{ width: `${pct}%` }}
           />
@@ -197,7 +197,7 @@ export function MaintenanceSection() {
 
       <div>
         <NeonButton
-          tone={m.due ? "magenta" : "cyan"}
+          tone={m.due ? "yellow" : "cyan"}
           className="px-4 py-2"
           disabled={serviced.pending}
           onClick={() => confirmServiced(() => void serviced.run(post({ type: "maintenance_mark_serviced" })))}

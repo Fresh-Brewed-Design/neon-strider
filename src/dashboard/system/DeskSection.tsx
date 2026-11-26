@@ -261,8 +261,8 @@ export function DeskSection() {
                           "max-w-full break-words rounded border px-2.5 py-1.5 text-left font-mono text-[11px] transition-colors",
                           "disabled:cursor-default disabled:opacity-35",
                           picked
-                            ? "border-neon-yellow bg-neon-yellow/15 text-neon-yellow"
-                            : "border-white/15 text-white/70 hover:border-neon-yellow/50",
+                            ? "border-neon-cyan bg-neon-cyan/15 text-neon-cyan"
+                            : "border-white/15 text-white/70 hover:border-neon-cyan/50",
                         )}
                       >
                         {p.name}

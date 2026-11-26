@@ -6,7 +6,7 @@ import { formatChange, type ChangeTone } from "./weekly";
 
 const TONE_CLASS: Record<ChangeTone, string> = {
   up: "text-emerald-400",
-  down: "text-neon-magenta",
+  down: "text-neon-yellow",
   flat: "text-white/60",
   new: "text-neon-cyan",
 };

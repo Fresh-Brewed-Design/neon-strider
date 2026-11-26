@@ -304,7 +304,7 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
               aria-label={`Heart zone on step ${i + 1}`}
               aria-pressed={s.zone}
               title="Hold a heart rate zone"
-              className={cx(s.zone && "text-neon-magenta!")}
+              className={cx(s.zone && "text-neon-cyan!")}
               onClick={() => patchStep(i, { zone: !s.zone })}
             >
               <HeartPulse size={14} />
@@ -475,7 +475,7 @@ function PulseRow({
             aria-label={`Step ${n} ends on heart rate`}
             onChange={(e) => onChange({ pulse: e.target.checked })}
           />
-          <span className="font-bold uppercase tracking-[0.12em] text-neon-magenta">Pulse target</span>
+          <span className="font-bold uppercase tracking-[0.12em] text-neon-yellow">Pulse target</span>
         </label>
         <span className={cx(!step.pulse && "opacity-40")}>down to</span>
         <input
@@ -537,7 +537,7 @@ function ZoneRow({
     <div className="grid grid-cols-[2rem_1fr] items-center gap-2">
       <span />
       <div className="flex flex-wrap items-center gap-2 font-mono text-xs text-white/70">
-        <span className="font-bold uppercase tracking-[0.12em] text-neon-magenta">Heart zone</span>
+        <span className="font-bold uppercase tracking-[0.12em] text-neon-yellow">Heart zone</span>
         <input
           className={cx(field, "w-16")}
           inputMode="decimal"

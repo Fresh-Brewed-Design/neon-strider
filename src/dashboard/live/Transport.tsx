@@ -94,7 +94,7 @@ export function Transport({ s }: { s: AppSnapshot }) {
             <span aria-hidden className="h-2 w-2 shrink-0 bg-current" />
             Dump
           </span>{" "}
-          <span className="font-mono text-[11px] font-normal normal-case leading-tight tracking-normal opacity-90">
+          <span className="font-mono text-[11px] font-normal normal-case leading-tight tracking-normal">
             {s.easy_stop.easing ? "stop now" : "end walk"}
           </span>
         </button>

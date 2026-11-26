@@ -195,7 +195,7 @@ export function GuidedCalibration() {
                     <Readout
                       label="FACTOR"
                       value={`${row.point.distance_scale.toFixed(3)}x`}
-                      className="text-neon-magenta"
+                      className="text-white"
                       hint={appliedHint(row.point.distance_scale, cal.limits)}
                     />
                     <Readout label="RUNS" value={String(row.point.runs ?? 1)} className="text-white" />
@@ -210,7 +210,6 @@ export function GuidedCalibration() {
                     onClick={() => start(row)}
                     disabled={runAction.pending || outOfRange || !beltSet}
                     className="px-3 py-1.5"
-                    tone={row.point ? "magenta" : "cyan"}
                   >
                     {row.point ? "ADD RUN" : "RUN"}
                   </NeonButton>
@@ -487,7 +486,7 @@ function RunPanel({
           <Readout
             label="TRUE_VELOCITY"
             value={run.measured_kmh === null ? "--" : `${run.measured_kmh.toFixed(2)} km/h`}
-            className="text-neon-magenta"
+            className="text-neon-cyan"
           />
           <Readout label="PASSES" value={String(run.passes)} className="text-white" />
           <Readout
@@ -558,14 +557,13 @@ function RunPanel({
           <div className="flex flex-wrap gap-4 rounded border border-white/5 bg-white/5 p-2">
             <Readout label="TRUE_VELOCITY" value={`${r.real_kmh.toFixed(2)} km/h`} className="text-neon-cyan" />
             <Readout label="DECK_VELOCITY" value={`${r.reported_kmh.toFixed(2)} km/h`} className="text-white" />
-            <Readout label="FACTOR" value={`${r.point.distance_scale.toFixed(3)}x`} className="text-neon-magenta" />
+            <Readout label="FACTOR" value={`${r.point.distance_scale.toFixed(3)}x`} className="text-white" />
             <Readout label="PASSES" value={String(run.passes)} className="text-white" />
           </div>
           {dropped && <Hint>{dropped}</Hint>}
           <div className="flex gap-2">
             {run.saved && (
               <NeonButton
-                tone="magenta"
                 className="flex-1 py-2"
                 disabled={undo.pending}
                 onClick={() => void undo.run(() => dispatch({ type: "calibration_undo" }))}
