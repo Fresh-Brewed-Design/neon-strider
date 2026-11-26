@@ -124,7 +124,7 @@ export const STAT_WIDGETS: StatWidget[] = [
     label: "HR",
     codename: "PULSE_RATE",
     plain: PLAIN.PULSE_RATE,
-    accent: "magenta",
+    accent: "cyan",
     // "--" until a sensor is picked and sending.
     read: (s) => ({ value: s.heart_rate.bpm === null ? "--" : s.heart_rate.bpm.toString(), unit: "BPM" }),
     // Rust sends no history while no sensor is picked: no chart.

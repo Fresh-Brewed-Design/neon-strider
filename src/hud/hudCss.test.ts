@@ -169,7 +169,35 @@ describe("HUD link chip in a narrow header", () => {
   it("closes up its letters and padding under 120px", () => {
     expect(css).toMatch(/\.hud-header\s*\{\s*container-type:\s*inline-size;\s*\}/);
     const narrow = css.match(/@container \(max-width: 120px\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
-    expect(narrow).toMatch(/\.hud-header-live > \.hud-status\s*\{\s*letter-spacing:\s*0;/);
-    expect(narrow).toMatch(/\.hud-header-live > \.hud-relink\s*\{\s*padding:\s*3px 2px;/);
+    expect(narrow).toMatch(/\.hud-header:has\(\.hud-led\) \.hud-header-live > \.hud-status\s*\{\s*letter-spacing:\s*0;/);
+    expect(narrow).toMatch(/\.hud-header:has\(\.hud-led\) \.hud-header-live > \.hud-relink\s*\{\s*padding:\s*3px 2px;/);
+  });
+});
+
+// A note, a quiet line or the link going down never moves a control (#387).
+describe("HUD controls stay put", () => {
+  it("draws the panel's note over the readings, out of the layout, letting clicks through", () => {
+    const pop = rule(".hud-note.hud-note-pop");
+    expect(pop).toMatch(/position:\s*absolute/);
+    expect(pop).toMatch(/bottom:\s*0/);
+    expect(pop).toMatch(/pointer-events:\s*none/);
+  });
+
+  it("keeps the status row one fixed line and shows only its first line", () => {
+    expect(rule(".hud-status-row")).toMatch(/height:\s*30px/);
+    expect(rule(".hud-status-line > :not(:first-child)")).toMatch(/display:\s*none/);
+  });
+
+  it("sizes QUIET for both of its lines, so turning it on moves nothing", () => {
+    expect(rule(".hud-swap > *")).toMatch(/grid-area:\s*1 \/ 1/);
+    expect(rule(".hud-swap > :not(.is-shown)")).toMatch(/visibility:\s*hidden/);
+  });
+
+  it("keeps the header one line while the link word is long", () => {
+    expect(css).toMatch(/\.hud-header:has\(\.hud-led\.tone-down, \.hud-led\.tone-warn\) \.hud-status \{ letter-spacing: 0\.08em; \}/);
+  });
+
+  it("dims the readings while no treadmill is linked", () => {
+    expect(rule(".hud-panel.is-offline .hud-stats")).toMatch(/opacity:\s*0\.45/);
   });
 });

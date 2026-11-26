@@ -103,7 +103,6 @@ function MuteChoice({ strava }: { strava: StravaSnapshot }) {
       <Label>Home feed</Label>
       <ChoiceGroup
         label="Mute from home feed"
-        tone="magenta"
         options={MUTE_CHOICES}
         value={strava.mute_mode}
         onChange={(mode) =>

@@ -28,6 +28,12 @@ describe("BleDiscoveryModal", () => {
     expect(dialog.contains(document.activeElement)).toBe(true);
   });
 
+  it("closes from Cancel", () => {
+    const onClose = open();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   it("closes on Escape", () => {
     const onClose = open();
     fireEvent.keyDown(window, { key: "Escape" });

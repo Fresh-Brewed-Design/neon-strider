@@ -4,6 +4,7 @@ import { useAction } from "../../../components/useAction";
 import { useAppState } from "../../../state/useAppState";
 import { PLAIN } from "../../../names";
 import { GhostButton, Hint, NeonButton, PlainLine } from "../../ui";
+import { cx } from "../../util";
 
 /**
  * The first-connect offer: Rust sets `calibration.offer` while a connected
@@ -11,7 +12,7 @@ import { GhostButton, Hint, NeonButton, PlainLine } from "../../ui";
  * (`calibration_offer_skip`, kept per treadmill). "Calibrate this treadmill"
  * only opens System, Calibration; nothing here moves the belt.
  */
-export function CalibrateOffer({ onCalibrate }: { onCalibrate: () => void }) {
+export function CalibrateOffer({ onCalibrate, className }: { onCalibrate: () => void; className?: string }) {
   const offer = useAppState((s) => s.calibration.offer) ?? false;
   const skip = useAction();
   if (!offer) return null;
@@ -19,7 +20,7 @@ export function CalibrateOffer({ onCalibrate }: { onCalibrate: () => void }) {
     <div
       role="region"
       aria-label="Calibrate this treadmill"
-      className="hacker-panel mx-5 mt-4 space-y-2 rounded-lg border-neon-yellow/40 bg-neon-yellow/5 p-3"
+      className={cx("hacker-panel space-y-2 rounded-lg border-neon-yellow/40 bg-neon-yellow/5 p-3", className)}
     >
       <div>
         <div className="font-digital text-xs font-bold uppercase tracking-[0.18em] text-neon-yellow">

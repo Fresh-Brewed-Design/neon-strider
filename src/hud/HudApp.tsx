@@ -4,22 +4,13 @@ import { statWidget } from "../widgets/registry";
 import { EyeBreakCard, MaintenanceCard, SeatedCard, UpdateCard, WalkAwayCard, WeeklyCard } from "./HudCards";
 import { useEyeBreakTones } from "./eyeBreakTones";
 import { useProgramTones } from "./programTones";
-import { HudHeader } from "./HudHeader";
-import { HudNote } from "./HudNote";
-import { shortcutLabel } from "./shortcutLabel";
-import {
-  Controls,
-  EasyStopLine,
-  NeuralLine,
-  PresentingLine,
-  QuietNowLine,
-  ProgramsModule,
-  SpeedDriftLine,
-  StatCell,
-  StrideFitLine,
-} from "./HudPanel";
+import { HudHeader, type HeaderToggle } from "./HudHeader";
+import type { PanelNote } from "./HudNote";
+import { hotkeyTitle } from "./shortcutLabel";
+import { Controls, ProgramsModule, StatCell, StatusRow } from "./HudPanel";
 import { RunStripRow, StripRow } from "./HudStrip";
 import { linkLabel } from "./status";
+import { startFailure } from "../state/linkStatus";
 import { waitHeadline } from "../dashboard/programs/format";
 import { ToastCard } from "./ToastCard";
 import { useHitRegion } from "./useHitRegion";
@@ -45,6 +36,8 @@ export function HudApp() {
   const placement = usePlacement(snapshot?.hud);
   const drag = useHudSend();
   const minify = useHudSend();
+  // One sender for every control on the panel, so a refused press shows in the panel's one note.
+  const panel = useHudSend();
   const logo = useLogoDrag(panelRef, drag.report);
   const relink = useRelink(snapshot?.connection ?? null);
 
@@ -86,6 +79,42 @@ export function HudApp() {
   if (!hasContent) return null;
 
   const custom = placement.custom;
+  const offline = snapshot !== null && !snapshot.connection.connected;
+  // The panel's one note: a refused press first, then the start that failed,
+  // then the deck's reply to a target (with Rust's plain words) on the whole panel.
+  const pressNote = panel.error ?? relink.error ?? drag.error ?? minify.error;
+  const failed = snapshot ? startFailure(snapshot) : null;
+  const deckNote = full && snapshot?.deck.target_note ? snapshot.deck : null;
+  const note: PanelNote | null = pressNote
+    ? { text: pressNote }
+    : failed
+      ? { text: failed }
+      : deckNote?.target_note
+        ? { text: deckNote.target_note, detail: deckNote.target_note_hint }
+        : null;
+  // The size button sits in the header's corner in every view.
+  const toggle: HeaderToggle | undefined =
+    snapshot === null
+      ? undefined
+      : canMinify
+        ? {
+            kind: "minify",
+            title: hotkeyTitle("Shrink the HUD to a strip", snapshot.shortcuts),
+            onClick: () => void minify.send({ type: "hud_set_minified", minified: true }),
+          }
+        : minified
+          ? {
+              kind: "expand",
+              title: hotkeyTitle("Show the whole HUD", snapshot.shortcuts),
+              onClick: () => void minify.send({ type: "hud_set_minified", minified: false }),
+            }
+          : view === "strip"
+            ? {
+                kind: "expand",
+                title: "Show the whole HUD until the belt moves again",
+                onClick: () => void minify.send({ type: "hud_expand" }),
+              }
+            : undefined;
   const base = snapshot ? linkLabel(snapshot) : null;
   // A relink click in flight reads as working (LINKING…) until the state moves.
   const link = base && relink.view?.text ? { text: relink.view.text, tone: "warn" as const } : base;
@@ -102,7 +131,7 @@ export function HudApp() {
         {hasPanel && snapshot && link && (
           <section
             ref={panelRef}
-            className={`hud-panel${full ? "" : " is-strip"}${resting ? " is-resting" : ""}`}
+            className={`hud-panel${full ? "" : " is-strip"}${resting ? " is-resting" : ""}${offline ? " is-offline" : ""}`}
           >
             <HudHeader
               link={link}
@@ -110,11 +139,9 @@ export function HudApp() {
               onRelink={relink.relink}
               logo={logo}
               dragging={placement.dragging}
-              onMinify={canMinify ? () => void minify.send({ type: "hud_set_minified", minified: true }) : undefined}
-              minifyKey={shortcutLabel(snapshot.shortcuts, "toggle_minified")}
+              toggle={toggle}
               simulated={snapshot.connection.simulated}
             />
-            <HudNote error={relink.error ?? drag.error ?? minify.error} />
             {full ? (
               <>
                 {stats.length > 0 && (
@@ -124,21 +151,14 @@ export function HudApp() {
                     ))}
                   </div>
                 )}
-                <NeuralLine snapshot={snapshot} />
-                <SpeedDriftLine snapshot={snapshot} />
-                <EasyStopLine snapshot={snapshot} />
-                <StrideFitLine snapshot={snapshot} />
-                <QuietNowLine snapshot={snapshot} />
-                <PresentingLine snapshot={snapshot} />
-                {widgets.includes("CONTROLS") && <Controls snapshot={snapshot} />}
-                {widgets.includes("PROGRAMS") && (
-                  <ProgramsModule snapshot={snapshot} offlineShown={widgets.includes("CONTROLS")} />
-                )}
+                <StatusRow snapshot={snapshot} relink={relink} note={note} />
+                {widgets.includes("CONTROLS") && <Controls snapshot={snapshot} send={panel.send} />}
+                {widgets.includes("PROGRAMS") && <ProgramsModule snapshot={snapshot} send={panel.send} />}
               </>
             ) : minified ? (
-              <RunStripRow snapshot={snapshot} />
+              <RunStripRow snapshot={snapshot} send={panel.send} note={note} />
             ) : (
-              <StripRow snapshot={snapshot} />
+              <StripRow snapshot={snapshot} send={panel.send} note={note} />
             )}
           </section>
         )}

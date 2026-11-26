@@ -12,11 +12,11 @@ export function LightsOutSetting() {
   return (
     <div>
       <Toggle
-        label="LIGHTS_OUT: Sleep with the display"
-        tone="magenta"
+        label="LIGHTS_OUT: Stop when the display turns off"
         checked={s.lights_out.enabled}
         onChange={(enabled) => void action.run(() => dispatch({ type: "lights_out_set_config", enabled }))}
-        description="When the display turns off, the treadmill stops and any program ends, so the deck can sleep."
+        description="The treadmill stops and any program ends."
+        hint="The deck can then go to sleep."
       />
       <ActionStatus pending={action.pending} error={action.error} className="mt-1" />
     </div>

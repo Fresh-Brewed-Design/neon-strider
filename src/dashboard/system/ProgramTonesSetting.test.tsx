@@ -19,11 +19,11 @@ beforeEach(() => {
   current = structuredClone(mock);
 });
 
-describe("Programs page, Program tones", () => {
+describe("System, Program tones", () => {
   it("shows Rust's switch, off by default", () => {
     render(<ProgramTonesSetting />);
     expect(screen.getByRole("switch", { name: "Program tones" })).toHaveAttribute("aria-checked", "false");
-    expect(screen.getByText("The HUD beeps when a program changes step or waits for GO.")).toBeInTheDocument();
+    expect(screen.getByText("The HUD beeps at a program step change, a wait for GO and 5 seconds before a faster step.")).toBeInTheDocument();
   });
 
   it("asks Rust to switch it on", async () => {

@@ -110,7 +110,7 @@ export function Calendar({
                 "aspect-square rounded-[2px] focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:opacity-100! focus-visible:outline-white",
                 future ? "bg-transparent" : meters > 0 ? "bg-neon-cyan" : "bg-white/[0.06]",
                 key === today && "outline outline-1 outline-white/70",
-                isSelected && "outline outline-2 outline-neon-magenta",
+                isSelected && "outline outline-2 outline-offset-1 outline-neon-cyan",
                 !empty && "cursor-pointer hover:brightness-150",
               )}
               style={meters > 0 ? { opacity: opacityFor(meters) } : undefined}

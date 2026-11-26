@@ -149,6 +149,16 @@ export function SessionRow({
         : uploadState === "error"
           ? `${error ?? "Upload failed."} Click to try again.`
           : "Upload to Strava";
+  // The words beside the icon, so the state reads without hovering.
+  const uploadWord = uploaded
+    ? "Uploaded"
+    : live
+      ? "Recording"
+      : uploadState === "uploading"
+        ? "Uploading"
+        : uploadState === "error"
+          ? "Failed"
+          : "Not uploaded";
   const deleteLabel = live ? "Still recording. Delete once the walk has ended." : "Delete session";
   const markHere = expanded && save.done && showSavedLine;
   const time = new Date(s.start_time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -198,7 +208,7 @@ export function SessionRow({
               disabled={uploaded || live || uploadState === "uploading"}
               onClick={onUpload}
               className={cx(
-                "min-h-6 min-w-6 px-2!",
+                "flex min-h-6 min-w-6 items-center gap-1.5 px-2!",
                 uploaded && "text-emerald-400! opacity-100!",
                 uploadState === "error" && "text-red-400!",
               )}
@@ -212,6 +222,7 @@ export function SessionRow({
               ) : (
                 <CloudUpload size={15} />
               )}
+              <span className="text-[11px] normal-case tracking-normal">{uploadWord}</span>
             </GhostButton>
           )}
           <GhostButton
@@ -250,7 +261,7 @@ export function SessionRow({
         <div className="border-t border-white/10 px-3 pb-3 pt-3">
           <SessionScope session={s} />
           <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 font-mono text-xs text-white/60">
-            {s.steps > 0 && <div>Steps <span className="text-neon-magenta">{Math.floor(s.steps)}</span></div>}
+            {s.steps > 0 && <div>Steps <span className="text-neon-cyan">{Math.floor(s.steps)}</span></div>}
             {s.avg_incline > 0 && <div>Avg incline <span className="text-white/80">{s.avg_incline.toFixed(1)}%</span></div>}
             {s.avg_heart_rate !== null && (
               <div>

@@ -1,11 +1,29 @@
 import type { LinkTone, RelinkView } from "./status";
 import type { useLogoDrag } from "./useHudDrag";
 
+/** The header's size button: minify on the whole panel, expand on either strip. */
+export interface HeaderToggle {
+  kind: "minify" | "expand";
+  onClick: () => void;
+  title: string;
+}
+
+/** Four corners pointing in (minify) or out (expand). */
+function ToggleIcon({ kind }: { kind: HeaderToggle["kind"] }) {
+  const d = kind === "minify" ? "M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4" : "M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4";
+  return (
+    <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+      <path d={d} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="square" />
+    </svg>
+  );
+}
+
 /**
- * The panel's top row, also the strip's: the link LED, the draggable logo and
- * the link status, which is a relink button while the link is down. On the
- * whole panel it ends with minify (`onMinify`). A SIM tag marks the dev
- * builds' simulated treadmill.
+ * The panel's top row, also the strips': the link LED, the draggable logo and
+ * the link status, which is a relink button while the link is down. It ends
+ * with the size button (`toggle`), in the same corner in every view: minify on
+ * the whole panel, expand on the strips. A SIM tag marks the dev builds'
+ * simulated treadmill.
  */
 export function HudHeader({
   link,
@@ -13,8 +31,7 @@ export function HudHeader({
   onRelink,
   logo,
   dragging,
-  onMinify,
-  minifyKey = null,
+  toggle,
   simulated = false,
 }: {
   link: { text: string; tone: LinkTone };
@@ -22,10 +39,8 @@ export function HudHeader({
   onRelink: () => void;
   logo: ReturnType<typeof useLogoDrag>;
   dragging: boolean;
-  /** Minify to the running strip; omitted on the strips. */
-  onMinify?: () => void;
-  /** The minify hotkey for the tooltip ("Alt+Insert"); null while it is off. */
-  minifyKey?: string | null;
+  /** Minify or expand; omitted while the panel can do neither (a program waiting for GO). */
+  toggle?: HeaderToggle;
   /** The linked deck is the dev builds' simulated treadmill. */
   simulated?: boolean;
 }) {
@@ -61,23 +76,15 @@ export function HudHeader({
               {link.text}
             </span>
           )}
-          {onMinify && (
+          {toggle && (
             <button
               type="button"
               className="hud-btn hud-btn-minify"
-              aria-label="Minify the HUD"
-              title={minifyKey ? `Shrink the HUD to a strip (${minifyKey})` : "Shrink the HUD to a strip"}
-              onClick={onMinify}
+              aria-label={toggle.kind === "minify" ? "Minify the HUD" : "Show the whole HUD"}
+              title={toggle.title}
+              onClick={toggle.onClick}
             >
-              <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
-                <path
-                  d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="square"
-                />
-              </svg>
+              <ToggleIcon kind={toggle.kind} />
             </button>
           )}
         </span>

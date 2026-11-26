@@ -15,18 +15,24 @@ export function Page({
   codename,
   title,
   actions,
+  fitHeader = false,
   children,
 }: {
   codename: string;
   title: string;
   actions?: ReactNode;
+  /** In a short window (index.css, `.dash-page-fit`) the codename and title are hidden but still read out; the actions stay. */
+  fitHeader?: boolean;
   children: ReactNode;
 }) {
   return (
     <section className="dash-page flex h-full min-h-0 flex-col">
       {/* The actions wrap under the title when both don't fit (a large Windows text size). */}
-      <header className="flex shrink-0 flex-wrap items-end justify-between gap-3 px-5 pb-2 pt-3" data-tauri-drag-region>
-        <div data-tauri-drag-region>
+      <header
+        className={cx("flex shrink-0 flex-wrap items-end justify-between gap-3 px-5 pb-2 pt-3", fitHeader && "dash-page-fit")}
+        data-tauri-drag-region
+      >
+        <div className="dash-page-heading" data-tauri-drag-region>
           <div className="font-mono text-xs tracking-[0.25em] text-white/60" data-tauri-drag-region>
             {codename}
           </div>

@@ -18,6 +18,25 @@ export const SYSTEM_TABS: readonly { id: SystemTab; label: string; sections: rea
   },
 ];
 
+/** Each section's name for the jump links. */
+export const SECTION_TITLES: Readonly<Record<string, string>> = {
+  "sys-treadmill": "Treadmill",
+  "sys-calibration": "Calibration",
+  "sys-drift": "Speed drift",
+  "sys-maintenance": "Maintenance",
+  "sys-strava": "Strava",
+  "sys-heart": "Heart rate",
+  "sys-neural": "Neural flow",
+  "sys-sessions": "Sessions",
+  "sys-desk": "Desk",
+  "sys-shortcuts": "Shortcuts",
+  "sys-startup": "Startup",
+  "sys-permissions": "Permissions",
+  "sys-updates": "Updates",
+  "sys-labs": "Labs",
+  "sys-diagnostics": "Diagnostics",
+};
+
 export const SYSTEM_TAB_KEY = "system.tab";
 
 /** The tab that holds a section, or null for an id no tab shows. */
@@ -44,6 +63,14 @@ export function subscribeSystemTab(listener: Listener): () => void {
 export function openSystemTab(tab: SystemTab): void {
   writePref(SYSTEM_TAB_KEY, tab);
   for (const l of listeners) l(tab);
+}
+
+/** Scrolls a section into view and moves focus to its heading, for the jump links. */
+export function jumpToSection(sectionId: string): void {
+  const section = document.getElementById(sectionId);
+  if (!section) return;
+  section.scrollIntoView({ block: "start" });
+  document.getElementById(`${sectionId}-title`)?.focus({ preventScroll: true });
 }
 
 /**

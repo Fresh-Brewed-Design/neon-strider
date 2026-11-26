@@ -32,4 +32,16 @@ describe("Transport belt buttons", () => {
     });
     expect(screen.getByRole("button", { name: "GO resume" })).toBeInTheDocument();
   });
+
+  // Colour roles (#391): STASIS is cyan like ENGAGE; DUMP has its own magenta outline and stop square.
+  it("keeps STASIS cyan and gives DUMP its own look", () => {
+    show((s) => (s.deck = { ...s.deck, status: "Running", speed_kmh: 3 }));
+    const stasis = screen.getByRole("button", { name: "Stasis pause" });
+    expect(stasis.className).toContain("text-neon-cyan");
+    expect(stasis.className).not.toContain("magenta");
+    const dump = screen.getByRole("button", { name: "Dump end walk" });
+    expect(dump.className).toContain("border-2");
+    expect(dump.className).toContain("border-neon-magenta");
+    expect(dump.querySelector(".bg-current")).not.toBeNull();
+  });
 });

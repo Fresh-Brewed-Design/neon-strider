@@ -210,7 +210,8 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
   const last = d.steps.length - 1;
 
   return (
-    <Panel className="flex flex-col gap-4 p-4">
+    // Visible overflow lets the Save footer stick to the bottom of the scrolling page.
+    <Panel className="flex flex-col gap-4 overflow-visible! p-4">
       <div className="flex items-center justify-between">
         <Label className="text-neon-cyan">{d.id === 0 ? "New program" : "Edit program"}</Label>
         <GhostButton aria-label="Cancel" onClick={leave}>
@@ -242,7 +243,7 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
           <Label>Minutes</Label>
           <Label>Speed km/h</Label>
           <Label>Incline %</Label>
-          <span />
+          <Label className="tracking-normal">Zone</Label>
           <span />
         </div>
         {d.steps.map((s, i) => {
@@ -303,14 +304,15 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
             <GhostButton
               aria-label={`Heart zone on step ${i + 1}`}
               aria-pressed={s.zone}
-              title="Hold a heart rate zone"
-              className={cx(s.zone && "text-neon-magenta!")}
+              title={s.zone ? `Heart zone on for step ${i + 1}` : `Hold a heart zone on step ${i + 1}`}
+              className={cx(s.zone && "text-neon-cyan!")}
               onClick={() => patchStep(i, { zone: !s.zone })}
             >
               <HeartPulse size={14} />
             </GhostButton>
             <GhostButton
               aria-label={`Remove step ${i + 1}`}
+              title={d.steps.length === 1 ? "A program needs one step" : `Remove step ${i + 1}`}
               disabled={d.steps.length === 1}
               onClick={() => setD({ ...d, steps: d.steps.filter((_, j) => j !== i) })}
             >
@@ -368,7 +370,6 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
             <Label>{anyZone ? "Heart zones in" : "Pulse target in"}</Label>
             <ChoiceGroup
               label="Heart zone unit"
-              tone="magenta"
               options={ZONE_UNITS}
               value={d.zoneUnit}
               onChange={(unit) => setD(withZoneUnit(d, unit, maxBpm))}
@@ -421,24 +422,26 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
             {...invalid(errors.repeat, `${ids}-repeat`)}
             onChange={(e) => setD({ ...d, repeatMinutes: e.target.value })}
           />
-          <span className={cx(!d.repeat && "opacity-40")}>minutes, back to normal in between</span>
+          <span className={cx(!d.repeat && "opacity-40")}>minutes</span>
         </div>
+        <Hint className={cx(!d.repeat && "opacity-40")}>Between cycles the belt goes back to the speed from before the program.</Hint>
         <FieldErrors id={`${ids}-repeat`} lines={[errors.repeat]} indent={false} />
       </div>
 
       <Hint>
-        When a program ends, the treadmill goes back to the speed from before, or pauses if you weren&apos;t walking.
-        Ending a program on a paused belt leaves the belt paused, and Engage restarts the belt at the earlier speed.
-        A program never starts a still belt by itself: after a rest or a 0 km/h step, the next walk waits for GO.
+        When a program ends, the belt returns to the speed from before the program. A belt that was paused stays
+        paused. A program never starts a still belt, so the walk after a rest or a 0 km/h step waits for GO.
       </Hint>
 
-      <ActionStatus error={error ?? (places ? `Fix ${places} to save.` : save.error)} />
-
-      <div className="flex justify-end gap-2">
-        <GhostButton onClick={leave}>Cancel</GhostButton>
-        <NeonButton className="h-9 px-5" disabled={save.pending} onClick={() => void submit()}>
-          Save
-        </NeonButton>
+      {/* Stays at the bottom of the window while the steps scroll, so Save never needs a scroll. */}
+      <div className="sticky bottom-0 z-10 -mx-4 -mb-4 flex flex-col gap-2 border-t border-white/10 bg-[#0a0a0a] px-4 py-3">
+        <ActionStatus error={error ?? (places ? `Fix ${places} to save.` : save.error)} />
+        <div className="flex justify-end gap-2">
+          <GhostButton onClick={leave}>Cancel</GhostButton>
+          <NeonButton className="h-9 px-5" disabled={save.pending} onClick={() => void submit()}>
+            Save
+          </NeonButton>
+        </div>
       </div>
     </Panel>
   );
@@ -476,7 +479,7 @@ function PulseRow({
             aria-label={`Step ${n} ends on heart rate`}
             onChange={(e) => onChange({ pulse: e.target.checked })}
           />
-          <span className="font-bold uppercase tracking-[0.12em] text-neon-magenta">Pulse target</span>
+          <span className="font-bold uppercase tracking-[0.12em] text-neon-yellow">Pulse target</span>
         </label>
         <span className={cx(!step.pulse && "opacity-40")}>down to</span>
         <input
@@ -538,7 +541,7 @@ function ZoneRow({
     <div className="grid grid-cols-[2rem_1fr] items-center gap-2">
       <span />
       <div className="flex flex-wrap items-center gap-2 font-mono text-xs text-white/70">
-        <span className="font-bold uppercase tracking-[0.12em] text-neon-magenta">Heart zone</span>
+        <span className="font-bold uppercase tracking-[0.12em] text-neon-yellow">Heart zone</span>
         <input
           className={cx(field, "w-16")}
           inputMode="decimal"
@@ -563,7 +566,6 @@ function ZoneRow({
             <span>trims</span>
             <ChoiceGroup
               label={`Step ${n} heart zone trims`}
-              tone="magenta"
               options={ZONE_TRIMS}
               value={step.zoneTrim}
               onChange={(zoneTrim) => onChange({ zoneTrim })}

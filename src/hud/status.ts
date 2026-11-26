@@ -1,4 +1,5 @@
 import type { AppSnapshot, ConnectionSnapshot } from "../ipc";
+import { PLAIN } from "../names";
 import { isMoving, linkState, linkView } from "../state/linkStatus";
 
 export type LinkTone = "live" | "idle" | "down" | "warn";
@@ -113,4 +114,32 @@ export function dumpTitle(snapshot: AppSnapshot): string {
   if (deck.status === "Stopped") return "The belt is already stopped.";
   if (deck.status === "Stopping") return "The belt is already stopping.";
   return snapshot.easy_stop.easing ? "Stop the belt at once." : "Stop the belt and end the session.";
+}
+
+/** What a press on a saved program's button sets: its first step's speed. */
+export function firstStepLine(p: AppSnapshot["programs"][number]): string {
+  const kmh = p.steps[0]?.speed_kmh ?? 0;
+  return kmh > 0 ? `starts ${kmh.toFixed(1)} km/h` : "starts still";
+}
+
+/** NO_CARRIER's plain line as a sentence: "Treadmill offline." */
+const OFFLINE = `${PLAIN.NO_CARRIER.charAt(0).toUpperCase()}${PLAIN.NO_CARRIER.slice(1)}.`;
+
+/** The status row's words while no treadmill is linked: the link state in a few words, in the header chip's names. */
+export function offlineText(connection: AppSnapshot["connection"]): string {
+  const l = linkState(connection);
+  switch (l.state) {
+    case "scanning":
+      return "Scanning for the treadmill.";
+    case "connecting":
+      return `Linking, try ${l.attempt} of ${l.of}.`;
+    case "reconnecting":
+      return `${OFFLINE} RELINK in ${l.next_retry_s} s.`;
+    case "adapter_unavailable":
+      return "Bluetooth is off.";
+    case "failed":
+      return OFFLINE;
+    default:
+      return connection.has_saved_device ? OFFLINE : "No treadmill saved yet.";
+  }
 }

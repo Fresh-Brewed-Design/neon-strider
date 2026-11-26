@@ -92,7 +92,7 @@ describe("HUD program list offline", () => {
   it("says why the program buttons are off and offers Connect", async () => {
     vi.mocked(invoke).mockClear();
     show(offline({ state: "reconnecting", attempt: 1, next_retry_s: 9 }));
-    expect(screen.getByTestId("hud-offline")).toHaveTextContent("Treadmill not connected.");
+    expect(screen.getByTestId("hud-offline")).toHaveTextContent("Treadmill offline. RELINK in 9 s.");
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "CONNECT" })));
     expect(dispatched()).toEqual([{ command: { type: "connect_now" } }]);
   });
@@ -106,7 +106,7 @@ describe("HUD program list offline", () => {
 
   it("offers no Connect while a link is being made, and shows nothing when linked", () => {
     const { unmount } = show(offline({ state: "connecting", attempt: 1, of: 3 }));
-    expect(screen.getByTestId("hud-offline")).toHaveTextContent("Connecting to the treadmill.");
+    expect(screen.getByTestId("hud-offline")).toHaveTextContent("Linking, try 1 of 3.");
     expect(screen.queryByRole("button", { name: "CONNECT" })).not.toBeInTheDocument();
     unmount();
     show(panel());

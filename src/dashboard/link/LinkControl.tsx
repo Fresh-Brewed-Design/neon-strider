@@ -105,6 +105,7 @@ export function LinkControl() {
             label={view?.label ?? "NO_CARRIER"}
             className="tracking-[0.12em]"
             labelClassName="dash-rail-text"
+            toneIconClassName="dash-rail-state"
           />
           {sub && <PlainLine text={sub} className="dash-rail-text pl-5" />}
         </span>

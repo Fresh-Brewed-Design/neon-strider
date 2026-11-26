@@ -5,14 +5,15 @@ import { nextStepLine } from "../dashboard/programs/stepMap";
 import { statWidget } from "../widgets/registry";
 import { Sparkline } from "../widgets/Sparkline";
 import { targetAccent, targetRange, ZONE_ACCENT, zoneRange } from "../widgets/zone";
-import { HudNote } from "./HudNote";
-import { isMoving, startFailure } from "../state/linkStatus";
+import { NotePop, type PanelNote } from "./HudNote";
+import { linkView } from "../state/linkStatus";
 import { SmallButton } from "./SmallButton";
-import { dumpTitle, engageLabel, engageSub, engageTitle } from "./status";
-import { useHudSend } from "./useHudSend";
-import { useRelink } from "./useRelink";
+import { DumpName } from "./DumpName";
+import { dumpTitle, engageLabel, engageSub, engageTitle, firstStepLine, offlineText } from "./status";
+import type { useRelink } from "./useRelink";
 import { useWheelSteps } from "./useWheelSteps";
-import { linkState } from "../state/linkStatus";
+
+type Send = (c: Command) => Promise<boolean>;
 
 /** One pinned stat, read through the shared widget registry. */
 export function StatCell({ id, snapshot }: { id: HudWidget; snapshot: AppSnapshot }) {
@@ -69,6 +70,7 @@ function TargetLine({ target }: { target: PulseTarget }) {
 }
 
 function Stepper({
+  name,
   label,
   value,
   accent,
@@ -77,6 +79,9 @@ function Stepper({
   onUp,
   wheelHint,
 }: {
+  /** The codename the buttons are named by ("VEL up"). */
+  name: string;
+  /** The label over the stepper, which says it sets the target. */
   label: string;
   value: string;
   accent: "cyan" | "magenta";
@@ -90,11 +95,11 @@ function Stepper({
     <div className={`hud-stepper accent-${accent}`}>
       <span className="hud-label">{label}</span>
       <div className="hud-stepper-row">
-        <button type="button" className="hud-btn hud-btn-step" disabled={disabled} onClick={onDown} aria-label={`${label} down`}>
+        <button type="button" className="hud-btn hud-btn-step" disabled={disabled} onClick={onDown} aria-label={`${name} down`}>
           −
         </button>
         <span ref={wheel} className="hud-stepper-value" title={wheelHint}>{value}</span>
-        <button type="button" className="hud-btn hud-btn-step" disabled={disabled} onClick={onUp} aria-label={`${label} up`}>
+        <button type="button" className="hud-btn hud-btn-step" disabled={disabled} onClick={onUp} aria-label={`${name} up`}>
           +
         </button>
       </div>
@@ -127,9 +132,14 @@ export function StrideFitLine({ snapshot }: { snapshot: AppSnapshot }) {
   const fit = deck.stride_fit_kmh;
   if (!deck.above_stride_fit || fit === null) return null;
   return (
-    <div className="hud-stride accent-yellow" data-testid="hud-stride" title={`The belt runs faster than STRIDE_FIT ${fit.toFixed(1)} km/h.`}>
+    <div
+      className="hud-stride accent-yellow"
+      data-testid="hud-stride"
+      title={`The belt runs faster than your STRIDE_FIT of ${fit.toFixed(1)} km/h. Slow to ${fit.toFixed(1)} km/h or under.`}
+    >
       <span className="hud-label">ABOVE STRIDE_FIT</span>
       <span className="hud-stride-speed">
+        <span className="hud-unit">slow to</span>
         {fit.toFixed(1)}
         <span className="hud-unit">km/h</span>
       </span>
@@ -166,7 +176,7 @@ export function EasyStopLine({ snapshot }: { snapshot: AppSnapshot }) {
   const e = snapshot.easy_stop;
   if (!e.easing || e.to_kmh === null) return null;
   return (
-    <div className="hud-easystop accent-magenta" data-testid="hud-easystop" title={e.message ?? undefined}>
+    <div className="hud-easystop accent-yellow" data-testid="hud-easystop" title={e.message ?? undefined}>
       <span className="hud-label">EASY STOP</span>
       <span className="hud-easystop-speed">
         to {e.to_kmh.toFixed(1)}
@@ -230,15 +240,14 @@ export function EngageButton({
   sub = false,
 }: {
   snapshot: AppSnapshot;
-  send: (c: Command) => Promise<boolean>;
-  /** The panel adds a plain line under the codename; the strips are too short for it. */
+  send: Send;
+  /** A plain line under the codename (the panel and both strips). */
   sub?: boolean;
 }) {
-  const moving = isMoving(snapshot.deck);
   return (
     <button
       type="button"
-      className={`hud-btn hud-btn-main${sub ? " hud-btn-stack" : ""} ${moving ? "accent-magenta" : "accent-cyan"}`}
+      className={`hud-btn hud-btn-main${sub ? " hud-btn-stack" : ""} accent-cyan`}
       disabled={!snapshot.connection.connected}
       title={engageTitle(snapshot)}
       onClick={() => void send({ type: "toggle_start" })}
@@ -253,33 +262,43 @@ export function EngageButton({
 /**
  * QUIET: Quiet now, one `quiet_now` to Rust. The first press eases a running
  * belt to the quiet speed and the second puts the speed back. Rust refuses a
- * still belt or one already as slow, and says why under the controls.
+ * still belt or one already as slow, and says why in the panel's note. While
+ * it holds the belt the button is filled and its line says what the second
+ * press puts back. Both lines share one cell, so the button keeps its width
+ * when it turns on or off and nothing beside it moves.
  */
-function QuietButton({ snapshot, send }: { snapshot: AppSnapshot; send: (c: Command) => Promise<boolean> }) {
+function QuietButton({ snapshot, send }: { snapshot: AppSnapshot; send: Send }) {
   const back = snapshot.calls.quiet_now_back_kmh;
   const on = snapshot.calls.quiet_now && back !== null;
+  const quiet = quietKmh(snapshot).toFixed(1);
   return (
     <button
       type="button"
       className={`hud-btn hud-btn-quiet hud-btn-stack accent-yellow${on ? " is-on" : ""}`}
       aria-pressed={on}
       disabled={!snapshot.connection.connected}
-      title={on ? `Put ${back.toFixed(1)} km/h back.` : `Ease the belt to ${quietKmh(snapshot).toFixed(1)} km/h.`}
+      title={on ? `QUIET holds the belt at ${quiet} km/h. Press again for ${back.toFixed(1)} km/h.` : `Ease the belt to ${quiet} km/h.`}
       onClick={() => void send({ type: "quiet_now" })}
     >
       QUIET{" "}
-      <span className="hud-btn-sub">{on ? `back to ${back.toFixed(1)}` : "slow down"}</span>
+      <span className="hud-btn-sub hud-swap">
+        <span className={on ? undefined : "is-shown"} aria-hidden={on}>
+          slow down
+        </span>
+        <span className={on ? "is-shown" : undefined} aria-hidden={!on}>
+          {on ? `back ${back.toFixed(1)}` : "back 0.0"}
+        </span>
+      </span>
     </button>
   );
 }
 
 /**
- * Engage / Stasis, Dump, QUIET and the speed and tilt steppers. While no
- * treadmill is linked, a line under them says why they are off.
+ * Engage / Stasis, Dump, QUIET and the speed and tilt steppers. A refused
+ * press, a deck reply or the link being down shows in the status row over
+ * them (`StatusRow`), never between them.
  */
-export function Controls({ snapshot }: { snapshot: AppSnapshot }) {
-  const { send, error } = useHudSend();
-  const relink = useRelink(snapshot.connection);
+export function Controls({ snapshot, send }: { snapshot: AppSnapshot; send: Send }) {
   const { deck, connection } = snapshot;
   // Every button sends one command to Rust. Nothing here derives the next value
   // from what is on screen, so rapid clicks can't collapse into one step.
@@ -290,51 +309,47 @@ export function Controls({ snapshot }: { snapshot: AppSnapshot }) {
         <EngageButton snapshot={snapshot} send={send} sub />
         <button
           type="button"
-          className="hud-btn hud-btn-stop hud-btn-stack accent-magenta"
+          className="hud-btn hud-btn-stop hud-btn-dump hud-btn-stack"
           disabled={!connection.connected || deck.status === "Stopped" || deck.status === "Stopping"}
           title={dumpTitle(snapshot)}
           onClick={() => send({ type: "stop" })}
         >
-          DUMP{" "}
+          <DumpName />{" "}
           <span className="hud-btn-sub">{snapshot.easy_stop.easing ? "stop now" : "end walk"}</span>
         </button>
         <QuietButton snapshot={snapshot} send={send} />
       </div>
       <div className="hud-steppers">
         <Stepper
-          label="VEL"
+          name="VEL"
+          label="VEL TARGET"
           accent="cyan"
           disabled={!connection.connected}
           value={deck.target_speed_kmh.toFixed(1)}
           onDown={() => send({ type: "nudge_speed", up: false })}
           onUp={() => send({ type: "nudge_speed", up: true })}
-          wheelHint="Scroll to change speed."
+          wheelHint="Scroll to change the target speed."
         />
         <Stepper
-          label="TILT"
+          name="TILT"
+          label="TILT TARGET"
           accent="magenta"
           disabled={!connection.connected}
           value={deck.target_incline_pct.toFixed(1)}
           onDown={() => send({ type: "nudge_incline", up: false })}
           onUp={() => send({ type: "nudge_incline", up: true })}
-          wheelHint="Scroll to change incline."
+          wheelHint="Scroll to change the target incline."
         />
       </div>
-      {!connection.connected && <OfflineLine connection={connection} relink={relink} />}
-      <HudNote error={error ?? relink.error ?? startFailure(snapshot) ?? deck.target_note} />
     </div>
   );
 }
 
 /** The running program's controls, or one button per saved program. */
-export function ProgramsModule({ snapshot, offlineShown = false }: {
-  snapshot: AppSnapshot;
-  /** The controls above already say the treadmill is not connected. */
-  offlineShown?: boolean;
-}) {
-  const { send, error } = useHudSend();
-  const relink = useRelink(snapshot.connection);
+export function ProgramsModule({ snapshot, send }: { snapshot: AppSnapshot; send: Send }) {
   const a = snapshot.active_program;
+  // HOLD, GO and SKIP act on the walk, which needs the treadmill; END always works.
+  const offline = !snapshot.connection.connected;
   if (a) {
     // Waiting for GO: the next step would start a still belt, so nothing moves
     // until GO (Rust says why in `wait`).
@@ -375,20 +390,33 @@ export function ProgramsModule({ snapshot, offlineShown = false }: {
         <div className="hud-auto-actions">
           <SmallButton
             className={wait ? "hud-btn-go" : undefined}
+            disabled={offline}
             sub={wait ? "start belt" : a.paused ? "resume" : "pause"}
-            title={wait ? "Start the belt and carry on with the program." : a.paused ? "Resume the program." : "Hold the program."}
+            title={
+              offline
+                ? "Treadmill not connected."
+                : wait
+                  ? "Start the belt and carry on with the program."
+                  : a.paused
+                    ? "Resume the program."
+                    : "Hold the program."
+            }
             onClick={() => send({ type: a.paused ? "program_resume" : "program_pause" })}
           >
             {a.paused ? "GO" : "HOLD"}
           </SmallButton>
-          <SmallButton sub="next step" title="Skip to the next step." onClick={() => send({ type: "program_skip" })}>
+          <SmallButton
+            disabled={offline}
+            sub="next step"
+            title={offline ? "Treadmill not connected." : "Skip to the next step."}
+            onClick={() => send({ type: "program_skip" })}
+          >
             SKIP
           </SmallButton>
           <SmallButton sub="end program" title="End the program." onClick={() => send({ type: "program_end" })}>
             END
           </SmallButton>
         </div>
-        <HudNote error={error} />
       </div>
     );
   }
@@ -397,22 +425,21 @@ export function ProgramsModule({ snapshot, offlineShown = false }: {
   return (
     <div className="hud-module accent-yellow">
       <span className="hud-label">RUN PROGRAM</span>
-      {!snapshot.connection.connected && !offlineShown && <OfflineLine connection={snapshot.connection} relink={relink} />}
       <div className="hud-programs">
         {snapshot.programs.slice(0, 6).map((p) => (
           <button
             key={p.id}
             type="button"
-            className="hud-btn hud-btn-program"
-            disabled={!snapshot.connection.connected}
+            className="hud-btn hud-btn-program hud-btn-stack"
+            disabled={offline}
             title={describePlan(p)}
             onClick={() => send({ type: "program_run", id: p.id })}
           >
-            {p.name}
+            {p.name}{" "}
+            <span className="hud-btn-sub">{firstStepLine(p)}</span>
           </button>
         ))}
       </div>
-      <HudNote error={error ?? relink.error} />
     </div>
   );
 }
@@ -420,14 +447,12 @@ export function ProgramsModule({ snapshot, offlineShown = false }: {
 /** Why the belt and program buttons are off while no treadmill is linked, with
  *  the same relink the header's link label does. It only links; it never starts the belt. */
 function OfflineLine({ connection, relink }: { connection: AppSnapshot["connection"]; relink: ReturnType<typeof useRelink> }) {
-  const state = linkState(connection).state;
-  const linking = state === "connecting" || state === "scanning";
   const pending = relink.view?.text != null;
   return (
-    <div className="hud-offline" data-testid="hud-offline">
-      <span className="hud-sub">{linking ? "Connecting to the treadmill." : "Treadmill not connected."}</span>
+    <div className="hud-offline accent-cyan" data-testid="hud-offline" title={linkView(connection).title}>
+      <span className="hud-offline-text">{offlineText(connection)}</span>
       {(relink.view?.clickable || pending) && (
-        <button type="button" className="hud-btn hud-btn-sm" disabled={pending} onClick={relink.relink}>
+        <button type="button" className="hud-btn hud-btn-connect" disabled={pending} onClick={relink.relink}>
           {pending ? "LINKING…" : "CONNECT"}
         </button>
       )}
@@ -435,3 +460,35 @@ function OfflineLine({ connection, relink }: { connection: AppSnapshot["connecti
   );
 }
 
+/**
+ * The whole panel's status row, between the readings and the controls. It
+ * always takes one line, so nothing above or under it moves: the offline line
+ * first, else the most pressing quiet line (EASY STOP, QUIET // HOLD, ABOVE
+ * STRIDE_FIT, NEURAL_FLUIDITY, SPEED DRIFT, PRESENTING; hud.css shows only the
+ * first), else nothing. A note covers it and the readings over it, never the
+ * controls (`NotePop`).
+ */
+export function StatusRow({
+  snapshot,
+  relink,
+  note,
+}: {
+  snapshot: AppSnapshot;
+  relink: ReturnType<typeof useRelink>;
+  note: PanelNote | null;
+}) {
+  return (
+    <div className="hud-status-row" data-testid="hud-status-row">
+      <div className="hud-status-line">
+        {!snapshot.connection.connected && <OfflineLine connection={snapshot.connection} relink={relink} />}
+        <EasyStopLine snapshot={snapshot} />
+        <QuietNowLine snapshot={snapshot} />
+        <StrideFitLine snapshot={snapshot} />
+        <NeuralLine snapshot={snapshot} />
+        <SpeedDriftLine snapshot={snapshot} />
+        <PresentingLine snapshot={snapshot} />
+      </div>
+      <NotePop note={note} />
+    </div>
+  );
+}

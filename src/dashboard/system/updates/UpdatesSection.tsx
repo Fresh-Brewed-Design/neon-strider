@@ -56,7 +56,7 @@ export function UpdatesSection() {
       status={
         <span className="shrink-0 font-mono text-xs font-bold uppercase tracking-[0.18em] text-white/60">
           {offer && u.status.state !== "up_to_date" ? (
-            <span className="text-neon-magenta">UPDATE READY // v{offer.version}</span>
+            <span className="text-neon-cyan">UPDATE READY // v{offer.version}</span>
           ) : (
             <>BUILD // v{u.current_version}</>
           )}
@@ -91,9 +91,9 @@ export function UpdatesSection() {
       </div>
 
       {offer && (
-        <div className="flex flex-col gap-2 rounded border border-neon-magenta/30 bg-neon-magenta/5 p-3">
+        <div className="flex flex-col gap-2 rounded border border-neon-cyan/30 bg-neon-cyan/5 p-3">
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-            <span className="font-digital text-xs font-bold tracking-[0.15em] text-neon-magenta">
+            <span className="font-digital text-xs font-bold tracking-[0.15em] text-neon-cyan">
               v{offer.version} // AVAILABLE
             </span>
             {published && <Label className="tracking-[0.12em]">Released {published}</Label>}
@@ -103,7 +103,7 @@ export function UpdatesSection() {
             <Markdown text={offer.notes} />
           </div>
           <div className="flex flex-wrap items-center gap-2 pt-1">
-            <NeonButton tone="magenta" className="px-4 py-2" disabled={busy} onClick={startInstall}>
+            <NeonButton className="px-4 py-2" disabled={busy} onClick={startInstall}>
               Install
             </NeonButton>
             {!u.dismissed && (

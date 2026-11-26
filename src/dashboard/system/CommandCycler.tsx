@@ -90,10 +90,10 @@ export function CommandCycler({ onSend }: { onSend: (body: number[]) => Promise<
       </label>
 
       <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0 font-digital text-sm tracking-[0.12em] text-neon-magenta/60" aria-label="Frame to send">
+        <div className="min-w-0 font-digital text-sm tracking-[0.12em] text-white/60" aria-label="Frame to send">
           {frame
             ? frame.map((b, i) => (
-                <span key={i} className={cx("mr-1.5 inline-block", i === slot && "text-neon-magenta")}>
+                <span key={i} className={cx("mr-1.5 inline-block", i === slot && "text-neon-cyan")}>
                   {hex(b)}
                 </span>
               ))
@@ -104,7 +104,7 @@ export function CommandCycler({ onSend }: { onSend: (body: number[]) => Promise<
             <ChevronLeft size={16} />
           </GhostButton>
           <NeonButton
-            tone="magenta"
+            tone="yellow"
             className="px-3 py-1.5"
             disabled={!template}
             onClick={() => {
@@ -159,7 +159,7 @@ export function CommandCycler({ onSend }: { onSend: (body: number[]) => Promise<
           />
         </label>
         <NeonButton
-          tone="magenta"
+          tone="yellow"
           disabled={!template && !isRunning}
           onClick={() => setIsRunning(!isRunning)}
           className={cx("ml-auto flex items-center gap-2 px-4 py-2", isRunning && "motion-safe:animate-pulse")}

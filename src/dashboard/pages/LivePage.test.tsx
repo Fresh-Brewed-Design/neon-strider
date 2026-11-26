@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppSnapshot } from "../../ipc";
@@ -56,11 +56,12 @@ describe("Live page STEP_MAP", () => {
     expect(screen.getByRole("list", { name: "Program steps" })).toBeInTheDocument();
     expect(screen.queryByText("DECK_CYCLES")).not.toBeInTheDocument();
 
-    const toggle = screen.getByRole("button", { name: /map/i });
-    expect(toggle).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(toggle);
+    const view = screen.getByRole("group", { name: "Step map or stats" });
+    expect(within(view).getByRole("button", { name: /map/i })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(view).getByRole("button", { name: /stats/i }));
     expect(screen.queryByRole("list", { name: "Program steps" })).not.toBeInTheDocument();
     expect(screen.getByText("DECK_CYCLES")).toBeInTheDocument();
+    expect(within(view).getByRole("button", { name: /stats/i })).toHaveAttribute("aria-pressed", "true");
     expect(localStorage.getItem("liveStepMap")).toBe("closed");
   });
 
@@ -74,7 +75,7 @@ describe("Live page STEP_MAP", () => {
     expect(readout).toHaveTextContent("DIST 1.23 KM");
     expect(readout).toHaveTextContent("TODAY 4.56 KM");
 
-    fireEvent.click(screen.getByRole("button", { name: /map/i }));
+    fireEvent.click(screen.getByRole("button", { name: /stats/i }));
     expect(screen.queryByRole("group", { name: "Walk stats" })).not.toBeInTheDocument();
   });
 
@@ -125,5 +126,38 @@ describe("Live page tile codenames", () => {
   it("sizes a codename with its tile, never under 11 px", async () => {
     const { CODENAME_FIT } = await import("./LivePage");
     expect(CODENAME_FIT).toMatch(/clamp\(11px,[\d.]+cqw,12px\)/);
+  });
+});
+
+describe("Live page calibration offer", () => {
+  it("shows under the controls, so its arrival and SKIP never move them", () => {
+    current!.calibration.offer = true;
+    render(<LivePage onCalibrate={() => {}} />);
+    const offer = screen.getByRole("region", { name: "Calibrate this treadmill" });
+    const order = (a: Node, b: Node) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING;
+    for (const control of [
+      screen.getByRole("slider", { name: "Velocity target" }),
+      screen.getByRole("slider", { name: "Tilt target" }),
+      screen.getByRole("button", { name: /stasis/i }),
+      screen.getByRole("button", { name: /dump/i }),
+      screen.getByRole("button", { name: /hold/i }),
+    ]) {
+      expect(order(control, offer)).toBeTruthy();
+    }
+  });
+
+  it("stays out of the page without a way to open calibration", () => {
+    current!.calibration.offer = true;
+    render(<LivePage />);
+    expect(screen.queryByRole("region", { name: "Calibrate this treadmill" })).toBeNull();
+  });
+});
+
+describe("Live page header", () => {
+  it("is marked to hide its title in a short window, keeping it for screen readers", () => {
+    render(<LivePage />);
+    const header = document.querySelector("header")!;
+    expect(header).toHaveClass("dash-page-fit");
+    expect(screen.getByRole("heading", { name: "Live" })).toBeInTheDocument();
   });
 });
