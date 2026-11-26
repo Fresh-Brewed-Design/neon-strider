@@ -4,5 +4,5 @@
  */
 export function joinedLine(text: string) {
   return (_content: string, el: Element | null) =>
-    !!el?.hasAttribute("data-joined") && (el.textContent ?? "").replace(/ /g, " ") === text;
+    !!el?.hasAttribute("data-joined") && (el.textContent ?? "").replace(/\u00a0/g, " ") === text;
 }
