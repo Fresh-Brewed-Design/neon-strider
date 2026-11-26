@@ -46,6 +46,18 @@ describe("dashboard CSS at larger text sizes", () => {
     expect(rule(short, ".dash-page")).toMatch(/overflow-y:\s*auto/);
   });
 
+  it("shows the link's state icon only in the icon-only rail, where its label is hidden", () => {
+    expect(rule(css, ".dash-rail-state")).toMatch(/display:\s*none/);
+    expect(rule(containerBlock("dash (max-width: 739px)"), ".dash-rail-state")).toMatch(/display:\s*block/);
+  });
+
+  it("hides a fitHeader page's title from view under 450 px tall, but not from screen readers", () => {
+    const short = containerBlock("dash (max-height: 449px)");
+    const heading = rule(short, ".dash-page-fit .dash-page-heading");
+    expect(heading).toMatch(/clip-path:\s*inset\(50%\)/);
+    expect(heading).not.toMatch(/display:\s*none/);
+  });
+
   it("wraps STEP_MAP rows and the editor's step rows when narrow", () => {
     expect(rule(containerBlock("(max-width: 30rem)"), ".step-map-row")).toMatch(/flex-wrap:\s*wrap/);
     expect(rule(containerBlock("(max-width: 28rem)"), ".program-step-row")).toMatch(/flex-wrap:\s*wrap/);

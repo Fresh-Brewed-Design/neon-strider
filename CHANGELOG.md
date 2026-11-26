@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.76.9 (2026-11-26)
+
+### Fixed
+
+- The Live page keeps speed, tilt, STASIS, DUMP and the program's HOLD, SKIP and END in view at 125 % and 150 % Windows text size. The calibration offer sits under the controls, so the controls stay put when the offer shows or after SKIP.
+- The slider reads SET TARGET and the preset at the target shows as pressed. MAP is now a switch between MAP and STATS. With large text the rail's link icon also shows the link state by shape.
+
 ## 1.76.8 (2026-11-25)
 
 ### Changed

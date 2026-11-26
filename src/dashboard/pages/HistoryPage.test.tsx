@@ -65,6 +65,26 @@ describe("History beyond the listed months", () => {
     expect(screen.getByText("2400.0")).toBeInTheDocument();
   });
 
+  it("names the range the totals cover", async () => {
+    backend(() => ({ sessions: [], from_ms: null }));
+    show();
+    expect(await screen.findByText("Last 7 days")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: "30 days" }));
+    expect(await screen.findByText("Last 30 days")).toBeInTheDocument();
+  });
+
+  it("leads with one line and no zero cards when nothing was ever walked", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "history_sessions") return [];
+      if (cmd === "history_stats") return { ...stats(null), totals: { meters: 0, seconds: 0, kcal: 0, sessions: 0 } };
+      return null;
+    });
+    show();
+    expect(await screen.findByTestId("history-empty")).toHaveTextContent("No walks yet.");
+    expect(screen.queryByText("Last 7 days")).toBeNull();
+    expect(screen.queryByText("Past year")).toBeNull();
+  });
+
   it("lists older months on demand, with the result under the button", async () => {
     backend(() => ({ sessions: OLD, from_ms: OLD_FROM }));
     show();

@@ -34,14 +34,13 @@ export function StylizedSlider({
   const markPct = mark && mark.value >= min - 1e-6 && mark.value <= max + 1e-6 ? trackPct(mark.value, min, max) : null;
 
   return (
-    // With a mark, a 1 px gap and an 11 px label row take the 8 px gap and 4 px
-    // tick row's 12 px, so the Live page keeps its height at 760x600.
-    <div className={`flex w-full flex-col group ${markPct !== null ? "gap-px" : "gap-2"}`}>
-      <div className="relative h-6 flex items-center">
+    // With a mark, its 11 px label row sits under the track, 1 px below it.
+    <div className="flex w-full flex-col gap-px group">
+      <div className="relative h-5 flex items-center">
         <div className="absolute inset-0 h-1 bg-white/5 top-1/2 -translate-y-1/2 rounded-full overflow-hidden">
           <div
             className={`h-full ${isCyan ? "bg-neon-cyan" : "bg-neon-magenta"}`}
-            style={{ width: `${((value - min) / (max - min)) * 100}%` }}
+            style={{ width: `${pct}%` }}
           />
         </div>
 
@@ -76,10 +75,9 @@ export function StylizedSlider({
         />
       </div>
 
-      {markPct !== null && mark ? (
-        // The mark's label sits where the decorative ticks were, so the
-        // slider keeps its height. Near either end it lines up with that end
-        // instead of centring, so it never pokes past the track.
+      {markPct !== null && mark && (
+        // Near either end the mark's label lines up with that end instead of
+        // centring, so it never pokes past the track.
         <div className="relative h-[11px]">
           <span
             title={mark.title}
@@ -91,12 +89,6 @@ export function StylizedSlider({
           >
             {mark.label}
           </span>
-        </div>
-      ) : (
-        <div className="flex justify-between px-1">
-          {[0, 1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-1 w-[1px] bg-white/10" />
-          ))}
         </div>
       )}
     </div>

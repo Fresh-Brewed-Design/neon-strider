@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { Axis } from "./Axis";
 import { sliderValue, thumbCentre, trackPct } from "./sliderValue";
+import { StylizedSlider } from "./StylizedSlider";
 
 /** The Live page's speed axis with a 0.93 km/h floor (the deck's 0.6 on a calibrated belt). */
 function speedAxis(onSet: (v: number) => Promise<unknown> | void, target = 3, onNudge: (up: boolean) => Promise<unknown> | void = () => {}) {
@@ -151,5 +152,33 @@ describe("Axis status", () => {
     fail = false;
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Velocity up" })));
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("target caption and presets", () => {
+  it("says the slider sets the target, with the target beside the words", () => {
+    speedAxis(() => {}, 3.5);
+    const caption = screen.getByText("Set target").parentElement!;
+    expect(caption).toHaveTextContent("3.5");
+    expect(caption.nextElementSibling?.contains(screen.getByRole("slider"))).toBe(true);
+  });
+
+  it("marks the preset the target is on as pressed, and no other", () => {
+    speedAxis(() => {}, 3);
+    expect(screen.getByRole("button", { name: "3.0" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "1.5" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("marks no preset while the target sits between them", () => {
+    speedAxis(() => {}, 2.2);
+    for (const name of ["1.5", "3.0"]) expect(screen.getByRole("button", { name })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("keeps the slider's fill inside the track when the target is under the floor (belt still)", () => {
+    const { container } = render(
+      <StylizedSlider min={0.6} max={6} step={0.1} value={0} onChange={() => {}} color="cyan" label="Velocity target" />,
+    );
+    const fill = container.querySelector<HTMLElement>(".bg-neon-cyan")!;
+    expect(fill.style.width).toBe("0%");
   });
 });

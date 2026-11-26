@@ -8,6 +8,7 @@ import { cx } from "../util";
 import { NumberField, Section, Toggle } from "./fields";
 import { LightsOutSetting } from "./LightsOutSetting";
 import { PresentingSetting } from "./PresentingSetting";
+import { ProgramTonesSetting } from "./ProgramTonesSetting";
 
 const L = SETTING_LIMITS;
 const MAX_PROGRAM_BUTTONS = L.seated_program_buttons;
@@ -302,6 +303,10 @@ export function DeskSection() {
       <div className="border-t border-white/10" />
 
       <EyeBreakSettings />
+
+      <div className="border-t border-white/10" />
+
+      <ProgramTonesSetting />
 
       <div className="border-t border-white/10" />
 

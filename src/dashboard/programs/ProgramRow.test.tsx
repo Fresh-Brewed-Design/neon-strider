@@ -47,6 +47,7 @@ describe("FIT_TO_TIME", () => {
     show([INTERVAL]);
     const picker = screen.getByLabelText("Length of Interval walk") as HTMLSelectElement;
     expect(picker.value).toBe("");
+    expect(screen.getByText("Length")).toBeInTheDocument();
     expect(Array.from(picker.options).map((o) => o.text)).toEqual(["35 min", "15 min", "20 min", "25 min", "30 min", "40 min", "95 min"]);
     expect(screen.queryByLabelText("Length of Post-meal")).toBeNull();
     expect(screen.queryByTestId("fit-to-time-note")).toBeNull();
