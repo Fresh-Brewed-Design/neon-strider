@@ -6,7 +6,7 @@ import { formatDuration } from "../format";
 import { PLAIN } from "../names";
 import { formatChange } from "../dashboard/history/weekly";
 import { describePlan } from "../dashboard/programs/format";
-import { startFailure } from "../state/linkStatus";
+import { startOf } from "../state/linkStatus";
 import { resumeWord } from "./status";
 import { HudNote } from "./HudNote";
 import { DumpName } from "./DumpName";
@@ -101,7 +101,12 @@ export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
   const s = snapshot.seated;
   const programs = s.program_ids.flatMap((id) => snapshot.programs.find((p) => p.id === id) ?? []);
   const line = seatedLine(snapshot, programs.length);
-  const note = error ?? startFailure(snapshot);
+  // A dashboard Engage is also an `engage`, so only a failure after this card's own ENGAGE shows.
+  const [pressedAt, setPressedAt] = useState<number | null>(null);
+  const own = startOf(snapshot, "engage");
+  const answeredAt = snapshot.connection.start_result?.at_ms ?? 0;
+  const ownFailure = pressedAt !== null && answeredAt >= pressedAt ? own.failure : null;
+  const note = error ?? ownFailure;
   return (
     <div className="hud-toast hud-seated accent-yellow" role="alert">
       <div className="hud-toast-body">
@@ -114,7 +119,10 @@ export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
         className="hud-btn hud-seated-engage"
         disabled={!snapshot.connection.connected}
         title="Start walking at the usual speed, like Engage."
-        onClick={() => void send({ type: "seated_engage" })}
+        onClick={() => {
+          setPressedAt(Date.now());
+          void send({ type: "seated_engage" });
+        }}
       >
         ENGAGE
       </button>
