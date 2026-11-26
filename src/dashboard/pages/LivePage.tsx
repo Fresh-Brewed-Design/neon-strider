@@ -111,7 +111,7 @@ function quietNotice(s: AppSnapshot): ReactNode {
       title="QUIET is on the HUD and in the tray menu."
       className="flex flex-wrap items-baseline justify-end gap-x-2 font-mono text-[11px] leading-snug text-neon-yellow"
     >
-      <span className="font-bold tracking-[0.08em]">QUIET // HOLD {quietKmh(s).toFixed(1)} km/h</span>
+      <span className="whitespace-nowrap font-bold tracking-[0.08em]">QUIET // HOLD {quietKmh(s).toFixed(1)} km/h</span>
       <span>QUIET again puts {back.toFixed(1)} km/h back.</span>
     </div>
   );
