@@ -1,0 +1,2 @@
+- A restart no longer resets the sitting time, the eye-break count or a call's quiet speed.
+- Week cards count desk days, LIGHTS_OUT leaves a program at rest alone and DUMP ends a walk where the walk-away began.

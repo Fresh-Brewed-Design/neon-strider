@@ -1000,6 +1000,63 @@ fn migration_16_samples_session_time(tx: &Transaction) -> rusqlite::Result<()> {
     )
 }
 
+/// Migration 17: settings no code reads (#426). Older builds left them, and
+/// some sit next to the key that runs now under another name
+/// (`stravaDailyRollupEnabled` next to `strava_daily_rollup_enabled`,
+/// `shiftEndTime` next to `shift_end_time`, `sedentaryThresholdMinutes` next
+/// to `seated_minutes`, `sessionMergeThresholdMinutes` next to
+/// `session_merge_threshold_minutes`). The values that run now stay: only the
+/// unread keys go, and with them the old automation's rows in
+/// `automation_state`. The database is copied to `backups/` first, as before
+/// every migration.
+///
+/// Frozen: the keys are written out here, so the migration deletes the same
+/// keys whatever later builds read.
+fn migration_17_dead_settings(tx: &Transaction) -> rusqlite::Result<()> {
+    for key in DEAD_SETTINGS_V17 {
+        tx.execute("DELETE FROM settings WHERE key = ?1", params![key])?;
+    }
+    for key in OLD_AUTOMATION_STATE_V17 {
+        tx.execute("DELETE FROM automation_state WHERE key = ?1", params![key])?;
+    }
+    Ok(())
+}
+
+/// The settings keys migration 17 deletes: none is read by any code (Rust or
+/// the windows) at the time of the migration. `RETIRED_KEYS` are left to
+/// `save_config`, which deletes them already.
+const DEAD_SETTINGS_V17: [&str; 14] = [
+    // The old automation, which no code runs any more.
+    "automationEnabled",
+    "automationInterval",
+    "automationTargetIncline",
+    "automationTargetSpeed",
+    "automationWalkDuration",
+    // Read only inside the calibration points' JSON (a serde alias), never
+    // as a setting of its own.
+    "distanceScale",
+    // GROUND_TRUTH's Labs switch; the guided walk is always on now.
+    "labs_calibration_wizard",
+    "lastLinkType",
+    "sedentaryThresholdMinutes",
+    "sessionMergeThresholdMinutes",
+    "shiftEndTime",
+    "stepSource",
+    "stravaDailyRollupEnabled",
+    "stravaEnabled",
+];
+
+/// The old automation's runtime rows in `automation_state`.
+const OLD_AUTOMATION_STATE_V17: [&str; 7] = [
+    "active",
+    "interval",
+    "mode",
+    "nextEvent",
+    "targetIncline",
+    "targetSpeed",
+    "walkDuration",
+];
+
 type Migration = fn(&Transaction) -> rusqlite::Result<()>;
 
 /// Append new migrations at the end; never reorder or edit a shipped one.
@@ -1021,6 +1078,7 @@ const MIGRATIONS: &[Migration] = &[
     migration_14_today_slots,
     migration_15_session_program,
     migration_16_samples_session_time,
+    migration_17_dead_settings,
 ];
 
 fn schema_version(conn: &Connection) -> rusqlite::Result<u32> {
@@ -3189,6 +3247,108 @@ mod db_tests {
             (row.avg_heart_rate, row.max_heart_rate),
             (Some(114), Some(131))
         );
+    }
+
+    /// The owner's database as of 2026-11-26: the unread keys go, the keys
+    /// that run keep their values, and the old automation's rows go.
+    #[test]
+    fn migration_17_deletes_the_unread_settings_and_keeps_the_ones_that_run() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate_through(&mut conn, 16);
+        let kept = [
+            ("strava_daily_rollup_enabled", "false"),
+            ("shift_end_time", "\"18:00\""),
+            ("seated_minutes", "30"),
+            ("maxSpeed", "4"),
+            ("minSpeed", "0.6"),
+            ("maxIncline", "6"),
+            ("tiltMultiplier", "1.5"),
+            ("inclineOffset", "5"),
+            ("focusStabilityEnabled", "true"),
+            ("neuralFloorPct", "90"),
+            ("neuralSensitivity", "medium"),
+            ("lastDeviceId", "F1:7C:19:92:55:E5"),
+            ("calibrationPoints", "[]"),
+            ("calibrationPoints:F17C199255E5", "[]"),
+        ];
+        for (k, v) in kept {
+            conn.put(k, v).unwrap();
+        }
+        for k in DEAD_SETTINGS_V17 {
+            conn.put(k, "1").unwrap();
+        }
+        for k in OLD_AUTOMATION_STATE_V17 {
+            conn.execute(
+                "INSERT INTO automation_state (key, value) VALUES (?1, '1')",
+                params![k],
+            )
+            .unwrap();
+        }
+        conn.execute(
+            "INSERT INTO automation_state (key, value) VALUES ('desk_timers', '{}')",
+            [],
+        )
+        .unwrap();
+        assert_eq!(migrate(&mut conn).unwrap(), latest());
+        for k in DEAD_SETTINGS_V17 {
+            assert_eq!(conn.get(k), None, "{k}");
+        }
+        for (k, v) in kept {
+            assert_eq!(conn.get(k).as_deref(), Some(v), "{k}");
+        }
+        let state: Vec<String> = conn
+            .prepare("SELECT key FROM automation_state")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(state, vec!["desk_timers".to_string()]);
+    }
+
+    /// Every key migration 17 deletes is unread: no source file of the app
+    /// (Rust or the windows) names it, outside the migration's own list.
+    #[test]
+    fn no_code_reads_a_key_migration_17_deletes() {
+        fn files(dir: &Path, out: &mut Vec<PathBuf>) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    if !path.ends_with("bindings") {
+                        files(&path, out);
+                    }
+                } else if path
+                    .extension()
+                    .is_some_and(|e| e == "rs" || e == "ts" || e == "tsx")
+                {
+                    out.push(path);
+                }
+            }
+        }
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut all = Vec::new();
+        files(&root.join("src"), &mut all);
+        files(&root.join("../src"), &mut all);
+        let this = root.join("src").join("persistence.rs");
+        // A calibration point's JSON field of the same name, not a setting.
+        let point_field = |key: &str, path: &Path| {
+            key == "distanceScale"
+                && (path.ends_with("protocol.rs") || path.ends_with("calibration.rs"))
+        };
+        for key in DEAD_SETTINGS_V17 {
+            let quoted = format!("\"{key}\"");
+            for path in &all {
+                if *path == this || point_field(key, path) {
+                    continue;
+                }
+                let text = std::fs::read_to_string(path).unwrap();
+                assert!(
+                    !text.contains(&quoted),
+                    "{key} is named in {}",
+                    path.display()
+                );
+            }
+        }
     }
 
     #[test]
