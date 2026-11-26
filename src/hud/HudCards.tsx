@@ -188,6 +188,8 @@ export function EyeBreakCard({ snapshot }: { snapshot: AppSnapshot }) {
             {e.blink ? BLINK_HINT[e.blink] : "Look away from the screen."}
             {e.holds_belt ? " The belt is paused." : ""}
           </span>
+          {/* END_TONE (eyeBreakTones.ts) plays as the break ends, only while tones are on. */}
+          {e.sound && <span className="hud-sub">Two rising tones end the break.</span>}
         </div>
       ) : (
         <div className="hud-toast-body">
@@ -205,7 +207,9 @@ export function EyeBreakCard({ snapshot }: { snapshot: AppSnapshot }) {
       )}
       <HudNote error={error} />
       <div className="hud-seated-actions">
-        <SmallButton onClick={() => send({ type: "eye_break_skip" })}>SKIP</SmallButton>
+        <SmallButton title="Skip the eye break." onClick={() => send({ type: "eye_break_skip" })}>
+          SKIP BREAK
+        </SmallButton>
       </div>
     </div>
   );

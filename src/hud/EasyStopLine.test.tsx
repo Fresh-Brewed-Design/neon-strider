@@ -31,10 +31,10 @@ describe("easy stop HUD line", () => {
   });
 
   it("names DUMP's second press while easing", () => {
-    const { unmount } = render(<Controls snapshot={snap(true)} />);
+    const { unmount } = render(<Controls snapshot={snap(true)} send={async () => true} />);
     expect(screen.getByText("stop now")).toBeInTheDocument();
     unmount();
-    render(<Controls snapshot={snap(false)} />);
+    render(<Controls snapshot={snap(false)} send={async () => true} />);
     expect(screen.getByText("end walk")).toBeInTheDocument();
   });
 });

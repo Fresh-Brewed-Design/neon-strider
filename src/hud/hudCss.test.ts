@@ -163,3 +163,27 @@ describe("HUD at rest", () => {
     expect(rule(".hud-btn.hud-btn-minify")).toMatch(/height:\s*24px/);
   });
 });
+
+// A note, a quiet line or the link going down never moves a control (#387).
+describe("HUD controls stay put", () => {
+  it("draws the panel's note over the readings, out of the layout, letting clicks through", () => {
+    const pop = rule(".hud-note.hud-note-pop");
+    expect(pop).toMatch(/position:\s*absolute/);
+    expect(pop).toMatch(/bottom:\s*0/);
+    expect(pop).toMatch(/pointer-events:\s*none/);
+  });
+
+  it("keeps the status row one fixed line and shows only its first line", () => {
+    expect(rule(".hud-status-row")).toMatch(/height:\s*30px/);
+    expect(rule(".hud-status-line > :not(:first-child)")).toMatch(/display:\s*none/);
+  });
+
+  it("sizes QUIET for both of its lines, so turning it on moves nothing", () => {
+    expect(rule(".hud-swap > *")).toMatch(/grid-area:\s*1 \/ 1/);
+    expect(rule(".hud-swap > :not(.is-shown)")).toMatch(/visibility:\s*hidden/);
+  });
+
+  it("dims the readings while no treadmill is linked", () => {
+    expect(rule(".hud-panel.is-offline .hud-stats")).toMatch(/opacity:\s*0\.45/);
+  });
+});

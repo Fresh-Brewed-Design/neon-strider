@@ -35,7 +35,7 @@ describe("linkLabel", () => {
 
   it("shows the link problem when offline", () => {
     const offline = snap({ connection: { connected: false, link: { state: "idle" } } });
-    expect(linkLabel(offline)).toEqual({ text: "LINK DOWN", tone: "down" });
+    expect(linkLabel(offline)).toEqual({ text: "OFFLINE", tone: "down" });
   });
 });
 
