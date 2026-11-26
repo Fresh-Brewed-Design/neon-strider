@@ -26,7 +26,7 @@ beforeEach(() => {
 describe("What's new", () => {
   it("is a labelled dialog with focus on OK", () => {
     render(<WhatsNewDialog />);
-    expect(screen.getByRole("dialog", { name: "What's new in v1.77.0" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: /UPGRADE_COMPLETE/ })).toBeInTheDocument();
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "OK" }));
   });
 
