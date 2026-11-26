@@ -267,3 +267,17 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* DESK_SYNC: today's mark pulses on once, the moment today first counts (`today_lit`). */
+@keyframes desk-sync-light {
+  0% { opacity: 0.25; box-shadow: 0 0 0 rgba(0, 243, 255, 0); }
+  20%, 55% { opacity: 1; box-shadow: 0 0 12px rgba(0, 243, 255, 0.95); }
+  37% { opacity: 0.55; box-shadow: 0 0 3px rgba(0, 243, 255, 0.4); }
+  100% { opacity: 1; box-shadow: 0 0 6px rgba(0, 243, 255, 0.6); }
+}
+.desk-sync-light {
+  animation: desk-sync-light 1.6s ease-out 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .desk-sync-light { animation: none; }
+}

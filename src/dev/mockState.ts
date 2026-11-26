@@ -25,7 +25,7 @@ function mockDeskSync(): DeskSync {
     }
     d.setDate(d.getDate() - 1);
   }
-  return { walked: days.filter((x) => x.walked).length, desk_days: days.length, window: 14, days, today_open: false };
+  return { walked: days.filter((x) => x.walked).length, desk_days: days.length, window: 14, days, today_open: false, today_lit: false };
 }
 
 /**
