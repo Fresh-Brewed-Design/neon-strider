@@ -1,0 +1,3 @@
+- Live: while QUIET holds the belt, the header shows the quiet speed and the speed QUIET puts back. With no treadmill linked the last readings dim as on the HUD. The NO_CARRIER row is as tall as STASIS and DUMP, so the panels under the row stay put. STEP_MAP keeps a rest row on one line and shows three steps at large text sizes.
+- History: the time frame tabs sit on the totals, right over the session list they change. EXPORT CSV stays off until a walk is saved. DESK_SYNC's plain line sits apart from its sentence.
+- Strava's rollup time is greyed out while Daily rollup is off. Wrapped lines on Live, History, Programs and the HUD page never start or end with a lone dot.
