@@ -2,7 +2,7 @@ import { ChartNoAxesColumn, Pause, Play, SkipForward, Square } from "lucide-reac
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { useAppSnapshot } from "../../state/useAppState";
-import { GhostButton, Label, Panel } from "../ui";
+import { GhostButton, Joined, Label, Panel } from "../ui";
 import { cx, post } from "../util";
 import { describeActive, describeTimeLeft, waitHeadline, waitReason } from "./format";
 
@@ -140,10 +140,10 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
       {/* The step lines, with the Live page's view switch at their end, a row apart from the program's buttons. */}
       <div className="flex min-w-0 basis-full flex-wrap items-end justify-between gap-x-3 gap-y-1">
         <div className="min-w-0">
-          <div className="font-mono text-xs text-white/60">{describeActive(a)}</div>
+          <Joined className="font-mono text-xs text-white/60" text={describeActive(a)} />
           {timeLeft && (
-            <div className="font-mono text-xs text-neon-yellow/70" data-testid="program-time-left">
-              {timeLeft}
+            <div data-testid="program-time-left">
+              <Joined className="font-mono text-xs text-neon-yellow/70" text={timeLeft} />
             </div>
           )}
           {wait && <div className="font-mono text-xs text-white/70">{waitReason(wait)}</div>}

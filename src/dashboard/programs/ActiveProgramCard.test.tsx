@@ -42,7 +42,8 @@ describe("ActiveProgramCard T-MINUS", () => {
     current!.active_program = { ...current!.active_program!, paused: false, wait: null, program_seconds_remaining: 1390 };
     render(<ActiveProgramCard />);
     const line = screen.getByTestId("program-time-left");
-    expect(line.textContent?.startsWith(`T-MINUS 23:10${NBSP}· ENDS${NBSP}`)).toBe(true);
+    // The end time stays whole; the dot between the two goes where the line wraps (`Joined`).
+    expect(line.textContent?.startsWith(`T-MINUS 23:10 · ENDS${NBSP}`)).toBe(true);
     expect(screen.getByText(/cycle 3/)).toBeInTheDocument();
   });
 

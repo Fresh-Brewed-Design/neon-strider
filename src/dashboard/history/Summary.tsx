@@ -1,5 +1,6 @@
+import type { ReactNode } from "react";
 import type { Change, WeeklySummary, WeekStats } from "../../ipc";
-import { Label, Panel } from "../ui";
+import { Joined, Label, Panel } from "../ui";
 import { cx } from "../util";
 import { formatDuration } from "../../format";
 import { formatChange, type ChangeTone } from "./weekly";
@@ -21,10 +22,10 @@ function WeekCell({ title, week, change }: { title: string; week: WeekStats; cha
         <span className="font-mono text-xs text-white/60">km</span>
         {chip && <span className={cx("font-mono text-xs font-bold", TONE_CLASS[chip.tone])}>{chip.text}</span>}
       </div>
-      <div className="font-mono text-xs text-white/60">
-        {week.active_days} / 7 days · {formatDuration(week.duration_s)} · {week.sessions}{" "}
-        {week.sessions === 1 ? "session" : "sessions"}
-      </div>
+      <Joined
+        className="font-mono text-xs text-white/60"
+        text={`${week.active_days} / 7 days · ${formatDuration(week.duration_s)} · ${week.sessions} ${week.sessions === 1 ? "session" : "sessions"}`}
+      />
     </div>
   );
 }
@@ -54,32 +55,42 @@ function SummaryStat({ label, value, unit }: { label: string; value: string; uni
   );
 }
 
-/** Totals of every saved walk in the time frame or day, summed by Rust, under the name of that range. */
-export function TotalsPanel({
-  meters,
-  seconds,
-  kcal,
-  count,
-  heading,
-}: {
-  /** The range the totals cover, as the page names it ("Last 7 days"). */
-  heading: string;
+/** Rust's totals for a time frame or day. */
+export interface Totals {
   meters: number;
   seconds: number;
   kcal: number;
-  count: number;
+  sessions: number;
+}
+
+/**
+ * Totals of every saved walk in the time frame or day, summed by Rust, under the name of that range.
+ * `picker` (the time frame tabs) sits in its heading row, on the block it changes; until Rust's
+ * totals arrive (`null`) the values read `--` and the tabs stay where they are.
+ */
+export function TotalsPanel({
+  totals,
+  heading,
+  picker,
+}: {
+  /** The range the totals cover, as the page names it ("Last 7 days"). */
+  heading: string;
+  picker?: ReactNode;
+  totals: Totals | null;
 }) {
+  const t = totals;
   return (
     // One row of four while each total gets 6rem (its label and a value like 12h 30m); a large
     // Windows text size wraps them onto more rows.
     <Panel className="grid grid-cols-[repeat(auto-fit,minmax(6rem,1fr))] gap-3 p-3">
-      <div className="col-span-full">
+      <div className="col-span-full flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <Label className="text-neon-cyan">{heading}</Label>
+        {picker}
       </div>
-      <SummaryStat label="Distance" value={(meters / 1000).toFixed(1)} unit="km" />
-      <SummaryStat label="Time" value={formatDuration(seconds)} />
-      <SummaryStat label="Sessions" value={String(count)} />
-      <SummaryStat label="Energy" value={String(Math.round(kcal))} unit="kcal" />
+      <SummaryStat label="Distance" value={t ? (t.meters / 1000).toFixed(1) : "--"} unit="km" />
+      <SummaryStat label="Time" value={t ? formatDuration(t.seconds) : "--"} />
+      <SummaryStat label="Sessions" value={t ? String(t.sessions) : "--"} />
+      <SummaryStat label="Energy" value={t ? String(Math.round(t.kcal)) : "--"} unit="kcal" />
     </Panel>
   );
 }

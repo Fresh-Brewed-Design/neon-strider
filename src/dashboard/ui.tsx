@@ -74,6 +74,38 @@ export function Codename({ text }: { text: string }) {
   ));
 }
 
+/** Splits a line at its separators: " · " or " // ", with a plain or no-break space either side. */
+const SEPARATOR = { "·": /\s·\s/, "//": /\s\/\/\s/ } as const;
+
+/**
+ * A monospace line of parts joined by " · " (or " // "), such as a program's step line. Each part
+ * stays whole while it fits a line, and where the line wraps the separator that would start the
+ * new line is clipped, so no line starts or ends with a lone separator. The separator is three (or
+ * four) characters wide, so this is for monospace text with no letter spacing.
+ */
+export function Joined({ text, sep = "·", className }: { text: string; sep?: keyof typeof SEPARATOR; className?: string }) {
+  const parts = text.split(SEPARATOR[sep]);
+  const width = `${sep.length + 2}ch`;
+  return (
+    <span data-joined className={cx("block overflow-hidden", className)}>
+      {/* Every part opens with its separator (the first with as much space), and the row is pulled
+          left by that width, so the one at the start of each line falls outside the box. */}
+      <span className="flex flex-wrap" style={{ marginLeft: `-${width}` }}>
+        {parts.map((part, i) => (
+          <span key={i} className="min-w-0" style={i === 0 ? { paddingLeft: width } : undefined}>
+            {i > 0 && (
+              <span data-joined-sep className="whitespace-pre">
+                {` ${sep} `}
+              </span>
+            )}
+            {part}
+          </span>
+        ))}
+      </span>
+    </span>
+  );
+}
+
 /** A codename's plain meaning: the small grey line under it (`PLAIN` in src/names.ts). */
 export function PlainLine({ text, className }: { text: string; className?: string }) {
   return <span className={cx("block font-mono text-[11px] font-normal normal-case leading-tight tracking-normal text-white/60", className)}>{text}</span>;

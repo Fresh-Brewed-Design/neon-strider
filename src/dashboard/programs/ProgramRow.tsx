@@ -3,7 +3,7 @@ import { Pencil, Play, Trash2 } from "lucide-react";
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { dispatch, type Command, type FitToDeckOffer, type FitToTimeOption, type Program } from "../../ipc";
-import { GhostButton, NeonButton, Panel } from "../ui";
+import { GhostButton, Joined, NeonButton, Panel } from "../ui";
 import { cx, post } from "../util";
 import { FitToDeck } from "./FitToDeck";
 import { describePlan, describeProgram } from "./format";
@@ -64,7 +64,7 @@ export function ProgramRow({
               </span>
             )}
           </div>
-          <div className="font-mono text-xs text-white/60">{describeProgram(p)}</div>
+          <Joined className="font-mono text-xs text-white/60" text={describeProgram(p)} />
           {p.note && <div className="text-xs leading-snug text-white/60">{p.note}</div>}
           <FitToDeck offer={fitToDeck} />
         </div>

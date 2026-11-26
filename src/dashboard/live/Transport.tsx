@@ -38,7 +38,9 @@ export function Transport({ s }: { s: AppSnapshot }) {
   if (!connection.connected) {
     const linking = state === "connecting" || state === "scanning";
     return (
-      <Panel className="flex flex-col gap-1 px-4 py-1.5">
+      // At least as tall as the ENGAGE / DUMP row (h-12), so the panels under it stay put when the
+      // treadmill links or drops.
+      <Panel className="flex min-h-12 flex-col justify-center gap-1 px-4 py-1.5">
         {/* The headline keeps 8rem beside the pill; with less room (a large Windows text size) it
             and the button wrap onto lines of their own. */}
         <div className="flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1">
