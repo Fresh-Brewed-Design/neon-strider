@@ -152,7 +152,10 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     snapshot.lights_out = lights_out;
     snapshot.program_tones = program_tones;
     snapshot.presenting = super::presenting::snapshot();
-    // After every card is decided, before the HUD view and the card check.
+    // After every card is decided: the one card the HUD shows, picked before
+    // the presenting hold hides any (the queue applies the hold itself).
+    super::card_queue::apply(&mut snapshot, crate::util::now_ms_u64());
+    // Before the HUD view and the card check.
     super::presenting::hold_cards(&mut snapshot);
     // The first-connect offer only shows while the treadmill is connected.
     snapshot.calibration.offer &= snapshot.connection.connected;
@@ -321,12 +324,7 @@ impl Loop {
     /// invisible and click-through.
     /// A HUD hidden from the tray menu comes back when a card appears.
     fn ensure_hud_for_cards(&mut self, snapshot: &AppSnapshot) {
-        let card = snapshot.maintenance.hud_card
-            || snapshot.weekly.show_card
-            || snapshot.seated.show_card
-            || snapshot.eye_break.phase != eyebreak::EyeBreakPhase::Idle
-            || snapshot.walkaway.card != walkaway::WalkAwayCard::None
-            || snapshot.update.hud_card;
+        let card = snapshot.hud_card != super::card_queue::HudCard::None;
         if card && self.app.get_webview_window("hud").is_none() {
             crate::ensure_hud_native(&self.app);
         } else if card && !self.card_up && !crate::hud::shown(&self.app) {

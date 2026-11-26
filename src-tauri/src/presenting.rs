@@ -10,7 +10,8 @@
 //! ending, GO taken at the treadmill) still show too.
 //!
 //! Each card is still decided by its own machine, every second, so when the
-//! hold ends the ones still relevant show at once and the rest are gone. The
+//! hold ends only the ones still relevant are due; `card_queue` brings them
+//! back one at a time, after a short grace, in rank order. The
 //! eye-break machine is told (`eyebreak::Tick::held`) so no break begins
 //! unseen; it keeps a heads-up's minute in reserve for when the hold ends.
 //! Toasts are moments, so a held toast is dropped, not saved for later.

@@ -17,8 +17,8 @@ use crate::engine::{DeckAction, OrchestratorState};
 use crate::programs::{self, ProgramPhase};
 use crate::protocol::MachineStatus;
 use crate::snapshot::{
-    calls, desk_sync, eyebreak, lights_out, pc_walk_share, presenting, program_tones, seated,
-    walkaway,
+    calls, card_queue, desk_sync, eyebreak, lights_out, pc_walk_share, presenting, program_tones,
+    seated, walkaway,
 };
 use crate::util::{blocking, now_ms_u64 as now_ms};
 use std::time::Duration;
@@ -261,7 +261,9 @@ async fn step(connected: bool, now: u64, idle_ms: Option<u64>) -> Outcome {
         idle_ms,
         locked,
         display_off: crate::platform::display_off(),
-        held: presenting::holding(),
+        // The presenting hold, or a card above the eye break holding its card
+        // back (`card_queue`, decided with the last snapshot).
+        held: presenting::holding() || card_queue::eye_break_waits(),
     };
     eyebreak::with(|rt| eye_break_tick(state, rt, ready, now, screen));
 
@@ -278,7 +280,6 @@ async fn step(connected: bool, now: u64, idle_ms: Option<u64>) -> Outcome {
         idle_ms,
         belt_running: belt_running(state),
         ready: treadmill_ready(connected, state),
-        program_waiting: state.program.as_ref().is_some_and(|r| r.wait.is_some()),
     };
     let effect = seated::with(|rt| rt.machine.tick(&rt.cfg, now, &tick));
     if let Some(seated::Effect::StartProgram(id)) = effect {
@@ -519,7 +520,7 @@ pub fn eye_break_stay_still() {
     }
 }
 
-/// SNOOZE 15 MIN.
+/// SNOOZE on the card (15, 30, then 60 minutes).
 pub fn snooze() {
     seated::with(|rt| rt.machine.snooze(now_ms()));
 }
@@ -614,7 +615,6 @@ mod tests {
                     idle_ms: Some(0),
                     belt_running: false,
                     ready: true,
-                    program_waiting: false,
                 },
             );
             t += 1000;

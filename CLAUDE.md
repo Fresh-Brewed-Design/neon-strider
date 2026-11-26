@@ -260,7 +260,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?saved`: a walk saved for a manual Strava upload
 - `?savefail`: saving a walk for Strava fails
 - `?scan=empty|error|bt-off`: the connect dialog's Bluetooth scan
-- `?seated`: the sit-too-long card (ATROPHY_WARNING); comma-separated variants `off`, `queued`, `long`, `none`, `one`, `many`
+- `?seated`: the sit-too-long card (ATROPHY_WARNING); comma-separated variants `off`, `queued`, `long`, `none`, `one`, `many`, `folded` (the card folded into the strip's seated-time readout), `snoozed` (two snoozes taken, so SNOOZE 60 MIN)
 - `?shortcuts=changed|taken`: System -> Shortcuts with Start or pause moved to Ctrl+Alt+S (RESET shows), or on a Mac (with `?mac`) ⌃⌥P held by another app
 - `?sim`: the SIM tag
 - `?speeddrift=drifting|held|waiting|outside|ended`: System -> Speed drift on (3.2 to 3.8 km/h, every 5 minutes) on a manual walk: setting the belt at 3.6 km/h (the HUD's SPEED DRIFT line), holding while Neural flow eases off, counting to the first change, the speed set outside the band, or ended by a speed set by hand; `?speeddrift` alone is the switch on with the belt still

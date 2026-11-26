@@ -14,7 +14,8 @@ type Send = (c: Command) => Promise<boolean>;
  * The panel collapsed during stasis (`hud_view` "strip"): under the header
  * (whose expand button shows the whole panel until the belt next moves),
  * today's total (DAILY_TOTAL) and Engage. A note covers the total and the
- * logo above it, beside Engage, so Engage never moves for it.
+ * logo above it, beside Engage, so Engage never moves for it. A folded
+ * ATROPHY_WARNING card sits beside the total (`SeatedReadout`).
  */
 export function StripRow({ snapshot, send, note }: { snapshot: AppSnapshot; send: Send; note: PanelNote | null }) {
   const daily = statWidget("DAILY");
@@ -23,6 +24,7 @@ export function StripRow({ snapshot, send, note }: { snapshot: AppSnapshot; send
     <div className="hud-strip">
       <div className="hud-strip-row">
         <div className="hud-strip-cell">
+          <SeatedReadout snapshot={snapshot} />
           {daily && total && (
             <div className={`hud-strip-total accent-${daily.accent}`} title={statTitle(daily)}>
               <span className="hud-label">{daily.label}</span>
@@ -36,6 +38,26 @@ export function StripRow({ snapshot, send, note }: { snapshot: AppSnapshot; send
         </div>
         <EngageButton snapshot={snapshot} send={send} sub />
       </div>
+    </div>
+  );
+}
+
+/**
+ * ATROPHY_WARNING folded into the strip (#422): the card showed once and went
+ * unanswered, so the seated time stays here, in yellow, until a walk. Rust
+ * decides when (`seated.folded`, `card_queue.rs`). It takes no room from
+ * Engage: the cell beside it shrinks first.
+ */
+export function SeatedReadout({ snapshot }: { snapshot: AppSnapshot }) {
+  const s = snapshot.seated;
+  if (!s.folded) return null;
+  return (
+    <div className="hud-strip-total hud-seated-readout accent-yellow" data-testid="hud-seated-readout" title="Minutes at the PC since the last walk of 2 minutes or more.">
+      <span className="hud-label">ATROPHY_WARNING</span>
+      <span className="hud-value hud-value-sm">
+        {s.seated_minutes}
+        <span className="hud-unit">MIN IDLE</span>
+      </span>
     </div>
   );
 }

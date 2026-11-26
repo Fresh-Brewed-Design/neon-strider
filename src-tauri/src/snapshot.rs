@@ -11,13 +11,15 @@
 //! - `emitter`: collecting the snapshot and pushing it to the windows
 //!
 //! The feature modules that contribute a part of the snapshot or act on it
-//! (calls, desk, desk_sync, eyebreak, hud_drag, lights_out, maintenance, odometer, pc_walk_share, presenting,
+//! (calls, card_queue, desk, desk_sync, eyebreak, hud_drag, lights_out, maintenance, odometer, pc_walk_share, presenting,
 //! program_tones, seated, tray, tray_menu,
 //! walkaway, wall_clock, weekly) are declared here rather than in `lib.rs`, so this module owns
 //! their wiring.
 
 #[path = "calls.rs"]
 pub mod calls;
+#[path = "card_queue.rs"]
+pub mod card_queue;
 #[path = "desk.rs"]
 pub mod desk;
 #[path = "desk_sync.rs"]
@@ -239,7 +241,7 @@ fn neural_snapshot(state: &OrchestratorState) -> NeuralSnapshot {
 
 /// Build a snapshot from state. Pure (no Tauri, no locks, no I/O) so it can be
 /// unit-tested. `speed_drift`, `desk_sync`, `wall_clock`, `pc_walk_share`, `today_timeline`, `walkaway`, `update`, `traffic`, `lights_out`, `presenting`, `ghost_pod`,
-/// `calibration`, `guided_task`, `program_tones` and `hud_view` are left at their defaults: they depend on the clock or shared
+/// `calibration`, `guided_task`, `program_tones`, `hud_view` and `hud_card` are left at their defaults: they depend on the clock or shared
 /// state, so the emitter fills them in.
 pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSnapshot {
     let deck = deck_snapshot(state, parts.max_incline_level);
@@ -257,6 +259,7 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         speed_drift: crate::speed_drift::SpeedDriftSnapshot::default(),
         hud: parts.hud,
         hud_view: HudView::Full,
+        hud_card: card_queue::HudCard::None,
         hud_monitors: parts.hud_monitors,
         strava: parts.strava,
         maintenance: parts.maintenance,
