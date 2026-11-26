@@ -3,6 +3,7 @@ import { HudNote } from "./HudNote";
 import { SegmentText } from "./SegmentText";
 import { SmallButton } from "./SmallButton";
 import { useHudSend } from "./useHudSend";
+import { deckAsleep, WAKE_FIRST, WAKE_FIRST_SUB } from "./status";
 import type { Toast } from "./useToasts";
 
 /** One transient notification: a speed or tilt readout with a bar, or a message. */
@@ -30,11 +31,19 @@ export function ToastCard({ toast, snapshot }: { toast: Toast; snapshot: AppSnap
   }
 
   const accent = toast.type === "AUTOMATION" ? "yellow" : "cyan";
+  // A program toast (the next walk in 30 s, a wait for GO) while the deck is asleep: the walk
+  // can't start until the deck wakes, so the toast says so in the start buttons' words.
+  const wake = toast.type === "AUTOMATION" && snapshot !== null && deckAsleep(snapshot);
   return (
     <div className={`hud-toast accent-${accent}`}>
       <div className="hud-toast-body">
         <span className="hud-label">SYS // {toast.type}</span>
         <SegmentText className="hud-toast-message" text={toast.message ?? ""} />
+        {wake && (
+          <span className="hud-plain" title={WAKE_FIRST} data-testid="hud-toast-wake">
+            {WAKE_FIRST_SUB}
+          </span>
+        )}
       </div>
       {toast.type === "AUTOMATION" && toast.isActionable && (
         <SmallButton onClick={() => send({ type: "program_skip" })}>SKIP REST</SmallButton>

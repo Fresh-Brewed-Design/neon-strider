@@ -85,7 +85,7 @@ describe("SeatedCard", () => {
   });
 
   it("shows a refused start (deck asleep) right under the buttons", () => {
-    const message = "Treadmill is off or asleep. Switch it on, then press Engage.";
+    const message = "Wake the deck first with the treadmill's power button or remote.";
     render(
       <SeatedCard
         snapshot={seated((x) => {
@@ -96,14 +96,28 @@ describe("SeatedCard", () => {
     );
     const card = screen.getAllByRole("alert")[0];
     expect(within(card).getByText(message)).toBeInTheDocument();
-    // The refusal replaces the standing hint rather than repeating it.
-    expect(screen.queryByText("Treadmill off. Turn the treadmill on to engage.")).not.toBeInTheDocument();
+    // The refusal is the standing hint's own sentence, shown once.
+    expect(within(card).getAllByText(message)).toHaveLength(1);
   });
 
-  it("says the deck is off while it sleeps, before any press", () => {
-    render(<SeatedCard snapshot={seated((x) => (x.deck.standby = true))} />);
-    expect(screen.getByText("Treadmill off. Turn the treadmill on to engage.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "ENGAGE" })).toBeEnabled();
+  it("says the deck must be woken first on every start button while it sleeps, before any press", async () => {
+    const s = seated((x) => (x.deck.standby = true));
+    render(<SeatedCard snapshot={s} />);
+    expect(screen.getByText("Wake the deck first with the treadmill's power button or remote.")).toBeInTheDocument();
+    const engage = screen.getByRole("button", { name: "ENGAGE wake deck first" });
+    expect(engage).toBeEnabled();
+    for (const id of s.seated.program_ids) {
+      const name = s.programs.find((p) => p.id === id)!.name;
+      expect(screen.getByRole("button", { name: `${name} wake deck first` })).toBeEnabled();
+    }
+    // The press sends what it always does; Rust refuses it with the same words.
+    await act(async () => fireEvent.click(engage));
+    expect(dispatched()).toEqual([{ command: { type: "seated_engage" } }]);
+  });
+
+  it("shows no wake line while the deck is awake", () => {
+    render(<SeatedCard snapshot={seated()} />);
+    expect(screen.queryByText("wake deck first")).not.toBeInTheDocument();
   });
 
   it("shows a rejected ENGAGE inside the card", async () => {

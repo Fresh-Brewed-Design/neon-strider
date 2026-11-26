@@ -129,7 +129,7 @@ describe("HUD controls keep one place in every program state", () => {
     };
     const a = words(running);
     expect(a.engage).toEqual([...ENGAGE_WORDS]);
-    expect(a.holdSub).toEqual(["pause program", "resume program", "start belt"]);
+    expect(a.holdSub).toEqual(["pause program", "resume program", "start belt", "wake deck first"]);
     expect(words(waiting)).toEqual(a);
   });
 

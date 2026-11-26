@@ -1165,6 +1165,21 @@ body,
 
 .hud-seated .hud-sub { overflow-wrap: anywhere; line-height: 1.35; }
 
+/* Deck asleep: each start button on the card carries "wake deck first" under its name, inside the
+   height it has without the line (ENGAGE 36px, a program 32px), so the card never grows for it. */
+.hud-seated .hud-btn.is-asleep {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding-top: 1px;
+  padding-bottom: 1px;
+  line-height: 1.2;
+}
+.hud-seated .hud-btn.is-asleep .hud-btn-sub { font-size: 11px; line-height: 1.15; }
+.hud-btn.hud-seated-engage.is-asleep .hud-btn-sub { color: color-mix(in srgb, #05080c 75%, var(--accent)); }
+
 .hud-seated-actions {
   display: flex;
   flex-wrap: wrap;

@@ -78,9 +78,11 @@ describe("HUD waiting for GO", () => {
     expect(screen.getByText("REST COMPLETE // PRESS GO")).toBeInTheDocument();
     expect(screen.queryByText("READY")).not.toBeInTheDocument();
     expect(screen.queryByText(/GO starts the belt/)).not.toBeInTheDocument();
-    const go = screen.getByRole("button", { name: "GO start belt" });
-    expect(go).toHaveAttribute("title", "Start the belt and carry on with the program.");
-    expect(go).toHaveClass("hud-btn-go");
+    // The card's GO and Engage's GO say the same: both start the belt.
+    const gos = screen.getAllByRole("button", { name: "GO start belt" });
+    expect(gos).toHaveLength(2);
+    for (const b of gos) expect(b).toHaveAttribute("title", "Start the belt and carry on with the program.");
+    expect(gos.filter((b) => b.classList.contains("hud-btn-go"))).toHaveLength(1);
     expect(screen.getByText(/cycle 4/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "SKIP next step" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "END end program" })).toBeInTheDocument();
@@ -102,7 +104,7 @@ describe("HUD waiting for GO", () => {
         s.hud.widgets = s.hud.widgets.filter((w) => w !== "PROGRAMS");
       }),
     );
-    expect(screen.getByRole("button", { name: "GO resume program" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "GO start belt" })).toBeInTheDocument();
   });
 
   it("drops the toast that repeats the card's prompt, and keeps other toasts", async () => {

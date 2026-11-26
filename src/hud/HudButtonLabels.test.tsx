@@ -64,6 +64,31 @@ describe("HUD belt buttons", () => {
     expect(engageTitle(go)).toBe("Resume the program.");
   });
 
+  it("say the deck must be woken first while it sleeps, on ENGAGE and on GO", () => {
+    const wake = "Wake the deck first with the treadmill's power button or remote.";
+    const asleep = panel((s) => (s.deck.standby = true));
+    expect(engageSub(asleep)).toBe("wake deck first");
+    expect(engageTitle(asleep)).toBe(wake);
+    const waiting = panel((s) => {
+      s.deck.standby = true;
+      s.active_program = { ...structuredClone(mock.active_program!), phase: "walking", paused: true, wait: "rest_complete" };
+    });
+    expect(engageSub(waiting)).toBe("wake deck first");
+    show(waiting);
+    // The main button and the program card's GO both say so; the press is unchanged.
+    expect(screen.getAllByRole("button", { name: "GO wake deck first" })).toHaveLength(2);
+    for (const b of screen.getAllByRole("button", { name: "GO wake deck first" })) expect(b).toHaveAttribute("title", wake);
+  });
+
+  it("start the belt from GO after a wait, in the program card's words", () => {
+    const waiting = panel((s) => {
+      s.deck.status = "Stopped";
+      s.active_program = { ...structuredClone(mock.active_program!), phase: "walking", paused: true, wait: "rest_complete" };
+    });
+    expect(engageSub(waiting)).toBe("start belt");
+    expect(engageTitle(waiting)).toBe("Start the belt and carry on with the program.");
+  });
+
   it("label the running program's buttons and give them tooltips", () => {
     show(
       panel((s) => {
