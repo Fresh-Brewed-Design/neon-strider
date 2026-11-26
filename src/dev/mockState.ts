@@ -63,6 +63,7 @@ export const snapshot: AppSnapshot = {
     incline_offset_pct: 0,
     incline_pct_per_level: 1.25,
     target_note: null,
+    target_note_hint: null,
     target_incline_level: 4,
     target_incline_pct: 5.0,
     min_speed_kmh: 0.6,

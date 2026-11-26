@@ -1,7 +1,7 @@
 // The belt itself. ?idle: the belt stopped. ?daily=12.34: today's total
 // (DAILY_TOTAL) in km, to check long values fit; ?distance=12.34 the same for
 // this walk's distance (DIST). ?decknote=refused|adjusted:
-// the HUD note after the deck refuses or changes a target.
+// the HUD note after the deck refuses or changes a target, with Rust's plain words.
 import { params, snapshot } from "../mockState";
 import { setProgramPaused } from "./programs";
 import type { Scenario } from "./types";
@@ -14,8 +14,14 @@ export const belt: Scenario = {
     const distanceFlag = Number(params.get("distance"));
     if (params.has("distance") && Number.isFinite(distanceFlag)) snapshot.session.distance_m = Math.round(distanceFlag * 1000);
     const deckNoteFlag = params.get("decknote");
-    if (deckNoteFlag === "refused") snapshot.deck.target_note = "DECK_REFUSED // 3.5 KM/H, TILT 6.3 %";
-    if (deckNoteFlag === "adjusted") snapshot.deck.target_note = "DECK_ADJUSTED // 0.6 KM/H -> 0.8 KM/H, TILT 6.3 % -> 7.5 %";
+    if (deckNoteFlag === "refused") {
+      snapshot.deck.target_note = "DECK_REFUSED // 3.5 KM/H, TILT 6.3 %";
+      snapshot.deck.target_note_hint = "The treadmill turned down 3.5 km/h. Pick another speed.";
+    }
+    if (deckNoteFlag === "adjusted") {
+      snapshot.deck.target_note = "DECK_ADJUSTED // 0.6 KM/H -> 0.8 KM/H";
+      snapshot.deck.target_note_hint = "The treadmill took 0.8 km/h in place of 0.6 km/h. 0.8 km/h is the treadmill's slowest speed.";
+    }
   },
   commands: {
     // Engage / Stasis: a still belt starts (or a paused program goes), a moving one pauses.
