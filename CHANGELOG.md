@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.83.0 (2026-11-26)
+
+### Changed
+
+- An eye break that comes due while you walk now waits for the belt to stop. After 10 minutes of waiting the belt pauses for the break as before.
+- Eye breaks play no tones while the microphone is in use. A break moved earlier to fit a program rest now gets its heads-up.
+
 ## 1.82.0 (2026-11-26)
 
 ### Changed
