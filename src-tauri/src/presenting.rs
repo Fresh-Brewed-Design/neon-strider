@@ -206,7 +206,16 @@ mod tests {
 
     #[test]
     fn plain_toasts_are_held_and_program_toasts_pass() {
-        for kind in ["STATUS", "VELOCITY", "ELEVATION", "STRAVA", "CALL", "TRAY"] {
+        for kind in [
+            "STATUS",
+            "DECK",
+            "LINK",
+            "VELOCITY",
+            "ELEVATION",
+            "STRAVA",
+            "CALL",
+            "TRAY",
+        ] {
             assert!(holds_toast(Some(kind), true), "{kind}");
         }
         assert!(!holds_toast(Some(URGENT_TOAST), true));

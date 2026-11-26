@@ -54,17 +54,19 @@ export function HudApp() {
   const wait = snapshot?.active_program?.wait ?? null;
   // The program card's headline is the one prompt while it shows.
   const promptOnProgramCard = full && wait !== null && widgets.includes("PROGRAMS");
+  const hasPanel = snapshot !== null && widgets.length > 0 && view !== "hidden";
   // A toast is redundant while the panel already shows the same thing live
-  // (the running strip shows speed; the still strip shows neither).
+  // (the running strip shows speed; the still strip shows neither). The
+  // header shows the belt's state and the link in every view of the panel.
   const toasts = allToasts.filter(
     (t) =>
+      !(hasPanel && (t.type === "DECK" || t.type === "LINK")) &&
       !(full && t.type === "VELOCITY" && widgets.includes("VELOCITY")) &&
       !(minified && t.type === "VELOCITY") &&
       !(full && t.type === "ELEVATION" && widgets.includes("INCLINE")) &&
       !(promptOnProgramCard && t.type === "AUTOMATION" && t.message === waitHeadline(wait)),
   );
   const stats = widgets.filter((w) => statWidget(w) !== undefined);
-  const hasPanel = snapshot !== null && widgets.length > 0 && view !== "hidden";
   // Rust holds the cards that can wait while presenting (`presenting.holding`).
   const maintenanceDue = snapshot?.maintenance.hud_card ?? false;
   const weeklyCard = snapshot?.weekly.show_card ?? false;
