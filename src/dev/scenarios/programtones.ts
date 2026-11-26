@@ -1,4 +1,4 @@
-// ?programtones: Program tones switched on (Programs page). Three seconds after
+// ?programtones: Program tones switched on (System, Desk). Three seconds after
 // the preview loads a cue fires, as Rust's desk loop would: `=step` (or no value)
 // the running program moves to its next step, `=wait` its rest ends and it waits
 // for GO (REST COMPLETE // PRESS GO), `=speedup` the next step is faster and

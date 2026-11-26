@@ -68,7 +68,7 @@ export function ProgramRow({
           {p.note && <div className="text-xs leading-snug text-white/60">{p.note}</div>}
           <FitToDeck offer={fitToDeck} />
         </div>
-        <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-3">
+        <div className="ml-auto flex max-w-full flex-wrap items-end justify-end gap-3">
           <GhostButton aria-label={`Edit ${p.name}`} title={`Edit ${p.name}`} className="min-h-6 min-w-6" onClick={onEdit}>
             <Pencil size={14} />
           </GhostButton>
@@ -82,9 +82,11 @@ export function ProgramRow({
             <Trash2 size={14} />
           </GhostButton>
           {fitToTime && (
+            <label className="flex shrink-0 flex-col gap-0.5">
+              <span className="font-mono text-[11px] font-bold uppercase leading-none tracking-[0.2em] text-white/60">Length</span>
             <select
               aria-label={`Length of ${p.name}`}
-              title="Length"
+              title={`How long ${p.name} runs`}
               className="h-9 w-24 shrink-0 rounded border border-white/15 bg-black/40 px-1.5 font-mono text-xs text-white focus:border-neon-cyan focus:outline-none disabled:opacity-40"
               value={minutes ?? ""}
               disabled={running || run.pending}
@@ -100,6 +102,7 @@ export function ProgramRow({
                 </option>
               ))}
             </select>
+            </label>
           )}
           <NeonButton
             tone={running ? "yellow" : "cyan"}

@@ -350,3 +350,23 @@ describe("ProgramEditor errors at the field (#368)", () => {
     expect(screen.queryByText("A zone needs a walking speed.")).toBeNull();
   });
 });
+
+describe("ProgramEditor labels", () => {
+  it("names the heart zone and remove buttons for their step", () => {
+    render(<ProgramEditor initial={toDraft(vo2Max())} onDone={() => {}} />);
+    expect(screen.getByRole("button", { name: "Heart zone on step 1" })).toHaveAttribute("title");
+    expect(screen.getByRole("button", { name: "Remove step 1" })).toHaveAttribute("title", "Remove step 1");
+    expect(screen.getByText("Zone")).toBeInTheDocument();
+  });
+
+  it("says what the belt does between cycles", () => {
+    render(<ProgramEditor initial={toDraft(vo2Max())} onDone={() => {}} />);
+    expect(screen.getByText("Between cycles the belt rests at the speed from before the program.")).toBeInTheDocument();
+    expect(screen.queryByText(/back to normal/)).toBeNull();
+  });
+
+  it("keeps Save in a footer that sticks to the bottom", () => {
+    render(<ProgramEditor initial={toDraft(vo2Max())} onDone={() => {}} />);
+    expect(screen.getByRole("button", { name: "Save" }).parentElement?.parentElement).toHaveClass("sticky", "bottom-0");
+  });
+});
