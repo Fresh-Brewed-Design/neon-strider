@@ -1,7 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import type { ActiveProgram } from "../../ipc";
 import { planRows, rowTime, stepChart, zoneText, type PlanRow, type StepChart } from "../programs/stepMap";
-import { Label, Panel } from "../ui";
+import { Joined, Label, Panel } from "../ui";
 import { cx } from "../util";
 
 // The chart's own units; the SVG stretches to the panel's width.
@@ -105,11 +105,7 @@ export function StepMap({ a, readout }: { a: ActiveProgram; readout?: ReactNode 
     <Panel className="flex min-h-min flex-1 basis-0 flex-col gap-1.5 px-3 py-2">
       <div className="flex shrink-0 flex-wrap items-baseline gap-x-3 font-mono text-[11px]">
         <Label className="text-neon-yellow/80">STEP_MAP</Label>
-        {repeat != null && (
-          <span className="text-white/60">
-            Cycle {a.cycle} · repeats every {num(repeat)} min
-          </span>
-        )}
+        {repeat != null && <Joined className="text-white/60" text={`Cycle ${a.cycle} · repeats every ${num(repeat)} min`} />}
         {readout}
       </div>
       <div className="relative shrink-0">

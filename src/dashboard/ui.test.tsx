@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { Codename, OptionPicker } from "./ui";
+import { Codename, Joined, OptionPicker } from "./ui";
 
 const OPTIONS = [
   { value: "a", label: "Alpha" },
@@ -159,5 +159,40 @@ describe("Codename", () => {
     expect(container.textContent).toBe("LIFETIME_ODOMETER");
     expect(container.querySelectorAll("wbr")).toHaveLength(1);
     expect(container.querySelector("wbr")?.previousSibling?.textContent).toBe("_");
+  });
+});
+
+describe("Joined", () => {
+  it("keeps the whole line's text, one part per box", () => {
+    const { container } = render(<Joined text="3.0 km/h · 5% · heart zone" />);
+    const line = container.querySelector("[data-joined]")!;
+    expect(line.textContent).toBe("3.0 km/h · 5% · heart zone");
+    const row = line.firstElementChild as HTMLElement;
+    expect(row.children).toHaveLength(3);
+    expect(row.children[1].textContent).toBe(" · 5%");
+  });
+
+  // The row is pulled left by one separator's width and the box clips it, so the separator that
+  // opens a wrapped line is never seen; the first part is padded by the same width.
+  it("hides the separator that would start a wrapped line", () => {
+    const { container } = render(<Joined text="a · b" />);
+    const line = container.querySelector("[data-joined]") as HTMLElement;
+    expect(line).toHaveClass("overflow-hidden");
+    const row = line.firstElementChild as HTMLElement;
+    expect(row.style.marginLeft).toBe("-3ch");
+    expect((row.children[0] as HTMLElement).style.paddingLeft).toBe("3ch");
+  });
+
+  it("splits at a separator with a no-break space beside it, and at //", () => {
+    const { container } = render(
+      <>
+        <Joined text={"T-MINUS 17:08\u00a0· ENDS\u00a09:15"} />
+        <Joined sep="//" text="QUIET // HOLD" />
+      </>,
+    );
+    const [a, b] = [...container.querySelectorAll("[data-joined]")].map((l) => l.firstElementChild!);
+    expect(a.children).toHaveLength(2);
+    expect(b.children).toHaveLength(2);
+    expect((b as HTMLElement).style.marginLeft).toBe("-4ch");
   });
 });

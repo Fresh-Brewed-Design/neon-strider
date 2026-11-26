@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { ActiveProgram } from "../../ipc";
 import { StepMap } from "./StepMap";
+import { joinedLine } from "../../test/joined";
 
 const { snapshot: mock } = await import("../../dev/mockBackend");
 
@@ -38,7 +39,7 @@ describe("STEP_MAP", () => {
     const a = { ...intervalRound(), step_index: 0, seconds_remaining: 300, cycle: 2, repeat_every_minutes: 60 };
     a.steps[1].zone = { low_pct: 85, high_pct: 95 };
     render(<StepMap a={a} />);
-    expect(screen.getByText("Cycle 2 · repeats every 60 min")).toBeInTheDocument();
+    expect(screen.getByText(joinedLine("Cycle 2 · repeats every 60 min"))).toBeInTheDocument();
     const rows = screen.getAllByRole("listitem");
     expect(rows[rows.length - 1]).toHaveTextContent("CYCLE_REST");
     expect(rows[rows.length - 1]).toHaveTextContent("25 min");
