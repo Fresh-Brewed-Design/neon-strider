@@ -5,6 +5,7 @@ import { statWidget } from "../widgets/registry";
 import { Sparkline } from "../widgets/Sparkline";
 import { NotePop, type PanelNote } from "./HudNote";
 import { EngageButton } from "./HudPanel";
+import { DumpName } from "./DumpName";
 import { dumpTitle } from "./status";
 
 type Send = (c: Command) => Promise<boolean>;
@@ -149,12 +150,12 @@ export function RunStripRow({ snapshot, send, note }: { snapshot: AppSnapshot; s
         <EngageButton snapshot={snapshot} send={send} sub />
         <button
           type="button"
-          className="hud-btn hud-btn-stop hud-btn-stack accent-magenta"
+          className="hud-btn hud-btn-stop hud-btn-stack hud-btn-dump"
           disabled={!connection.connected || stopped}
           title={dumpTitle(snapshot)}
           onClick={() => void send({ type: "stop" })}
         >
-          DUMP{" "}
+          <DumpName />{" "}
           <span className="hud-btn-sub">{snapshot.easy_stop.easing ? "stop now" : "end walk"}</span>
         </button>
       </div>

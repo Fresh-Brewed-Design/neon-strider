@@ -261,7 +261,7 @@ export function SessionRow({
         <div className="border-t border-white/10 px-3 pb-3 pt-3">
           <SessionScope session={s} />
           <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 font-mono text-xs text-white/60">
-            {s.steps > 0 && <div>Steps <span className="text-neon-magenta">{Math.floor(s.steps)}</span></div>}
+            {s.steps > 0 && <div>Steps <span className="text-neon-cyan">{Math.floor(s.steps)}</span></div>}
             {s.avg_incline > 0 && <div>Avg incline <span className="text-white/80">{s.avg_incline.toFixed(1)}%</span></div>}
             {s.avg_heart_rate !== null && (
               <div>

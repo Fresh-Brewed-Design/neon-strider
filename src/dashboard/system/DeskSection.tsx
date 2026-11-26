@@ -35,7 +35,6 @@ function WalkAwaySettings() {
       <div>
         <Toggle
           label={`Pause when I lock the ${s.platform.computer}`}
-          tone="yellow"
           checked={w.lock_enabled}
           onChange={(lock_enabled) => void lockAction.run(() => save({ lock_enabled }))}
           description={
@@ -50,7 +49,6 @@ function WalkAwaySettings() {
       <div>
         <Toggle
           label={`Pause when the ${s.platform.computer} sits idle`}
-          tone="yellow"
           checked={w.idle_enabled}
           onChange={(idle_enabled) => void idleAction.run(() => save({ idle_enabled }))}
           description={`After ${w.idle_minutes} minutes without input the belt pauses.`}
@@ -115,7 +113,6 @@ function EyeBreakSettings() {
       <div>
         <Toggle
           label="OCULAR_IMPLANT: Remind me to look away"
-          tone="cyan"
           checked={e.enabled}
           onChange={(enabled) => void enableAction.run(() => save({ enabled }))}
           description="The HUD gives a minute's warning before each break."
@@ -147,7 +144,6 @@ function EyeBreakSettings() {
           <div>
             <Toggle
               label="Tones"
-              tone="cyan"
               checked={e.sound}
               onChange={(sound) => void soundAction.run(() => save({ sound }))}
               description="Beeps guide each full blink."
@@ -158,7 +154,6 @@ function EyeBreakSettings() {
           <div>
             <Toggle
               label="Pause the belt for breaks"
-              tone="cyan"
               checked={e.pause_belt}
               onChange={(pause_belt) => void pauseAction.run(() => save({ pause_belt }))}
               description="A break pauses a walking belt."
@@ -169,7 +164,6 @@ function EyeBreakSettings() {
           <div>
             <Toggle
               label="Take breaks at program rests"
-              tone="cyan"
               checked={e.fit_rests}
               onChange={(fit_rests) => void restsAction.run(() => save({ fit_rests }))}
               description="A break due near a program rest waits for the rest."
@@ -226,7 +220,6 @@ export function DeskSection() {
       <div>
         <Toggle
           label="Idle nudge"
-          tone="yellow"
           checked={seated.enabled}
           onChange={(enabled) => void nudgeAction.run(() => saveSeated({ enabled }))}
           description={`After a stretch of ${pc} use without walking, a HUD card offers a walk or a program.`}
@@ -277,8 +270,8 @@ export function DeskSection() {
                           "max-w-full break-words rounded border px-2.5 py-1.5 text-left font-mono text-[11px] transition-colors",
                           "disabled:cursor-default disabled:opacity-35",
                           picked
-                            ? "border-neon-yellow bg-neon-yellow/15 text-neon-yellow"
-                            : "border-white/15 text-white/70 hover:border-neon-yellow/50",
+                            ? "border-neon-cyan bg-neon-cyan/15 text-neon-cyan"
+                            : "border-white/15 text-white/70 hover:border-neon-cyan/50",
                         )}
                       >
                         {p.name}
@@ -330,7 +323,6 @@ export function DeskSection() {
         <div>
           <Toggle
             label="Slow down on calls"
-            tone="yellow"
             checked={calls.enabled}
             onChange={(enabled) => void callsAction.run(() => saveCalls({ enabled }))}
             description="A running belt eases to the quiet speed while an app uses the microphone."

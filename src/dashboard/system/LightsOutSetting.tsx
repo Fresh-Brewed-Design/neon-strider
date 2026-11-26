@@ -13,7 +13,6 @@ export function LightsOutSetting() {
     <div>
       <Toggle
         label="LIGHTS_OUT: Stop when the display turns off"
-        tone="magenta"
         checked={s.lights_out.enabled}
         onChange={(enabled) => void action.run(() => dispatch({ type: "lights_out_set_config", enabled }))}
         description="The treadmill stops and any program ends."

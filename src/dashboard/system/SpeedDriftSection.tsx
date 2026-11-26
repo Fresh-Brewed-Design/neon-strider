@@ -61,7 +61,6 @@ export function SpeedDriftSection() {
       <div>
         <Toggle
           label="Vary my speed on long walks"
-          tone="cyan"
           checked={d.enabled}
           onChange={(enabled) => void toggle.run(() => save({ enabled }))}
           description="Adjusts only a belt already running at a speed you set."

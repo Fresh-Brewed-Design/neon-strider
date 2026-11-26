@@ -14,7 +14,6 @@ export function PresentingSetting() {
     <div>
       <Toggle
         label="Hold cards while presenting"
-        tone="cyan"
         checked={s.presenting.enabled}
         onChange={(enabled) => void action.run(() => dispatch({ type: "presenting_set_config", enabled }))}
         description="Cards that can wait show once the slideshow or full-screen app closes."

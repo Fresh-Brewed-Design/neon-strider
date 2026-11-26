@@ -6,8 +6,9 @@ import { statWidget } from "../widgets/registry";
 import { Sparkline } from "../widgets/Sparkline";
 import { targetAccent, targetRange, ZONE_ACCENT, zoneRange } from "../widgets/zone";
 import { NotePop, type PanelNote } from "./HudNote";
-import { isMoving, linkView } from "../state/linkStatus";
+import { linkView } from "../state/linkStatus";
 import { SmallButton } from "./SmallButton";
+import { DumpName } from "./DumpName";
 import { dumpTitle, engageLabel, engageSub, engageTitle, firstStepLine, offlineText } from "./status";
 import type { useRelink } from "./useRelink";
 import { useWheelSteps } from "./useWheelSteps";
@@ -175,7 +176,7 @@ export function EasyStopLine({ snapshot }: { snapshot: AppSnapshot }) {
   const e = snapshot.easy_stop;
   if (!e.easing || e.to_kmh === null) return null;
   return (
-    <div className="hud-easystop accent-magenta" data-testid="hud-easystop" title={e.message ?? undefined}>
+    <div className="hud-easystop accent-yellow" data-testid="hud-easystop" title={e.message ?? undefined}>
       <span className="hud-label">EASY STOP</span>
       <span className="hud-easystop-speed">
         to {e.to_kmh.toFixed(1)}
@@ -243,11 +244,10 @@ export function EngageButton({
   /** A plain line under the codename (the panel and both strips). */
   sub?: boolean;
 }) {
-  const moving = isMoving(snapshot.deck);
   return (
     <button
       type="button"
-      className={`hud-btn hud-btn-main${sub ? " hud-btn-stack" : ""} ${moving ? "accent-magenta" : "accent-cyan"}`}
+      className={`hud-btn hud-btn-main${sub ? " hud-btn-stack" : ""} accent-cyan`}
       disabled={!snapshot.connection.connected}
       title={engageTitle(snapshot)}
       onClick={() => void send({ type: "toggle_start" })}
@@ -309,12 +309,12 @@ export function Controls({ snapshot, send }: { snapshot: AppSnapshot; send: Send
         <EngageButton snapshot={snapshot} send={send} sub />
         <button
           type="button"
-          className="hud-btn hud-btn-stop hud-btn-stack accent-magenta"
+          className="hud-btn hud-btn-stop hud-btn-dump hud-btn-stack"
           disabled={!connection.connected || deck.status === "Stopped" || deck.status === "Stopping"}
           title={dumpTitle(snapshot)}
           onClick={() => send({ type: "stop" })}
         >
-          DUMP{" "}
+          <DumpName />{" "}
           <span className="hud-btn-sub">{snapshot.easy_stop.easing ? "stop now" : "end walk"}</span>
         </button>
         <QuietButton snapshot={snapshot} send={send} />

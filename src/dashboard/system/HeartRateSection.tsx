@@ -38,7 +38,7 @@ export function HeartRateSection() {
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0 truncate font-mono text-xs text-white/85">
                 <span className="font-bold uppercase tracking-[0.12em]">{heart.sensor.name || "Heart rate sensor"}</span>
-                {heart.bpm !== null && <span className="ml-2 text-neon-magenta">{heart.bpm} BPM</span>}
+                {heart.bpm !== null && <span className="ml-2 text-neon-cyan">{heart.bpm} BPM</span>}
               </div>
               <GhostButton
                 disabled={pick.pending}

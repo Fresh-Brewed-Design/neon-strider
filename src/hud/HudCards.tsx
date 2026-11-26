@@ -8,6 +8,7 @@ import { describePlan } from "../dashboard/programs/format";
 import { startFailure } from "../state/linkStatus";
 import { resumeWord } from "./status";
 import { HudNote } from "./HudNote";
+import { DumpName } from "./DumpName";
 import { SmallButton } from "./SmallButton";
 import { useHudSend } from "./useHudSend";
 
@@ -27,7 +28,7 @@ export function MaintenanceCard({ snapshot }: { snapshot: AppSnapshot }) {
   const m = snapshot.maintenance;
   const usage = m.basis === "hours" ? `${m.hours_since.toFixed(1)} H` : `${Math.round(m.distance_since_km)} KM`;
   return (
-    <div className="hud-toast hud-maint accent-magenta" role="alert">
+    <div className="hud-toast hud-maint accent-yellow" role="alert">
       <div className="hud-toast-body">
         <span className="hud-label">BELT SERVICE DUE</span>
         <span className="hud-toast-message">
@@ -270,16 +271,23 @@ export function WalkAwayCard({ snapshot }: { snapshot: AppSnapshot }) {
       ? `You locked the ${snapshot.platform.computer}.`
       : `No keyboard or mouse input for ${w.idle_minutes} minutes.`;
   return (
-    <div className="hud-toast hud-walkaway accent-magenta" role="alert">
+    <div className="hud-toast hud-walkaway accent-yellow" role="alert">
       <div className="hud-toast-body">
         <span className="hud-toast-message">WALK-AWAY // BELT PAUSED</span>
         <span className="hud-sub">{why} The session is kept. Press {resumeWord(snapshot)} when you are back.</span>
         <HudNote error={error} />
       </div>
       <div className="hud-walkaway-actions">
-        <SmallButton onClick={() => send({ type: "walkaway_resume" })}>{resumeWord(snapshot)}</SmallButton>
-        <SmallButton sub="end walk" title="Stop the belt and end the session." onClick={() => send({ type: "walkaway_end" })}>
-          DUMP
+        <SmallButton className="hud-btn-primary accent-cyan" onClick={() => send({ type: "walkaway_resume" })}>
+          {resumeWord(snapshot)}
+        </SmallButton>
+        <SmallButton
+          className="hud-btn-dump"
+          sub="end walk"
+          title="Stop the belt and end the session."
+          onClick={() => send({ type: "walkaway_end" })}
+        >
+          <DumpName />
         </SmallButton>
       </div>
     </div>

@@ -5,7 +5,19 @@ import { dispatch, type AppSnapshot } from "../../ipc";
 import { isMoving, linkState, linkView, startFailure } from "../../state/linkStatus";
 import { StatusPill } from "../StatusPill";
 import { NeonButton, Panel } from "../ui";
-import { openLinkDialog } from "../util";
+import { cx, openLinkDialog } from "../util";
+
+/**
+ * DUMP ends the walk, so it never looks like STASIS (the HUD's DUMP matches): a 2px magenta outline
+ * on the dark fill with a stop square, a quarter fill and the digits' glow on hover, solid magenta
+ * with a dark label while pressed. Disabled, it dims like every button with a 1px outline.
+ */
+const DUMP_BUTTON = cx(
+  "rounded border-2 border-neon-magenta bg-transparent font-digital text-xs font-bold uppercase tracking-[0.18em] text-neon-magenta transition-colors",
+  "enabled:hover:bg-neon-magenta/25 enabled:hover:shadow-[0_0_12px_rgba(255,0,255,0.45)] enabled:hover:[text-shadow:0_0_10px_rgba(255,0,255,0.55)]",
+  "enabled:active:bg-neon-magenta enabled:active:text-black enabled:active:[text-shadow:none]",
+  "disabled:cursor-default disabled:border disabled:opacity-30",
+);
 
 /** Engage / Stasis and Dump, or, while offline, the link state with Connect or Retry. */
 export function Transport({ s }: { s: AppSnapshot }) {
@@ -59,7 +71,6 @@ export function Transport({ s }: { s: AppSnapshot }) {
     <div className="flex flex-col gap-2">
       <div className="flex gap-3">
         <NeonButton
-          tone={moving ? "magenta" : "cyan"}
           className="flex h-12 flex-1 flex-col items-center justify-center text-sm"
           disabled={control.pending || waiting}
           onClick={() => void engage.run(() => dispatch({ type: "toggle_start" }))}
@@ -72,18 +83,21 @@ export function Transport({ s }: { s: AppSnapshot }) {
             {moving ? "pause" : programGo || paused ? "resume" : "start"}
           </span>
         </NeonButton>
-        <NeonButton
-          tone="magenta"
-          className="flex h-12 w-32 flex-col items-center justify-center"
+        <button
+          type="button"
+          className={cx(DUMP_BUTTON, "flex h-12 w-32 flex-col items-center justify-center")}
           disabled={deck.status === "Stopped" || deck.status === "Stopping" || control.pending}
           onClick={() => void control.run(() => dispatch({ type: "stop" }))}
           title={s.easy_stop.easing ? "Stop the belt at once" : "Stop the belt and end the session"}
         >
-          Dump{" "}
-          <span className="font-mono text-[11px] font-normal normal-case leading-tight tracking-normal opacity-90">
+          <span className="flex items-center gap-1.5">
+            <span aria-hidden className="h-2 w-2 shrink-0 bg-current" />
+            Dump
+          </span>{" "}
+          <span className="font-mono text-[11px] font-normal normal-case leading-tight tracking-normal">
             {s.easy_stop.easing ? "stop now" : "end walk"}
           </span>
-        </NeonButton>
+        </button>
       </div>
       <ActionStatus
         pending={(waiting && !moving && "Waiting for the treadmill to start…") || s.easy_stop.message}

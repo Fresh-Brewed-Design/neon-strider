@@ -177,7 +177,7 @@ export function HistoryPage() {
             <button
               type="button"
               onClick={() => setDay(null)}
-              className="font-mono text-[11px] text-neon-magenta hover:underline"
+              className="font-mono text-[11px] text-neon-cyan hover:underline"
             >
               Clear day filter
             </button>

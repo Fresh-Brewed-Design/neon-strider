@@ -130,7 +130,6 @@ function StepResult({ steps, kmh }: { steps: StepRunView; kmh: number }) {
       <div className="flex gap-2">
         {steps.saved && (
           <NeonButton
-            tone="magenta"
             className="flex-1 py-2"
             disabled={undo.pending}
             onClick={() => void undo.run(() => dispatch({ type: "calibration_steps_undo" }))}

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { NumberField, Toggle } from "./fields";
+import { ChoiceGroup, NumberField, Toggle } from "./fields";
 
 function field(onCommit = vi.fn().mockResolvedValue(undefined), value = 80) {
   render(<NumberField label="Body weight" value={value} min={30} max={250} unit="kg" onCommit={onCommit} />);
@@ -50,5 +50,30 @@ describe("Toggle More", () => {
   it("has no More without extra facts", () => {
     render(<Toggle label="Easy stop" description="One sentence." checked={false} onChange={() => {}} />);
     expect(screen.queryByRole("button", { name: /More/ })).toBeNull();
+  });
+});
+
+// Colour roles (#391): cyan is on and selected, whatever the section's own colour.
+describe("switch and choice colours", () => {
+  it("turns every switch on cyan", () => {
+    render(<Toggle label="Auto-sync" checked onChange={() => {}} />);
+    expect(screen.getByRole("switch", { name: "Auto-sync" })).toHaveClass("bg-neon-cyan");
+  });
+
+  it("marks the chosen option cyan", () => {
+    render(
+      <ChoiceGroup
+        label="Mute from home feed"
+        options={[
+          { value: "all", label: "Mute all" },
+          { value: "none", label: "Don't mute" },
+        ]}
+        value="all"
+        onChange={() => {}}
+      />,
+    );
+    const chosen = screen.getByRole("radio", { name: "Mute all" });
+    expect(chosen.className).toContain("text-neon-cyan");
+    expect(chosen.className).not.toContain("magenta");
   });
 });

@@ -23,7 +23,7 @@ function InlineText({ text }: { text: string }) {
 const HEADING: Record<HeadingLevel, string> = {
   1: "font-digital text-sm font-bold tracking-[0.12em] text-neon-cyan",
   2: "font-digital text-xs font-bold tracking-[0.15em] text-neon-cyan",
-  3: "font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-neon-magenta",
+  3: "font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-neon-cyan",
   4: "font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-white/70",
 };
 

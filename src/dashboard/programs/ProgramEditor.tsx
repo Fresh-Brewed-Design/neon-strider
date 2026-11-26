@@ -305,7 +305,7 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
               aria-label={`Heart zone on step ${i + 1}`}
               aria-pressed={s.zone}
               title={s.zone ? `Heart zone on for step ${i + 1}` : `Hold a heart zone on step ${i + 1}`}
-              className={cx(s.zone && "text-neon-magenta!")}
+              className={cx(s.zone && "text-neon-cyan!")}
               onClick={() => patchStep(i, { zone: !s.zone })}
             >
               <HeartPulse size={14} />
@@ -370,7 +370,6 @@ export function ProgramEditor({ initial, onDone }: { initial: Draft; onDone: () 
             <Label>{anyZone ? "Heart zones in" : "Pulse target in"}</Label>
             <ChoiceGroup
               label="Heart zone unit"
-              tone="magenta"
               options={ZONE_UNITS}
               value={d.zoneUnit}
               onChange={(unit) => setD(withZoneUnit(d, unit, maxBpm))}
@@ -480,7 +479,7 @@ function PulseRow({
             aria-label={`Step ${n} ends on heart rate`}
             onChange={(e) => onChange({ pulse: e.target.checked })}
           />
-          <span className="font-bold uppercase tracking-[0.12em] text-neon-magenta">Pulse target</span>
+          <span className="font-bold uppercase tracking-[0.12em] text-neon-yellow">Pulse target</span>
         </label>
         <span className={cx(!step.pulse && "opacity-40")}>down to</span>
         <input
@@ -542,7 +541,7 @@ function ZoneRow({
     <div className="grid grid-cols-[2rem_1fr] items-center gap-2">
       <span />
       <div className="flex flex-wrap items-center gap-2 font-mono text-xs text-white/70">
-        <span className="font-bold uppercase tracking-[0.12em] text-neon-magenta">Heart zone</span>
+        <span className="font-bold uppercase tracking-[0.12em] text-neon-yellow">Heart zone</span>
         <input
           className={cx(field, "w-16")}
           inputMode="decimal"
@@ -567,7 +566,6 @@ function ZoneRow({
             <span>trims</span>
             <ChoiceGroup
               label={`Step ${n} heart zone trims`}
-              tone="magenta"
               options={ZONE_TRIMS}
               value={step.zoneTrim}
               onChange={(zoneTrim) => onChange({ zoneTrim })}
