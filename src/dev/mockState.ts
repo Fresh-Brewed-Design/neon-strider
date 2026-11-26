@@ -231,7 +231,7 @@ export const snapshot: AppSnapshot = {
     blink_seq: 0,
     end_seq: 0,
   },
-  calls: { enabled: true, quiet_kmh: 2, mic_in_use: false, quiet_active: false, quiet_now: false, quiet_now_back_kmh: null },
+  calls: { enabled: true, quiet_kmh: 2, mic_in_use: false, quiet_active: false, quiet_now: false, quiet_now_back_kmh: null, call_back_kmh: null },
   odometer: { distance_km: 412.6, belt_hours: 138.2, since_ms: Date.UTC(2026, 2, 12) },
   walkaway: { lock_enabled: true, idle_enabled: true, idle_minutes: 10, card: "none", pause_in_s: 0, reason: null },
   lights_out: { enabled: false },

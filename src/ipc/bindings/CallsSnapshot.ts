@@ -16,4 +16,8 @@ quiet_now: boolean,
 /**
  * While Quiet now holds: the speed a second press puts back.
  */
-quiet_now_back_kmh: number | null, };
+quiet_now_back_kmh: number | null, 
+/**
+ * While a call holds the belt quiet: the speed the call's end puts back.
+ */
+call_back_kmh: number | null, };

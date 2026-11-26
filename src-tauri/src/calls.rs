@@ -81,6 +81,8 @@ pub struct CallsSnapshot {
     pub quiet_now: bool,
     /// While Quiet now holds: the speed a second press puts back.
     pub quiet_now_back_kmh: Option<f32>,
+    /// While a call holds the belt quiet: the speed the call's end puts back.
+    pub call_back_kmh: Option<f32>,
 }
 
 /// What the machine needs to know about the belt.
@@ -243,6 +245,16 @@ impl CallMachine {
             if !((belt.running || belt.paused) && still_ours(&a, belt)) {
                 self.manual = None;
             }
+        }
+    }
+
+    /// While a call holds the belt quiet: the speed its end puts back.
+    pub fn call_back_kmh(&self) -> Option<f32> {
+        match self.phase {
+            Phase::Call {
+                adjusted: Some(a), ..
+            } => Some(a.saved_kmh),
+            _ => None,
         }
     }
 
@@ -469,9 +481,9 @@ pub fn set_config(app: &AppHandle, enabled: bool, quiet_kmh: f32) -> Result<(), 
 /// For the snapshot. No I/O.
 pub fn snapshot() -> CallsSnapshot {
     let cfg = config();
-    let (call, quiet_now_back_kmh) = {
+    let (call, quiet_now_back_kmh, call_back_kmh) = {
         let m = MACHINE.lock().unwrap_or_else(|e| e.into_inner());
-        (m.quiet_active(), m.quiet_now_back_kmh())
+        (m.quiet_active(), m.quiet_now_back_kmh(), m.call_back_kmh())
     };
     CallsSnapshot {
         enabled: cfg.enabled,
@@ -480,6 +492,7 @@ pub fn snapshot() -> CallsSnapshot {
         quiet_active: call,
         quiet_now: quiet_now_back_kmh.is_some(),
         quiet_now_back_kmh,
+        call_back_kmh,
     }
 }
 
@@ -565,6 +578,7 @@ mod tests {
             Some(Action::Quiet { to_kmh: 2.0 })
         );
         assert!(m.quiet_active());
+        assert_eq!(m.call_back_kmh(), Some(4.0));
         // The same call never slows it again.
         assert_eq!(m.tick(&cfg(), T0 + 2 * S, &call(running(2.0))), None);
     }
@@ -581,6 +595,7 @@ mod tests {
         let fx = run(&mut m, &cfg(), 31, 45, quiet_call(at_quiet));
         assert_eq!(fx, vec![(41, Action::Restore { to_kmh: 4.0 })]);
         assert!(!m.quiet_active());
+        assert_eq!(m.call_back_kmh(), None);
         // And only once.
         assert!(run(&mut m, &cfg(), 46, 60, quiet_call(running(4.0))).is_empty());
     }
@@ -931,6 +946,7 @@ mod tests {
         assert_eq!(m.press_quiet_now(&cfg(), &running(2.0)), Ok(None));
         assert!(m.quiet_now());
         assert!(!m.quiet_active());
+        assert_eq!(m.call_back_kmh(), None);
         assert!(m.holds_quiet());
         // The call ends: no restore, the belt stays quiet.
         let fx = run(&mut m, &cfg(), 1, 40, quiet_call(running(2.0)));
