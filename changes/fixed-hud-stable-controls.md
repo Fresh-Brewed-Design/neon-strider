@@ -1,2 +1,0 @@
-- HUD buttons stay in place when a note, a status line or the offline line comes or goes, in every view and corner.
-- HUD notes say in plain words what the treadmill did; steppers say TARGET, program buttons show their first speed and QUIET fills while holding the belt. The link word in the HUD header stays on one line.
