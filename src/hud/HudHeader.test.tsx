@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { ADVANCE, HudHeader, SCRAMBLE_FRAMES, scrambled } from "./HudHeader";
+import { HudHeader, SCRAMBLE_FRAMES } from "./HudHeader";
+import { ADVANCE, scrambled } from "./titleScramble";
 
 const header = (simulated?: boolean) =>
   render(
