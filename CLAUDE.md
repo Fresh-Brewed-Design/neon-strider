@@ -232,7 +232,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?easystop=on|easing`: Easy stop switched on in System -> Treadmill; `=easing` a manual walk easing down after DUMP, 12 s before the Stop (EASY STOP on the HUD, DUMP reads "stop now")
 - `?echo=short`: ECHO on a History walk is refused as too short, with Rust's message
 - `?engage=timeout`: the deck's screen is off, so Engage waits and fails
-- `?eyebreak=upcoming|rest|break|still|resume`: the OCULAR_IMPLANT cards: heads-up, heads-up set for a program rest, cooldown with the belt paused or left alone, RE-JACK card
+- `?eyebreak=upcoming|rest|moved|waiting|break|still|silent|resume`: the OCULAR_IMPLANT cards: heads-up, heads-up set for a program rest, heads-up for a break moved earlier to fit the rest (with `?program=resting`), DEFERRED (due mid-walk, waiting for the belt to stop, 8:12 before the pause), cooldown with the belt paused or left alone, cooldown during a call (no tones), RE-JACK card
 - `?ghostpod=advertising|connected|error`: System -> Labs GHOST_POD
 - `?ghostpower=waiting|linked`: GHOST_POD's power switch on, with no watch or a watch reading 135 W
 - `?guided`: a guided task (GROUND_TRUTH) holding the dashboard open and on top, with UNPIN
@@ -267,7 +267,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?saved`: a walk saved for a manual Strava upload
 - `?savefail`: saving a walk for Strava fails
 - `?scan=empty|error|bt-off`: the connect dialog's Bluetooth scan
-- `?seated`: the sit-too-long card (ATROPHY_WARNING); comma-separated variants `off`, `queued`, `long`, `none`, `one`, `many`
+- `?seated`: the sit-too-long card (ATROPHY_WARNING); comma-separated variants `off`, `queued`, `long`, `none`, `one`, `many`, `folded` (the card folded into the strip's seated-time readout), `snoozed` (two snoozes taken, so SNOOZE 60 MIN)
 - `?shortcuts=changed|taken`: System -> Shortcuts with Start or pause moved to Ctrl+Alt+S (RESET shows), or on a Mac (with `?mac`) ⌃⌥P held by another app
 - `?sim`: the SIM tag
 - `?speeddrift=drifting|held|waiting|outside|ended`: System -> Speed drift on (3.2 to 3.8 km/h, every 5 minutes) on a manual walk: setting the belt at 3.6 km/h (the HUD's SPEED DRIFT line), holding while Neural flow eases off, counting to the first change, the speed set outside the band, or ended by a speed set by hand; `?speeddrift` alone is the switch on with the belt still

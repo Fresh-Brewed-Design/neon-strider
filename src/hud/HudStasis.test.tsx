@@ -137,7 +137,10 @@ describe("HUD hidden", () => {
 
   it("still shows a card that needs an answer, without the panel", () => {
     const { container } = show(
-      still("hidden", (s) => Object.assign(s.walkaway, { card: "paused", reason: "lock" })),
+      still("hidden", (s) => {
+        Object.assign(s.walkaway, { card: "paused", reason: "lock" });
+        s.hud_card = "walk_away";
+      }),
     );
     expect(container.querySelector(".hud-panel")).toBeNull();
     expect(container.querySelector(".hud-walkaway")).not.toBeNull();
@@ -256,7 +259,12 @@ describe("HUD minified", () => {
   });
 
   it("still shows a card that needs an answer", () => {
-    const { container } = show(minified((s) => Object.assign(s.walkaway, { card: "warning", pause_in_s: 20, reason: "idle" })));
+    const { container } = show(
+      minified((s) => {
+        Object.assign(s.walkaway, { card: "warning", pause_in_s: 20, reason: "idle" });
+        s.hud_card = "walk_away";
+      }),
+    );
     expect(container.querySelector(".hud-run-strip")).not.toBeNull();
     expect(container.querySelector(".hud-walkaway")).not.toBeNull();
   });
@@ -331,6 +339,7 @@ function nothingRunning(eye: Partial<AppSnapshot["eye_break"]>): AppSnapshot {
   return still("hidden", (s) => {
     Object.assign(s.connection, { connected: false, has_saved_device: true, link: { state: "idle" } });
     s.eye_break = { ...s.eye_break, enabled: true, ...eye };
+    s.hud_card = "eye_break";
   });
 }
 

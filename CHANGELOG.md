@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.84.0 (2026-11-26)
+
+### Changed
+
+- The HUD shows one card at a time, most urgent first. GO, RE-JACK or ENGAGE drops a waiting ATROPHY_WARNING because the belt is starting. Cards held during a presentation come back one by one after the presentation ends.
+- ATROPHY_WARNING shows once: left unanswered for a minute, the card folds into a yellow seated-time readout on the HUD. Snoozes in a row get longer: 15, 30, then 60 minutes.
+
+## 1.83.0 (2026-11-26)
+
+### Changed
+
+- An eye break that comes due while you walk now waits for the belt to stop. After 10 minutes of waiting the belt pauses for the break as before.
+- Eye breaks play no tones while the microphone is in use. A break moved earlier to fit a program rest now gets its heads-up.
+
+## 1.82.0 (2026-11-26)
+
+### Changed
+
+- With Install automatically on, updates install at most once a day with no UPDATE READY card on the HUD and never during a call or presentation.
+- What's new now waits until you open the dashboard yourself and keeps any notes you haven't read yet.
+
 ## 1.81.0 (2026-11-26)
 
 ### Changed

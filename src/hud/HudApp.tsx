@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import { useAppSnapshot } from "../state/useAppState";
 import { statWidget } from "../widgets/registry";
-import { EyeBreakCard, MaintenanceCard, SeatedCard, UpdateCard, WalkAwayCard, WeeklyCard } from "./HudCards";
+import { HudCardView } from "./HudCards";
 import { useEyeBreakTones } from "./eyeBreakTones";
 import { useProgramTones } from "./programTones";
 import { HudHeader, type HeaderToggle } from "./HudHeader";
@@ -23,7 +23,8 @@ import "./hud.css";
 
 /**
  * The always-on-top overlay: the panel (header, pinned stats, modules), the
- * persistent cards, then transient toasts. Only this content takes the
+ * one card Rust picked (`hud_card`, ranked in `card_queue.rs`), then
+ * transient toasts. Only this content takes the
  * pointer; the rest of the window is click-through. While the belt is still,
  * the live stats dim, and Rust may ask for the panel as a strip or not at all,
  * and minified for the running strip (`hud_view`); the cards and toasts show
@@ -67,15 +68,10 @@ export function HudApp() {
       !(promptOnProgramCard && t.type === "AUTOMATION" && t.message === waitHeadline(wait)),
   );
   const stats = widgets.filter((w) => statWidget(w) !== undefined);
-  // Rust holds the cards that can wait while presenting (`presenting.holding`).
-  const maintenanceDue = snapshot?.maintenance.hud_card ?? false;
-  const weeklyCard = snapshot?.weekly.show_card ?? false;
-  const seatedCard = snapshot?.seated.show_card ?? false;
-  const eyeBreakCard = (snapshot?.eye_break.phase ?? "idle") !== "idle";
-  const walkawayCard = (snapshot?.walkaway.card ?? "none") !== "none";
-  const updateCard = snapshot?.update.hud_card ?? false;
-  const hasContent =
-    hasPanel || toasts.length > 0 || maintenanceDue || weeklyCard || seatedCard || eyeBreakCard || walkawayCard || updateCard;
+  // One card at a time: Rust ranks the cards due, holds them while
+  // presenting and names the one to show.
+  const card = snapshot?.hud_card ?? "none";
+  const hasContent = hasPanel || toasts.length > 0 || card !== "none";
 
   useHitRegion(contentRef, hasContent);
 
@@ -171,12 +167,7 @@ export function HudApp() {
             </div>
           </section>
         )}
-        {walkawayCard && snapshot && <WalkAwayCard snapshot={snapshot} />}
-        {seatedCard && snapshot && <SeatedCard snapshot={snapshot} />}
-        {eyeBreakCard && snapshot && <EyeBreakCard snapshot={snapshot} />}
-        {maintenanceDue && snapshot && <MaintenanceCard snapshot={snapshot} />}
-        {weeklyCard && snapshot && <WeeklyCard snapshot={snapshot} />}
-        {updateCard && snapshot && <UpdateCard snapshot={snapshot} />}
+        {snapshot && <HudCardView card={card} snapshot={snapshot} />}
         {toasts.length > 0 && (
           <div className="hud-toasts">
             {toasts.map((t) => (

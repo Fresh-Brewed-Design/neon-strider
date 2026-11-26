@@ -3,7 +3,7 @@ import type { Change, WeeklySummary, WeekStats } from "../../ipc";
 import { Joined, Label, Panel } from "../ui";
 import { cx } from "../util";
 import { formatDuration } from "../../format";
-import { formatChange, type ChangeTone } from "./weekly";
+import { formatChange, formatDeskDays, type ChangeTone } from "./weekly";
 
 const TONE_CLASS: Record<ChangeTone, string> = {
   up: "text-emerald-400",
@@ -24,7 +24,7 @@ function WeekCell({ title, week, change }: { title: string; week: WeekStats; cha
       </div>
       <Joined
         className="font-mono text-xs text-white/60"
-        text={`${week.active_days} / 7 days · ${formatDuration(week.duration_s)} · ${week.sessions} ${week.sessions === 1 ? "session" : "sessions"}`}
+        text={`${formatDeskDays(week)} · ${formatDuration(week.duration_s)} · ${week.sessions} ${week.sessions === 1 ? "session" : "sessions"}`}
       />
     </div>
   );

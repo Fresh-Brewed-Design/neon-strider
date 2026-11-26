@@ -1008,6 +1008,9 @@ async fn save_running_program(app: &AppHandle) {
     let app = app.clone();
     let _ = crate::util::blocking(move || {
         crate::programs::persist_active_run(&app, run, &mut None);
+        // And the desk timers, so the seated time and the eye-break count
+        // carry on after the restart.
+        crate::snapshot::desk_resume::save_now(&app);
         Ok(())
     })
     .await;

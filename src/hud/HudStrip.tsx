@@ -30,9 +30,11 @@ function RestCell({ name, left }: { name: string; left: number }) {
 /**
  * The panel collapsed during stasis (`hud_view` "strip"): under the header
  * (whose expand button shows the whole panel until the belt next moves),
- * today's total (DAILY_TOTAL), or a program's rest and its countdown, and
- * Engage. A note covers the slot and the logo above it, beside Engage, so
- * Engage never moves for it.
+ * today's total (DAILY_TOTAL) and Engage. A note covers the slot and the
+ * logo above it, beside Engage, so Engage never moves for it. The slot shows,
+ * first that applies: a program's rest and its countdown (`RestCell`), a
+ * folded ATROPHY_WARNING card (`SeatedReadout`: today's total can't change
+ * while the belt is still; a walk lets the card go), or today's total.
  */
 export function StripRow({ snapshot, send, note }: { snapshot: AppSnapshot; send: Send; note: PanelNote | null }) {
   const daily = statWidget("DAILY");
@@ -45,6 +47,8 @@ export function StripRow({ snapshot, send, note }: { snapshot: AppSnapshot; send
         <div className="hud-strip-cell">
           {rest ? (
             <RestCell name={rest.name} left={rest.left} />
+          ) : snapshot.seated.folded ? (
+            <SeatedReadout snapshot={snapshot} />
           ) : (
             daily &&
             total && (
@@ -61,6 +65,26 @@ export function StripRow({ snapshot, send, note }: { snapshot: AppSnapshot; send
         </div>
         <EngageButton snapshot={snapshot} send={send} sub strip />
       </div>
+    </div>
+  );
+}
+
+/**
+ * ATROPHY_WARNING folded into the strip (#422): the card showed once and went
+ * unanswered, so the seated time stays in today's total's place, in yellow,
+ * until a walk. Rust decides when (`seated.folded`, `card_queue.rs`). Engage
+ * keeps its place: the label shortens first.
+ */
+export function SeatedReadout({ snapshot }: { snapshot: AppSnapshot }) {
+  const s = snapshot.seated;
+  if (!s.folded) return null;
+  return (
+    <div className="hud-strip-total hud-seated-readout accent-yellow" data-testid="hud-seated-readout" title="Minutes at the PC since the last walk of 2 minutes or more.">
+      <span className="hud-label">ATROPHY_WARNING</span>
+      <span className="hud-value hud-value-sm">
+        {s.seated_minutes}
+        <span className="hud-unit">MIN IDLE</span>
+      </span>
     </div>
   );
 }

@@ -4,6 +4,7 @@
 import { emit } from "@tauri-apps/api/event";
 import type { AppSnapshot, DeskSync, WallClock } from "../ipc";
 import type { RustConfig } from "../services/controlOrchestrator";
+import { applyCardQueue } from "./cardQueue";
 
 // Same defaults as src-tauri/src/strava_template.rs.
 export const DEFAULT_TITLE = "NEON STRIDER // {distance_km} KM UPLINK";
@@ -153,6 +154,7 @@ export const snapshot: AppSnapshot = {
   },
   hud_view: "full",
   hud_go_hold: false,
+  hud_card: "none",
   hud_monitors: [
     { name: "\\\\.\\DISPLAY1", label: "Display 1 · 1920×1080", is_primary: true, active: true, width: 1920, height: 1080 },
     { name: "\\\\.\\DISPLAY2", label: "Display 2 · 2560×1440", is_primary: false, active: false, width: 2560, height: 1440 },
@@ -199,9 +201,9 @@ export const snapshot: AppSnapshot = {
     progress: 0.42,
   },
   weekly: {
-    this_week: { distance_km: 12.4, duration_s: 11_460, active_days: 3, sessions: 4, calories: 740, longest_day_km: 5.1 },
-    last_week: { distance_km: 31.6, duration_s: 29_700, active_days: 5, sessions: 9, calories: 1_890, longest_day_km: 8.2 },
-    week_before: { distance_km: 28.2, duration_s: 26_100, active_days: 4, sessions: 7, calories: 1_650, longest_day_km: 7.4 },
+    this_week: { distance_km: 12.4, duration_s: 11_460, active_days: 3, desk_days: 3, sessions: 4, calories: 740, longest_day_km: 5.1 },
+    last_week: { distance_km: 31.6, duration_s: 29_700, active_days: 5, desk_days: 5, sessions: 9, calories: 1_890, longest_day_km: 8.2 },
+    week_before: { distance_km: 28.2, duration_s: 26_100, active_days: 4, desk_days: 5, sessions: 7, calories: 1_650, longest_day_km: 7.4 },
     last_week_id: "2026-W45",
     distance_change: { pct: 12, is_new: false },
     show_card: false,
@@ -214,6 +216,8 @@ export const snapshot: AppSnapshot = {
     program_ids: [1, 2, 3],
     custom_programs: false,
     show_card: false,
+    folded: false,
+    snooze_minutes: 15,
     seated_minutes: 60,
     pending_program_id: null,
   },
@@ -226,6 +230,8 @@ export const snapshot: AppSnapshot = {
     fit_rests: true,
     holds_belt: false,
     at_rest: false,
+    moved_to_rest: false,
+    silent: false,
     phase: "idle",
     remaining_s: 0,
     blink: null,
@@ -342,6 +348,7 @@ export const PREVIEW_CONFIG: RustConfig = {
 export function publish() {
   snapshot.hud_view = hudView();
   snapshot.hud_go_hold = goHeld();
+  applyCardQueue(snapshot);
   snapshot.update.dot = updateDot();
   void emit("app-state", { full: true, ...structuredClone(snapshot) });
 }

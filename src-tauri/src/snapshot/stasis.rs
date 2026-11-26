@@ -143,15 +143,22 @@ fn lock() -> MutexGuard<'static, Stasis> {
     STASIS.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// A program waits for GO: the one test for it, read by the panel's view
+/// here (the whole panel for `GO_HOLD`, then GO on the strip) and by the card
+/// queue (no card below belt safety while GO waits, `card_queue.rs`).
+pub(crate) fn go_waiting(snapshot: &AppSnapshot) -> bool {
+    snapshot
+        .active_program
+        .as_ref()
+        .is_some_and(|a| a.wait.is_some())
+}
+
 /// The panel's view for this snapshot, and whether a GO prompt holds it whole
 /// (`hud_go_hold`). Called each time a snapshot is assembled (every emitter
 /// tick), so the grace or the GO hold running out reaches the HUD on the next
 /// tick's on-change emit.
 pub(super) fn view(snapshot: &AppSnapshot, deck_silent: bool, now: Instant) -> (HudView, bool) {
-    let program_needs_go = snapshot
-        .active_program
-        .as_ref()
-        .is_some_and(|a| a.wait.is_some());
+    let program_needs_go = go_waiting(snapshot);
     lock().view(
         snapshot.hud.idle_mode,
         snapshot.connection.connected,

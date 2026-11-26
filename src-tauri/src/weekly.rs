@@ -16,7 +16,7 @@ use crate::persistence;
 use crate::util::now_ms;
 use chrono::{DateTime, Datelike, Days, NaiveDate, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Mutex;
 use tauri::AppHandle;
 
@@ -48,6 +48,10 @@ pub struct WeekStats {
     pub duration_s: u64,
     /// Days with at least one session over 50 m.
     pub active_days: u32,
+    /// Desk days in the week, as DESK_SYNC counts them: days the PC was used
+    /// (`desk_days`) plus every day walked. Today counts once walked, so a
+    /// day off the PC, or the day still under way, never counts against him.
+    pub desk_days: u32,
     pub sessions: u32,
     pub calories: f64,
     /// The most distance covered on any one day.
@@ -76,7 +80,9 @@ pub struct WeeklySummary {
     /// ISO week of `last_week`, e.g. "2026-W45". The acknowledgement is stored
     /// under this id.
     pub last_week_id: String,
-    /// Last week's distance against the week before.
+    /// Last week's distance per desk day against the week before's
+    /// (`km_per_desk_day`), so days off the PC never lower it. The cards
+    /// still show each week's total.
     pub distance_change: Change,
     /// The HUD should show the last-week card.
     pub show_card: bool,
@@ -159,6 +165,8 @@ struct Acc {
     sessions: u32,
     /// Per local day: (metres, had a session over the active threshold).
     days: HashMap<NaiveDate, (f64, bool)>,
+    /// Days the PC was used (before today).
+    desk: BTreeSet<NaiveDate>,
 }
 
 impl Acc {
@@ -183,12 +191,15 @@ impl Acc {
     }
 
     fn finish(self) -> WeekStats {
+        let mut desk = self.desk;
+        desk.extend(self.days.iter().filter(|(_, d)| d.1).map(|(date, _)| *date));
         let meters: f64 = self.days.values().map(|d| d.0).sum();
         let longest = self.days.values().map(|d| d.0).fold(0.0, f64::max);
         WeekStats {
             distance_km: meters / 1000.0,
             duration_s: self.duration_s.max(0) as u64,
             active_days: self.days.values().filter(|d| d.1).count() as u32,
+            desk_days: desk.len() as u32,
             sessions: self.sessions,
             calories: self.calories,
             longest_day_km: longest / 1000.0,
@@ -196,9 +207,21 @@ impl Acc {
     }
 }
 
-/// Summarise this week so far, last week and the week before. `show_card` is
-/// left false; the cache decides that.
+/// `compute_with` without any recorded desk days.
+#[cfg(test)]
 pub fn compute<Tz: TimeZone>(rows: &[SessionRow], now_ms: i64, tz: &Tz) -> WeeklySummary {
+    compute_with(rows, &BTreeSet::new(), now_ms, tz)
+}
+
+/// Summarise this week so far, last week and the week before. `desk` holds
+/// the local days the PC was used (`desk_days`). `show_card` is left false;
+/// the cache decides that.
+pub fn compute_with<Tz: TimeZone>(
+    rows: &[SessionRow],
+    desk: &BTreeSet<NaiveDate>,
+    now_ms: i64,
+    tz: &Tz,
+) -> WeeklySummary {
     let today = local_date(now_ms, tz).unwrap_or_default();
     let this_monday = monday_of(today);
     let last_monday = shift(this_monday, -7);
@@ -222,14 +245,34 @@ pub fn compute<Tz: TimeZone>(rows: &[SessionRow], now_ms: i64, tz: &Tz) -> Weekl
         }
     }
 
+    // Today joins once walked (`finish` adds walked days), as in DESK_SYNC.
+    for &date in desk.range(before_monday..today) {
+        if date >= this_monday {
+            this.desk.insert(date);
+        } else if date >= last_monday {
+            last.desk.insert(date);
+        } else {
+            before.desk.insert(date);
+        }
+    }
+
     let (this_week, last_week, week_before) = (this.finish(), last.finish(), before.finish());
     WeeklySummary {
-        distance_change: change(last_week.distance_km, week_before.distance_km),
+        distance_change: change(km_per_desk_day(&last_week), km_per_desk_day(&week_before)),
         last_week_id: week_id(last_monday),
         this_week,
         last_week,
         week_before,
         show_card: false,
+    }
+}
+
+/// A week's average distance per desk day; zero with no desk days.
+fn km_per_desk_day(week: &WeekStats) -> f64 {
+    if week.desk_days == 0 {
+        0.0
+    } else {
+        week.distance_km / week.desk_days as f64
     }
 }
 
@@ -290,7 +333,19 @@ pub fn refresh(app: &AppHandle, active_id: Option<i64>) {
             return;
         }
     };
-    let summary = compute(&rows, now, &tz);
+    let since = local_date(query_since_ms(now, &tz), &tz).unwrap_or_default();
+    let desk: BTreeSet<NaiveDate> =
+        match persistence::desk_days_since(app, &since.format("%Y-%m-%d").to_string()) {
+            Ok(days) => days
+                .iter()
+                .filter_map(|d| NaiveDate::parse_from_str(d.trim(), "%Y-%m-%d").ok())
+                .collect(),
+            Err(e) => {
+                log::warn!("weekly summary desk days query failed: {}", e);
+                return;
+            }
+        };
+    let summary = compute_with(&rows, &desk, now, &tz);
     let this_week_id = current_week_id(now, &tz);
     if let Some(st) = lock().as_mut() {
         st.summary = summary;
@@ -500,11 +555,12 @@ pub(crate) mod tests {
         assert_eq!(s.this_week.active_days, 1);
         assert_eq!(s.this_week.distance_km, 1.5);
 
-        // 6 km against 2 km: +200%.
+        // Per desk day (walked days here, no desk-day rows): 6 km over 2
+        // days against 2 km over 1 day, 3.0 against 2.0 km: +50%.
         assert_eq!(
             s.distance_change,
             Change {
-                pct: Some(200),
+                pct: Some(50),
                 is_new: false
             }
         );
@@ -754,5 +810,94 @@ pub(crate) mod tests {
         );
         assert_eq!(parse_ack(Some("  ".into())), None);
         assert_eq!(parse_ack(None), None);
+    }
+
+    /// Weeks count desk days, as DESK_SYNC does: a day off the PC is not a
+    /// day missed, a walked day with no desk-day row still counts, and today
+    /// counts only once walked.
+    #[test]
+    fn weeks_count_desk_days_not_calendar_days() {
+        let now = at(&Utc, 2026, 11, 11, 10, 0); // Wed; last week Nov 2-8
+        let d = |s: &str| NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
+        // Last week: at the PC Mon to Thu, walked Mon and Wed, plus a Saturday
+        // walk from the laptop (no desk-day row). Fri and Sun off the PC.
+        let desk: BTreeSet<NaiveDate> = [
+            "2026-11-02",
+            "2026-11-03",
+            "2026-11-04",
+            "2026-11-05",
+            // This week: Mon and Tue at the PC, today at the PC.
+            "2026-11-09",
+            "2026-11-10",
+            "2026-11-11",
+        ]
+        .iter()
+        .map(|s| d(s))
+        .collect();
+        let rows = [
+            row(at(&Utc, 2026, 11, 2, 9, 0), 700.0, 600, 30.0),
+            row(at(&Utc, 2026, 11, 4, 9, 0), 700.0, 600, 30.0),
+            row(at(&Utc, 2026, 11, 7, 9, 0), 700.0, 600, 30.0),
+            row(at(&Utc, 2026, 11, 9, 9, 0), 700.0, 600, 30.0),
+        ];
+        let s = compute_with(&rows, &desk, now, &Utc);
+        assert_eq!((s.last_week.active_days, s.last_week.desk_days), (3, 5));
+        // Today is at the PC but not walked yet: left out.
+        assert_eq!((s.this_week.active_days, s.this_week.desk_days), (1, 2));
+        let walked_today = [
+            rows.as_slice(),
+            &[row(at(&Utc, 2026, 11, 11, 9, 0), 700.0, 600, 30.0)],
+        ]
+        .concat();
+        let s = compute_with(&walked_today, &desk, now, &Utc);
+        assert_eq!((s.this_week.active_days, s.this_week.desk_days), (2, 3));
+        // No desk-day rows at all (older data): walked days are the desk days.
+        let s = compute_with(&rows, &BTreeSet::new(), now, &Utc);
+        assert_eq!((s.last_week.active_days, s.last_week.desk_days), (3, 3));
+    }
+
+    /// Days off the PC never lower the chip: the same 1.5 km on each desk
+    /// day reads as no change, whether the week had 5 desk days or 2.
+    #[test]
+    fn the_change_compares_km_per_desk_day_so_days_off_never_lower_it() {
+        let now = at(&Utc, 2026, 11, 11, 10, 0); // Wed; last week Nov 2-8, before Oct 26-Nov 1
+        let d = |s: &str| NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
+        let walk = |y, m, day| row(at(&Utc, y, m, day, 9, 0), 1500.0, 1200, 90.0);
+        // Week before: at the PC and walking Mon to Fri.
+        let mut rows: Vec<SessionRow> = (26..=30).map(|day| walk(2026, 10, day)).collect();
+        // Last week: at the PC only Mon and Tue (three days off), walking both.
+        rows.push(walk(2026, 11, 2));
+        rows.push(walk(2026, 11, 3));
+        let desk: BTreeSet<NaiveDate> = [
+            "2026-10-26",
+            "2026-10-27",
+            "2026-10-28",
+            "2026-10-29",
+            "2026-10-30",
+            "2026-11-02",
+            "2026-11-03",
+        ]
+        .iter()
+        .map(|s| d(s))
+        .collect();
+        let s = compute_with(&rows, &desk, now, &Utc);
+        assert_eq!(
+            s.last_week.distance_km, 3.0,
+            "the card still shows the total"
+        );
+        assert_eq!(s.week_before.distance_km, 7.5);
+        assert_eq!(
+            s.distance_change,
+            Change {
+                pct: Some(0),
+                is_new: false
+            },
+            "no drop from the days off alone"
+        );
+        // Walking less on the days at the PC still shows as down.
+        rows[5].distance_m = 750.0;
+        rows[6].distance_m = 750.0;
+        let s = compute_with(&rows, &desk, now, &Utc);
+        assert_eq!(s.distance_change.pct, Some(-50));
     }
 }
