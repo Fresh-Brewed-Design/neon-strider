@@ -70,3 +70,41 @@ export function useStepSweep(a: ActiveProgram | null | undefined): StepSweep | n
   }
   return sweep;
 }
+
+/** A box in the panel's own coordinates. */
+export interface Spot {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Where the step name may sit: over readings only, never over a control.
+ * The whole panel: the stats and the status row under them, down to the
+ * controls. The running strip: its stats and program line, down to its
+ * buttons. The still strip: the total's cell beside Engage. None found: the
+ * whole panel. In `origin`'s coordinates (the overlay, inside the panel's border).
+ */
+export function sweepSpot(panel: HTMLElement, origin: HTMLElement = panel): Spot {
+  const o = origin.getBoundingClientRect();
+  const box = panel.getBoundingClientRect();
+  // Screen px per CSS px: 1 in the app, where text size is a page zoom; the dev
+  // preview's ?textscale zooms the page with CSS instead.
+  const k = origin.offsetWidth > 0 ? o.width / origin.offsetWidth : 1;
+  const rel = (top: number, bottom: number, left = box.left, right = box.right): Spot => ({
+    top: (top - o.top) / k,
+    left: (left - o.left) / k,
+    width: (right - left) / k,
+    height: (bottom - top) / k,
+  });
+  const q = (selector: string) => panel.querySelector<HTMLElement>(selector)?.getBoundingClientRect();
+  const status = q(".hud-status-row");
+  if (status) return rel((q(".hud-stats") ?? status).top, status.bottom);
+  const runStats = q(".hud-run-stats");
+  const runButtons = q(".hud-run-strip > .hud-strip-row");
+  if (runStats && runButtons) return rel(runStats.top, runButtons.top);
+  const cell = q(".hud-strip-cell");
+  if (cell) return rel(cell.top, cell.bottom, cell.left, cell.right);
+  return rel(box.top, box.bottom);
+}

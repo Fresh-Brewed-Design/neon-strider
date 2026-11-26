@@ -1176,18 +1176,25 @@ body,
   85% { opacity: 1; }
   to { transform: translateY(0); opacity: 0; }
 }
-.hud-step-sweep-name {
+/* The name sits over the readings (StepSweep's sweepSpot sets this box: the
+   stats and status row, the running strip's stats and program line, or the
+   still strip's total), never over a control. Centred while it fits; a name
+   too tall for the box grows upward (auto margins give way to flex-end), away
+   from the controls under the readings. */
+.hud-step-sweep-spot {
   position: absolute;
-  top: 50%;
-  /* Centred by its margins, so it may take the panel's width less 12 px each
-     side before it wraps (left: 50% would wrap it at half the width). */
-  left: 0;
-  right: 0;
-  margin-inline: auto;
-  width: fit-content;
+  inset: 0;
   box-sizing: border-box;
-  max-width: calc(100% - 24px);
-  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 0 8px;
+}
+.hud-step-sweep-name {
+  margin-block: auto;
+  box-sizing: border-box;
+  max-width: 100%;
   padding: 4px 10px;
   border: 1px solid var(--hud-yellow);
   background: var(--hud-bg);
