@@ -3460,14 +3460,62 @@ mod tests {
         assert!(r.state.active_program().is_none(), "the program ended");
     }
 
+    /// A program rest already holds the belt still: the display going off
+    /// sends nothing, the program carries on to its GO prompt, and the
+    /// display coming back says nothing either.
     #[test]
-    fn lights_out_ends_a_resting_program() {
+    fn lights_out_leaves_a_resting_program_alone() {
         let mut r = Rig::new();
         r.run(1.0);
         r.run_program(WORKDAY);
         r.run(5.0 * 60.0 + 20.0);
         assert_eq!(r.program().phase, ProgramPhase::Resting);
         assert_eq!(r.deck.status_code(), 10, "the rest pauses the belt");
+        let saved = r.finalised.len();
+        let mark = r.mark();
+        let mut m = crate::snapshot::lights_out::LightsOut::default();
+        assert!(lights_out_for(&mut r, &mut m, true, 20).is_empty());
+        assert_eq!(r.controls_since(mark, Control::Stop), 0, "no Stop");
+        assert_eq!(r.program().phase, ProgramPhase::Resting, "still resting");
+        // The rest runs out with the display still off: GO waits as usual.
+        assert!(lights_out_for(&mut r, &mut m, true, 25 * 60).is_empty());
+        let a = r.program();
+        assert_eq!(
+            (a.phase, a.cycle, a.wait),
+            (ProgramPhase::Walking, 2, Some(ProgramWait::RestComplete))
+        );
+        assert!(lights_out_for(&mut r, &mut m, false, 60).is_empty());
+        assert!(!moves_belt(&r.commands_since(mark)));
+        assert_eq!(r.controls_since(mark, Control::Stop), 0);
+        assert!(r.deck.belt_still());
+        assert_eq!(r.finalised.len(), saved, "nothing more saved");
+    }
+
+    /// A program waiting for GO after its rest holds the belt still too:
+    /// lights out leaves the wait for GO in place.
+    #[test]
+    fn lights_out_leaves_a_program_waiting_for_go_alone() {
+        let mut r = Rig::new();
+        r.run(1.0);
+        r.run_program(WORKDAY);
+        r.run(5.0 * 60.0 + 20.0 + 26.0 * 60.0);
+        assert_eq!(r.program().wait, Some(ProgramWait::RestComplete));
+        let mark = r.mark();
+        let mut m = crate::snapshot::lights_out::LightsOut::default();
+        assert!(lights_out_for(&mut r, &mut m, true, 60).is_empty());
+        assert_eq!(r.controls_since(mark, Control::Stop), 0);
+        assert_eq!(r.program().wait, Some(ProgramWait::RestComplete));
+    }
+
+    /// Paused by hand, a walking program is not a rest: lights out still
+    /// stops the deck and ends it.
+    #[test]
+    fn lights_out_still_ends_a_program_paused_by_hand() {
+        let mut r = post_meal_walking();
+        r.state.set_test_now(r.t);
+        r.state.pause_program(r.t).unwrap();
+        r.run(5.0);
+        assert!(r.program().paused);
         let mark = r.mark();
         let mut m = crate::snapshot::lights_out::LightsOut::default();
         assert_eq!(
@@ -3476,11 +3524,6 @@ mod tests {
         );
         assert_eq!(r.controls_since(mark, Control::Stop), 1);
         assert!(r.state.active_program().is_none(), "the program ended");
-        assert_eq!(r.finalised.len(), 1, "saved once");
-        let mark = r.mark();
-        assert!(lights_out_for(&mut r, &mut m, false, 30 * 60).len() == 1);
-        assert!(!moves_belt(&r.commands_since(mark)));
-        assert!(r.deck.belt_still());
     }
 
     #[test]
