@@ -364,7 +364,7 @@ describe("GuidedCalibration Close", () => {
   it("says on the row why RUN is off", () => {
     current!.calibration.belt_cm = null;
     renderOpen();
-    expect(screen.getAllByText("Enter the belt loop length first.").length).toBe(5);
+    expect(screen.getAllByText("Enter the belt loop length first.")).toHaveLength(1);
     expect(screen.getAllByTitle("Enter the belt loop length first.").length).toBe(5);
   });
 });
