@@ -8,6 +8,7 @@ import { cx } from "../util";
 import { NumberField, Section, Toggle } from "./fields";
 import { LightsOutSetting } from "./LightsOutSetting";
 import { PresentingSetting } from "./PresentingSetting";
+import { ProgramTonesSetting } from "./ProgramTonesSetting";
 
 const L = SETTING_LIMITS;
 const MAX_PROGRAM_BUTTONS = L.seated_program_buttons;
@@ -39,21 +40,26 @@ function WalkAwaySettings() {
           onChange={(lock_enabled) => void lockAction.run(() => save({ lock_enabled }))}
           description={
             mac
-              ? "Locking the Mac (⌃⌘Q) pauses a moving belt and any running program."
-              : "Locking Windows (Win+L) pauses a moving belt and any running program."
+              ? "Locking the Mac (⌃⌘Q) pauses the belt and any program."
+              : "Locking Windows (Win+L) pauses the belt and any program."
           }
-          hint="The session is kept and the belt never restarts by itself. The HUD asks for RE-JACK or DUMP."
+          hint={["The session is kept and the belt never restarts by itself.", "The HUD asks for RE-JACK or DUMP."]}
         />
         <ActionStatus pending={lockAction.pending} error={lockAction.error} className="mt-1" />
       </div>
       <div>
         <Toggle
-          label={`Pause after no input for ${w.idle_minutes} minutes`}
+          label={`Pause when the ${s.platform.computer} sits idle`}
           tone="yellow"
           checked={w.idle_enabled}
           onChange={(idle_enabled) => void idleAction.run(() => save({ idle_enabled }))}
-          description={`After ${w.idle_minutes} minutes with no keyboard or mouse input, the HUD warns for 30 seconds, then pauses the belt.`}
-          hint="Any input or STAY on the HUD card cancels the pause, while a call never starts one."
+          description={`After ${w.idle_minutes} minutes without input the belt pauses.`}
+          hint={[
+            "The HUD warns for 30 seconds first.",
+            "Any keyboard or mouse input cancels the pause.",
+            "STAY on the HUD card cancels the pause too.",
+            "A call never starts a pause.",
+          ]}
         />
         <ActionStatus pending={idleAction.pending} error={idleAction.error} className="mt-1" />
       </div>
@@ -108,11 +114,11 @@ function EyeBreakSettings() {
     <>
       <div>
         <Toggle
-          label="OCULAR_IMPLANT"
+          label="OCULAR_IMPLANT: Remind me to look away"
           tone="cyan"
           checked={e.enabled}
           onChange={(enabled) => void enableAction.run(() => save({ enabled }))}
-          description="The HUD reminds you to look away from the screen, with a minute's warning."
+          description="The HUD gives a minute's warning before each break."
         />
         <ActionStatus pending={enableAction.pending} error={enableAction.error} className="mt-1" />
       </div>
@@ -144,7 +150,8 @@ function EyeBreakSettings() {
               tone="cyan"
               checked={e.sound}
               onChange={(sound) => void soundAction.run(() => save({ sound }))}
-              description="Beeps guide each full blink: falling to close, low to squeeze, high to open, rising at the end."
+              description="Beeps guide each full blink."
+              hint="A falling tone closes the eyes, a low one squeezes, a high one opens and a rising one ends the blink."
             />
             <ActionStatus pending={soundAction.pending} error={soundAction.error} className="mt-1" />
           </div>
@@ -154,7 +161,8 @@ function EyeBreakSettings() {
               tone="cyan"
               checked={e.pause_belt}
               onChange={(pause_belt) => void pauseAction.run(() => save({ pause_belt }))}
-              description="A break pauses a walking belt. The HUD then offers RE-JACK or STAY STILL."
+              description="A break pauses a walking belt."
+              hint="The HUD then offers RE-JACK or STAY STILL."
             />
             <ActionStatus pending={pauseAction.pending} error={pauseAction.error} className="mt-1" />
           </div>
@@ -164,7 +172,8 @@ function EyeBreakSettings() {
               tone="cyan"
               checked={e.fit_rests}
               onChange={(fit_rests) => void restsAction.run(() => save({ fit_rests }))}
-              description="A break due near a program's rest moves to that rest, so the walk carries on."
+              description="A break due near a program rest waits for the rest."
+              hint="The walk carries on without a pause."
             />
             <ActionStatus pending={restsAction.pending} error={restsAction.error} className="mt-1" />
           </div>
@@ -297,6 +306,10 @@ export function DeskSection() {
 
       <div className="border-t border-white/10" />
 
+      <ProgramTonesSetting />
+
+      <div className="border-t border-white/10" />
+
       <WalkAwaySettings />
 
       <div className="border-t border-white/10" />
@@ -320,8 +333,11 @@ export function DeskSection() {
             tone="yellow"
             checked={calls.enabled}
             onChange={(enabled) => void callsAction.run(() => saveCalls({ enabled }))}
-            description="While an app uses the microphone, a running belt eases to the quiet speed until 10 seconds after the call."
-            hint="The belt never speeds up for a call and keeps a speed changed during the call."
+            description="A running belt eases to the quiet speed while an app uses the microphone."
+            hint={[
+              "The belt stays slow until 10 seconds after the call.",
+              "The belt never speeds up for a call and keeps a speed changed during the call.",
+            ]}
           />
           <ActionStatus pending={callsAction.pending} error={callsAction.error} className="mt-1" />
         </div>

@@ -63,6 +63,30 @@ function row(
   );
 }
 
+describe("SessionRow Strava state", () => {
+  it("writes the upload state beside the icon", () => {
+    render(
+      <SessionRow
+        session={walk()}
+        expanded={false}
+        stravaLinked
+        uploadState="idle"
+        live={false}
+        onToggle={vi.fn()}
+        onUpload={vi.fn()}
+        onSave={vi.fn()}
+        onOpenFolder={vi.fn()}
+        onMarkUploaded={vi.fn()}
+        onInspect={vi.fn()}
+        onDelete={vi.fn()}
+        onEcho={vi.fn()}
+        onOpenProgram={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Not uploaded")).toBeInTheDocument();
+  });
+});
+
 describe("SessionRow heart rate", () => {
   it("shows the average and maximum for a walk saved with a sensor", () => {
     row(walk({ avg_heart_rate: 112, max_heart_rate: 131 }));
