@@ -128,11 +128,11 @@ export function Axis({
         </div>
 
         {/* The slider's own caption: it sets the target, which the big reading only follows. */}
-        <div className={cx("flex flex-col gap-0.5", disabled && "opacity-30")}>
-          <div className="flex flex-wrap items-baseline justify-between gap-x-2 font-mono text-[11px] uppercase tracking-[0.15em] text-white/60">
+        <div className={cx("flex flex-col gap-1", disabled && "opacity-30")}>
+          <div className="flex flex-wrap items-baseline justify-between gap-x-2 font-mono text-[11px] uppercase leading-none tracking-[0.15em] text-white/60">
             <span>Set target</span>
             <span>
-              <span className={cx("font-digital text-xs", TONE_TEXT[tone])}>{value.toFixed(1)}</span>{" "}
+              <span className={cx("font-digital text-xs leading-none", TONE_TEXT[tone])}>{value.toFixed(1)}</span>{" "}
               <span className="normal-case">{unit}</span>
             </span>
           </div>

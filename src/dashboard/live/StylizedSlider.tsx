@@ -36,11 +36,11 @@ export function StylizedSlider({
   return (
     // With a mark, its 11 px label row sits under the track, 1 px below it.
     <div className="flex w-full flex-col gap-px group">
-      <div className="relative h-6 flex items-center">
+      <div className="relative h-5 flex items-center">
         <div className="absolute inset-0 h-1 bg-white/5 top-1/2 -translate-y-1/2 rounded-full overflow-hidden">
           <div
             className={`h-full ${isCyan ? "bg-neon-cyan" : "bg-neon-magenta"}`}
-            style={{ width: `${((value - min) / (max - min)) * 100}%` }}
+            style={{ width: `${pct}%` }}
           />
         </div>
 

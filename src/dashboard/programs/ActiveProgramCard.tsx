@@ -19,7 +19,7 @@ export interface StepMapToggle {
 function ViewSwitch({ open, onToggle }: StepMapToggle) {
   const option = (on: boolean) =>
     cx(
-      "flex items-center gap-1 px-2 py-px uppercase leading-4 transition-colors",
+      "flex items-center gap-1 px-2 uppercase leading-[14px] transition-colors",
       on ? "bg-neon-yellow/15 text-neon-yellow" : "text-white/60 hover:bg-white/5 hover:text-white",
     );
   return (
@@ -68,16 +68,15 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
     <Panel
       className={cx(
         // The status lines sit in a row of their own under the buttons, so the buttons never squeeze them onto two lines.
-        // The name keeps at least 8rem beside the buttons; with less room (a large Windows text
+        // The name keeps at least 10rem beside the buttons; with less room (a large Windows text
         // size) the buttons wrap under it instead of crushing it.
         "flex flex-wrap items-center gap-x-4 px-4 py-2",
         wait ? "border-l-4 border-neon-yellow bg-neon-yellow/10" : "border-neon-yellow/30",
       )}
     >
-      {/* The state line, with the Live page's view switch at its end, apart from the program's buttons. */}
-      <div className="flex min-w-0 basis-full flex-wrap items-center justify-between gap-x-3 gap-y-1">
+      <div className="min-w-0 flex-1 basis-40">
         {wait ? (
-          <div role="alert" className="min-w-0 break-words font-digital text-xs font-bold tracking-widest text-neon-yellow">{waitHeadline(wait)}</div>
+          <div role="alert" className="break-words font-digital text-xs font-bold tracking-widest text-neon-yellow">{waitHeadline(wait)}</div>
         ) : (
           <div className="flex min-w-0 flex-wrap items-baseline gap-x-2" data-testid="program-label-line">
             <Label className="shrink-0 whitespace-nowrap !tracking-[0.12em] text-neon-yellow/70">{a.paused ? "Program paused" : "Program running"}</Label>
@@ -88,10 +87,7 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
             )}
           </div>
         )}
-        {stepMap && <ViewSwitch {...stepMap} />}
-      </div>
-      <div className="line-clamp-2 min-w-0 flex-1 basis-32 break-words font-digital text-base font-bold leading-tight tracking-wider text-neon-yellow">
-        {a.name}
+        <div className="line-clamp-2 break-words font-digital text-base font-bold leading-tight tracking-wider text-neon-yellow">{a.name}</div>
       </div>
       <div className="flex flex-wrap items-center gap-1">
         {wait ? (
@@ -141,14 +137,18 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
         </GhostButton>
       </div>
       <ActionStatus error={control.error} className="basis-full justify-end text-right" />
-      <div className="min-w-0 basis-full">
-        <div className="font-mono text-xs text-white/60">{describeActive(a)}</div>
-        {timeLeft && (
-          <div className="font-mono text-xs text-neon-yellow/70" data-testid="program-time-left">
-            {timeLeft}
-          </div>
-        )}
-        {wait && <div className="font-mono text-xs text-white/70">{waitReason(wait)}</div>}
+      {/* The step lines, with the Live page's view switch at their end, a row apart from the program's buttons. */}
+      <div className="flex min-w-0 basis-full flex-wrap items-end justify-between gap-x-3 gap-y-1">
+        <div className="min-w-0">
+          <div className="font-mono text-xs text-white/60">{describeActive(a)}</div>
+          {timeLeft && (
+            <div className="font-mono text-xs text-neon-yellow/70" data-testid="program-time-left">
+              {timeLeft}
+            </div>
+          )}
+          {wait && <div className="font-mono text-xs text-white/70">{waitReason(wait)}</div>}
+        </div>
+        {stepMap && <ViewSwitch {...stepMap} />}
       </div>
     </Panel>
   );
