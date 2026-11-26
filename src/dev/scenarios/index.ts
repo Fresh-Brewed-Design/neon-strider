@@ -36,6 +36,7 @@ import { programTones } from "./programtones";
 import { seated } from "./seated";
 import { shortcuts } from "./shortcuts";
 import { speedDrift } from "./speeddrift";
+import { speedSpark } from "./speedspark";
 import { stasis } from "./stasis";
 import { strava } from "./strava";
 import { strideFit } from "./stridefit";
@@ -88,6 +89,8 @@ export const SCENARIOS: Scenario[] = [
   easyStop,
   fitToTime,
   programTones,
+  // After the scenarios that set the belt's speed: VELOCITY reads the trace's last point.
+  speedSpark,
   // After platform: the keys follow ?mac.
   shortcuts,
   // Last: it holds the cards the scenarios above put up.

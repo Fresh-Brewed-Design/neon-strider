@@ -1,0 +1,1 @@
+- VELOCITY draws a spark chart of the belt's speed over the last 10 minutes under the reading, on the HUD and the Live page, so you can see what the belt did during a call or a typing burst.
