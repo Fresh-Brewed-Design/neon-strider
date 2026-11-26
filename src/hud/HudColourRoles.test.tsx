@@ -30,7 +30,7 @@ function walking(patch: (s: AppSnapshot) => void = () => {}): AppSnapshot {
 // yellow is programs and warnings. DUMP ends the walk, so it no longer looks like STASIS.
 describe("HUD colour roles", () => {
   it("keeps STASIS cyan while the belt moves and gives DUMP its own style", () => {
-    render(<Controls snapshot={walking()} />);
+    render(<Controls snapshot={walking()} send={async () => true} />);
     const stasis = screen.getByRole("button", { name: "STASIS pause" });
     expect(stasis).toHaveClass("accent-cyan");
     expect(stasis).not.toHaveClass("accent-magenta");
@@ -39,10 +39,10 @@ describe("HUD colour roles", () => {
     expect(dump.querySelector(".hud-dump-glyph")).not.toBeNull();
   });
 
-  it("styles the strip's DUMP the same, with no sub-line", () => {
-    render(<RunStripRow snapshot={walking()} />);
-    expect(screen.getByRole("button", { name: "STASIS" })).toHaveClass("accent-cyan");
-    const dump = screen.getByRole("button", { name: "DUMP" });
+  it("styles the running strip's DUMP the same", () => {
+    render(<RunStripRow snapshot={walking()} send={async () => true} note={null} />);
+    expect(screen.getByRole("button", { name: "STASIS pause" })).toHaveClass("accent-cyan");
+    const dump = screen.getByRole("button", { name: "DUMP end walk" });
     expect(dump).toHaveClass("hud-btn-dump");
     expect(dump.querySelector(".hud-dump-glyph")).not.toBeNull();
   });
@@ -68,13 +68,14 @@ describe("HUD colour roles", () => {
 });
 
 const css = readFileSync(join(process.cwd(), "src/hud/hud.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
-const body = (selector: string) => {
-  for (const chunk of css.split("}")) {
-    const [head, rest] = chunk.split("{");
-    if (rest !== undefined && head.trim() === selector) return rest;
-  }
-  return "";
-};
+/** Every rule body for `selector`, joined: a selector may have more than one rule. */
+const body = (selector: string) =>
+  css
+    .split("}")
+    .map((chunk) => chunk.split("{"))
+    .filter(([head, rest]) => rest !== undefined && head.trim() === selector)
+    .map(([, rest]) => rest)
+    .join(";");
 
 describe("DUMP's look in the HUD CSS", () => {
   it("rests with a 2px magenta outline on the dark fill, without changing its box", () => {

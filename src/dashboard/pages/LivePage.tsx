@@ -16,6 +16,7 @@ import { ActiveProgramCard } from "../programs/ActiveProgramCard";
 import { readPref, writePref } from "../localPrefs";
 import { StatusPill } from "../StatusPill";
 import { MaintenanceBanner } from "../system/MaintenanceBanner";
+import { CalibrateOffer } from "../system/calibration/CalibrateOffer";
 import { Codename, Label, Page, Panel, Waiting } from "../ui";
 import { cx, TONE_TEXT } from "../util";
 
@@ -120,7 +121,11 @@ const STEP_MAP_PREF = "liveStepMap";
 /** The Live page control a target came from. */
 type NoteFrom = "speed" | "tilt";
 
-export function LivePage() {
+/**
+ * The Live page. `onCalibrate` opens System, Calibration from the first-connect offer, which
+ * shows here under the controls so its arrival and SKIP never move them.
+ */
+export function LivePage({ onCalibrate }: { onCalibrate?: () => void } = {}) {
   const s = useAppSnapshot();
   // Which control sent last, and the deck's note showing at that press: that
   // note is about an older target (a program step, the HUD), so it stays off
@@ -144,13 +149,16 @@ export function LivePage() {
   const pinned = new Set(s.hud.widgets);
 
   return (
-    <Page codename="LOCOMOTION_DECK" title="Live" actions={headerActions(s)}>
-      {/* Fits the 760x600 popup without scrolling, even with the maintenance
-          banner and a running program both showing: both banners sit in the header. */}
+    // `fitHeader`: in a short window (a large Windows text size) the title gives its height to the
+    // controls; the rail already marks Live, and a warning in the header still shows.
+    <Page codename="LOCOMOTION_DECK" title="Live" actions={headerActions(s)} fitHeader>
+      {/* The controls fit the 760x600 popup without scrolling up to 150 % Windows text, even with
+          the maintenance banner and a running program both showing: both banners sit in the
+          header, and the calibration offer and the stats come after the controls. */}
       <div className="flex min-h-full flex-col gap-2">
-        {/* Two columns while each gets 16rem (the speed readout, nudges and presets side by
-            side); a large Windows text size stacks them instead. */}
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-3">
+        {/* Two columns while each gets 12rem, which keeps them side by side up to 150 % Windows
+            text (each panel lays itself out narrower under 14rem); above that they stack. */}
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-3">
           <Axis
             title="Velocity"
             wheelHint="Scroll to change speed."
@@ -207,6 +215,8 @@ export function LivePage() {
         <Transport s={s} />
 
         <ActiveProgramCard stepMap={{ open: mapOpen, onToggle: toggleMap }} />
+
+        {onCalibrate && <CalibrateOffer onCalibrate={onCalibrate} />}
 
         {/* STEP_MAP takes the stats' place and the height left under the program card;
             time, distance and today's distance stay in its header. */}

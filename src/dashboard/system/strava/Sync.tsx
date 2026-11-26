@@ -99,7 +99,8 @@ export function SyncActions({
 
   return (
     <div className="flex flex-col gap-2 border-t border-white/10 pt-4">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
+        <div className="flex max-w-56 flex-col items-start gap-1.5">
         <NeonButton
           disabled={!connected || !strava.auto_sync || busy || sync.pending}
           onClick={() => void sync.run(post({ type: "strava_sync_now" }))}
@@ -108,22 +109,22 @@ export function SyncActions({
           {busy || sync.pending ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
           {busy || sync.pending ? "Syncing…" : "Sync now"}
         </NeonButton>
+        <Hint>Uploads new walks to the linked Strava account.</Hint>
+        </div>
+        <div className="flex max-w-56 flex-col items-start gap-1.5">
         <NeonButton
           tone="cyan"
           disabled={save.pending}
           onClick={saveForStrava}
-          title="Save the latest walk as a TCX file for Strava's upload page, which works without a linked account."
           className="flex shrink-0 items-center gap-2 px-3 py-2"
         >
           {save.pending ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
           {save.pending ? "Saving…" : "Save for Strava"}
         </NeonButton>
+        <Hint>Writes the latest walk to a file for Strava&apos;s upload page.</Hint>
+        </div>
       </div>
-      {!connected && (
-        <Hint>
-          Sync now needs a connected account while Save for Strava works with no account.
-        </Hint>
-      )}
+      {!connected && <Hint>Link a Strava account to use Sync now.</Hint>}
       {connected && !strava.auto_sync && (
         <Hint>Turn auto-sync on to use Sync now.</Hint>
       )}

@@ -54,13 +54,16 @@ function SummaryStat({ label, value, unit }: { label: string; value: string; uni
   );
 }
 
-/** Totals of every saved walk in the time frame or day, summed by Rust. */
+/** Totals of every saved walk in the time frame or day, summed by Rust, under the name of that range. */
 export function TotalsPanel({
   meters,
   seconds,
   kcal,
   count,
+  heading,
 }: {
+  /** The range the totals cover, as the page names it ("Last 7 days"). */
+  heading: string;
   meters: number;
   seconds: number;
   kcal: number;
@@ -70,6 +73,9 @@ export function TotalsPanel({
     // One row of four while each total gets 6rem (its label and a value like 12h 30m); a large
     // Windows text size wraps them onto more rows.
     <Panel className="grid grid-cols-[repeat(auto-fit,minmax(6rem,1fr))] gap-3 p-3">
+      <div className="col-span-full">
+        <Label className="text-neon-cyan">{heading}</Label>
+      </div>
       <SummaryStat label="Distance" value={(meters / 1000).toFixed(1)} unit="km" />
       <SummaryStat label="Time" value={formatDuration(seconds)} />
       <SummaryStat label="Sessions" value={String(count)} />

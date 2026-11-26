@@ -49,7 +49,7 @@ describe("HUD strip", () => {
     expect(screen.getByText("TODAY")).toBeInTheDocument();
     expect(screen.getByText("4.31")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Show the whole HUD" })).toHaveAttribute("title");
-    expect(screen.getByRole("button", { name: "ENGAGE" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "ENGAGE start" })).toBeEnabled();
     // The full panel's stats and controls are gone.
     expect(screen.queryByText("DUMP")).not.toBeInTheDocument();
     expect(container.querySelector(".hud-stats")).toBeNull();
@@ -59,25 +59,25 @@ describe("HUD strip", () => {
     vi.mocked(invoke).mockClear();
     show(still("strip"));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Show the whole HUD" })));
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "ENGAGE" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "ENGAGE start" })));
     expect(dispatched()).toEqual([{ command: { type: "hud_expand" } }, { command: { type: "toggle_start" } }]);
   });
 
   it("labels Engage like the panel does", () => {
     show(still("strip", (s) => (s.deck.status = "Paused")));
-    expect(screen.getByRole("button", { name: "RE-JACK" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "RE-JACK resume" })).toBeInTheDocument();
   });
 
   it("reads WAKING… while a start is pending, disabled when offline", () => {
     const { unmount } = show(still("strip", (s) => (s.connection.start_pending = true)));
-    expect(screen.getByRole("button", { name: "WAKING…" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "WAKING… starting" })).toBeInTheDocument();
     unmount();
     show(
       still("strip", (s) =>
         Object.assign(s.connection, { connected: false, has_saved_device: true, link: { state: "reconnecting", attempt: 1, next_retry_s: 9 } }),
       ),
     );
-    expect(screen.getByRole("button", { name: "ENGAGE" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "ENGAGE start" })).toBeDisabled();
     // Offline, the link status is still the relink button.
     expect(screen.getByRole("button", { name: "RELINK 9S" })).toBeInTheDocument();
   });
@@ -86,7 +86,7 @@ describe("HUD strip", () => {
     vi.mocked(invoke).mockRejectedValueOnce("Treadmill not connected");
     vi.spyOn(console, "error").mockImplementationOnce(() => {});
     show(still("strip"));
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "ENGAGE" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "ENGAGE start" })));
     expect(screen.getByRole("alert")).toHaveTextContent("SYS // TREADMILL NOT CONNECTED");
   });
 
@@ -156,8 +156,8 @@ describe("HUD minified", () => {
     expect(container.querySelector(".hud-run-segments")?.textContent).toBe("Workday · WALK · 04:12 left · cycle 3");
     expect(container.querySelectorAll(".hud-run-seg")).toHaveLength(4);
     expect(screen.getByRole("button", { name: "Show the whole HUD" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "STASIS" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "DUMP" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "STASIS pause" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "DUMP end walk" })).toBeEnabled();
     // The whole panel's stats, steppers and program buttons are gone, and so is minify.
     expect(container.querySelector(".hud-stats")).toBeNull();
     expect(screen.queryByText("TILT")).not.toBeInTheDocument();
@@ -221,8 +221,8 @@ describe("HUD minified", () => {
     vi.mocked(invoke).mockClear();
     show(minified());
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Show the whole HUD" })));
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "STASIS" })));
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "DUMP" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "STASIS pause" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "DUMP end walk" })));
     expect(dispatched()).toEqual([
       { command: { type: "hud_set_minified", minified: false } },
       { command: { type: "toggle_start" } },
@@ -234,7 +234,7 @@ describe("HUD minified", () => {
     vi.mocked(invoke).mockRejectedValueOnce("Treadmill not connected");
     vi.spyOn(console, "error").mockImplementationOnce(() => {});
     const { container } = show(minified());
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "DUMP" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "DUMP end walk" })));
     expect(container.querySelector(".hud-run-strip [role=alert]")).toHaveTextContent("SYS // TREADMILL NOT CONNECTED");
   });
 

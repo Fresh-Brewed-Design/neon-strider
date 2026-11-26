@@ -85,8 +85,9 @@ describe("HUD waiting for GO", () => {
     expect(screen.getByRole("button", { name: "SKIP next step" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "END end program" })).toBeInTheDocument();
     // The controls keep their layout: Engage reads GO in its own slot, DUMP beside it.
-    const transport = Array.from(document.querySelectorAll(".hud-transport > button")).map((b) => b.textContent);
-    expect(transport).toEqual(["GO resume", "DUMP end walk", "QUIET slow down"]);
+    const transport = Array.from(document.querySelectorAll(".hud-transport > button")).map((b) => b.childNodes[0].textContent?.trim());
+    expect(transport).toEqual(["GO", "DUMP", "QUIET"]);
+    expect(screen.getByRole("button", { name: "QUIET slow down" })).toBeInTheDocument();
   });
 
   it("keeps Engage's GO when the program card is not pinned", () => {
@@ -122,22 +123,35 @@ describe("HUD waiting for GO", () => {
 });
 
 describe("HUD controls offline", () => {
-  it("says under the controls why they are off, once for the whole panel", () => {
+  it("says in the status row why they are off, once for the whole panel", () => {
     show(panel(offline));
     const lines = screen.getAllByTestId("hud-offline");
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toHaveTextContent("Treadmill not connected.");
-    expect(lines[0].closest(".hud-module")?.querySelector(".hud-transport")).not.toBeNull();
+    expect(lines[0]).toHaveTextContent("Link failed.");
+    expect(lines[0].closest(".hud-status-row")).not.toBeNull();
   });
 
-  it("keeps the program list's own line when the controls are not pinned", () => {
+  it("dims the readings and the program, and keeps END while offline", () => {
+    show(
+      panel((s) => {
+        offline(s);
+        s.active_program = structuredClone(mock.active_program);
+      }),
+    );
+    expect(document.querySelector(".hud-panel")).toHaveClass("is-offline");
+    expect(screen.getByRole("button", { name: "HOLD pause" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "SKIP next step" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "END end program" })).toBeEnabled();
+  });
+
+  it("keeps the line when the controls are not pinned", () => {
     show(
       panel((s) => {
         offline(s);
         s.hud.widgets = s.hud.widgets.filter((w) => w !== "CONTROLS");
       }),
     );
-    expect(screen.getByTestId("hud-offline").closest(".hud-module")).toHaveTextContent("RUN PROGRAM");
+    expect(screen.getByTestId("hud-offline").closest(".hud-status-row")).not.toBeNull();
   });
 });
 
@@ -156,7 +170,7 @@ describe("HUD DUMP tooltip", () => {
         s.hud_view = "minified";
       }),
     );
-    expect(screen.getByRole("button", { name: "DUMP" })).toHaveAttribute("title", "Stop the belt and end the session.");
+    expect(screen.getByRole("button", { name: "DUMP end walk" })).toHaveAttribute("title", "Stop the belt and end the session.");
   });
 });
 

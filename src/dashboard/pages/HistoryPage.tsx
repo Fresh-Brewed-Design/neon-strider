@@ -17,8 +17,16 @@ import { TodayPanel } from "../history/Today";
 import { monthName, useHistoryWalks } from "../history/useHistoryWalks";
 import { useSessionUploads } from "../history/useSessionUploads";
 import { WallClockPanel } from "../history/WallClock";
-import { GhostButton, Label, OptionPicker, Page, Panel } from "../ui";
+import { GhostButton, Label, NeonButton, OptionPicker, Page, Panel } from "../ui";
 import { cx } from "../util";
+
+/** What each time frame's totals are called. */
+const TOTALS_HEADING: Record<Range, string> = {
+  "7d": "Last 7 days",
+  "30d": "Last 30 days",
+  "1y": "Past year",
+  all: "All time",
+};
 
 /** Until the first snapshot: one constant, so it never reads as a change. */
 const NO_IDS: number[] = [];
@@ -87,6 +95,9 @@ export function HistoryPage() {
       done: (path) => `Exported sessions to ${path}`,
     });
 
+  // Nothing was ever recorded: the page leads with that, and the cards of zeros stay out.
+  const nothingYet = sessions !== null && sessions.length === 0 && stats !== null && stats.oldest_start_ms == null && !loadError;
+  const totalsHeading = day ? new Date(`${day}T00:00:00`).toLocaleDateString() : (TOTALS_HEADING[range] ?? "");
   const rangeLabel = day ? new Date(`${day}T00:00:00`).toLocaleDateString() : RANGES.find((r) => r.id === range)?.label;
 
   return (
@@ -95,13 +106,14 @@ export function HistoryPage() {
       title="History"
       actions={
         <>
-          <GhostButton
+          <NeonButton
+            className="h-7 px-3"
             onClick={exportCsv}
             disabled={exportAction.pending}
-            title="Export every saved session to a CSV file in Downloads, regardless of the time frame selected"
+            title="Saves every session to a CSV file in Downloads, whatever time frame shows"
           >
             {exportAction.pending ? "Exporting…" : "Export CSV"}
-          </GhostButton>
+          </NeonButton>
           <OptionPicker
             label="Time frame"
             className="flex flex-wrap overflow-hidden rounded border border-white/10"
@@ -127,12 +139,20 @@ export function HistoryPage() {
           error={exportAction.error && `Could not export sessions: ${exportAction.error}`}
           done={exportAction.done}
         />
-        {weekly && <WeeklyPanel weekly={weekly} />}
-        {deskSync && <DeskSyncPanel sync={deskSync} />}
+        {nothingYet && (
+          <Panel className="p-4 text-center" >
+            <p className="font-mono text-xs text-white/80" data-testid="history-empty">
+              No walks yet. ENGAGE on Live or run a program to record one.
+            </p>
+          </Panel>
+        )}
+        {weekly && !nothingYet && <WeeklyPanel weekly={weekly} />}
+        {deskSync && (!nothingYet || deskSync.desk_days > 0) && <DeskSyncPanel sync={deskSync} />}
         {todayTimeline && <TodayPanel timeline={todayTimeline} />}
-        {wallClock && <WallClockPanel clock={wallClock} />}
-        {stats && (
+        {wallClock && (!nothingYet || wallClock.desk_days > 0) && <WallClockPanel clock={wallClock} />}
+        {stats && !nothingYet && (
           <TotalsPanel
+            heading={totalsHeading}
             meters={stats.totals.meters}
             seconds={stats.totals.seconds}
             kcal={stats.totals.kcal}
@@ -140,14 +160,17 @@ export function HistoryPage() {
           />
         )}
 
-        <Panel className="p-3">
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3">
-            <Label>Past year</Label>
-            <span className="font-mono text-xs text-white/60">Click a day to show only its sessions</span>
-          </div>
-          <Calendar metersByDay={byDay} selected={day} onSelect={setDay} />
-        </Panel>
+        {!nothingYet && (
+          <Panel className="p-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3">
+              <Label>Past year</Label>
+              <span className="font-mono text-xs text-white/60">Click a day to show only its sessions</span>
+            </div>
+            <Calendar metersByDay={byDay} selected={day} onSelect={setDay} />
+          </Panel>
+        )}
 
+        {!nothingYet && (
         <div className="flex flex-wrap items-center justify-between gap-x-3">
           <Label>Sessions · {rangeLabel}</Label>
           {day && (
@@ -160,17 +183,14 @@ export function HistoryPage() {
             </button>
           )}
         </div>
+        )}
 
         {loadError ? (
           <p className="py-6 text-center font-mono text-xs text-red-400">Could not load sessions: {loadError}</p>
         ) : !sessions || walks.dayLoading ? (
           <p className="py-6 text-center font-mono text-xs text-white/60">Loading sessions…</p>
-        ) : groups.length === 0 ? (
-          <p className="py-6 text-center font-mono text-xs text-white/60">
-            {sessions.length === 0 && stats?.oldest_start_ms == null
-              ? "No sessions yet: ENGAGE on Live or run a program to record a walk."
-              : "No sessions in the chosen time frame."}
-          </p>
+        ) : nothingYet ? null : groups.length === 0 ? (
+          <p className="py-6 text-center font-mono text-xs text-white/60">No sessions in the chosen time frame.</p>
         ) : (
           groups.map((g) => (
             <section key={g.key} className="flex flex-col gap-1.5">

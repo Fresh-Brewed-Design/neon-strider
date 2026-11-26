@@ -114,3 +114,28 @@ export function dumpTitle(snapshot: AppSnapshot): string {
   if (deck.status === "Stopping") return "The belt is already stopping.";
   return snapshot.easy_stop.easing ? "Stop the belt at once." : "Stop the belt and end the session.";
 }
+
+/** What a press on a saved program's button sets: its first step's speed. */
+export function firstStepLine(p: AppSnapshot["programs"][number]): string {
+  const kmh = p.steps[0]?.speed_kmh ?? 0;
+  return kmh > 0 ? `starts ${kmh.toFixed(1)} km/h` : "starts still";
+}
+
+/** The status row's words while no treadmill is linked: the link state in a few words. */
+export function offlineText(connection: AppSnapshot["connection"]): string {
+  const l = linkState(connection);
+  switch (l.state) {
+    case "scanning":
+      return "Scanning for the treadmill.";
+    case "connecting":
+      return `Linking, try ${l.attempt} of ${l.of}.`;
+    case "reconnecting":
+      return `Link lost. Retry in ${l.next_retry_s} s.`;
+    case "adapter_unavailable":
+      return "Bluetooth is off.";
+    case "failed":
+      return "Link failed.";
+    default:
+      return connection.has_saved_device ? "Treadmill not connected." : "No treadmill saved yet.";
+  }
+}

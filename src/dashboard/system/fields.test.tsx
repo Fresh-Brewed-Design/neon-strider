@@ -33,6 +33,26 @@ describe("NumberField done line", () => {
   });
 });
 
+describe("Toggle More", () => {
+  it("keeps the extra facts behind a collapsed More, one expander for the switch", () => {
+    render(<Toggle label="Easy stop" description="One sentence." hint={["First fact.", "Second fact."]} checked={false} onChange={() => {}} />);
+    expect(screen.getByText("One sentence.")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: /More/ })).toHaveLength(1);
+    const more = screen.getByRole("button", { name: "More about Easy stop" });
+    expect(more.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("First fact.")).toBeNull();
+    fireEvent.click(more);
+    expect(more.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("First fact.")).toBeTruthy();
+    expect(screen.getByText("Second fact.")).toBeTruthy();
+  });
+
+  it("has no More without extra facts", () => {
+    render(<Toggle label="Easy stop" description="One sentence." checked={false} onChange={() => {}} />);
+    expect(screen.queryByRole("button", { name: /More/ })).toBeNull();
+  });
+});
+
 // Colour roles (#391): cyan is on and selected, whatever the section's own colour.
 describe("switch and choice colours", () => {
   it("turns every switch on cyan", () => {

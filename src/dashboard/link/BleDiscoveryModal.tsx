@@ -174,17 +174,21 @@ export function BleDiscoveryModal({
               {devices.length > 0 && scanError && <ActionStatus error={scanError} className="px-1" />}
             </div>
 
-            <div className="p-4 bg-black/40 border-t border-white/5">
+            {/* The centre of the dialog names a running scan, so the button keeps its own name. */}
+            <div className="flex items-center justify-end gap-2 p-4 bg-black/40 border-t border-white/5">
+              <button
+                onClick={onClose}
+                className="px-4 py-2 rounded-lg font-bold text-[11px] uppercase tracking-[0.2em] text-white/60 hover:bg-white/5 hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
               <button
                 onClick={onScan}
                 disabled={busy}
-                className={`w-full py-3 rounded-xl font-black text-[11px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 border ${busy
-                                        ? 'border-neon-cyan/50 text-neon-cyan/70 cursor-wait'
-                                        : 'border-neon-cyan text-neon-cyan hover:bg-neon-cyan/20 active:scale-[0.98]'
-                                    }`}
+                className="px-4 py-2 rounded-lg font-black text-[11px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 border border-neon-cyan text-neon-cyan hover:bg-neon-cyan/20 active:scale-[0.98] disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
               >
                 <RefreshCw size={14} className={isScanning ? 'animate-spin' : ''} />
-                {isScanning ? 'Scanning_Signals...' : scanError || scanned && devices.length === 0 ? 'Scan_Again' : 'Refresh_Scan'}
+                {scanError || scanned && devices.length === 0 ? 'Scan_Again' : 'Refresh_Scan'}
               </button>
             </div>
 

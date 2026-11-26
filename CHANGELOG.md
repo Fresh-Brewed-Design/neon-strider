@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.78.0 (2026-11-26)
+
+### Changed
+
+- System: a calibrated treadmill shows its Calibration as one status line with a GROUND_TRUTH details expander, and RUN says on its own row why it is off.
+- System: each tab has links to its sections, and each switch has one short sentence with a collapsed More for the rest.
+
+## 1.77.0 (2026-11-26)
+
+### Changed
+
+- Programs and History now label their controls: the run length, heart zone and remove buttons, the Strava upload state and the totals range.
+- A new History starts with one line instead of cards of zeros, and Save stays in view in the program editor.
+- Program tones moved to System, ROUTINE.
+
+## 1.76.9 (2026-11-26)
+
+### Fixed
+
+- The Live page keeps speed, tilt, STASIS, DUMP and the program's HOLD, SKIP and END in view at 125 % and 150 % Windows text size. The calibration offer sits under the controls, so the controls stay put when the offer shows or after SKIP.
+- The slider reads SET TARGET and the preset at the target shows as pressed. MAP is now a switch between MAP and STATS. With large text the rail's link icon also shows the link state by shape.
+
 ## 1.76.8 (2026-11-25)
 
 ### Changed

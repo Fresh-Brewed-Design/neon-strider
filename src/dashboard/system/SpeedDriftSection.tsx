@@ -60,14 +60,16 @@ export function SpeedDriftSection() {
     >
       <div>
         <Toggle
-          label="Speed drift"
+          label="Vary my speed on long walks"
           checked={d.enabled}
           onChange={(enabled) => void toggle.run(() => save({ enabled }))}
-          description="Speed drift only adjusts a belt already running at a speed you set."
-          hint="A speed you set by hand ends speed drift until the next walk."
+          description="Adjusts only a belt already running at a speed you set."
+          hint={[
+            "A speed you set by hand ends speed drift until the next walk.",
+            "Programs, pauses, calls and Neural flow take over from speed drift.",
+          ]}
         />
         <ActionStatus pending={toggle.pending} error={toggle.error} className="mt-1" />
-        <Hint className="mt-1">Programs, pauses, calls and Neural flow take over from speed drift.</Hint>
       </div>
       {d.enabled && (
         <>

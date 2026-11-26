@@ -5,6 +5,19 @@ import type { AppSnapshot } from "../ipc";
 
 const { snapshot: mock } = await import("../dev/mockBackend");
 const { Controls, QuietNowLine } = await import("./HudPanel");
+const { NotePop } = await import("./HudNote");
+const { useHudSend } = await import("./useHudSend");
+
+/** The controls with the panel's note, as HudApp wires them. */
+function Panel({ snapshot }: { snapshot: AppSnapshot }) {
+  const { send, error } = useHudSend();
+  return (
+    <>
+      <NotePop note={error ? { text: error } : null} />
+      <Controls snapshot={snapshot} send={send} />
+    </>
+  );
+}
 
 const dispatched = () => vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "dispatch").map(([, a]) => a);
 
@@ -19,7 +32,7 @@ function snap(on: boolean): AppSnapshot {
 describe("Quiet now on the HUD", () => {
   it("offers QUIET beside DUMP and sends one quiet_now per press", async () => {
     vi.mocked(invoke).mockClear();
-    render(<Controls snapshot={snap(false)} />);
+    render(<Panel snapshot={snap(false)} />);
     const button = screen.getByRole("button", { name: "QUIET slow down" });
     expect(button).toHaveAttribute("aria-pressed", "false");
     expect(button).toHaveAttribute("title", "Ease the belt to 2.0 km/h.");
@@ -28,24 +41,24 @@ describe("Quiet now on the HUD", () => {
   });
 
   it("reads as held while Quiet now holds the belt, naming the speed a second press puts back", () => {
-    render(<Controls snapshot={snap(true)} />);
-    const button = screen.getByRole("button", { name: "QUIET back to 3.5" });
+    render(<Panel snapshot={snap(true)} />);
+    const button = screen.getByRole("button", { name: "QUIET back 3.5" });
     expect(button).toHaveAttribute("aria-pressed", "true");
     expect(button).toHaveClass("is-on");
-    expect(button).toHaveAttribute("title", "Put 3.5 km/h back.");
+    expect(button).toHaveAttribute("title", "QUIET holds the belt at 2.0 km/h. Press again for 3.5 km/h.");
   });
 
   it("is off while no treadmill is connected", () => {
     const s = snap(false);
     s.connection = { ...s.connection, connected: false };
-    render(<Controls snapshot={s} />);
+    render(<Panel snapshot={s} />);
     expect(screen.getByRole("button", { name: "QUIET slow down" })).toBeDisabled();
   });
 
-  it("shows Rust's refusal under the controls", async () => {
+  it("shows Rust's refusal in the panel's note", async () => {
     vi.mocked(invoke).mockRejectedValueOnce("The belt already runs at 2.0 km/h or slower.");
     vi.spyOn(console, "error").mockImplementationOnce(() => {});
-    render(<Controls snapshot={snap(false)} />);
+    render(<Panel snapshot={snap(false)} />);
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "QUIET slow down" })));
     expect(screen.getByRole("alert")).toHaveTextContent("SYS // THE BELT ALREADY RUNS AT 2.0 KM/H OR SLOWER");
   });

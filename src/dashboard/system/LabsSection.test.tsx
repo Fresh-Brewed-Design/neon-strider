@@ -24,6 +24,7 @@ describe("System -> Labs ZONE_TILT", () => {
   it("is off by default and says what off means", () => {
     render(<LabsSection />);
     expect(screen.getByRole("switch", { name: TILT })).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(screen.getByRole("button", { name: `More about ${TILT}` }));
     expect(screen.getByText("Switched off, every heart zone trims the speed only.")).toBeTruthy();
   });
 
@@ -41,11 +42,12 @@ describe("System -> Labs ZONE_TILT", () => {
 });
 
 describe("System -> Labs typing by speed", () => {
-  const TYPING = "Typing by speed: Count key presses per minute while walking";
+  const TYPING = "Count key presses by walking speed";
 
   it("is off by default, shows no table and says what off means", () => {
     render(<LabsSection />);
     expect(screen.getByRole("switch", { name: TYPING })).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(screen.getByRole("button", { name: `More about ${TYPING}` }));
     expect(screen.getByText("Switched off, nothing is counted or saved.")).toBeTruthy();
     expect(screen.queryByRole("table")).toBeNull();
   });

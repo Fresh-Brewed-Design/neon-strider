@@ -1,64 +1,41 @@
 import { Fragment, useLayoutEffect, useRef } from "react";
-import type { AppSnapshot, HudWidget } from "../ipc";
+import type { AppSnapshot, Command, HudWidget } from "../ipc";
 import { describeActive } from "../dashboard/programs/format";
-import { startFailure } from "../state/linkStatus";
 import { statWidget } from "../widgets/registry";
 import { Sparkline } from "../widgets/Sparkline";
-import { HudNote } from "./HudNote";
+import { NotePop, type PanelNote } from "./HudNote";
 import { EngageButton } from "./HudPanel";
-import { hotkeyTitle } from "./shortcutLabel";
 import { DumpName } from "./DumpName";
 import { dumpTitle } from "./status";
-import { useHudSend } from "./useHudSend";
 
-/** Four corners pointing out: show the whole HUD. */
-function ExpandIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-      <path
-        d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="square"
-      />
-    </svg>
-  );
-}
+type Send = (c: Command) => Promise<boolean>;
 
 /**
- * The panel collapsed during stasis (`hud_view` "strip"): under the header,
- * today's total (DAILY_TOTAL), expand (the whole panel until the belt next
- * moves) and Engage.
+ * The panel collapsed during stasis (`hud_view` "strip"): under the header
+ * (whose expand button shows the whole panel until the belt next moves),
+ * today's total (DAILY_TOTAL) and Engage. A note covers the total and the
+ * logo above it, beside Engage, so Engage never moves for it.
  */
-export function StripRow({ snapshot }: { snapshot: AppSnapshot }) {
-  const { send, error } = useHudSend();
+export function StripRow({ snapshot, send, note }: { snapshot: AppSnapshot; send: Send; note: PanelNote | null }) {
   const daily = statWidget("DAILY");
   const total = daily?.read(snapshot);
   return (
     <div className="hud-strip">
       <div className="hud-strip-row">
-        {daily && total && (
-          <div className={`hud-strip-total accent-${daily.accent}`} title={daily.codename}>
-            <span className="hud-label">{daily.label}</span>
-            <span className="hud-value hud-value-sm">
-              {total.value}
-              {total.unit && <span className="hud-unit">{total.unit}</span>}
-            </span>
-          </div>
-        )}
-        <button
-          type="button"
-          className="hud-btn hud-btn-expand"
-          aria-label="Show the whole HUD"
-          title="Show the whole HUD until the belt moves again"
-          onClick={() => void send({ type: "hud_expand" })}
-        >
-          <ExpandIcon />
-        </button>
-        <EngageButton snapshot={snapshot} send={send} />
+        <div className="hud-strip-cell">
+          {daily && total && (
+            <div className={`hud-strip-total accent-${daily.accent}`} title={daily.codename}>
+              <span className="hud-label">{daily.label}</span>
+              <span className="hud-value hud-value-sm">
+                {total.value}
+                {total.unit && <span className="hud-unit">{total.unit}</span>}
+              </span>
+            </div>
+          )}
+          <NotePop note={note} />
+        </div>
+        <EngageButton snapshot={snapshot} send={send} sub />
       </div>
-      <HudNote error={error ?? startFailure(snapshot)} />
     </div>
   );
 }
@@ -135,10 +112,11 @@ function PulseRow({ snapshot }: { snapshot: AppSnapshot }) {
 /**
  * The panel minified by the user (`hud_view` "minified"): speed, time and
  * distance, heart rate with a sensor picked, the program step when one runs,
- * then expand, Engage/Stasis and Dump. It stays until expanded again.
+ * then Engage/Stasis and Dump with their plain lines, as on the whole panel.
+ * Expand is in the header. A note covers the readings over the buttons, so the
+ * buttons never move for it. It stays until expanded again.
  */
-export function RunStripRow({ snapshot }: { snapshot: AppSnapshot }) {
-  const { send, error } = useHudSend();
+export function RunStripRow({ snapshot, send, note }: { snapshot: AppSnapshot; send: Send; note: PanelNote | null }) {
   const { deck, connection } = snapshot;
   const a = snapshot.active_program;
   const stopped = deck.status === "Stopped" || deck.status === "Stopping";
@@ -168,27 +146,19 @@ export function RunStripRow({ snapshot }: { snapshot: AppSnapshot }) {
         </div>
       )}
       <div className="hud-strip-row">
+        <NotePop note={note} />
+        <EngageButton snapshot={snapshot} send={send} sub />
         <button
           type="button"
-          className="hud-btn hud-btn-expand"
-          aria-label="Show the whole HUD"
-          title={hotkeyTitle("Show the whole HUD", snapshot.shortcuts)}
-          onClick={() => void send({ type: "hud_set_minified", minified: false })}
-        >
-          <ExpandIcon />
-        </button>
-        <EngageButton snapshot={snapshot} send={send} />
-        <button
-          type="button"
-          className="hud-btn hud-btn-stop hud-btn-dump"
+          className="hud-btn hud-btn-stop hud-btn-stack hud-btn-dump"
           disabled={!connection.connected || stopped}
           title={dumpTitle(snapshot)}
           onClick={() => void send({ type: "stop" })}
         >
-          <DumpName />
+          <DumpName />{" "}
+          <span className="hud-btn-sub">{snapshot.easy_stop.easing ? "stop now" : "end walk"}</span>
         </button>
       </div>
-      <HudNote error={error ?? startFailure(snapshot)} />
     </div>
   );
 }

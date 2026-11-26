@@ -75,6 +75,11 @@ export function DashboardApp() {
     setPage(id);
     writePref(PAGE_KEY, id);
   };
+  const openCalibration = () =>
+    leavePage(() => {
+      openPage("system");
+      showSystemSection("sys-calibration");
+    });
 
   // ECHO's "Open in Programs" on a History row: show the Programs page, where the editor opens it.
   useEffect(
@@ -181,19 +186,10 @@ export function DashboardApp() {
         <div className="dash-compact-only shrink-0 px-3 pt-2">
           <GuidedPinMarker />
         </div>
-        {page !== "system" && (
-          <CalibrateOffer
-            onCalibrate={() =>
-              leavePage(() => {
-                openPage("system");
-                showSystemSection("sys-calibration");
-              })
-            }
-          />
-        )}
-        <div className="min-h-0 flex-1">
-          <Current />
-        </div>
+        {/* The first-connect calibration offer heads every page but System, where calibration
+            lives, and Live, which shows it under the controls so they never move. */}
+        {page !== "system" && page !== "live" && <CalibrateOffer className="mx-5 mt-4" onCalibrate={openCalibration} />}
+        <div className="min-h-0 flex-1">{page === "live" ? <LivePage onCalibrate={openCalibration} /> : <Current />}</div>
         {/* With the rail at icons only, a refused pin shows at the page's foot, beside the pin button. */}
         <div className="dash-compact-only shrink-0 px-3 pb-2">
           <ActionStatus error={pin.error} />
