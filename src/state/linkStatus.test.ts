@@ -12,6 +12,7 @@ const conn = (link: LinkState, connected = false): ConnectionSnapshot => ({
   last_error: null,
   start_pending: false,
   start_result: null,
+  start_press: "engage",
   connect_dialog_at_ms: null,
   simulated: false,
 });
