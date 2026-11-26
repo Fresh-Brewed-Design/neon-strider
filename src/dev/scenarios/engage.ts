@@ -16,7 +16,7 @@ const startFailed = (at_ms: number) => ({
 });
 const statusFlag = params.get("status");
 const START_SPINNING_DOWN = "Belt is still stopping. Press Engage once it stops.";
-const START_STANDBY = "Wake the deck first with the treadmill's power button or remote.";
+const START_STANDBY = "Wake the deck first at the treadmill or remote.";
 
 /** ?status=stopping: Engage while the belt spins down is refused at once. */
 export function refuseWhileStopping() {

@@ -85,7 +85,7 @@ describe("SeatedCard", () => {
   });
 
   it("shows a refused start (deck asleep) right under the buttons", () => {
-    const message = "Wake the deck first with the treadmill's power button or remote.";
+    const message = "Wake the deck first at the treadmill or remote.";
     render(
       <SeatedCard
         snapshot={seated((x) => {
@@ -103,7 +103,7 @@ describe("SeatedCard", () => {
   it("says the deck must be woken first on every start button while it sleeps, before any press", async () => {
     const s = seated((x) => (x.deck.standby = true));
     render(<SeatedCard snapshot={s} />);
-    expect(screen.getByText("Wake the deck first with the treadmill's power button or remote.")).toBeInTheDocument();
+    expect(screen.getByText("Wake the deck first at the treadmill or remote.")).toBeInTheDocument();
     const engage = screen.getByRole("button", { name: "ENGAGE wake deck first" });
     expect(engage).toBeEnabled();
     for (const id of s.seated.program_ids) {

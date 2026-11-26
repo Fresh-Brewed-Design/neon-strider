@@ -716,6 +716,8 @@ body,
 .hud-swap { display: grid; }
 .hud-swap > * { grid-area: 1 / 1; text-align: center; }
 .hud-swap > :not(.is-shown) { visibility: hidden; }
+/* "wake deck first" is a letter longer than the longest other line; at 11px it fits their cell. */
+.hud-btn-sub > .is-tight { font-size: 11px; }
 
 .hud-steppers {
   display: grid;

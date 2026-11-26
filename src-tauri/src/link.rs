@@ -317,7 +317,7 @@ pub const START_SPINNING_DOWN: &str = "Belt is still stopping. Press Engage once
 /// is in standby: it refuses every start, and the app can't wake it. The same
 /// words the HUD's start buttons give before the press (`WAKE_FIRST` in
 /// `src/hud/status.ts`), and they name no button: the press may have been GO.
-pub const START_STANDBY: &str = "Wake the deck first with the treadmill's power button or remote.";
+pub const START_STANDBY: &str = "Wake the deck first at the treadmill or remote.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StartCheck {

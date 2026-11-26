@@ -275,7 +275,7 @@ export function EngageButton({
       {/* Every word and line it can take share one cell each, so it keeps one size and DUMP never moves. */}
       <Swap shown={engageLabel(snapshot)} all={ENGAGE_WORDS} />
       {sub && " "}
-      {sub && <Swap className="hud-btn-sub" shown={engageSub(snapshot)} all={ENGAGE_SUBS} />}
+      {sub && <Swap className="hud-btn-sub" shown={engageSub(snapshot)} all={ENGAGE_SUBS} tight={[WAKE_FIRST_SUB]} />}
     </button>
   );
 }
@@ -406,6 +406,7 @@ function ProgramActions({ a, offline, asleep = false, send }: { a: ActiveProgram
         disabled={offline}
         sub={paused && asleep ? WAKE_FIRST_SUB : wait ? "start belt" : paused ? "resume program" : "pause program"}
         subs={HOLD_SUBS}
+        tight={[WAKE_FIRST_SUB]}
         title={
           offline
             ? "Treadmill not connected."

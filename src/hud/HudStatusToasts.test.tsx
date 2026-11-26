@@ -92,7 +92,7 @@ describe("HUD status toasts", () => {
     await toasts(asleep, [{ type: "AUTOMATION", message: "WORKDAY IN 30S", isActionable: true }]);
     const wake = screen.getByTestId("hud-toast-wake");
     expect(wake).toHaveTextContent("wake deck first");
-    expect(wake).toHaveAttribute("title", "Wake the deck first with the treadmill's power button or remote.");
+    expect(wake).toHaveAttribute("title", "Wake the deck first at the treadmill or remote.");
     expect(screen.getByRole("button", { name: "SKIP REST" })).toBeInTheDocument();
   });
 

@@ -84,7 +84,7 @@ export const WAKE_FIRST_SUB = "wake deck first";
  * The one sentence for a deck that is asleep or off: the start buttons' tooltip before a press, the
  * sit-too-long card's line, and Rust's refusal after one (`link::START_STANDBY`, the same words).
  */
-export const WAKE_FIRST = "Wake the deck first with the treadmill's power button or remote.";
+export const WAKE_FIRST = "Wake the deck first at the treadmill or remote.";
 
 /**
  * The deck is linked but asleep or off (standby): it refuses every start and the app can't wake it,

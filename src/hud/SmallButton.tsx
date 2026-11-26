@@ -9,6 +9,7 @@ export function SmallButton({
   sub,
   subs,
   title,
+  tight,
   disabled = false,
 }: {
   onClick: () => void;
@@ -19,6 +20,8 @@ export function SmallButton({
   sub?: string;
   /** Every line `sub` takes in turn: they share one cell, so the button keeps one size. */
   subs?: readonly string[];
+  /** Lines of `subs` set a size smaller, so a longer one keeps the button's size (`Swap`). */
+  tight?: readonly string[];
   title?: string;
   disabled?: boolean;
 }) {
@@ -27,7 +30,7 @@ export function SmallButton({
     <button type="button" className={cls} title={title} disabled={disabled} onClick={onClick}>
       {children}
       {sub && " "}
-      {sub && (subs ? <Swap className="hud-btn-sub" shown={sub} all={subs} /> : <span className="hud-btn-sub">{sub}</span>)}
+      {sub && (subs ? <Swap className="hud-btn-sub" shown={sub} all={subs} tight={tight} /> : <span className="hud-btn-sub">{sub}</span>)}
     </button>
   );
 }

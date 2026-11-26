@@ -65,7 +65,7 @@ describe("HUD belt buttons", () => {
   });
 
   it("say the deck must be woken first while it sleeps, on ENGAGE and on GO", () => {
-    const wake = "Wake the deck first with the treadmill's power button or remote.";
+    const wake = "Wake the deck first at the treadmill or remote.";
     const asleep = panel((s) => (s.deck.standby = true));
     expect(engageSub(asleep)).toBe("wake deck first");
     expect(engageTitle(asleep)).toBe(wake);
