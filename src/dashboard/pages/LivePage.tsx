@@ -3,7 +3,7 @@ import { dispatch, type AppSnapshot, type DeckSnapshot } from "../../ipc";
 import { linkView } from "../../state/linkStatus";
 import { snapToDeck, snapToLevel } from "../../state/deckSpeeds";
 import { useAppSnapshot } from "../../state/useAppState";
-import { STAT_WIDGETS } from "../../widgets/registry";
+import { STAT_WIDGETS, statWidget } from "../../widgets/registry";
 import { Sparkline } from "../../widgets/Sparkline";
 import { Axis } from "../live/Axis";
 import { PinToggle } from "../live/PinToggle";
@@ -185,6 +185,7 @@ export function LivePage({ onCalibrate }: { onCalibrate?: () => void } = {}) {
             snap={(kmh) => snapToDeck(kmh, deck)}
             mark={strideFitMark(deck)}
             pin={{ widget: "VELOCITY", pinned: pinned.has("VELOCITY") }}
+            spark={statWidget("VELOCITY")?.spark?.(s) ?? null}
           />
           <Axis
             title="Tilt"

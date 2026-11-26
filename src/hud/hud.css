@@ -559,7 +559,7 @@ body,
 
 .hud-value-sm { font-size: 15px; }
 
-/* PULSE_RATE's spark chart under the value, in the card's accent. */
+/* A stat's spark chart under the value (VEL's speed, PULSE_RATE's bpm), in the card's accent. */
 .hud-spark {
   display: block;
   width: 100%;

@@ -6,6 +6,8 @@ import type { HudWidget } from "../../ipc";
 import { Label, Panel } from "../ui";
 import { cx, TONE_TEXT } from "../util";
 import { useWheelSteps } from "../../hud/useWheelSteps";
+import type { SparkData } from "../../widgets/spark";
+import { Sparkline } from "../../widgets/Sparkline";
 import { PinToggle } from "./PinToggle";
 import { SegmentedDisplay } from "./SegmentedDisplay";
 import type { SliderMark } from "./sliderValue";
@@ -60,6 +62,7 @@ export function Axis({
   note,
   pin,
   mark = null,
+  spark = null,
   wheelHint,
 }: {
   pin: { widget: HudWidget; pinned: boolean };
@@ -85,6 +88,8 @@ export function Axis({
   note?: string | null;
   /** A labelled mark on the slider (STRIDE_FIT on speed). */
   mark?: SliderMark | null;
+  /** The reading's spark chart beside the title (VELOCITY's speed trace); null shows none. */
+  spark?: SparkData | null;
 }) {
   const [value, setDraft] = useDraft(target);
   // The last press, drag or scroll: its refusal shows under the presets.
@@ -110,6 +115,8 @@ export function Axis({
       <div className="flex flex-col gap-2 p-3 @max-[14rem]:gap-1.5 @max-[14rem]:p-2">
         <div className="flex items-center justify-between gap-x-2">
           <Label>{title}</Label>
+          {/* Beside the title, so the chart costs the panel no height: Live fits 760x600. */}
+          {spark && <Sparkline data={spark} className={cx("block h-4 min-w-0 flex-1", TONE_TEXT[tone])} />}
           <PinToggle widget={pin.widget} pinned={pin.pinned} />
         </div>
 
