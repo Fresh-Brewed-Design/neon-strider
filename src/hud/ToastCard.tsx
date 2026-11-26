@@ -1,5 +1,6 @@
 import type { AppSnapshot } from "../ipc";
 import { HudNote } from "./HudNote";
+import { SegmentText } from "./SegmentText";
 import { SmallButton } from "./SmallButton";
 import { useHudSend } from "./useHudSend";
 import type { Toast } from "./useToasts";
@@ -33,7 +34,7 @@ export function ToastCard({ toast, snapshot }: { toast: Toast; snapshot: AppSnap
     <div className={`hud-toast accent-${accent}`}>
       <div className="hud-toast-body">
         <span className="hud-label">SYS // {toast.type}</span>
-        <span className="hud-toast-message">{toast.message}</span>
+        <SegmentText className="hud-toast-message" text={toast.message ?? ""} />
       </div>
       {toast.type === "AUTOMATION" && toast.isActionable && (
         <SmallButton onClick={() => send({ type: "program_skip" })}>SKIP REST</SmallButton>

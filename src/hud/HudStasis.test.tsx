@@ -65,7 +65,7 @@ describe("HUD strip", () => {
 
   it("labels Engage like the panel does", () => {
     show(still("strip", (s) => (s.deck.status = "Paused")));
-    expect(screen.getByRole("button", { name: "RE-JACK resume" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "RE-JACK resume belt" })).toBeInTheDocument();
   });
 
   it("reads WAKING… while a start is pending, disabled when offline", () => {
@@ -156,7 +156,7 @@ describe("HUD minified", () => {
     expect(container.querySelector(".hud-run-segments")?.textContent).toBe("Workday · WALK · 04:12 left · cycle 3");
     expect(container.querySelectorAll(".hud-run-seg")).toHaveLength(4);
     expect(screen.getByRole("button", { name: "Show the whole HUD" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "STASIS pause" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "STASIS pause belt" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "DUMP end walk" })).toBeEnabled();
     // The whole panel's stats, steppers and program buttons are gone, and so is minify.
     expect(container.querySelector(".hud-stats")).toBeNull();
@@ -221,7 +221,7 @@ describe("HUD minified", () => {
     vi.mocked(invoke).mockClear();
     show(minified());
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Show the whole HUD" })));
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "STASIS pause" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "STASIS pause belt" })));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "DUMP end walk" })));
     expect(dispatched()).toEqual([
       { command: { type: "hud_set_minified", minified: false } },
@@ -251,14 +251,16 @@ describe("HUD minified", () => {
     expect(dispatched()).toEqual([{ command: { type: "hud_set_minified", minified: true } }]);
   });
 
-  it("has no minify button while a program waits for GO (the panel stays whole)", () => {
+  it("keeps the minify button in its place but off while a program waits for GO (the panel stays whole)", () => {
     show(
       still("full", (s) => {
         s.deck.status = "Paused";
         s.active_program = { ...structuredClone(mock.active_program!), paused: true, wait: "rest_complete" };
       }),
     );
-    expect(screen.queryByRole("button", { name: "Minify the HUD" })).not.toBeInTheDocument();
+    const minify = screen.getByRole("button", { name: "Minify the HUD" });
+    expect(minify).toBeDisabled();
+    expect(minify).toHaveAttribute("title", "The whole HUD stays up while a program waits for GO.");
   });
 });
 

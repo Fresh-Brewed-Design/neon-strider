@@ -48,19 +48,19 @@ describe("HUD belt buttons", () => {
     expect(screen.getByRole("button", { name: "DUMP end walk" })).toHaveAttribute("title", "The belt is already stopped.");
     unmount();
     show(panel((s) => (s.deck.status = "Running")));
-    expect(screen.getByRole("button", { name: "STASIS pause" })).toHaveAttribute("title", "Pause the belt.");
+    expect(screen.getByRole("button", { name: "STASIS pause belt" })).toHaveAttribute("title", "Pause the belt.");
     expect(screen.getByRole("button", { name: "DUMP end walk" })).toHaveAttribute("title", "Stop the belt and end the session.");
   });
 
   it("covers every state of the main button's line", () => {
-    expect(engageSub(panel((s) => (s.deck.status = "Paused")))).toBe("resume");
+    expect(engageSub(panel((s) => (s.deck.status = "Paused")))).toBe("resume belt");
     expect(engageTitle(panel((s) => (s.deck.status = "Paused")))).toBe("Resume the belt.");
     expect(engageSub(panel((s) => (s.connection.start_pending = true)))).toBe("starting");
     const go = panel((s) => {
       s.deck.status = "Paused";
       s.active_program = { ...structuredClone(mock.active_program!), phase: "walking", paused: true, wait: null };
     });
-    expect(engageSub(go)).toBe("resume");
+    expect(engageSub(go)).toBe("resume program");
     expect(engageTitle(go)).toBe("Resume the program.");
   });
 
@@ -71,15 +71,15 @@ describe("HUD belt buttons", () => {
         s.active_program = { ...structuredClone(mock.active_program!), phase: "walking", paused: false, wait: null };
       }),
     );
-    expect(screen.getByRole("button", { name: "HOLD pause" })).toHaveAttribute("title", "Hold the program.");
+    expect(screen.getByRole("button", { name: "HOLD pause program" })).toHaveAttribute("title", "Hold the program.");
     expect(screen.getByRole("button", { name: "SKIP next step" })).toHaveAttribute("title", "Skip to the next step.");
     expect(screen.getByRole("button", { name: "END end program" })).toHaveAttribute("title", "End the program.");
   });
 
-  it("show GO with resume while the program is paused", () => {
+  it("show GO with resume program while the program is paused", () => {
     show(panel((s) => (s.active_program = { ...structuredClone(mock.active_program!), phase: "walking", paused: true, wait: null })));
     // The main button and the program row both read GO.
-    const go = screen.getAllByRole("button", { name: "GO resume" });
+    const go = screen.getAllByRole("button", { name: "GO resume program" });
     expect(go).toHaveLength(2);
     for (const b of go) expect(b).toHaveAttribute("title", "Resume the program.");
   });
@@ -89,12 +89,17 @@ describe("HUD program list offline", () => {
   const offline = (state: object, saved = true) =>
     panel((s) => Object.assign(s.connection, { connected: false, has_saved_device: saved, link: state }));
 
-  it("says why the program buttons are off and offers Connect", async () => {
+  it("says why the program buttons are off and offers RETRY NOW while RELINK counts down", async () => {
     vi.mocked(invoke).mockClear();
     show(offline({ state: "reconnecting", attempt: 1, next_retry_s: 9 }));
     expect(screen.getByTestId("hud-offline")).toHaveTextContent("Link lost. RELINK 9S.");
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "CONNECT" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "RETRY NOW" })));
     expect(dispatched()).toEqual([{ command: { type: "connect_now" } }]);
+  });
+
+  it("offers CONNECT once the retries gave up", () => {
+    show(offline({ state: "failed" }));
+    expect(screen.getByRole("button", { name: "CONNECT" })).toBeInTheDocument();
   });
 
   it("opens the dashboard's connect dialog when no treadmill is saved", async () => {

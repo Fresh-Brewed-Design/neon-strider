@@ -18,6 +18,7 @@ import { useLogoDrag, usePlacement } from "./useHudDrag";
 import { useHudSend } from "./useHudSend";
 import { useRelink } from "./useRelink";
 import { useToasts } from "./useToasts";
+import { useGrowsUp } from "./useGrowsUp";
 import "./hud.css";
 
 /**
@@ -34,6 +35,8 @@ export function HudApp() {
   const contentRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const placement = usePlacement(snapshot?.hud);
+  // A panel that grows upward keeps the programs module's tallest height.
+  const growsUp = useGrowsUp(contentRef, placement.anchor, placement.custom !== null);
   const drag = useHudSend();
   const minify = useHudSend();
   // One sender for every control on the panel, so a refused press shows in the panel's one note.
@@ -49,8 +52,6 @@ export function HudApp() {
   const full = view === "full";
   const minified = view === "minified";
   const wait = snapshot?.active_program?.wait ?? null;
-  // A program waiting for GO keeps the whole panel (Rust ignores minify then).
-  const canMinify = full && !wait;
   // The program card's headline is the one prompt while it shows.
   const promptOnProgramCard = full && wait !== null && widgets.includes("PROGRAMS");
   // A toast is redundant while the panel already shows the same thing live
@@ -92,14 +93,17 @@ export function HudApp() {
       : deckNote?.target_note
         ? { text: deckNote.target_note, detail: deckNote.target_note_hint }
         : null;
-  // The size button sits in the header's corner in every view.
+  // The size button sits in the header's corner in every view. A program
+  // waiting for GO keeps the whole panel (Rust ignores minify then), so the
+  // button stays in place but off until GO.
   const toggle: HeaderToggle | undefined =
     snapshot === null
       ? undefined
-      : canMinify
+      : full
         ? {
             kind: "minify",
-            title: hotkeyTitle("Shrink the HUD to a strip", snapshot.shortcuts),
+            disabled: wait !== null,
+            title: wait ? "The whole HUD stays up while a program waits for GO." : hotkeyTitle("Shrink the HUD to a strip", snapshot.shortcuts),
             onClick: () => void minify.send({ type: "hud_set_minified", minified: true }),
           }
         : minified
@@ -142,24 +146,27 @@ export function HudApp() {
               toggle={toggle}
               simulated={snapshot.connection.simulated}
             />
-            {full ? (
-              <>
-                {stats.length > 0 && (
-                  <div className="hud-stats">
-                    {stats.map((id) => (
-                      <StatCell key={id} id={id} snapshot={snapshot} />
-                    ))}
-                  </div>
-                )}
-                <StatusRow snapshot={snapshot} relink={relink} note={note} />
-                {widgets.includes("CONTROLS") && <Controls snapshot={snapshot} send={panel.send} />}
-                {widgets.includes("PROGRAMS") && <ProgramsModule snapshot={snapshot} send={panel.send} />}
-              </>
-            ) : minified ? (
-              <RunStripRow snapshot={snapshot} send={panel.send} note={note} />
-            ) : (
-              <StripRow snapshot={snapshot} send={panel.send} note={note} />
-            )}
+            {/* Everything under the header: it scrolls if the panel can't fit the screen (a large text size), so the header stays on it. */}
+            <div className="hud-body">
+              {full ? (
+                <>
+                  {stats.length > 0 && (
+                    <div className="hud-stats">
+                      {stats.map((id) => (
+                        <StatCell key={id} id={id} snapshot={snapshot} />
+                      ))}
+                    </div>
+                  )}
+                  <StatusRow snapshot={snapshot} relink={relink} note={note} />
+                  {widgets.includes("CONTROLS") && <Controls snapshot={snapshot} send={panel.send} />}
+                  {widgets.includes("PROGRAMS") && <ProgramsModule snapshot={snapshot} send={panel.send} reserve={growsUp} />}
+                </>
+              ) : minified ? (
+                <RunStripRow snapshot={snapshot} send={panel.send} note={note} />
+              ) : (
+                <StripRow snapshot={snapshot} send={panel.send} note={note} />
+              )}
+            </div>
           </section>
         )}
         {walkawayCard && snapshot && <WalkAwayCard snapshot={snapshot} />}

@@ -19,10 +19,10 @@ describe("Transport belt buttons", () => {
     expect(screen.getByRole("button", { name: "Dump end walk" })).toBeInTheDocument();
     stopped.unmount();
     const paused = show((s) => (s.deck = { ...s.deck, status: "Paused", speed_kmh: 0 }));
-    expect(screen.getByRole("button", { name: "Re-jack resume" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Re-jack resume belt" })).toBeInTheDocument();
     paused.unmount();
     show((s) => (s.deck = { ...s.deck, status: "Running", speed_kmh: 3 }));
-    expect(screen.getByRole("button", { name: "Stasis pause" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Stasis pause belt" })).toBeInTheDocument();
   });
 
   it("reads GO with resume on a paused program", () => {
@@ -30,13 +30,13 @@ describe("Transport belt buttons", () => {
       s.deck = { ...s.deck, status: "Paused", speed_kmh: 0 };
       s.active_program = { ...structuredClone(mock.active_program!), phase: "walking", paused: true, wait: null };
     });
-    expect(screen.getByRole("button", { name: "GO resume" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "GO resume program" })).toBeInTheDocument();
   });
 
   // Colour roles (#391): STASIS is cyan like ENGAGE; DUMP has its own magenta outline and stop square.
   it("keeps STASIS cyan and gives DUMP its own look", () => {
     show((s) => (s.deck = { ...s.deck, status: "Running", speed_kmh: 3 }));
-    const stasis = screen.getByRole("button", { name: "Stasis pause" });
+    const stasis = screen.getByRole("button", { name: "Stasis pause belt" });
     expect(stasis.className).toContain("text-neon-cyan");
     expect(stasis.className).not.toContain("magenta");
     const dump = screen.getByRole("button", { name: "Dump end walk" });

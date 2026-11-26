@@ -111,7 +111,7 @@ export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
       </div>
       <button
         type="button"
-        className="hud-btn hud-seated-engage"
+        className="hud-btn hud-seated-engage accent-cyan"
         disabled={!snapshot.connection.connected}
         title="Start walking at the usual speed, like Engage."
         onClick={() => void send({ type: "seated_engage" })}

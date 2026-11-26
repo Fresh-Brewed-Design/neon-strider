@@ -85,7 +85,12 @@ describe("HUD waiting for GO", () => {
     expect(screen.getByRole("button", { name: "SKIP next step" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "END end program" })).toBeInTheDocument();
     // The controls keep their layout: Engage reads GO in its own slot, DUMP beside it.
-    const transport = Array.from(document.querySelectorAll(".hud-transport > button")).map((b) => b.childNodes[0].textContent?.trim());
+    // The shown word of each button (Engage's other words wait unseen in the same cell).
+    const word = (b: Element) => {
+      const first = b.childNodes[0];
+      return (first instanceof Element ? (first.querySelector(".is-shown") ?? first) : first).textContent?.trim();
+    };
+    const transport = Array.from(document.querySelectorAll(".hud-transport > button")).map(word);
     expect(transport).toEqual(["GO", "DUMP", "QUIET"]);
     expect(screen.getByRole("button", { name: "QUIET slow down" })).toBeInTheDocument();
   });
@@ -97,7 +102,7 @@ describe("HUD waiting for GO", () => {
         s.hud.widgets = s.hud.widgets.filter((w) => w !== "PROGRAMS");
       }),
     );
-    expect(screen.getByRole("button", { name: "GO resume" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "GO resume program" })).toBeInTheDocument();
   });
 
   it("drops the toast that repeats the card's prompt, and keeps other toasts", async () => {
@@ -139,7 +144,7 @@ describe("HUD controls offline", () => {
       }),
     );
     expect(document.querySelector(".hud-panel")).toHaveClass("is-offline");
-    expect(screen.getByRole("button", { name: "HOLD pause" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "HOLD pause program" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "SKIP next step" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "END end program" })).toBeEnabled();
   });
