@@ -60,9 +60,16 @@ it as the same session, and a running program carries on at the same step, its t
 the time the app was closed. Background check failures only show in System -> Updates.
 With "Install automatically" on (default, `update_auto_install`), the scheduler (5 s tick) installs an
 offered update by itself only when the belt has been still with no program (walking, resting,
-paused or waiting for GO), start or countdown/stopping for 10 minutes and the PC has had no input
-for 5 (`platform::input_idle_for`); `auto_install` is the pure rule, and it runs again right
-before the installer starts.
+paused or waiting for GO), start or countdown/stopping for 10 minutes, the PC has had no input
+for 5 (`platform::input_idle_for`), and no app has used the microphone (`calls::mic`, a call) and
+Windows hasn't said presenting (`presenting::presenting_now`, whatever the hold-cards switch) for 5;
+at most once a local calendar day (`update_auto_day`, saved right before the installer runs, so it
+survives the restart); an offer from a check over 5 minutes old is checked again first, so the
+newest version goes in. `auto_install` is the pure rule, and it runs again right before the
+installer starts. While it's on there is no HUD UPDATE READY card (`show_hud_card`; the dot on
+System and the tray icon is the only sign) and "What's new" never opens the dashboard by itself:
+it shows the next time the dashboard is opened, with any still-unread notes kept below the new
+ones (`notes_with_unread`). Switched off, the card and the self-opening "What's new" work as before.
 The installer is per-user NSIS; "launch at login" (`get/set_launch_at_login`, through `platform`: the autostart plugin on Windows, an SMAppService Login Item on macOS) and single-instance are Rust plugins.
 `traffic.rs` is the Diagnostics traffic recorder: while switched on (`traffic_record`, off at every
 start) `bluetooth.rs` hands it every packet written and every notification received, and it appends
@@ -251,7 +258,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?offline`: no treadmill saved yet
 - `?onemonitor`: a single display
 - `?pcwalk`: the WALKED stat pinned on the HUD at 38 % (2h 10m of 5h 40m); `=early` 6 minutes of PC time (`--`), `=long` 10h 05m of 11h 50m, `=none` no PC time today
-- `?presenting`: Windows says a presentation or full-screen app is in front, so the HUD holds its non-urgent cards (with `?seated`, `?eyebreak=upcoming`, `?weekly`, `?due` or `?update=available`) and shows PRESENTING // CARDS HELD; `=off` the switch off in System -> Desk
+- `?presenting`: Windows says a presentation or full-screen app is in front, so the HUD holds its non-urgent cards (with `?seated`, `?eyebreak=upcoming`, `?weekly`, `?due` or `?update=available&autoinstall=off`) and shows PRESENTING // CARDS HELD; `=off` the switch off in System -> Desk
 - `?program=ready|hold|still|resting|paused|interval`: a program waiting for GO after a rest, after a 0 km/h step (its steps have no kind), or after a reconnect found the belt still; mid-rest; paused by the user; or Interval walk on its 3rd brisk round (`INTERVAL 3/5`, `T-MINUS 17:08`); each shows STEP_MAP on the Live page and the next step on the HUD
 - `?programtones`: Program tones switched on (System, Desk); 3 s after load a cue fires: `=step` (or no value) the running program moves to its next step, `=wait` it waits for GO after a rest, `=speedup` its next, faster step starts in 5 s; SKIP fires the step cue while the belt runs
 - `?quietnow`: Quiet now holds the belt at the 2.0 km/h quiet speed (the HUD's QUIET lit, its QUIET // DAMPED line, the tray's END QUIET); `=slow` the belt already at 1.8 km/h, so QUIET changes nothing and the HUD says why
@@ -273,7 +280,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?today=early|long`: History's Today timeline for 08:02 to 14:25 with a walk after lunch; `=early` 20 minutes in, `=long` 06:40 to 21:30
 - `?traffic=recording|saved`: the Diagnostics traffic recorder
 - `?typingspeed`: System -> Labs typing by speed on, with a table of five speed bands from 12 walks; `=empty` on with no walks counted yet
-- `?update=available|downloading|failed|whatsnew`: auto-update states
+- `?update=available|downloading|failed|tomorrow|whatsnew`: auto-update states (`=tomorrow` on offer after today's automatic install; the HUD's UPDATE READY card needs `?autoinstall=off`)
 - `?walkaway=warning|paused|idle`: the walk-away cards (RE-JACK and DUMP on the paused one)
 - `?weekly`: the last-week HUD card; `=long|new|down` variants
 - `?wallclock=new|late|none`: History's WALL_CLOCK card with no desk days, a walk at 21:00 widening the row, or desk days with no walks
