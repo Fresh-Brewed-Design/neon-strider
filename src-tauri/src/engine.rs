@@ -1833,7 +1833,7 @@ impl OrchestratorState {
                 let incline_moved = incline != asked_incline;
                 let took = if speed_moved && incline_moved {
                     format!(
-                        "The treadmill took {:.1} km/h and tilt {:.1} % in place of the asked values.",
+                        "The treadmill took {:.1} km/h and tilt {:.1} % in place of the targets sent.",
                         kmh(speed),
                         tilt(incline)
                     )

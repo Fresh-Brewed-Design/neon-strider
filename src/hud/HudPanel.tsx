@@ -6,9 +6,9 @@ import { statWidget } from "../widgets/registry";
 import { Sparkline } from "../widgets/Sparkline";
 import { targetAccent, targetRange, ZONE_ACCENT, zoneRange } from "../widgets/zone";
 import { NotePop, type PanelNote } from "./HudNote";
-import { isMoving, linkState, linkView } from "../state/linkStatus";
+import { isMoving, linkView } from "../state/linkStatus";
 import { SmallButton } from "./SmallButton";
-import { dumpTitle, engageLabel, engageSub, engageTitle } from "./status";
+import { dumpTitle, engageLabel, engageSub, engageTitle, firstStepLine, offlineText } from "./status";
 import type { useRelink } from "./useRelink";
 import { useWheelSteps } from "./useWheelSteps";
 
@@ -345,12 +345,6 @@ export function Controls({ snapshot, send }: { snapshot: AppSnapshot; send: Send
   );
 }
 
-/** What a press on a saved program's button sets: its first step's speed. */
-export function firstStepLine(p: AppSnapshot["programs"][number]): string {
-  const kmh = p.steps[0]?.speed_kmh ?? 0;
-  return kmh > 0 ? `starts ${kmh.toFixed(1)} km/h` : "starts still";
-}
-
 /** The running program's controls, or one button per saved program. */
 export function ProgramsModule({ snapshot, send }: { snapshot: AppSnapshot; send: Send }) {
   const a = snapshot.active_program;
@@ -448,25 +442,6 @@ export function ProgramsModule({ snapshot, send }: { snapshot: AppSnapshot; send
       </div>
     </div>
   );
-}
-
-/** The status row's words while no treadmill is linked: the link state in a few words. */
-export function offlineText(connection: AppSnapshot["connection"]): string {
-  const l = linkState(connection);
-  switch (l.state) {
-    case "scanning":
-      return "Scanning for the treadmill.";
-    case "connecting":
-      return `Linking, try ${l.attempt} of ${l.of}.`;
-    case "reconnecting":
-      return `Link lost. Retry in ${l.next_retry_s} s.`;
-    case "adapter_unavailable":
-      return "Bluetooth is off.";
-    case "failed":
-      return "Link failed.";
-    default:
-      return connection.has_saved_device ? "Treadmill not connected." : "No treadmill saved yet.";
-  }
 }
 
 /** Why the belt and program buttons are off while no treadmill is linked, with

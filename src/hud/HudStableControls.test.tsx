@@ -7,7 +7,7 @@ vi.mock("../state/useAppState", () => ({ useAppSnapshot: () => current }));
 
 const { snapshot: mock } = await import("../dev/mockBackend");
 const { HudApp } = await import("./HudApp");
-const { firstStepLine } = await import("./HudPanel");
+const { firstStepLine } = await import("./status");
 
 beforeAll(() => {
   globalThis.ResizeObserver ??= class {
