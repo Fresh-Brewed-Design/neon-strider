@@ -1179,10 +1179,15 @@ body,
 .hud-step-sweep-name {
   position: absolute;
   top: 50%;
-  left: 50%;
+  /* Centred by its margins, so it may take the panel's width less 12 px each
+     side before it wraps (left: 50% would wrap it at half the width). */
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  width: fit-content;
   box-sizing: border-box;
   max-width: calc(100% - 24px);
-  transform: translate(-50%, -50%);
+  transform: translateY(-50%);
   padding: 4px 10px;
   border: 1px solid var(--hud-yellow);
   background: var(--hud-bg);
