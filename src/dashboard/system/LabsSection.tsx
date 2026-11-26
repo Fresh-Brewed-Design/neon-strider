@@ -44,7 +44,8 @@ export function LabsSection() {
       <div>
         <Toggle
           label="GHOST_POD: Be a foot pod for my watch"
-          description="Your watch reads belt speed, cadence and distance from the PC as a foot pod; a paused belt reads 0 km/h."
+          description="Your watch reads belt speed, cadence and distance from the PC."
+          hint="A paused belt reads 0 km/h."
           checked={pod.enabled}
           onChange={(on) => void change.run(() => dispatch({ type: "ghost_pod_set", on }))}
         />
@@ -70,7 +71,8 @@ export function LabsSection() {
           <div className="mt-3 border-l border-white/10 pl-3">
             <Toggle
               label="GHOST_POD power: Send running power to my watch"
-              description="Your watch reads running power from the PC, rising with the incline; a paused belt sends 0 W."
+              description="Your watch reads running power from the PC."
+              hint={["Power rises with the incline.", "A paused belt sends 0 W."]}
               checked={pod.power_enabled}
               onChange={(on) => void power.run(() => dispatch({ type: "ghost_pod_power_set", on }))}
             />
@@ -116,9 +118,9 @@ export function LabsSection() {
       </div>
       <div>
         <Toggle
-          label="Typing by speed: Count key presses per minute while walking"
-          description="Saves how many keys you press in each minute of a walk, never which keys."
-          hint="Switched off, nothing is counted or saved."
+          label="Count key presses by walking speed"
+          description="Saves how many keys you press in each minute of a walk."
+          hint={["Only counts are saved, never which keys.", "Switched off, nothing is counted or saved."]}
           checked={typing.enabled}
           onChange={(on) => void typingChange.run(() => dispatch({ type: "typing_speed_set", on }))}
         />

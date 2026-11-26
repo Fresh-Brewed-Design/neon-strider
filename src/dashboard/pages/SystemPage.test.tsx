@@ -8,7 +8,7 @@ vi.mock("../../state/useAppState", () => ({
 }));
 
 const { snapshot: mock } = await import("../../dev/mockBackend");
-const { SystemTabs } = await import("./SystemPage");
+const { SystemTabs, SectionLinks } = await import("./SystemPage");
 
 function withDot(dot: boolean): AppSnapshot {
   const s = structuredClone(mock);
@@ -52,5 +52,29 @@ describe("System's group tabs", () => {
     current = withDot(false);
     render(<SystemTabs tab="deck" onChange={() => {}} />);
     expect(within(tab("CORE")).queryByRole("img")).toBeNull();
+  });
+});
+
+describe("System's section links", () => {
+  it("lists the sections it is given and scrolls to one, focusing its heading", () => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<section id="sys-drift"><h2 id="sys-drift-title" tabindex="-1">Speed drift</h2></section>',
+    );
+    const section = document.getElementById("sys-drift")!;
+    const scrollIntoView = vi.fn();
+    section.scrollIntoView = scrollIntoView;
+    render(<SectionLinks sections={["sys-treadmill", "sys-drift"]} />);
+    const nav = screen.getByRole("navigation", { name: "Sections of the open tab" });
+    expect(within(nav).getAllByRole("button").map((b) => b.textContent)).toEqual(["Treadmill", "Speed drift"]);
+    within(nav).getByRole("button", { name: "Speed drift" }).click();
+    expect(scrollIntoView).toHaveBeenCalled();
+    expect(document.activeElement?.id).toBe("sys-drift-title");
+    section.remove();
+  });
+
+  it("shows no links for a tab with one section", () => {
+    render(<SectionLinks sections={["sys-sessions"]} />);
+    expect(screen.queryByRole("navigation")).toBeNull();
   });
 });

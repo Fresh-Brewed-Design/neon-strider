@@ -14,7 +14,15 @@ import { ShortcutsSection } from "../system/ShortcutsSection";
 import { SpeedDriftSection } from "../system/SpeedDriftSection";
 import { StartupSection } from "../system/StartupSection";
 import { StravaSection } from "../system/strava/StravaSection";
-import { SYSTEM_TABS, openSystemTab, readSystemTab, subscribeSystemTab, type SystemTab } from "../system/systemTabs";
+import {
+  SECTION_TITLES,
+  SYSTEM_TABS,
+  jumpToSection,
+  openSystemTab,
+  readSystemTab,
+  subscribeSystemTab,
+  type SystemTab,
+} from "../system/systemTabs";
 import { TreadmillSection } from "../system/TreadmillSection";
 import { UpdateDot } from "../system/updates/UpdateDot";
 import { showUpdateBadge } from "../system/updates/updates";
@@ -82,7 +90,28 @@ export function SystemTabs({ tab, onChange }: { tab: SystemTab; onChange: (next:
   );
 }
 
+/** Links to the open tab's sections, under the tabs. A link scrolls its section into view and focuses the heading. */
+export function SectionLinks({ sections }: { sections: readonly string[] }) {
+  if (sections.length < 2) return null;
+  return (
+    <nav aria-label="Sections of the open tab" className="mb-3 flex flex-wrap gap-x-4 gap-y-1">
+      {sections.map((id) => (
+        <button
+          key={id}
+          type="button"
+          onClick={() => jumpToSection(id)}
+          className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-neon-cyan/80 underline-offset-4 transition-colors hover:text-neon-cyan hover:underline focus-visible:underline"
+        >
+          {SECTION_TITLES[id] ?? id}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
 export function SystemPage() {
+  // Permissions has no section where the OS asks for none, so it gets no link.
+  const hasPermissions = (useAppState((s) => s.platform.permissions.length) ?? 0) > 0;
   const [tab, setTab] = useState<SystemTab>(readSystemTab);
   const body = useRef<HTMLDivElement>(null);
   useEffect(() => subscribeSystemTab(setTab), []);
@@ -94,9 +123,12 @@ export function SystemPage() {
     if (scroller) scroller.scrollTop = 0;
   };
 
-  const sections = SYSTEM_TABS.find((t) => t.id === tab)?.sections ?? [];
+  const sections = (SYSTEM_TABS.find((t) => t.id === tab)?.sections ?? []).filter(
+    (id) => id !== "sys-permissions" || hasPermissions,
+  );
   return (
     <Page codename="SYSTEM_CONFIG" title="System" actions={<SystemTabs tab={tab} onChange={choose} />}>
+      <SectionLinks sections={sections} />
       <div ref={body} className="flex flex-col gap-3">
         {sections.map((id) => (
           <SectionView key={id} id={id} />

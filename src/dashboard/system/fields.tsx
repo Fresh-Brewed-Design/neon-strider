@@ -1,6 +1,7 @@
 // Form controls for the System page sections.
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { Hint, Label, OptionPicker, Panel } from "../ui";
@@ -42,7 +43,7 @@ export function Section({
     <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-3">
       <Panel className="p-4">
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-          <h2 id={`${id}-title`} className="font-digital text-sm font-bold uppercase tracking-[0.18em] text-white">
+          <h2 id={`${id}-title`} tabIndex={-1} className="font-digital text-sm font-bold uppercase tracking-[0.18em] text-white outline-none focus-visible:text-neon-cyan">
             {title}
           </h2>
           {status}
@@ -51,6 +52,34 @@ export function Section({
         <div className="mt-4 flex flex-col gap-4">{children}</div>
       </Panel>
     </section>
+  );
+}
+
+/** A collapsed "More" under a switch: the facts past its one sentence. */
+function More({ lines, label }: { lines: string[]; label: string }) {
+  const [open, setOpen] = useState(false);
+  const panel = useId();
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={open ? panel : undefined}
+        aria-label={`More about ${label}`}
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-white/60 transition-colors hover:text-neon-cyan"
+      >
+        {open ? <ChevronDown size={12} aria-hidden /> : <ChevronRight size={12} aria-hidden />}
+        More
+      </button>
+      {open && (
+        <div id={panel} className="mt-1 flex flex-col gap-1">
+          {lines.map((line) => (
+            <Hint key={line}>{line}</Hint>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -63,23 +92,21 @@ export function Toggle({
   tone = "cyan",
 }: {
   label: string;
+  /** One short sentence under the label. */
   description?: string;
-  /** A second line for caveats and detail, under the description. A list is one line per item. */
+  /** Further facts, one line per item, behind a "More" expander that starts collapsed. */
   hint?: string | string[];
   checked: boolean;
   onChange: (next: boolean) => void;
   tone?: Tone;
 }) {
+  const more = [hint ?? []].flat();
   return (
     <div className="flex items-center justify-between gap-4">
       <div className="min-w-0">
         <div className="font-mono text-xs font-bold uppercase tracking-[0.12em] text-white/85">{label}</div>
         {description && <Hint>{description}</Hint>}
-        {[hint ?? []].flat().map((line) => (
-          <Hint key={line} className="mt-1">
-            {line}
-          </Hint>
-        ))}
+        {more.length > 0 && <More lines={more} label={label} />}
       </div>
       <button
         type="button"
