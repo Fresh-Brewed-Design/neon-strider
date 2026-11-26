@@ -112,8 +112,8 @@ Quiet now (`calls.rs`, #345; the HUD's QUIET in CONTROLS, the tray's QUIET NOW, 
     popup: nav rail with Live, Programs, History, HUD, System pages in `src/dashboard/pages/`).
     Each page's pieces live in a folder beside it: `system/` (with `calibration/`, `strava/` and
     `updates/` inside), `history/`, `live/`, `programs/` and `link/` (Bluetooth scan and link control).
-    System shows its sections on four group tabs, DECK, LINKS, ROUTINE and CORE
-    (`system/systemTabs.ts`, the open one kept in `localPrefs`); a link from elsewhere calls
+    System shows its sections on four group tabs, DECK, LINKS, AUTOMATION (id `routine`) and CORE
+    (`system/systemTabs.ts`, the open one kept in `localPrefs`; Shortcuts is on CORE); a link from elsewhere calls
     `showSystemSection(<section id>)`, which opens the section's tab and scrolls to it
   - `hud` → `hud.html` → `src/hud/HudApp.tsx` (transparent, always-on-top, click-through except
     over its panel; separate small bundle). `HudApp` handles state and events; the panel is
@@ -260,7 +260,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?saved`: a walk saved for a manual Strava upload
 - `?savefail`: saving a walk for Strava fails
 - `?scan=empty|error|bt-off`: the connect dialog's Bluetooth scan
-- `?seated`: the idle-nudge card (STASIS_ALERT); comma-separated variants `off`, `queued`, `long`, `none`, `one`, `many`
+- `?seated`: the sit-too-long card (ATROPHY_WARNING); comma-separated variants `off`, `queued`, `long`, `none`, `one`, `many`
 - `?shortcuts=changed|taken`: System -> Shortcuts with Start or pause moved to Ctrl+Alt+S (RESET shows), or on a Mac (with `?mac`) ⌃⌥P held by another app
 - `?sim`: the SIM tag
 - `?speeddrift=drifting|held|waiting|outside|ended`: System -> Speed drift on (3.2 to 3.8 km/h, every 5 minutes) on a manual walk: setting the belt at 3.6 km/h (the HUD's SPEED DRIFT line), holding while Neural flow eases off, counting to the first change, the speed set outside the band, or ended by a speed set by hand; `?speeddrift` alone is the switch on with the belt still
@@ -314,12 +314,23 @@ environment (deployments limited to `main` and `v*` tags, so no other branch's w
 ## Voice
 
 The neon/cyberpunk theme is part of the product, including text the app writes elsewhere
-(Strava titles and descriptions, HUD messages, toasts). Use the existing codenames
-(`DECK_CYCLES`, `DISPLACEMENT`, `ALTITUDE_BIAS`, `METABOLIC_BURN`, `LOCOMOTION_INC`,
-`DAILY_TOTAL`, `NEURAL_FLUIDITY`) and the `NEON STRIDER // ...` style; keep explanations in
-plain sentence-case English so they stay readable. Units: the user's stats are metric (km,
-km/h, kg); a manufacturer's spec is quoted in its own unit. The belt reminder is km: the
-sticker on the deck gives 200 km (125 miles), which is the default.
+(Strava titles and descriptions, HUD messages, toasts). One name per thing (#392, names chosen
+by Fresh Brewed Design): each reading has one codename, the name on Live tiles and the HUD page
+(`DECK_CYCLES`, `DISPLACEMENT`, `DAILY_TOTAL`, `LOCOMOTION_INC`, `METABOLIC_BURN`,
+`NEURAL_FLUIDITY`, `LIFETIME_ODOMETER`, `PULSE_RATE`); speed is `VELOCITY` and incline `TILT`
+everywhere in the UI. The HUD panel keeps its short labels (VEL, TILT, TIME, DIST, TODAY, STEPS,
+BURN, FLOW, ODO, HR). Each codename's plain meaning is in `src/names.ts` (`PLAIN`): a small grey
+line under the codename on Live tiles and cards (`PlainLine`, `.hud-plain`), `plain meaning ·
+HUD: SHORT` on the HUD page's rows; `CODENAME: Plain phrase` in System labels
+(`systemLabel`). Add a codename there before giving it a plain line. The treadmill link reads
+LINKED, RELINK 11S or NO_CARRIER (plain line: treadmill offline) on the HUD chip and the
+dashboard rail and banner; the HEART_LINK and GHOST_POD chips say NO_CARRIER too. The HUD chip
+stays on one line. The sit-too-long card and its setting are ATROPHY_WARNING; STASIS is only the paused
+belt. The Strava templates' default text keeps its own codenames, ALTITUDE_BIAS included. Use the
+`NEON STRIDER // ...` style; keep explanations in plain sentence-case English so they stay
+readable. Units: the user's stats are metric (km, km/h, kg); a manufacturer's spec is quoted in
+its own unit. The belt reminder is km: the sticker on the deck gives 200 km (125 miles), which is
+the default.
 
 ## Conventions
 

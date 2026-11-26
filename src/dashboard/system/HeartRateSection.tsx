@@ -1,6 +1,7 @@
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { dispatch, SETTING_LIMITS } from "../../ipc";
+import { systemLabel } from "../../names";
 import { useAppSnapshot } from "../../state/useAppState";
 import { useTreadmillStore } from "../../store/treadmillStore";
 import { StatusPill } from "../StatusPill";
@@ -30,7 +31,7 @@ export function HeartRateSection() {
       id="sys-heart"
       title="Heart rate"
       description="Read your heart rate from a Bluetooth sensor such as a watch."
-      status={<StatusPill tone={tone} label={heartRatePill(heart)} title={heart.message} />}
+      status={<StatusPill tone={tone} label={heartRatePill(heart)} title={`${systemLabel("HEART_LINK")}. ${heart.message}`} />}
     >
       <div className="flex flex-col gap-2">
         {heart.sensor && (

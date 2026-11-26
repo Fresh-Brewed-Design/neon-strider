@@ -2,7 +2,8 @@ import { dispatch } from "../../../ipc";
 import { ActionStatus } from "../../../components/ActionStatus";
 import { useAction } from "../../../components/useAction";
 import { useAppState } from "../../../state/useAppState";
-import { GhostButton, Hint, NeonButton } from "../../ui";
+import { PLAIN } from "../../../names";
+import { GhostButton, Hint, NeonButton, PlainLine } from "../../ui";
 import { cx } from "../../util";
 
 /**
@@ -21,8 +22,11 @@ export function CalibrateOffer({ onCalibrate, className }: { onCalibrate: () => 
       aria-label="Calibrate this treadmill"
       className={cx("hacker-panel space-y-2 rounded-lg border-neon-yellow/40 bg-neon-yellow/5 p-3", className)}
     >
-      <div className="font-digital text-xs font-bold uppercase tracking-[0.18em] text-neon-yellow">
-        NEON STRIDER // GROUND_TRUTH
+      <div>
+        <div className="font-digital text-xs font-bold uppercase tracking-[0.18em] text-neon-yellow">
+          NEON STRIDER // GROUND_TRUTH
+        </div>
+        <PlainLine text={PLAIN.GROUND_TRUTH} />
       </div>
       <div className="font-digital text-sm text-white">The connected treadmill has no calibration yet.</div>
       <Hint>GROUND_TRUTH times the belt at a few speeds, so distance matches what you walk.</Hint>

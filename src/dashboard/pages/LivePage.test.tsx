@@ -85,6 +85,20 @@ describe("Live page STEP_MAP", () => {
     expect(screen.queryByRole("list", { name: "Program steps" })).not.toBeInTheDocument();
     expect(screen.getByText("DECK_CYCLES")).toBeInTheDocument();
   });
+
+  it("puts each stat's plain line under its codename", () => {
+    current!.active_program = null;
+    render(<LivePage />);
+    for (const [codename, plain] of [
+      ["DECK_CYCLES", "walk time"],
+      ["DISPLACEMENT", "walk distance"],
+      ["DAILY_TOTAL", "distance today"],
+      ["LIFETIME_ODOMETER", "all-time distance"],
+    ]) {
+      const line = screen.getByText(plain);
+      expect(line.previousElementSibling?.textContent).toBe(codename);
+    }
+  });
 });
 
 describe("Live page maintenance banner", () => {

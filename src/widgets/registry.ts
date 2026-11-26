@@ -1,5 +1,6 @@
 import { formatClock, formatDuration, km, lifetimeKm } from "../format";
 import type { AppSnapshot, HudWidget, PulseTarget, ZoneBand } from "../ipc";
+import { PLAIN } from "../names";
 import type { SparkData } from "./spark";
 
 export type Accent = "cyan" | "magenta" | "yellow" | "green";
@@ -13,8 +14,10 @@ export interface StatWidget {
   id: HudWidget;
   /** Short label shown on the HUD. */
   label: string;
-  /** Themed long label shown on the dashboard card. */
+  /** The stat's one name: the Live tile's title and the HUD page's row. */
   codename: string;
+  /** The plain meaning, the small grey line under the codename; none where the codename is already plain. */
+  plain?: string;
   accent: Accent;
   read: (s: AppSnapshot) => StatReading;
   /** A spark chart under the value, drawn from the snapshot; null shows none. */
@@ -37,14 +40,16 @@ export const STAT_WIDGETS: StatWidget[] = [
   {
     id: "VELOCITY",
     label: "VEL",
-    codename: "PHYS_VELOCITY",
+    codename: "VELOCITY",
+    plain: PLAIN.VELOCITY,
     accent: "cyan",
     read: (s) => ({ value: s.deck.speed_kmh.toFixed(1), unit: "KM/H" }),
   },
   {
     id: "INCLINE",
     label: "TILT",
-    codename: "ALTITUDE_BIAS",
+    codename: "TILT",
+    plain: PLAIN.TILT,
     accent: "magenta",
     read: (s) => ({ value: s.deck.incline_pct.toFixed(1), unit: "%" }),
   },
@@ -52,6 +57,7 @@ export const STAT_WIDGETS: StatWidget[] = [
     id: "TIMER",
     label: "TIME",
     codename: "DECK_CYCLES",
+    plain: PLAIN.DECK_CYCLES,
     accent: "cyan",
     read: (s) => ({ value: formatClock(s.session.duration_s) }),
   },
@@ -59,6 +65,7 @@ export const STAT_WIDGETS: StatWidget[] = [
     id: "DISTANCE",
     label: "DIST",
     codename: "DISPLACEMENT",
+    plain: PLAIN.DISPLACEMENT,
     accent: "cyan",
     read: (s) => ({ value: km(s.session.distance_m), unit: "KM" }),
   },
@@ -66,6 +73,7 @@ export const STAT_WIDGETS: StatWidget[] = [
     id: "STEPS",
     label: "STEPS",
     codename: "LOCOMOTION_INC",
+    plain: PLAIN.LOCOMOTION_INC,
     accent: "cyan",
     read: (s) => ({ value: s.session.steps.toString() }),
   },
@@ -73,6 +81,7 @@ export const STAT_WIDGETS: StatWidget[] = [
     id: "CALORIES",
     label: "BURN",
     codename: "METABOLIC_BURN",
+    plain: PLAIN.METABOLIC_BURN,
     accent: "cyan",
     read: (s) => ({ value: Math.round(s.session.calories).toString(), unit: "KCAL" }),
   },
@@ -80,6 +89,7 @@ export const STAT_WIDGETS: StatWidget[] = [
     id: "DAILY",
     label: "TODAY",
     codename: "DAILY_TOTAL",
+    plain: PLAIN.DAILY_TOTAL,
     accent: "green",
     read: (s) => ({ value: km(s.session.daily_distance_m), unit: "KM" }),
   },
@@ -87,6 +97,7 @@ export const STAT_WIDGETS: StatWidget[] = [
     id: "NEURAL",
     label: "FLOW",
     codename: "NEURAL_FLUIDITY",
+    plain: PLAIN.NEURAL_FLUIDITY,
     accent: "yellow",
     read: (s) => ({ value: Math.round(s.neural.factor * 100).toString(), unit: "%" }),
   },
@@ -94,6 +105,7 @@ export const STAT_WIDGETS: StatWidget[] = [
     id: "ODOMETER",
     label: "ODO",
     codename: "LIFETIME_ODOMETER",
+    plain: PLAIN.LIFETIME_ODOMETER,
     accent: "yellow",
     // Whole km at 1000 and up, so the HUD cell never outgrows its column.
     read: (s) => ({ value: lifetimeKm(s.odometer.distance_km), unit: "KM" }),
@@ -111,6 +123,7 @@ export const STAT_WIDGETS: StatWidget[] = [
     id: "HEART_RATE",
     label: "HR",
     codename: "PULSE_RATE",
+    plain: PLAIN.PULSE_RATE,
     accent: "cyan",
     // "--" until a sensor is picked and sending.
     read: (s) => ({ value: s.heart_rate.bpm === null ? "--" : s.heart_rate.bpm.toString(), unit: "BPM" }),
@@ -139,6 +152,11 @@ export function pcWalkShareDetail(s: AppSnapshot): string | null {
   // Each duration stays on one line: a non-breaking space inside it, a plain one around "of".
   const whole = (seconds: number) => formatDuration(seconds).replace(" ", "\u00a0");
   return `${whole(walked_s)} of ${whole(active_s)}`;
+}
+
+/** A stat's tooltip where only its short label shows: "DECK_CYCLES: walk time". */
+export function statTitle(w: StatWidget): string {
+  return w.plain ? `${w.codename}: ${w.plain}` : w.codename;
 }
 
 const BY_ID = new Map(STAT_WIDGETS.map((w) => [w.id, w]));

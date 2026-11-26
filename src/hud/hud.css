@@ -169,7 +169,7 @@ body,
   transition: background-color 120ms ease, box-shadow 120ms ease;
 }
 /* While the link is down or being made the logo and the link word close up
-   their letter spacing, so a word of up to 11 letters (LINK FAILED,
+   their letter spacing, so a word of up to 11 letters (NO_CARRIER,
    LINKING 2/3, RELINK 12S) keeps the header one line at 100 % text size and
    nothing under it moves. */
 .hud-header:has(.hud-led.tone-down, .hud-led.tone-warn) .hud-title { letter-spacing: 0.14em; }
@@ -420,6 +420,15 @@ body,
   word-break: normal;
 }
 .hud-header-end:has(.hud-btn-minify) { margin-right: -6px; }
+
+/* The link chip stays on one line up to 225 % text size (NO_CARRIER, RELINK 12S):
+   where the header leaves it under 120px, the letters close up and the button
+   pads less. The :has() outranks the link-down spacing above. */
+.hud-header { container-type: inline-size; }
+@container (max-width: 120px) {
+  .hud-header:has(.hud-led) .hud-header-live > .hud-status { letter-spacing: 0; }
+  .hud-header:has(.hud-led) .hud-header-live > .hud-relink { padding: 3px 2px; }
+}
 
 /* The header's size button (minify on the panel, expand on the strips): small, after the link status. */
 .hud-btn.hud-btn-minify {
@@ -686,6 +695,15 @@ body,
 .hud-sub {
   font-size: 12px;
   letter-spacing: 0.06em;
+  color: var(--hud-dim);
+}
+
+/* A card codename's plain meaning, the small grey line under it (src/names.ts). */
+.hud-plain {
+  font-family: var(--hud-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
   color: var(--hud-dim);
 }
 

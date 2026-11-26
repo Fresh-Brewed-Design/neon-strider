@@ -17,7 +17,7 @@ import { readPref, writePref } from "../localPrefs";
 import { StatusPill } from "../StatusPill";
 import { MaintenanceBanner } from "../system/MaintenanceBanner";
 import { CalibrateOffer } from "../system/calibration/CalibrateOffer";
-import { Codename, Label, Page, Panel, Waiting } from "../ui";
+import { Codename, Label, Page, Panel, PlainLine, Waiting } from "../ui";
 import { cx, TONE_TEXT } from "../util";
 
 const SPEED_PRESETS = [1.5, 2.5, 3, 4, 5, 6];
@@ -72,7 +72,7 @@ function headerNotice(s: AppSnapshot): ReactNode {
   let notice: { label: string; title: string; text: string };
   if (s.connection.link?.state === "no_data") {
     const view = linkView(s.connection, s.platform.settings);
-    notice = { label: "NO DATA", title: view.title, text: view.headline };
+    notice = { label: view.label, title: view.title, text: view.headline };
   } else if (s.connection.connected && s.deck.unknown_status_code !== null) {
     notice = {
       label: "STATE ?",
@@ -238,11 +238,14 @@ export function LivePage({ onCalibrate }: { onCalibrate?: () => void } = {}) {
               // the height it has without one. It is the last stat, so its row
               // always has a free tile to take.
               return (
-                <Panel key={w.id} className={cx("@container flex flex-col gap-0.5 px-3 py-1.5", spark && "col-span-2")}>
+                <Panel key={w.id} className={cx("@container flex flex-col px-3 py-1", spark && "col-span-2")}>
                   <div className="flex items-start justify-between gap-1">
-                    <Label className={CODENAME_FIT}>
-                      <Codename text={w.codename} />
-                    </Label>
+                    <div className="min-w-0">
+                      <Label className={cx("block leading-tight", CODENAME_FIT)}>
+                        <Codename text={w.codename} />
+                      </Label>
+                      {w.plain && <PlainLine text={w.plain} />}
+                    </div>
                     {zone && <ZoneReadout zone={zone} />}
                     {target && <TargetReadout target={target} />}
                     <PinToggle widget={w.id} pinned={pinned.has(w.id)} />

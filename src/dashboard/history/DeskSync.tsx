@@ -1,5 +1,6 @@
 import type { DeskSync } from "../../ipc";
-import { Label, Panel } from "../ui";
+import { PLAIN } from "../../names";
+import { Label, Panel, PlainLine } from "../ui";
 import { cx } from "../util";
 import { deskSyncText } from "./deskSyncText";
 
@@ -18,6 +19,7 @@ export function DeskSyncPanel({ sync }: { sync: DeskSync }) {
     <Panel className="flex flex-wrap items-center gap-2 p-3">
       <div className="shrink-0">
         <Label>DESK_SYNC</Label>
+        <PlainLine text={PLAIN.DESK_SYNC} />
         <div className="flex items-baseline gap-1">
           <span className="font-digital text-xl text-neon-cyan">{sync.walked}</span>
           <span className="font-mono text-xs text-white/60">/ {sync.desk_days}</span>

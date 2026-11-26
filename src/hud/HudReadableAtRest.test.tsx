@@ -127,7 +127,7 @@ describe("HUD controls offline", () => {
     show(panel(offline));
     const lines = screen.getAllByTestId("hud-offline");
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toHaveTextContent("Link failed.");
+    expect(lines[0]).toHaveTextContent("Treadmill offline.");
     expect(lines[0].closest(".hud-status-row")).not.toBeNull();
   });
 

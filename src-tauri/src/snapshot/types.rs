@@ -711,7 +711,7 @@ pub enum Command {
     /// The user dismissed the last-week card; remembered per ISO week.
     WeeklySummaryAck,
 
-    // ---- Idle nudge (STASIS_ALERT) ----
+    // ---- Idle nudge (ATROPHY_WARNING) ----
     /// Idle nudge settings: on or off, minutes 15 to 240, and up to three
     /// programs for the card's buttons (`None` or empty = the first three saved).
     SeatedSetConfig {

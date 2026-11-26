@@ -1,0 +1,2 @@
+- Each reading has one name: speed is VELOCITY and incline is TILT everywhere. Each codename on Live tiles, cards and the HUD page's rows has a small grey line under it saying what it means.
+- The treadmill link reads LINKED, RELINK or NO_CARRIER on the HUD and the dashboard; the heart sensor and foot pod chips say NO_CARRIER too. The sit-too-long card and its setting are now ATROPHY_WARNING. System's ROUTINE tab is now AUTOMATION. Shortcuts moved to CORE.

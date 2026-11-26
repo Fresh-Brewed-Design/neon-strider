@@ -278,7 +278,7 @@ export const snapshot: AppSnapshot = {
   ghost_pod: {
     enabled: false,
     status: "off",
-    label: "OFFLINE",
+    label: "NO_CARRIER",
     message: "Switch GHOST_POD on to let a watch read the belt as a foot pod.",
     watches: 0,
     speed_kmh: 0,
@@ -297,7 +297,7 @@ export const snapshot: AppSnapshot = {
   heart_rate: {
     sensor: null,
     status: "off",
-    label: "OFFLINE",
+    label: "NO_CARRIER",
     message: "Scan for a heart rate sensor and pick your watch to show heart rate.",
     bpm: null,
     history: [],

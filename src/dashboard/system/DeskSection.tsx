@@ -3,6 +3,7 @@ import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { roundSpeed, snapToDeck } from "../../state/deckSpeeds";
 import { useAppSnapshot } from "../../state/useAppState";
+import { systemLabel } from "../../names";
 import { GhostButton, Hint, Label } from "../ui";
 import { cx } from "../util";
 import { NumberField, Section, Toggle } from "./fields";
@@ -112,7 +113,7 @@ function EyeBreakSettings() {
     <>
       <div>
         <Toggle
-          label="OCULAR_IMPLANT: Remind me to look away"
+          label={systemLabel("OCULAR_IMPLANT")}
           checked={e.enabled}
           onChange={(enabled) => void enableAction.run(() => save({ enabled }))}
           description="The HUD gives a minute's warning before each break."
@@ -219,7 +220,7 @@ export function DeskSection() {
     >
       <div>
         <Toggle
-          label="Idle nudge"
+          label={systemLabel("ATROPHY_WARNING")}
           checked={seated.enabled}
           onChange={(enabled) => void nudgeAction.run(() => saveSeated({ enabled }))}
           description={`After a stretch of ${pc} use without walking, a HUD card offers a walk or a program.`}

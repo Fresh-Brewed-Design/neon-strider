@@ -1,4 +1,5 @@
 import type { AppSnapshot, ConnectionSnapshot } from "../ipc";
+import { PLAIN } from "../names";
 import { isMoving, linkState, linkView } from "../state/linkStatus";
 
 export type LinkTone = "live" | "idle" | "down" | "warn";
@@ -121,7 +122,10 @@ export function firstStepLine(p: AppSnapshot["programs"][number]): string {
   return kmh > 0 ? `starts ${kmh.toFixed(1)} km/h` : "starts still";
 }
 
-/** The status row's words while no treadmill is linked: the link state in a few words. */
+/** NO_CARRIER's plain line as a sentence: "Treadmill offline." */
+const OFFLINE = `${PLAIN.NO_CARRIER.charAt(0).toUpperCase()}${PLAIN.NO_CARRIER.slice(1)}.`;
+
+/** The status row's words while no treadmill is linked: the link state in a few words, in the header chip's names. */
 export function offlineText(connection: AppSnapshot["connection"]): string {
   const l = linkState(connection);
   switch (l.state) {
@@ -130,12 +134,12 @@ export function offlineText(connection: AppSnapshot["connection"]): string {
     case "connecting":
       return `Linking, try ${l.attempt} of ${l.of}.`;
     case "reconnecting":
-      return `Link lost. Retry in ${l.next_retry_s} s.`;
+      return `Link lost. RELINK ${l.next_retry_s}S.`;
     case "adapter_unavailable":
       return "Bluetooth is off.";
     case "failed":
-      return "Link failed.";
+      return OFFLINE;
     default:
-      return connection.has_saved_device ? "Treadmill not connected." : "No treadmill saved yet.";
+      return connection.has_saved_device ? OFFLINE : "No treadmill saved yet.";
   }
 }

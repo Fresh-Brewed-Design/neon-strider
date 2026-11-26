@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { AppSnapshot, BlinkStep } from "../ipc";
 import { formatDuration } from "../format";
+import { PLAIN } from "../names";
 import { formatChange } from "../dashboard/history/weekly";
 import { describePlan } from "../dashboard/programs/format";
 import { startFailure } from "../state/linkStatus";
@@ -104,7 +105,8 @@ export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
   return (
     <div className="hud-toast hud-seated accent-yellow" role="alert">
       <div className="hud-toast-body">
-        <span className="hud-label">STASIS_ALERT</span>
+        <span className="hud-label">ATROPHY_WARNING</span>
+        <span className="hud-plain">{PLAIN.ATROPHY_WARNING}</span>
         <span className="hud-toast-message">{s.seated_minutes} MIN IDLE</span>
       </div>
       <button
@@ -166,6 +168,7 @@ export function EyeBreakCard({ snapshot }: { snapshot: AppSnapshot }) {
       <div className="hud-toast hud-eyebreak accent-cyan" role="alert">
         <div className="hud-toast-body">
           <span className="hud-toast-message">OCULAR_IMPLANT // RECALIBRATED</span>
+          <span className="hud-plain">{PLAIN.OCULAR_IMPLANT}</span>
           <span className="hud-sub">The belt stays paused until you press {resumeWord(snapshot)}.</span>
         </div>
         <HudNote error={error} />
@@ -183,6 +186,7 @@ export function EyeBreakCard({ snapshot }: { snapshot: AppSnapshot }) {
       {onBreak ? (
         <div className="hud-toast-body">
           <span className="hud-toast-message">OCULAR_IMPLANT // COOLDOWN</span>
+          <span className="hud-plain">{PLAIN.OCULAR_IMPLANT}</span>
           {e.blink && <span className="hud-eyebreak-cue">SHUTTER // {e.blink.toUpperCase()}</span>}
           <span className="hud-eyebreak-count">{e.remaining_s} S</span>
           <span className="hud-sub">
@@ -195,6 +199,7 @@ export function EyeBreakCard({ snapshot }: { snapshot: AppSnapshot }) {
       ) : (
         <div className="hud-toast-body">
           <span className="hud-label">OCULAR_IMPLANT</span>
+          <span className="hud-plain">{PLAIN.OCULAR_IMPLANT}</span>
           <span className="hud-toast-message">IMPLANT COOLDOWN IN {e.remaining_s} S</span>
           <span className="hud-sub">
             Finish what you are typing, then look away.

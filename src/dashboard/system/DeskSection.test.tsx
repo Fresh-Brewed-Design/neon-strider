@@ -46,10 +46,10 @@ describe("System -> Desk status lines", () => {
     expect(chips.nextElementSibling).toBe(status);
   });
 
-  it("shows a refused Idle nudge switch under the switch", async () => {
+  it("shows a refused ATROPHY_WARNING switch under the switch", async () => {
     render(<DeskSection />);
     vi.mocked(invoke).mockRejectedValueOnce("Treadmill not connected");
-    const toggle = screen.getByRole("switch", { name: "Idle nudge" });
+    const toggle = screen.getByRole("switch", { name: "ATROPHY_WARNING: Sit-too-long reminder" });
     await act(async () => fireEvent.click(toggle));
     expect(toggle.closest("div")!.parentElement).toHaveTextContent("Treadmill not connected");
   });
