@@ -41,7 +41,7 @@ describe("System -> Labs ZONE_TILT", () => {
 });
 
 describe("System -> Labs typing by speed", () => {
-  const TYPING = "Typing by speed: Count key presses per minute while walking";
+  const TYPING = "Count key presses by walking speed";
 
   it("is off by default, shows no table and says what off means", () => {
     render(<LabsSection />);

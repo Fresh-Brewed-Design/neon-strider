@@ -31,6 +31,7 @@ import { GuidePanel, TopSpeedQuestion } from "./GuidePanel";
 import { appliedScale } from "./math";
 import { StepPanel } from "./StepPanel";
 import { StrideFit } from "./StrideFit";
+import { readMeasured, stampMeasured, summaryParts } from "./summary";
 import { shortcutLabel } from "../../../hud/shortcutLabel";
 
 /** Which way a run belongs to a walk: RUN ALL's sweep, the guided walk, or neither. */
@@ -93,6 +94,21 @@ export function GuidedCalibration() {
   const minKmh = useTreadmillStore((s) => s.minSpeed);
   const maxKmh = useTreadmillStore((s) => s.maxSpeed);
   const cal = snap?.calibration;
+  // The full panel stays shut for a calibrated treadmill until asked for, and is always open mid-run.
+  const [expanded, setExpanded] = useState(false);
+  // When Rust last changed the points, as far as this dashboard saw (the points carry no date).
+  const pointsRev = cal?.points_rev ?? null;
+  const seenRev = useRef<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (pointsRev === null) return;
+    if (seenRev.current !== null && seenRev.current !== pointsRev) {
+      const at = Date.now();
+      stampMeasured(points, at);
+      setNow(at);
+    }
+    seenRev.current = pointsRev;
+  }, [pointsRev, points]);
   const activeRef = useRef<HTMLDivElement>(null);
   const phaseKey = cal?.run
     ? `${cal.run.target_kmh}:${cal.run.phase}:${cal.run.steps?.phase ?? ""}:${cal.run.saved}`
@@ -125,6 +141,7 @@ export function GuidedCalibration() {
   const walk: Walk = guide ? "guide" : sweep ? "sweep" : null;
   const beltSet = cal.belt_cm !== null;
   const running = run !== null && run.phase !== "measured";
+  const collapsed = points.length > 0 && !active && cal.aside_count === null && !expanded;
 
   const start = (row: CalibrationRow) => {
     setPressed(row.targetKmh);
@@ -136,6 +153,21 @@ export function GuidedCalibration() {
       <div className="font-digital text-xs font-bold uppercase tracking-[0.18em] text-neon-cyan">
         NEON STRIDER // GROUND_TRUTH
       </div>
+      {points.length > 0 && !active && cal.aside_count === null && (
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+          <Hint className="text-white/85">{summaryParts(points, readMeasured(points), now).join(" · ")}</Hint>
+          <button
+            type="button"
+            aria-expanded={!collapsed}
+            onClick={() => setExpanded((v) => !v)}
+            className="flex items-center gap-1 font-mono text-xs font-bold uppercase tracking-[0.15em] text-white/60 transition-colors hover:text-neon-cyan"
+          >
+            {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+            GROUND_TRUTH details
+          </button>
+        </div>
+      )}
+      {!collapsed && <>
       {run && (
         <div ref={activeRef} className="hacker-panel scroll-mt-2 rounded-lg border-neon-cyan/30 bg-white/[0.02] p-3">
           <Readout label="DECK_VELOCITY" value={`${(ranKmh ?? run.target_kmh).toFixed(1)} km/h`} className="text-neon-cyan" />
@@ -183,6 +215,12 @@ export function GuidedCalibration() {
         {rows.map((row) => {
           const listed = listedTarget(cal.targets, row.targetKmh);
           const outOfRange = listed !== null && !listed.runnable;
+          // Why RUN is off, said on the row itself.
+          const blocked = !beltSet
+            ? "Enter the belt loop length first."
+            : outOfRange
+              ? `${row.targetKmh.toFixed(1)} km/h is outside the treadmill's speed range.`
+              : null;
           const removable = listed !== null && !row.point && !(run && row === runRow);
           return (
           <div key={row.targetKmh} className="hacker-panel rounded-lg border-white/5 bg-white/[0.02] p-3">
@@ -209,6 +247,7 @@ export function GuidedCalibration() {
                   <NeonButton
                     onClick={() => start(row)}
                     disabled={runAction.pending || outOfRange || !beltSet}
+                    title={blocked ?? undefined}
                     className="px-3 py-1.5"
                     tone={row.point ? "magenta" : "cyan"}
                   >
@@ -224,7 +263,7 @@ export function GuidedCalibration() {
                       void removeAction.run(() => dispatch({ type: "calibration_target_remove", kmh: row.targetKmh }));
                     }}
                     aria-label={`Remove ${row.targetKmh.toFixed(1)} km/h from the target list`}
-                    title="Remove from the target list"
+                    title={`Remove ${row.targetKmh.toFixed(1)} km/h from the target list`}
                     className="p-2 text-white/60 transition-colors hover:text-neon-magenta"
                   >
                     <X size={14} />
@@ -235,7 +274,7 @@ export function GuidedCalibration() {
                     type="button"
                     onClick={() => askRemovePoint(row)}
                     aria-label={`Delete the ${row.targetKmh.toFixed(1)} km/h point`}
-                    title="Delete"
+                    title={`Delete the ${row.targetKmh.toFixed(1)} km/h point`}
                     className="p-2 text-white/60 transition-colors hover:text-neon-magenta"
                   >
                     <Trash2 size={14} />
@@ -243,9 +282,10 @@ export function GuidedCalibration() {
                 )}
               </div>
             </div>
-            {outOfRange && (
+            {walk === null && blocked && (
               <Hint className="mt-2">
-                {row.targetKmh.toFixed(1)} km/h is outside the treadmill's speed range, so RUN ALL skips it.
+                <span className="font-bold text-white/80">RUN is off.</span> {blocked}
+                {outOfRange && " RUN ALL skips the speed."}
               </Hint>
             )}
             {pressed === row.targetKmh && (
@@ -298,6 +338,7 @@ export function GuidedCalibration() {
           <AddSpeed />
         </div>
       )}
+      </>}
     </div>
   );
 }

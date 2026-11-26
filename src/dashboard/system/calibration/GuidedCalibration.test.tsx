@@ -68,6 +68,14 @@ function result(r: Partial<CalibrationResult> = {}): CalibrationResult {
   };
 }
 
+/** GROUND_TRUTH starts shut for a calibrated treadmill; open it unless a run holds it open. */
+function renderOpen() {
+  const view = render(<GuidedCalibration />);
+  const details = screen.queryByText("GROUND_TRUTH details");
+  if (details) fireEvent.click(details);
+  return view;
+}
+
 beforeEach(() => {
   vi.mocked(invoke).mockClear();
   current = ready();
@@ -76,7 +84,7 @@ beforeEach(() => {
 
 describe("GuidedCalibration", () => {
   it("lists every target speed, repeats a saved one and runs a new one", async () => {
-    render(<GuidedCalibration />);
+    renderOpen();
     expect(screen.getAllByText("RUN")).toHaveLength(4);
     expect(screen.getAllByText("ADD RUN")).toHaveLength(1);
     expect(screen.getByText("280 cm")).toBeTruthy();
@@ -86,7 +94,7 @@ describe("GuidedCalibration", () => {
 
   it("asks the belt loop first, starting empty, and keeps RUN off until then", async () => {
     current!.calibration.belt_cm = null;
-    render(<GuidedCalibration />);
+    renderOpen();
     expect(screen.getByText("LOOP_LENGTH")).toBeTruthy();
     expect(screen.queryByText("RUN ALL")).toBeNull();
     for (const b of screen.getAllByText("RUN")) expect((b as HTMLButtonElement).disabled).toBe(true);
@@ -98,7 +106,7 @@ describe("GuidedCalibration", () => {
   });
 
   it("CHANGE opens the belt loop with this treadmill's measured length", () => {
-    render(<GuidedCalibration />);
+    renderOpen();
     fireEvent.click(screen.getByText("CHANGE"));
     expect((screen.getByLabelText("Belt loop length in cm") as HTMLInputElement).value).toBe("280");
   });
@@ -107,7 +115,7 @@ describe("GuidedCalibration", () => {
     useTreadmillStore.setState({
       calibrationPoints: [saved, { speed: 4.5, stride_length_cm: 74, distance_scale: 0.15 }],
     });
-    render(<GuidedCalibration />);
+    renderOpen();
     expect(screen.getAllByText("Applied as 0.20.")).toHaveLength(1);
     expect(screen.getByText("0.150x")).toBeTruthy();
     expect(screen.getByText("0.900x")).toBeTruthy();
@@ -116,13 +124,13 @@ describe("GuidedCalibration", () => {
   it("says a treadmill must be known before a belt length can be kept", () => {
     current!.calibration.belt_cm = null;
     current!.calibration.belt_treadmill = false;
-    render(<GuidedCalibration />);
+    renderOpen();
     expect(screen.getByText(/Connect the treadmill first/)).toBeTruthy();
   });
 
   it("TAP, and Space in the dashboard, each send one tap; Rust times them", async () => {
     current!.calibration.run = runView({ phase: "tapping", passes: 4, kept: 3, measured_kmh: 2.8, reported_kmh: 3 });
-    render(<GuidedCalibration />);
+    renderOpen();
     expect(screen.getByText("TAPPING")).toBeTruthy();
     expect(screen.getByText("3 of 8 agreeing times between passes.")).toBeTruthy();
     expect(screen.getByText("The deck shows 3.0 km/h; the belt measures 2.80 km/h.")).toBeTruthy();
@@ -155,7 +163,7 @@ describe("GuidedCalibration", () => {
 
   it("Space typed into a field is not a tap", async () => {
     current!.calibration.run = runView({ phase: "tapping", passes: 2, kept: 1 });
-    render(<GuidedCalibration />);
+    renderOpen();
     openAdvanced();
     await act(async () => fireEvent.keyDown(screen.getByLabelText("ADD_SPEED"), { key: " " }));
     expect(taps()).toHaveLength(0);
@@ -169,14 +177,14 @@ describe("GuidedCalibration", () => {
       dropped: 1,
       note: "The speed changed (3.0 to 3.5 km/h), so tapping starts again.",
     });
-    render(<GuidedCalibration />);
+    renderOpen();
     expect(screen.getByText("1 tap dropped as a miss or a double.")).toBeTruthy();
     expect(screen.getByText(/so tapping starts again/)).toBeTruthy();
   });
 
   it("a measured run says in plain words that Rust saved the point, and offers UNDO and TAP AGAIN", async () => {
     current!.calibration.run = runView({ phase: "measured", passes: 9, kept: 8, saved: true, result: result() });
-    render(<GuidedCalibration />);
+    renderOpen();
     expect(screen.getByText("At 3.0 km/h the deck runs 6.0 % slow; saved.")).toBeTruthy();
     expect(screen.queryByText("TAP")).toBeNull();
     for (const gone of ["SAVE POINT", "AVERAGE IN", "Discard"]) expect(screen.queryByText(gone)).toBeNull();
@@ -193,7 +201,7 @@ describe("GuidedCalibration", () => {
 
   it("after UNDO the card says the run is undone and offers no UNDO", () => {
     current!.calibration.run = runView({ phase: "measured", passes: 9, kept: 8, undone: true, result: result() });
-    render(<GuidedCalibration />);
+    renderOpen();
     expect(screen.getByText("At 3.0 km/h the deck runs 6.0 % slow; undone.")).toBeTruthy();
     expect(screen.queryByText("UNDO")).toBeNull();
     expect(screen.getByText("TAP AGAIN")).toBeTruthy();
@@ -202,21 +210,21 @@ describe("GuidedCalibration", () => {
 
   it("TAP AGAIN asks Rust to clear the taps", async () => {
     current!.calibration.run = runView({ phase: "measured", passes: 9, kept: 8, result: result() });
-    render(<GuidedCalibration />);
+    renderOpen();
     await act(async () => fireEvent.click(screen.getByText("TAP AGAIN")));
     expect(dispatched()).toContainEqual({ type: "calibration_tap_reset" });
   });
 
   it("shows a tapping run from the snapshot without pressing RUN (dashboard reopened)", () => {
     current!.calibration.run = runView({ target_kmh: 4, phase: "tapping", passes: 3, kept: 2, elapsed_s: 23 });
-    render(<GuidedCalibration />);
+    renderOpen();
     expect(screen.getByText("TAPPING")).toBeTruthy();
     expect(screen.getByText("0:23.0")).toBeTruthy();
     expect(screen.getByText("TAP")).toBeTruthy();
   });
 
   it("RUN ALL leaves the speeds to Rust's stored list", async () => {
-    render(<GuidedCalibration />);
+    renderOpen();
     openAdvanced();
     await act(async () => fireEvent.click(screen.getByText("RUN ALL")));
     expect(dispatched()).toContainEqual({ type: "calibration_sweep_start" });
@@ -224,7 +232,7 @@ describe("GuidedCalibration", () => {
 
   it("a sweep between speeds offers RUN on the next one and hides the row buttons", async () => {
     current!.calibration.sweep = { targets_kmh: [2, 3, 4], marks: ["saved", "skipped", "pending"], current: 2 };
-    render(<GuidedCalibration />);
+    renderOpen();
     expect(screen.getByText("SWEEP 3/3")).toBeTruthy();
     expect(screen.queryByText("RUN ALL")).toBeNull();
     expect(screen.queryAllByText("RUN")).toHaveLength(0);
@@ -239,7 +247,7 @@ describe("GuidedCalibration", () => {
   it("in a sweep, a saved run offers UNDO and RUN on the next speed", async () => {
     current!.calibration.sweep = { targets_kmh: [3, 4], marks: ["saved", "pending"], current: 1 };
     current!.calibration.run = runView({ phase: "measured", passes: 9, kept: 8, saved: true, result: result() });
-    render(<GuidedCalibration />);
+    renderOpen();
     expect(screen.getByText("UNDO")).toBeTruthy();
     await act(async () => fireEvent.click(screen.getByText("RUN 4.0 km/h")));
     expect(dispatched()).toContainEqual({ type: "calibration_sweep_run" });
@@ -248,7 +256,7 @@ describe("GuidedCalibration", () => {
   it("in a sweep, an undone speed is up again, with RUN and SKIP", async () => {
     current!.calibration.sweep = { targets_kmh: [3, 4], marks: ["pending", "pending"], current: 0 };
     current!.calibration.run = runView({ phase: "measured", passes: 9, kept: 8, undone: true, result: result() });
-    render(<GuidedCalibration />);
+    renderOpen();
     expect(screen.queryByText("UNDO")).toBeNull();
     await act(async () => fireEvent.click(screen.getByText("SKIP")));
     expect(dispatched()).toContainEqual({ type: "calibration_sweep_next", saved: false });
@@ -256,13 +264,13 @@ describe("GuidedCalibration", () => {
 
   it("STOP in the run panel is never disabled", () => {
     current!.calibration.run = runView({ target_kmh: 4, phase: "tapping", passes: 2, kept: 1 });
-    render(<GuidedCalibration />);
+    renderOpen();
     expect((screen.getByText("STOP") as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("asks before deleting a measured point, naming its speed and runs", () => {
     useTreadmillStore.setState({ calibrationPoints: [{ ...saved, runs: 3 }], pendingConfirmation: null });
-    render(<GuidedCalibration />);
+    renderOpen();
     fireEvent.click(screen.getByRole("button", { name: "Delete the 3.0 km/h point" }));
     expect(useTreadmillStore.getState().calibrationPoints).toHaveLength(1);
     const ask = useTreadmillStore.getState().pendingConfirmation;
@@ -277,7 +285,7 @@ describe("GuidedCalibration", () => {
   });
 
   it("ADD sends the speed to Rust and shows the list Rust keeps", async () => {
-    const { rerender } = render(<GuidedCalibration />);
+    const { rerender } = renderOpen();
     openAdvanced();
     fireEvent.change(screen.getByLabelText("ADD_SPEED"), { target: { value: "3.5" } });
     await act(async () => fireEvent.click(screen.getByText("ADD")));
@@ -291,7 +299,7 @@ describe("GuidedCalibration", () => {
 
   it("shows Rust's refusal under ADD_SPEED", async () => {
     vi.mocked(invoke).mockRejectedValueOnce("4.0 km/h is already in the list.");
-    render(<GuidedCalibration />);
+    renderOpen();
     openAdvanced();
     fireEvent.change(screen.getByLabelText("ADD_SPEED"), { target: { value: "4" } });
     await act(async () => fireEvent.click(screen.getByText("ADD")));
@@ -301,7 +309,7 @@ describe("GuidedCalibration", () => {
 
   it("removes an uncalibrated speed through Rust, never a saved point's or the open run's", async () => {
     current!.calibration.run = runView({ target_kmh: 5 });
-    render(<GuidedCalibration />);
+    renderOpen();
     expect(screen.queryByLabelText("Remove 3.0 km/h from the target list")).toBeNull();
     expect(screen.queryByLabelText("Remove 5.0 km/h from the target list")).toBeNull();
     await act(async () => fireEvent.click(screen.getByLabelText("Remove 4.0 km/h from the target list")));
@@ -310,7 +318,7 @@ describe("GuidedCalibration", () => {
 
   it("a stored speed outside the treadmill's range is listed but can't be run", () => {
     current!.calibration.targets.push({ kmh: 14, runnable: false });
-    render(<GuidedCalibration />);
+    renderOpen();
     expect(screen.getByText("14.0 km/h")).toBeTruthy();
     expect(screen.getByText(/14.0 km\/h is outside the treadmill's speed range/)).toBeTruthy();
     const runs = screen.getAllByText("RUN") as HTMLButtonElement[];
@@ -322,10 +330,41 @@ describe("GuidedCalibration", () => {
 describe("GuidedCalibration Close", () => {
   it("shows a refused Close under the run's buttons", async () => {
     current!.calibration.run = runView({ phase: "measured", passes: 9, kept: 8, result: result() });
-    render(<GuidedCalibration />);
+    renderOpen();
     vi.mocked(invoke).mockRejectedValueOnce("Treadmill not connected");
     await act(async () => fireEvent.click(screen.getByText("Close")));
     expect(dispatched()).toContainEqual({ type: "calibration_run_close" });
     expect(screen.getByText("Treadmill not connected")).toBeTruthy();
+  });
+  it("shows a status line and keeps the panel shut for a calibrated treadmill until asked", () => {
+    render(<GuidedCalibration />);
+    expect(screen.getByText(/1 point · 3.0 km\/h/)).toBeTruthy();
+    expect(screen.queryByText("RUN")).toBeNull();
+    const details = screen.getByRole("button", { name: "GROUND_TRUTH details" });
+    expect(details.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(details);
+    expect(details.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getAllByText("RUN").length).toBeGreaterThan(0);
+  });
+
+  it("is open with no status line for a treadmill with no points", () => {
+    useTreadmillStore.setState({ calibrationPoints: [] });
+    render(<GuidedCalibration />);
+    expect(screen.queryByText("GROUND_TRUTH details")).toBeNull();
+    expect(screen.getAllByText("RUN").length).toBeGreaterThan(0);
+  });
+
+  it("stays open while a run is open", () => {
+    current!.calibration.run = runView({ target_kmh: 3 });
+    render(<GuidedCalibration />);
+    expect(screen.queryByText("GROUND_TRUTH details")).toBeNull();
+    expect(screen.getByText("TAP")).toBeTruthy();
+  });
+
+  it("says on the row why RUN is off", () => {
+    current!.calibration.belt_cm = null;
+    renderOpen();
+    expect(screen.getAllByText("Enter the belt loop length first.").length).toBe(5);
+    expect(screen.getAllByTitle("Enter the belt loop length first.").length).toBe(5);
   });
 });

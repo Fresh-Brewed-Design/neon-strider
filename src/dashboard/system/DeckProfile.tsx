@@ -42,8 +42,9 @@ export function DeckProfile() {
       <ActionStatus pending={forget.pending} error={forget.error && `Could not forget: ${forget.error}`} className="mt-1" />
       <div className="mt-3">
         <Toggle
-          label="LABS // DECK_SWEEP: Sweep the deck's speeds and incline levels"
-          description="DECK_SWEEP steps a moving belt through each unlearned speed up to Top speed or each incline level up to Highest incline level, then back."
+          label="DECK_SWEEP: Sweep the deck's speeds and incline levels"
+          description="A moving belt steps through each speed and incline level not yet learned."
+          hint="The sweep goes up to Top speed and Highest incline level, then back."
           checked={profile.sweep_enabled}
           onChange={(on) => void toggle.run(() => dispatch({ type: "deck_profile_sweep_set", on }))}
         />
