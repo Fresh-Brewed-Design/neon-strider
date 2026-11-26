@@ -1,0 +1,2 @@
+- Connect, delete, What's new and TCX preview dialogs now share one look.
+- The connect dialog's scan button reads "Scan again".
