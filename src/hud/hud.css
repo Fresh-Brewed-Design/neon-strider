@@ -433,6 +433,10 @@ body,
 
 .hud-strip-total .hud-value { color: var(--accent); }
 
+/* A program's rest in the total's place: a long name ends in an ellipsis (the
+   tooltip has it whole), so the slot never pushes Engage. */
+.hud-strip-total.hud-strip-rest { flex: 1 1 auto; min-width: 0; }
+.hud-strip-rest .hud-label { overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; color: var(--accent); }
 /* A folded ATROPHY_WARNING in today's total's place: the label is the codename,
    so it may shorten with an ellipsis before Engage is squeezed. */
 .hud-seated-readout { flex: 0 1 auto; min-width: 0; }
@@ -719,6 +723,8 @@ body,
 .hud-swap { display: grid; }
 .hud-swap > * { grid-area: 1 / 1; text-align: center; }
 .hud-swap > :not(.is-shown) { visibility: hidden; }
+/* "wake deck first" is a letter longer than the longest other line; at 11px it fits their cell. */
+.hud-btn-sub > .is-tight { font-size: 11px; }
 
 .hud-steppers {
   display: grid;
@@ -1172,6 +1178,21 @@ body,
 }
 
 .hud-seated .hud-sub { overflow-wrap: anywhere; line-height: 1.35; }
+
+/* Deck asleep: each start button on the card carries "wake deck first" under its name, inside the
+   height it has without the line (ENGAGE 36px, a program 32px), so the card never grows for it. */
+.hud-seated .hud-btn.is-asleep {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding-top: 1px;
+  padding-bottom: 1px;
+  line-height: 1.2;
+}
+.hud-seated .hud-btn.is-asleep .hud-btn-sub { font-size: 11px; line-height: 1.15; }
+.hud-btn.hud-seated-engage.is-asleep .hud-btn-sub { color: color-mix(in srgb, #05080c 75%, var(--accent)); }
 
 .hud-seated-actions {
   display: flex;

@@ -1,6 +1,7 @@
 import { Fragment, useLayoutEffect, useRef } from "react";
 import type { AppSnapshot, Command, HudWidget } from "../ipc";
 import { describeActive } from "../dashboard/programs/format";
+import { formatClock } from "../format";
 import { statTitle, statWidget } from "../widgets/registry";
 import { Sparkline } from "../widgets/Sparkline";
 import { NotePop, type PanelNote } from "./HudNote";
@@ -11,21 +12,42 @@ import { dumpTitle } from "./status";
 type Send = (c: Command) => Promise<boolean>;
 
 /**
+ * A program's rest in the strip's stat slot: the program's name over the time
+ * to its next walk, in the programs' yellow. A rest outranks today's total
+ * there: it is what the still belt is doing. Same label-over-value shape as
+ * the total, so Engage beside it keeps its place.
+ */
+function RestCell({ name, left }: { name: string; left: number }) {
+  const clock = formatClock(left);
+  return (
+    <div className="hud-strip-total hud-strip-rest accent-yellow" title={`${name} · Rest · next walk in ${clock}`} data-testid="hud-strip-rest">
+      <span className="hud-label">{name} // REST</span>
+      <span className="hud-value hud-value-sm">{clock}</span>
+    </div>
+  );
+}
+
+/**
  * The panel collapsed during stasis (`hud_view` "strip"): under the header
  * (whose expand button shows the whole panel until the belt next moves),
- * today's total (DAILY_TOTAL) and Engage. A note covers the total and the
- * logo above it, beside Engage, so Engage never moves for it. A folded
- * ATROPHY_WARNING card takes the total's place (`SeatedReadout`): today's
- * total can't change while the belt is still. A walk lets the card go.
+ * today's total (DAILY_TOTAL) and Engage. A note covers the slot and the
+ * logo above it, beside Engage, so Engage never moves for it. The slot shows,
+ * first that applies: a program's rest and its countdown (`RestCell`), a
+ * folded ATROPHY_WARNING card (`SeatedReadout`: today's total can't change
+ * while the belt is still; a walk lets the card go), or today's total.
  */
 export function StripRow({ snapshot, send, note }: { snapshot: AppSnapshot; send: Send; note: PanelNote | null }) {
   const daily = statWidget("DAILY");
   const total = daily?.read(snapshot);
+  const a = snapshot.active_program;
+  const rest = a?.phase === "resting" && a.seconds_remaining !== null ? { name: a.name, left: a.seconds_remaining } : null;
   return (
     <div className="hud-strip">
       <div className="hud-strip-row">
         <div className="hud-strip-cell">
-          {snapshot.seated.folded ? (
+          {rest ? (
+            <RestCell name={rest.name} left={rest.left} />
+          ) : snapshot.seated.folded ? (
             <SeatedReadout snapshot={snapshot} />
           ) : (
             daily &&
@@ -41,7 +63,7 @@ export function StripRow({ snapshot, send, note }: { snapshot: AppSnapshot; send
           )}
           <NotePop note={note} />
         </div>
-        <EngageButton snapshot={snapshot} send={send} sub />
+        <EngageButton snapshot={snapshot} send={send} sub strip />
       </div>
     </div>
   );
@@ -178,7 +200,7 @@ export function RunStripRow({ snapshot, send, note }: { snapshot: AppSnapshot; s
       )}
       <div className="hud-strip-row">
         <NotePop note={note} />
-        <EngageButton snapshot={snapshot} send={send} sub />
+        <EngageButton snapshot={snapshot} send={send} sub strip />
         <button
           type="button"
           className="hud-btn hud-btn-stop hud-btn-stack hud-btn-dump"

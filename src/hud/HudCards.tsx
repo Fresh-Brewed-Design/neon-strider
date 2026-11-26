@@ -8,7 +8,7 @@ import { PLAIN } from "../names";
 import { formatChange, formatDeskDays } from "../dashboard/history/weekly";
 import { describePlan } from "../dashboard/programs/format";
 import { startFailure } from "../state/linkStatus";
-import { resumeWord } from "./status";
+import { deckAsleep, resumeWord, WAKE_FIRST, WAKE_FIRST_SUB } from "./status";
 import { HudNote } from "./HudNote";
 import { DumpName } from "./DumpName";
 import { SmallButton } from "./SmallButton";
@@ -86,7 +86,8 @@ function seatedLine(snapshot: AppSnapshot, programs: number): string | null {
   if (queued) return `${queued.name} starts when the treadmill is on.`;
   // Only an unlinked treadmill queues a program; one linked but asleep refuses every start.
   if (!snapshot.connection.connected && programs > 0) return "Treadmill off. Turn the treadmill on or queue a program.";
-  if (!snapshot.connection.connected || snapshot.deck.standby) return "Treadmill off. Turn the treadmill on to engage.";
+  if (!snapshot.connection.connected) return "Treadmill off. Turn the treadmill on to engage.";
+  if (snapshot.deck.standby) return WAKE_FIRST;
   return null;
 }
 
@@ -105,6 +106,8 @@ export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
   const programs = s.program_ids.flatMap((id) => snapshot.programs.find((p) => p.id === id) ?? []);
   const line = seatedLine(snapshot, programs.length);
   const note = error ?? startFailure(snapshot);
+  // Linked but asleep: every button here is refused until the deck wakes, so each says so before the press.
+  const asleep = deckAsleep(snapshot);
   return (
     <div className="hud-toast hud-seated accent-yellow" role="alert">
       <div className="hud-toast-body">
@@ -114,12 +117,14 @@ export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
       </div>
       <button
         type="button"
-        className="hud-btn hud-seated-engage accent-cyan"
+        className={`hud-btn hud-seated-engage accent-cyan${asleep ? " is-asleep" : ""}`}
         disabled={!snapshot.connection.connected}
-        title="Start walking at the usual speed, like Engage."
+        title={asleep ? WAKE_FIRST : "Start walking at the usual speed, like Engage."}
         onClick={() => void send({ type: "seated_engage" })}
       >
         ENGAGE
+        {asleep && " "}
+        {asleep && <span className="hud-btn-sub">{WAKE_FIRST_SUB}</span>}
       </button>
       {programs.length > 0 && (
         <div className="hud-seated-programs">
@@ -127,12 +132,14 @@ export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
             <button
               key={p.id}
               type="button"
-              className={`hud-btn hud-btn-program${p.id === s.pending_program_id ? " is-queued" : ""}`}
+              className={`hud-btn hud-btn-program${p.id === s.pending_program_id ? " is-queued" : ""}${asleep ? " is-asleep" : ""}`}
               aria-pressed={p.id === s.pending_program_id}
-              title={describePlan(p)}
+              title={asleep ? `${p.name}: ${WAKE_FIRST}` : describePlan(p)}
               onClick={() => send({ type: "seated_start", id: p.id })}
             >
               {p.name}
+              {asleep && " "}
+              {asleep && <span className="hud-btn-sub">{WAKE_FIRST_SUB}</span>}
             </button>
           ))}
         </div>

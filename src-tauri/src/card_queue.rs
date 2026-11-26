@@ -273,7 +273,7 @@ pub fn input_of(s: &AppSnapshot, now_ms: u64) -> Input {
         walkaway: s.walkaway.card != WalkAwayCard::None,
         eye: s.eye_break.phase,
         eye_at_rest: s.eye_break.at_rest,
-        program_go: s.active_program.as_ref().is_some_and(|a| a.wait.is_some()),
+        program_go: super::stasis::go_waiting(s),
         belt_running: connected && s.deck.status == MachineStatus::Running,
         belt_starting: connected
             && (s.deck.status == MachineStatus::Starting || s.connection.start_pending),

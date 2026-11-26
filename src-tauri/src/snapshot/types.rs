@@ -54,6 +54,9 @@ pub struct AppSnapshot {
     /// How the HUD panel shows right now: in full, as a strip or not at all
     /// (`hud.idle_mode` while the belt is still; see `snapshot/stasis.rs`).
     pub hud_view: HudView,
+    /// A program's wait for GO holds the whole panel (its first 30 s,
+    /// `stasis::GO_HOLD`): the HUD keeps minify off meanwhile.
+    pub hud_go_hold: bool,
     /// The one card the HUD shows now, picked by rank from the cards due
     /// (`card_queue.rs`, #421). The HUD renders this one and no other.
     pub hud_card: crate::snapshot::card_queue::HudCard,

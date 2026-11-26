@@ -55,6 +55,40 @@ describe("HUD strip", () => {
     expect(container.querySelector(".hud-stats")).toBeNull();
   });
 
+  it("shows a program's rest and its countdown in the total's place, Engage where it was", () => {
+    const { container } = show(
+      still("strip", (s) => {
+        s.active_program = { ...structuredClone(mock.active_program!), name: "Workday", phase: "resting", seconds_remaining: 1294, paused: false, wait: null };
+      }),
+    );
+    const rest = screen.getByTestId("hud-strip-rest");
+    expect(rest).toHaveTextContent("Workday // REST");
+    expect(rest).toHaveTextContent("21:34");
+    expect(rest).toHaveAttribute("title", "Workday · Rest · next walk in 21:34");
+    expect(screen.queryByText("TODAY")).not.toBeInTheDocument();
+    // The rest takes the total's cell, so the row keeps its shape and Engage its slot.
+    const row = container.querySelector(".hud-strip-row")!;
+    expect(Array.from(row.children).map((c) => c.className)).toEqual(["hud-strip-cell", "hud-btn hud-btn-main hud-btn-stack accent-cyan"]);
+    expect(screen.getByRole("button", { name: "ENGAGE start" })).toBeEnabled();
+  });
+
+  it("puts a program's rest before a folded ATROPHY_WARNING, and that before today's total", () => {
+    const rest = (s: AppSnapshot) =>
+      (s.active_program = { ...structuredClone(mock.active_program!), name: "Workday", phase: "resting", seconds_remaining: 1294, paused: false, wait: null });
+    const { unmount } = show(
+      still("strip", (s) => {
+        rest(s);
+        s.seated.folded = true;
+      }),
+    );
+    expect(screen.getByTestId("hud-strip-rest")).toBeInTheDocument();
+    expect(screen.queryByTestId("hud-seated-readout")).not.toBeInTheDocument();
+    unmount();
+    show(still("strip", (s) => (s.seated.folded = true)));
+    expect(screen.getByTestId("hud-seated-readout")).toBeInTheDocument();
+    expect(screen.queryByText("TODAY")).not.toBeInTheDocument();
+  });
+
   it("expand and Engage each send one command", async () => {
     vi.mocked(invoke).mockClear();
     show(still("strip"));
@@ -259,16 +293,44 @@ describe("HUD minified", () => {
     expect(dispatched()).toEqual([{ command: { type: "hud_set_minified", minified: true } }]);
   });
 
-  it("keeps the minify button in its place but off while a program waits for GO (the panel stays whole)", () => {
+  it("keeps the minify button in its place but off for the first 30 s a program waits for GO (the panel stays whole)", () => {
     show(
       still("full", (s) => {
         s.deck.status = "Paused";
         s.active_program = { ...structuredClone(mock.active_program!), paused: true, wait: "rest_complete" };
+        s.hud_go_hold = true;
       }),
     );
     const minify = screen.getByRole("button", { name: "Minify the HUD" });
     expect(minify).toBeDisabled();
-    expect(minify).toHaveAttribute("title", "The whole HUD stays up while a program waits for GO.");
+    expect(minify).toHaveAttribute("title", "The whole HUD stays up for 30 seconds while a program waits for GO.");
+  });
+
+  it("lets minify work again once an unanswered GO's hold is over", () => {
+    show(
+      still("full", (s) => {
+        s.deck.status = "Paused";
+        s.active_program = { ...structuredClone(mock.active_program!), paused: true, wait: "rest_complete" };
+        s.hud_go_hold = false;
+      }),
+    );
+    expect(screen.getByRole("button", { name: "Minify the HUD" })).toBeEnabled();
+  });
+
+  it("falls back to the strip with a yellow GO as its main button after the hold", async () => {
+    vi.mocked(invoke).mockClear();
+    show(
+      still("strip", (s) => {
+        s.deck.status = "Paused";
+        s.active_program = { ...structuredClone(mock.active_program!), paused: true, wait: "rest_complete" };
+      }),
+    );
+    const go = screen.getByRole("button", { name: "GO start belt" });
+    expect(go).toHaveClass("accent-yellow");
+    expect(go).toHaveAttribute("title", "Start the belt and carry on with the program.");
+    // The same one press as before: nothing starts the belt but GO.
+    await act(async () => fireEvent.click(go));
+    expect(dispatched()).toEqual([{ command: { type: "toggle_start" } }]);
   });
 });
 

@@ -73,6 +73,11 @@ speed_drift: SpeedDriftSnapshot, hud: HudConfig,
  */
 hud_view: HudView, 
 /**
+ * A program's wait for GO holds the whole panel (its first 30 s,
+ * `stasis::GO_HOLD`): the HUD keeps minify off meanwhile.
+ */
+hud_go_hold: boolean, 
+/**
  * The one card the HUD shows now, picked by rank from the cards due
  * (`card_queue.rs`, #421). The HUD renders this one and no other.
  */

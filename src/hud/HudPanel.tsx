@@ -9,7 +9,7 @@ import { NotePop, type PanelNote } from "./HudNote";
 import { linkState, linkView } from "../state/linkStatus";
 import { SmallButton } from "./SmallButton";
 import { DumpName } from "./DumpName";
-import { dumpTitle, ENGAGE_SUBS, ENGAGE_WORDS, engageLabel, engageSub, engageTitle, firstStepLine, offlineText, quietHold } from "./status";
+import { deckAsleep, dumpTitle, ENGAGE_SUBS, ENGAGE_WORDS, engageLabel, engageSub, engageTitle, firstStepLine, offlineText, quietHold, WAKE_FIRST, WAKE_FIRST_SUB } from "./status";
 import { Swap } from "./Swap";
 import type { useRelink } from "./useRelink";
 import { useWheelSteps } from "./useWheelSteps";
@@ -264,21 +264,28 @@ export function PresentingLine({ snapshot }: { snapshot: AppSnapshot }) {
   );
 }
 
-/** Engage / Stasis: one `toggle_start` to Rust, the same press as the shortcut. */
+/**
+ * Engage / Stasis: one `toggle_start` to Rust, the same press as the shortcut.
+ * On a strip, where no program card shows, its GO takes the programs' yellow.
+ */
 export function EngageButton({
   snapshot,
   send,
   sub = false,
+  strip = false,
 }: {
   snapshot: AppSnapshot;
   send: Send;
   /** A plain line under the codename (the panel and both strips). */
   sub?: boolean;
+  /** On the still strip or the running strip. */
+  strip?: boolean;
 }) {
+  const go = strip && engageLabel(snapshot) === "GO";
   return (
     <button
       type="button"
-      className={`hud-btn hud-btn-main${sub ? " hud-btn-stack" : ""} accent-cyan`}
+      className={`hud-btn hud-btn-main${sub ? " hud-btn-stack" : ""} accent-${go ? "yellow" : "cyan"}`}
       disabled={!snapshot.connection.connected}
       title={engageTitle(snapshot)}
       onClick={() => void send({ type: "toggle_start" })}
@@ -286,7 +293,7 @@ export function EngageButton({
       {/* Every word and line it can take share one cell each, so it keeps one size and DUMP never moves. */}
       <Swap shown={engageLabel(snapshot)} all={ENGAGE_WORDS} />
       {sub && " "}
-      {sub && <Swap className="hud-btn-sub" shown={engageSub(snapshot)} all={ENGAGE_SUBS} />}
+      {sub && <Swap className="hud-btn-sub" shown={engageSub(snapshot)} all={ENGAGE_SUBS} tight={[WAKE_FIRST_SUB]} />}
     </button>
   );
 }
@@ -383,7 +390,7 @@ export function Controls({ snapshot, send }: { snapshot: AppSnapshot; send: Send
 
 /** Every word and plain line HOLD / GO takes, so the button keeps one size in every state. */
 const HOLD_WORDS = ["HOLD", "GO"] as const;
-const HOLD_SUBS = ["pause program", "resume program", "start belt"] as const;
+const HOLD_SUBS = ["pause program", "resume program", "start belt", WAKE_FIRST_SUB] as const;
 
 /** STEP_MAP's next step: each part stays whole and keeps its trailing dot; a narrow panel wraps between them. */
 function NextLine({ next }: { next: string }) {
@@ -403,8 +410,11 @@ function NextLine({ next }: { next: string }) {
   );
 }
 
-/** HOLD / GO, SKIP and END. `a` null draws them for the reserve, unlabelled by state. */
-function ProgramActions({ a, offline, send }: { a: ActiveProgram | null; offline: boolean; send: Send }) {
+/**
+ * HOLD / GO, SKIP and END. `a` null draws them for the reserve, unlabelled by state.
+ * `asleep`: the deck refuses starts, so GO says to wake it first (the press is the same).
+ */
+function ProgramActions({ a, offline, asleep = false, send }: { a: ActiveProgram | null; offline: boolean; asleep?: boolean; send: Send }) {
   const wait = a?.wait ?? null;
   const paused = a?.paused ?? false;
   return (
@@ -412,12 +422,15 @@ function ProgramActions({ a, offline, send }: { a: ActiveProgram | null; offline
       <SmallButton
         className={wait ? "hud-btn-go" : undefined}
         disabled={offline}
-        sub={wait ? "start belt" : paused ? "resume program" : "pause program"}
+        sub={paused && asleep ? WAKE_FIRST_SUB : wait ? "start belt" : paused ? "resume program" : "pause program"}
         subs={HOLD_SUBS}
+        tight={[WAKE_FIRST_SUB]}
         title={
           offline
             ? "Treadmill not connected."
-            : wait
+            : paused && asleep
+              ? WAKE_FIRST
+              : wait
               ? "Start the belt and carry on with the program."
               : paused
                 ? "Resume the program."
@@ -443,7 +456,7 @@ function ProgramActions({ a, offline, send }: { a: ActiveProgram | null; offline
 }
 
 /** The running program: what it does now over its three buttons. */
-function RunLayer({ a, offline, send }: { a: ActiveProgram; offline: boolean; send: Send }) {
+function RunLayer({ a, offline, asleep, send }: { a: ActiveProgram; offline: boolean; asleep: boolean; send: Send }) {
   // Waiting for GO: the next step would start a still belt, so nothing moves
   // until GO (Rust says why in `wait`).
   const wait = a.wait;
@@ -477,7 +490,7 @@ function RunLayer({ a, offline, send }: { a: ActiveProgram; offline: boolean; se
           {next && <NextLine next={next} />}
         </div>
       </div>
-      <ProgramActions a={a} offline={offline} send={send} />
+      <ProgramActions a={a} offline={offline} asleep={asleep} send={send} />
     </div>
   );
 }
@@ -568,7 +581,7 @@ export function ProgramsModule({ snapshot, send, reserve }: { snapshot: AppSnaps
       <div className={`hud-program-stack${reserve ? " is-reserved" : ""}`}>
         <RunReserve />
         {programs.length > 0 && <ProgramGrid programs={programs} offline={offline} send={send} reserve={a !== null} />}
-        {a && <RunLayer a={a} offline={offline} send={send} />}
+        {a && <RunLayer a={a} offline={offline} asleep={deckAsleep(snapshot)} send={send} />}
       </div>
     </div>
   );

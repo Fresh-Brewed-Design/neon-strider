@@ -153,6 +153,7 @@ export const snapshot: AppSnapshot = {
     minified: false,
   },
   hud_view: "full",
+  hud_go_hold: false,
   hud_card: "none",
   hud_monitors: [
     { name: "\\\\.\\DISPLAY1", label: "Display 1 · 1920×1080", is_primary: true, active: true, width: 1920, height: 1080 },
@@ -346,18 +347,35 @@ export const PREVIEW_CONFIG: RustConfig = {
 /** Send the current snapshot to every listener, as Rust's `app-state` event does. */
 export function publish() {
   snapshot.hud_view = hudView();
+  snapshot.hud_go_hold = goHeld();
   applyCardQueue(snapshot);
   snapshot.update.dot = updateDot();
   void emit("app-state", { full: true, ...structuredClone(snapshot) });
 }
 
 // The HUD during stasis, as `snapshot/stasis.rs` decides it: the whole panel
-// while the belt moves, for 10 s after it stops, while a program waits for GO,
-// and after expand until the belt next moves. Minified, the running strip
-// takes the whole panel's place (a program waiting for GO still gets it).
+// while the belt moves, for 10 s after it stops, for the first 30 s a program
+// waits for GO, and after expand until the belt next moves. Minified, the
+// running strip takes the whole panel's place (a program's first 30 s waiting
+// for GO still gets it). A wait past its 30 s shows the strip even when hidden.
 const STASIS_GRACE_MS = 10_000;
+const GO_HOLD_MS = 30_000;
 let lastMovingAt: number | null = null;
 let hudExpanded = false;
+/** When the current wait for GO began; `?program=unanswered` starts it 31 s ago. */
+let goSince: number | null = null;
+export function startGoWait(agoMs: number) {
+  goSince = Date.now() - agoMs;
+}
+/** The GO prompt holds the whole panel (`stasis::go_held`). */
+export function goHeld(): boolean {
+  if (!snapshot.active_program?.wait) {
+    goSince = null;
+    return false;
+  }
+  goSince ??= Date.now();
+  return Date.now() - goSince < GO_HOLD_MS;
+}
 export function hudView(): AppSnapshot["hud_view"] {
   const moving = snapshot.connection.connected && (snapshot.deck.status === "Running" || snapshot.deck.status === "Starting");
   if (moving) {
@@ -367,9 +385,9 @@ export function hudView(): AppSnapshot["hud_view"] {
   const mode = snapshot.hud.idle_mode;
   const a = snapshot.active_program;
   const inGrace = lastMovingAt !== null && Date.now() - lastMovingAt < STASIS_GRACE_MS;
-  if (a?.wait) return "full";
+  if (goHeld()) return "full";
   if (moving || mode === "full" || hudExpanded || inGrace) return snapshot.hud.minified ? "minified" : "full";
-  return mode;
+  return a?.wait && mode === "hidden" ? "strip" : mode;
 }
 
 /** The strip's expand button: the whole panel until the belt next moves. */

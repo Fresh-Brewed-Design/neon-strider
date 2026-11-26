@@ -77,11 +77,28 @@ export function resumeWord(snapshot: AppSnapshot): "GO" | "RE-JACK" {
   return a?.phase === "walking" && a.paused ? "GO" : "RE-JACK";
 }
 
+/** The plain line on every start button (ENGAGE, GO, the sit-too-long card's) while the deck is asleep. */
+export const WAKE_FIRST_SUB = "wake deck first";
+
+/**
+ * The one sentence for a deck that is asleep or off: the start buttons' tooltip before a press, the
+ * sit-too-long card's line, and Rust's refusal after one (`link::START_STANDBY`, the same words).
+ */
+export const WAKE_FIRST = "Wake the deck first at the treadmill or remote.";
+
+/**
+ * The deck is linked but asleep or off (standby): it refuses every start and the app can't wake it,
+ * so a start button says so before the press. A press still sends what it always does.
+ */
+export function deckAsleep(snapshot: AppSnapshot): boolean {
+  return snapshot.connection.connected && snapshot.deck.standby && !isMoving(snapshot.deck);
+}
+
 /** Every word the main button takes (`engageLabel`), so it keeps one size in every state. */
 export const ENGAGE_WORDS = ["ENGAGE", "STASIS", "RE-JACK", "GO", "WAKING…"] as const;
 
 /** Every plain line under the main button (`engageSub`), so it keeps one size in every state. */
-export const ENGAGE_SUBS = ["start", "pause belt", "resume belt", "resume program", "starting"] as const;
+export const ENGAGE_SUBS = ["start", "pause belt", "resume belt", "resume program", "start belt", "starting", WAKE_FIRST_SUB] as const;
 
 /** The main button's word, the same on the panel and the strip. */
 export function engageLabel(snapshot: AppSnapshot): string {
@@ -99,8 +116,10 @@ export function engageSub(snapshot: AppSnapshot): string {
   const { deck, connection } = snapshot;
   if (isMoving(deck)) return "pause belt";
   if (connection.start_pending) return "starting";
-  // On a paused program the main button is its GO: it resumes the program.
-  if (resumeWord(snapshot) === "GO") return "resume program";
+  if (deckAsleep(snapshot)) return WAKE_FIRST_SUB;
+  // On a paused program the main button is its GO: it resumes the program, and
+  // after a wait for GO it starts the belt (the program card's GO says the same).
+  if (resumeWord(snapshot) === "GO") return snapshot.active_program?.wait ? "start belt" : "resume program";
   return deck.status === "Paused" ? "resume belt" : "start";
 }
 
@@ -109,8 +128,9 @@ export function engageTitle(snapshot: AppSnapshot): string {
   const { deck, connection } = snapshot;
   if (isMoving(deck)) return "Pause the belt.";
   if (connection.start_pending) return "Waiting for the treadmill to start.";
+  if (deckAsleep(snapshot)) return WAKE_FIRST;
   const a = snapshot.active_program;
-  if (a?.phase === "walking" && a.paused) return "Resume the program.";
+  if (a?.phase === "walking" && a.paused) return a.wait ? "Start the belt and carry on with the program." : "Resume the program.";
   return deck.status === "Paused" ? "Resume the belt." : "Start the belt.";
 }
 
