@@ -55,15 +55,31 @@ body,
   min-width: 0;
   display: flex;
   flex-direction: column-reverse;
-  gap: 8px;
   width: 300px;
+  /* Never taller than the window either: at a large Windows text size the
+     panel's body scrolls under its header, so the header stays on screen. */
+  max-height: 100%;
   pointer-events: auto;
 }
+/* Cards keep their height; the panel's body gives way for them. Toasts come
+   and go, so they give way first: the panel keeps its height (and, in a
+   bottom corner, its header its place) while one shows. */
+.hud-content > :not(.hud-panel) { flex-shrink: 0; }
+.hud-content > .hud-toasts { flex-shrink: 1000; min-height: 0; overflow-y: clip; }
 
 .hud-root.anchor-top_right .hud-content,
 .hud-root.anchor-top_left .hud-content {
   flex-direction: column;
 }
+
+/* 8px between the panel and each card, on the side toward the panel. The
+   toasts keep theirs inside their own box, so it goes with them when they
+   give way. */
+.hud-content > * + :not(.hud-toasts) { margin-bottom: 8px; }
+.hud-content > * + .hud-toasts::after { content: ""; flex: 0 0 2px; }
+.hud-root:is(.anchor-top_right, .anchor-top_left, .anchor-custom) .hud-content > * + :not(.hud-toasts) { margin-top: 8px; margin-bottom: 0; }
+.hud-root:is(.anchor-top_right, .anchor-top_left, .anchor-custom) .hud-content > * + .hud-toasts::after { content: none; }
+.hud-root:is(.anchor-top_right, .anchor-top_left, .anchor-custom) .hud-content > * + .hud-toasts::before { content: ""; flex: 0 0 2px; }
 
 .accent-cyan    { --accent: var(--hud-cyan); }
 .accent-magenta { --accent: var(--hud-magenta); }
@@ -74,6 +90,9 @@ body,
 
 .hud-panel {
   min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   position: relative;
   background: var(--hud-bg);
   border: 1px solid var(--hud-line);
@@ -104,6 +123,21 @@ body,
   pointer-events: none;
 }
 
+/* Everything under the header. It scrolls only when the panel is taller than
+   the window (the largest Windows text sizes), so the header never leaves
+   the screen. */
+.hud-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--hud-line) transparent;
+}
+
+/* Laid out but unseen: holds room for a line or a layout that comes and goes,
+   so nothing under or beside it moves. */
+.hud-reserve { visibility: hidden; }
+
 /* While the belt rests only the live stats recede, back on hover. The header,
    notes, buttons and program card stay full strength, and a note anywhere on
    the panel keeps the stats up too. HudApp never marks the panel resting while
@@ -124,6 +158,7 @@ body,
 .hud-panel.is-offline .hud-auto-readout { opacity: 0.45; }
 
 .hud-header {
+  flex-shrink: 0;
   display: flex;
   /* A status that can't fit beside the logo takes its own line, never an
      ellipsis. */
@@ -240,6 +275,27 @@ body,
   border-top: 1px solid color-mix(in srgb, #ff4d5e 55%, transparent);
   border-left: 3px solid #ff4d5e;
   pointer-events: none;
+}
+/* A deck reply's one-line form: the themed line alone, so it covers no
+   reading. The plain words stay for screen readers (HudNote). */
+.hud-note-pop.is-one-line .hud-note-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hud-note-pop.is-one-line .hud-note-detail {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+/* The themed line on one line, unseen, measured against the row's width. */
+.hud-note-measure {
+  position: absolute;
+  top: 0;
+  left: 12px;
+  right: 12px;
+  visibility: hidden;
+  white-space: nowrap;
+  overflow: hidden;
 }
 .hud-note-detail {
   font-size: 12px;
@@ -476,6 +532,10 @@ body,
 }
 
 .hud-run-program {
+  /* Two lines of the step, with a program or without (HudStrip), so the
+     buttons under it never move; what can't fit two lines is in the tooltip. */
+  height: calc(2 * 1.35 * 12px);
+  overflow: hidden;
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -626,7 +686,11 @@ body,
 .hud-transport { display: flex; flex-wrap: wrap; gap: 8px 12px; }
 /* 4px side padding (6px by default) on STASIS and QUIET pays for DUMP's wider gaps: the row wraps at
    the same text sizes as before. */
-.hud-transport .hud-btn-main { flex: 100 1 auto; min-width: max-content; padding-left: 4px; padding-right: 4px; }
+/* STASIS takes the row's spare width whatever its words, so DUMP and QUIET sit at the same x in every
+   state; it never gets narrower than its longest word, and a plain line too long for it (resume
+   program) wraps inside it. Its swap cells hold every wording, so its height never changes either. */
+.hud-transport .hud-btn-main { flex: 100 1 0; min-width: min-content; padding-left: 4px; padding-right: 4px; }
+.hud-transport .hud-btn-main .hud-btn-sub { white-space: normal; }
 .hud-transport .hud-btn-stop { flex: 1 0 72px; }
 /* QUIET sits beside DUMP while the row fits (Engage keeps its whole word),
    else wraps under them. Lit while Quiet now holds the belt. */
@@ -687,6 +751,36 @@ body,
   color: var(--accent);
 }
 
+/* The programs module: the running program, the RUN PROGRAM grid and a blank
+   running program share one cell (HudPanel), so the module is as tall as the
+   tallest in every state, and nothing on the panel moves when a program
+   starts, walks, rests, pauses, waits for GO or ends. */
+.hud-program-stack { display: grid; }
+.hud-program-stack > * { grid-area: 1 / 1; min-width: 0; }
+.hud-program-run,
+.hud-program-grid { display: flex; flex-direction: column; gap: 8px; }
+/* The readout and a blank readout share one cell, so HOLD / GO, SKIP and END
+   under it sit at one height whichever lines the program shows. */
+.hud-program-readout { display: grid; }
+.hud-program-readout > * { grid-area: 1 / 1; }
+/* Every line under the name has one line height in every state. */
+.hud-program-run .hud-sub { overflow-wrap: anywhere; line-height: 1.35; }
+/* Each readout line (headline or label, name, step, T-MINUS, next step) has a
+   set number of lines for the module's width: one at 100 % text size, two or
+   three where a larger text size narrows it. The blank readout keeps the same
+   room, so a longer step never pushes the buttons; words past the room are
+   cut, and the readout's tooltip gives them whole. */
+.hud-program { container-type: inline-size; }
+.hud-program-run .hud-auto-readout > * {
+  --lines: 1;
+  box-sizing: content-box;
+  min-height: calc(var(--lines) * 1lh);
+  max-height: calc(var(--lines) * 1lh);
+  overflow: hidden;
+}
+@container (max-width: 259px) { .hud-program-run .hud-auto-readout > * { --lines: 2; } }
+@container (max-width: 129px) { .hud-program-run .hud-auto-readout > * { --lines: 3; } }
+
 /* Running program: name and status on top, the three controls on their own
    row below, so the row never gets wider than the HUD window. */
 .hud-auto-readout { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -732,6 +826,11 @@ body,
   white-space: normal;
   overflow-wrap: anywhere;
 }
+/* RUN PROGRAM: every button is one name line over one plain line, so no
+   button grows taller than its neighbours. A name too long for its button
+   ends in an ellipsis; the tooltip gives it whole. */
+.hud-programs .hud-btn-program { padding-left: 4px; padding-right: 4px; letter-spacing: 0.04em; }
+.hud-programs .hud-btn-program-name { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* A saved program's first-step speed under its name, in plain lower case. */
 .hud-btn-program .hud-btn-sub { white-space: normal; text-transform: none; letter-spacing: 0.02em; }
 .hud-auto-actions {
@@ -741,14 +840,15 @@ body,
 }
 /* A button keeps its words whole while the row has room, but never grows past the row: at 225 %
    text size "end program" is wider than the 93px column, so its line wraps inside the button. */
-.hud-auto-actions .hud-btn { flex: 1 1 0; min-width: min(max-content, 100%); }
+.hud-auto-actions .hud-btn { flex: 1 1 0; min-width: min(min-content, 100%); }
 .hud-auto-actions .hud-btn { padding-left: 3px; padding-right: 3px; }
 .hud-auto-actions .hud-btn-sub { white-space: normal; text-align: center; letter-spacing: 0; }
 
 /* A program waiting for GO (its next step would start a still belt): a
    yellow edge, a headline that can't be missed, and a filled, glowing GO. */
+/* The yellow edge is drawn inside the padding, so nothing in the module moves for it. */
 .hud-ready {
-  border-left: 4px solid var(--hud-yellow);
+  box-shadow: inset 4px 0 0 var(--hud-yellow);
   background: color-mix(in srgb, var(--hud-yellow) 9%, transparent);
 }
 .hud-ready-headline {
@@ -760,7 +860,6 @@ body,
   overflow-wrap: anywhere;
   text-shadow: 0 0 8px color-mix(in srgb, var(--hud-yellow) 55%, transparent);
 }
-.hud-ready .hud-sub { overflow-wrap: anywhere; line-height: 1.35; }
 .hud-btn.hud-btn-go {
   background: var(--hud-yellow);
   border-color: var(--hud-yellow);
@@ -914,6 +1013,13 @@ body,
   overflow-wrap: anywhere;
 }
 
+/* A toast's message in whole parts (SegmentText): it wraps between parts, and
+   a part that ends a line hides its // or ·. */
+/* 1ch is one space of the mono face, so a part's gap matches the space before its separator. */
+.hud-segs { display: flex; flex-wrap: wrap; column-gap: 1ch; }
+.hud-seg { max-width: 100%; overflow-wrap: anywhere; }
+.hud-seg[data-wrapped] > .hud-seg-sep { visibility: hidden; }
+
 .hud-toast-adjust {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -1042,7 +1148,7 @@ body,
   box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
-/* The default: a plain walk, filled so it reads first. */
+/* The default: a plain walk, filled so it reads first, in ENGAGE's cyan (HudCards sets accent-cyan). */
 .hud-btn.hud-seated-engage {
   height: 36px;
   background: var(--accent);

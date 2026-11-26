@@ -209,7 +209,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?anchor=top_left` (or any corner): the HUD's corner
 - `?autoinstall=off`: "Install automatically" switched off (with `?update=...`)
 - `?blink=squeeze|open`: the guided blink step during an eye-break cooldown (CLOSE by default)
-- `?call`: on a call, the belt held at the quiet speed (the HUD preview also shows the toast)
+- `?call`: on a call, the belt held at the quiet speed, 3.5 km/h back after it (QUIET lit and its QUIET // DAMPED line; the HUD preview also shows the toast)
 - `?caloffer`: a connected treadmill with no calibration, so the first-connect "Calibrate this treadmill" card shows (outside System; on Live under the controls)
 - `?calwizard`: GROUND_TRUTH with a 280 cm belt loop, two saved points and the top speed question; `=belt` the BELT_LOOP step, `=tapping|dropped` a tap run five passes in or with a dropped tap and a restart note, `=measured` the plain-words result with the point already saved (UNDO, TAP AGAIN), `=sweep|sweeprun` RUN ALL between speeds or tapping, `=oldpoint` a point stored below the factor limit, `=targets` an added 3.5 km/h and a stored 14.0 km/h outside the range, `=steps` GAIT_SYNC tapping footsteps after a measured run, `=stepsaved` the stride measured and saved by itself, with UNDO, `=guiderun` the guided walk from 0.6 to 5.0 km/h tapping at 5.0, `=guidecheck` both ends saved and the midpoint check up next, `=guidesplit` the check 3.2 % off and split, `=guidedone` the walk done with its summary, `=guideskip` both ends saved on a deck that skips 2.8 km/h, so the check moved to 2.7, `=guideran` the 2.8 check the deck ran at 2.9 (chip, line and note show 2.9), `=aside` START FRESH with the two points set aside (POINTS_ASIDE, RESTORE, KEEP NEW), `=asidedone` the new walk done with the old set still aside
 - `?connect=fail`: connecting from the connect dialog fails
@@ -254,7 +254,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?presenting`: Windows says a presentation or full-screen app is in front, so the HUD holds its non-urgent cards (with `?seated`, `?eyebreak=upcoming`, `?weekly`, `?due` or `?update=available`) and shows PRESENTING // CARDS HELD; `=off` the switch off in System -> Desk
 - `?program=ready|hold|still|resting|paused|interval`: a program waiting for GO after a rest, after a 0 km/h step (its steps have no kind), or after a reconnect found the belt still; mid-rest; paused by the user; or Interval walk on its 3rd brisk round (`INTERVAL 3/5`, `T-MINUS 17:08`); each shows STEP_MAP on the Live page and the next step on the HUD
 - `?programtones`: Program tones switched on (System, Desk); 3 s after load a cue fires: `=step` (or no value) the running program moves to its next step, `=wait` it waits for GO after a rest, `=speedup` its next, faster step starts in 5 s; SKIP fires the step cue while the belt runs
-- `?quietnow`: Quiet now holds the belt at the 2.0 km/h quiet speed (the HUD's QUIET lit, its QUIET // HOLD line, the tray's END QUIET); `=slow` the belt already at 1.8 km/h, so QUIET changes nothing and the HUD says why
+- `?quietnow`: Quiet now holds the belt at the 2.0 km/h quiet speed (the HUD's QUIET lit, its QUIET // DAMPED line, the tray's END QUIET); `=slow` the belt already at 1.8 km/h, so QUIET changes nothing and the HUD says why
 - `?reconnect`: the Strava login needs a fresh grant
 - `?reject`: every command fails
 - `?saved`: a walk saved for a manual Strava upload

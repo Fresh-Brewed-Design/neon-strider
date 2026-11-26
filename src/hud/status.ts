@@ -77,6 +77,12 @@ export function resumeWord(snapshot: AppSnapshot): "GO" | "RE-JACK" {
   return a?.phase === "walking" && a.paused ? "GO" : "RE-JACK";
 }
 
+/** Every word the main button takes (`engageLabel`), so it keeps one size in every state. */
+export const ENGAGE_WORDS = ["ENGAGE", "STASIS", "RE-JACK", "GO", "WAKING…"] as const;
+
+/** Every plain line under the main button (`engageSub`), so it keeps one size in every state. */
+export const ENGAGE_SUBS = ["start", "pause belt", "resume belt", "resume program", "starting"] as const;
+
 /** The main button's word, the same on the panel and the strip. */
 export function engageLabel(snapshot: AppSnapshot): string {
   const { deck, connection } = snapshot;
@@ -91,10 +97,11 @@ export function engageLabel(snapshot: AppSnapshot): string {
 /** What the main button does, in plain words: the small line under its codename. */
 export function engageSub(snapshot: AppSnapshot): string {
   const { deck, connection } = snapshot;
-  if (isMoving(deck)) return "pause";
+  if (isMoving(deck)) return "pause belt";
   if (connection.start_pending) return "starting";
-  const a = snapshot.active_program;
-  return deck.status === "Paused" || (a?.phase === "walking" && a.paused) ? "resume" : "start";
+  // On a paused program the main button is its GO: it resumes the program.
+  if (resumeWord(snapshot) === "GO") return "resume program";
+  return deck.status === "Paused" ? "resume belt" : "start";
 }
 
 /** The main button's tooltip, the same words as `engageSub` in a sentence. */
@@ -142,4 +149,16 @@ export function offlineText(connection: AppSnapshot["connection"]): string {
     default:
       return connection.has_saved_device ? OFFLINE : "No treadmill saved yet.";
   }
+}
+
+/**
+ * Who holds the belt at the quiet speed, and the speed that comes back after:
+ * Quiet now (pressed on the HUD or in the tray, `calls.quiet_now`), or a call
+ * (`calls.quiet_active`). Null while neither does.
+ */
+export function quietHold(snapshot: AppSnapshot): { by: "press" | "call"; back: number } | null {
+  const c = snapshot.calls;
+  if (c.quiet_now && c.quiet_now_back_kmh !== null) return { by: "press", back: c.quiet_now_back_kmh };
+  if (c.quiet_active && c.call_back_kmh !== null) return { by: "call", back: c.call_back_kmh };
+  return null;
 }

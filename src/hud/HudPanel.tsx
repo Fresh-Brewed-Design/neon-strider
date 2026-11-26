@@ -1,15 +1,16 @@
 import { Fragment } from "react";
-import type { AppSnapshot, Command, HudWidget, PulseTarget, ZoneBand } from "../ipc";
+import type { ActiveProgram, AppSnapshot, Command, HudWidget, PulseTarget, ZoneBand } from "../ipc";
 import { describeActive, describePlan, describeTimeLeft, waitHeadline } from "../dashboard/programs/format";
 import { nextStepLine } from "../dashboard/programs/stepMap";
 import { statWidget } from "../widgets/registry";
 import { Sparkline } from "../widgets/Sparkline";
 import { targetAccent, targetRange, ZONE_ACCENT, zoneRange } from "../widgets/zone";
 import { NotePop, type PanelNote } from "./HudNote";
-import { linkView } from "../state/linkStatus";
+import { linkState, linkView } from "../state/linkStatus";
 import { SmallButton } from "./SmallButton";
 import { DumpName } from "./DumpName";
-import { dumpTitle, engageLabel, engageSub, engageTitle, firstStepLine, offlineText } from "./status";
+import { dumpTitle, ENGAGE_SUBS, ENGAGE_WORDS, engageLabel, engageSub, engageTitle, firstStepLine, offlineText, quietHold } from "./status";
+import { Swap } from "./Swap";
 import type { useRelink } from "./useRelink";
 import { useWheelSteps } from "./useWheelSteps";
 
@@ -34,7 +35,18 @@ export function StatCell({ id, snapshot }: { id: HudWidget; snapshot: AppSnapsho
       {spark && <Sparkline data={spark} className="hud-spark" />}
       {zone && <ZoneLine zone={zone} />}
       {target && <TargetLine target={target} />}
-      {detail && <span className="hud-sub hud-stat-detail">{detail}</span>}
+      {/* Room for a zone or pulse target line that comes and goes with program steps, so the panel keeps its height. */}
+      {!zone && !target && def.reserveZone?.(snapshot) && (
+        <div className="hud-zone hud-reserve" aria-hidden="true">
+          <span className="hud-zone-label">{BLANK}</span>
+          <span className="hud-sub">{BLANK}</span>
+        </div>
+      )}
+      {def.detail && (
+        <span className={`hud-sub hud-stat-detail${detail ? "" : " hud-reserve"}`} aria-hidden={detail ? undefined : true}>
+          {detail ?? BLANK}
+        </span>
+      )}
     </div>
   );
 }
@@ -193,20 +205,21 @@ function quietKmh(snapshot: AppSnapshot): number {
 }
 
 /**
- * Quiet line while Quiet now holds the belt at the quiet speed, pressed on
- * the HUD or in the tray. Rust decides when (`calls.quiet_now`); a speed set
- * by hand, a program step or a stop ends it and the line goes.
+ * Quiet line while the belt is held at the quiet speed, by Quiet now or by a
+ * call (`quietHold`). A speed set by hand, a program step or a stop ends a
+ * press's hold, the call's end puts the speed back, and the line goes.
  */
 export function QuietNowLine({ snapshot }: { snapshot: AppSnapshot }) {
-  const { quiet_now, quiet_now_back_kmh: back } = snapshot.calls;
-  if (!quiet_now || back === null) return null;
+  const hold = quietHold(snapshot);
+  if (!hold) return null;
+  const back = hold.back;
   return (
     <div
       className="hud-quiet accent-yellow"
       data-testid="hud-quiet"
-      title={`QUIET puts ${back.toFixed(1)} km/h back.`}
+      title={hold.by === "call" ? `After a call, the belt goes back to ${back.toFixed(1)} km/h.` : `QUIET puts ${back.toFixed(1)} km/h back.`}
     >
-      <span className="hud-label">QUIET // HOLD</span>
+      <span className="hud-label">QUIET // DAMPED</span>
       <span className="hud-quiet-speed">
         {quietKmh(snapshot).toFixed(1)}
         <span className="hud-unit">/{back.toFixed(1)} km/h</span>
@@ -252,9 +265,10 @@ export function EngageButton({
       title={engageTitle(snapshot)}
       onClick={() => void send({ type: "toggle_start" })}
     >
-      {engageLabel(snapshot)}
+      {/* Every word and line it can take share one cell each, so it keeps one size and DUMP never moves. */}
+      <Swap shown={engageLabel(snapshot)} all={ENGAGE_WORDS} />
       {sub && " "}
-      {sub && <span className="hud-btn-sub">{engageSub(snapshot)}</span>}
+      {sub && <Swap className="hud-btn-sub" shown={engageSub(snapshot)} all={ENGAGE_SUBS} />}
     </button>
   );
 }
@@ -263,32 +277,36 @@ export function EngageButton({
  * QUIET: Quiet now, one `quiet_now` to Rust. The first press eases a running
  * belt to the quiet speed and the second puts the speed back. Rust refuses a
  * still belt or one already as slow, and says why in the panel's note. While
- * it holds the belt the button is filled and its line says what the second
- * press puts back. Both lines share one cell, so the button keeps its width
- * when it turns on or off and nothing beside it moves.
+ * the belt is held quiet, by a press or by a call, the button is filled and
+ * its line says what a press does: put the speed back, or during a call keep
+ * the belt slow after the call (Rust takes the call's hold over). Every line
+ * shares one cell, so the button keeps its width and nothing beside it moves.
  */
+/** QUIET's plain lines; a press's "back 3.5" takes the room of "back 00.0". */
+const QUIET_SUBS = ["slow down", "keep slow", "back 00.0"] as const;
+
 function QuietButton({ snapshot, send }: { snapshot: AppSnapshot; send: Send }) {
-  const back = snapshot.calls.quiet_now_back_kmh;
-  const on = snapshot.calls.quiet_now && back !== null;
+  const hold = quietHold(snapshot);
   const quiet = quietKmh(snapshot).toFixed(1);
+  const back = hold?.back.toFixed(1) ?? "";
+  const title =
+    hold?.by === "press"
+      ? `QUIET holds the belt at ${quiet} km/h. Press again for ${back} km/h.`
+      : hold?.by === "call"
+        ? `A call holds the belt at ${quiet} km/h. Press to keep ${quiet} km/h after the call.`
+        : `Ease the belt to ${quiet} km/h.`;
+  const sub = hold?.by === "press" ? `back ${back}` : hold?.by === "call" ? "keep slow" : "slow down";
   return (
     <button
       type="button"
-      className={`hud-btn hud-btn-quiet hud-btn-stack accent-yellow${on ? " is-on" : ""}`}
-      aria-pressed={on}
+      className={`hud-btn hud-btn-quiet hud-btn-stack accent-yellow${hold ? " is-on" : ""}`}
+      aria-pressed={hold !== null}
       disabled={!snapshot.connection.connected}
-      title={on ? `QUIET holds the belt at ${quiet} km/h. Press again for ${back.toFixed(1)} km/h.` : `Ease the belt to ${quiet} km/h.`}
+      title={title}
       onClick={() => void send({ type: "quiet_now" })}
     >
       QUIET{" "}
-      <span className="hud-btn-sub hud-swap">
-        <span className={on ? undefined : "is-shown"} aria-hidden={on}>
-          slow down
-        </span>
-        <span className={on ? "is-shown" : undefined} aria-hidden={!on}>
-          {on ? `back ${back.toFixed(1)}` : "back 0.0"}
-        </span>
-      </span>
+      <Swap className="hud-btn-sub" shown={sub} all={QUIET_SUBS} />
     </button>
   );
 }
@@ -345,25 +363,92 @@ export function Controls({ snapshot, send }: { snapshot: AppSnapshot; send: Send
   );
 }
 
-/** The running program's controls, or one button per saved program. */
-export function ProgramsModule({ snapshot, send }: { snapshot: AppSnapshot; send: Send }) {
-  const a = snapshot.active_program;
-  // HOLD, GO and SKIP act on the walk, which needs the treadmill; END always works.
-  const offline = !snapshot.connection.connected;
-  if (a) {
-    // Waiting for GO: the next step would start a still belt, so nothing moves
-    // until GO (Rust says why in `wait`).
-    const wait = a.wait;
-    // One line for the step after this one keeps the panel small: a chart would
-    // need its own height and still be too small to read at 340 px.
-    const next = nextStepLine(a);
-    const timeLeft = describeTimeLeft(a);
-    return (
-      <div className={`hud-module accent-yellow${wait ? " hud-ready" : ""}`} role={wait ? "alert" : undefined}>
-        {/* Waiting for GO: the headline is the one prompt, in place of the label. */}
-        {wait && <span className="hud-ready-headline">{waitHeadline(wait)}</span>}
-        <div className="hud-auto-readout">
-          {!wait && <span className="hud-label">{a.paused ? "PAUSED" : "PROGRAM"}</span>}
+/** Every word and plain line HOLD / GO takes, so the button keeps one size in every state. */
+const HOLD_WORDS = ["HOLD", "GO"] as const;
+const HOLD_SUBS = ["pause program", "resume program", "start belt"] as const;
+
+/** STEP_MAP's next step: each part stays whole and keeps its trailing dot; a narrow panel wraps between them. */
+function NextLine({ next }: { next: string }) {
+  return (
+    <span className="hud-sub hud-next">
+      {next.split(" · ").map((part, i, all) => (
+        <Fragment key={i}>
+          {/* A flex gap draws the space; the text keeps it for copying and screen readers. */}
+          {i > 0 && " "}
+          <span className="hud-next-part">
+            {part}
+            {i < all.length - 1 ? " ·" : ""}
+          </span>
+        </Fragment>
+      ))}
+    </span>
+  );
+}
+
+/** HOLD / GO, SKIP and END. `a` null draws them for the reserve, unlabelled by state. */
+function ProgramActions({ a, offline, send }: { a: ActiveProgram | null; offline: boolean; send: Send }) {
+  const wait = a?.wait ?? null;
+  const paused = a?.paused ?? false;
+  return (
+    <div className="hud-auto-actions">
+      <SmallButton
+        className={wait ? "hud-btn-go" : undefined}
+        disabled={offline}
+        sub={wait ? "start belt" : paused ? "resume program" : "pause program"}
+        subs={HOLD_SUBS}
+        title={
+          offline
+            ? "Treadmill not connected."
+            : wait
+              ? "Start the belt and carry on with the program."
+              : paused
+                ? "Resume the program."
+                : "Hold the program."
+        }
+        onClick={() => send({ type: paused ? "program_resume" : "program_pause" })}
+      >
+        <Swap shown={paused ? "GO" : "HOLD"} all={HOLD_WORDS} />
+      </SmallButton>
+      <SmallButton
+        disabled={offline}
+        sub="next step"
+        title={offline ? "Treadmill not connected." : "Skip to the next step."}
+        onClick={() => send({ type: "program_skip" })}
+      >
+        SKIP
+      </SmallButton>
+      <SmallButton sub="end program" title="End the program." onClick={() => send({ type: "program_end" })}>
+        END
+      </SmallButton>
+    </div>
+  );
+}
+
+/** The running program: what it does now over its three buttons. */
+function RunLayer({ a, offline, send }: { a: ActiveProgram; offline: boolean; send: Send }) {
+  // Waiting for GO: the next step would start a still belt, so nothing moves
+  // until GO (Rust says why in `wait`).
+  const wait = a.wait;
+  // One line for the step after this one keeps the panel small: a chart would
+  // need its own height and still be too small to read at 340 px.
+  const next = nextStepLine(a);
+  const timeLeft = describeTimeLeft(a);
+  // Every line whole, for the tooltip: a larger text size may cut one short.
+  const lines = [wait ? waitHeadline(wait) : a.paused ? "PAUSED" : "PROGRAM", a.name, describeActive(a), timeLeft, next].filter(
+    (l): l is string => !!l,
+  );
+  return (
+    <div className="hud-program-run">
+      {/* The readout shares its cell with a blank one, so the buttons under it keep their place. */}
+      <div className="hud-program-readout">
+        <ReadoutReserve />
+        <div className="hud-auto-readout" title={lines.join(" · ")}>
+          {/* Waiting for GO: the headline is the one prompt, in place of the label. */}
+          {wait ? (
+            <span className="hud-ready-headline">{waitHeadline(wait)}</span>
+          ) : (
+            <span className="hud-label">{a.paused ? "PAUSED" : "PROGRAM"}</span>
+          )}
           <span className="hud-value hud-value-sm">{a.name}</span>
           <span className="hud-sub hud-run-status">{describeActive(a)}</span>
           {timeLeft && (
@@ -371,71 +456,71 @@ export function ProgramsModule({ snapshot, send }: { snapshot: AppSnapshot; send
               {timeLeft}
             </span>
           )}
-          {next && (
-            <span className="hud-sub hud-next">
-              {/* Each part stays whole and keeps its trailing dot; a narrow panel wraps between them. */}
-              {next.split(" · ").map((part, i, all) => (
-                <Fragment key={i}>
-                  {/* A flex gap draws the space; the text keeps it for copying and screen readers. */}
-                  {i > 0 && " "}
-                  <span className="hud-next-part">
-                    {part}
-                    {i < all.length - 1 ? " ·" : ""}
-                  </span>
-                </Fragment>
-              ))}
-            </span>
-          )}
-        </div>
-        <div className="hud-auto-actions">
-          <SmallButton
-            className={wait ? "hud-btn-go" : undefined}
-            disabled={offline}
-            sub={wait ? "start belt" : a.paused ? "resume" : "pause"}
-            title={
-              offline
-                ? "Treadmill not connected."
-                : wait
-                  ? "Start the belt and carry on with the program."
-                  : a.paused
-                    ? "Resume the program."
-                    : "Hold the program."
-            }
-            onClick={() => send({ type: a.paused ? "program_resume" : "program_pause" })}
-          >
-            {a.paused ? "GO" : "HOLD"}
-          </SmallButton>
-          <SmallButton
-            disabled={offline}
-            sub="next step"
-            title={offline ? "Treadmill not connected." : "Skip to the next step."}
-            onClick={() => send({ type: "program_skip" })}
-          >
-            SKIP
-          </SmallButton>
-          <SmallButton sub="end program" title="End the program." onClick={() => send({ type: "program_end" })}>
-            END
-          </SmallButton>
+          {next && <NextLine next={next} />}
         </div>
       </div>
-    );
-  }
-  if (snapshot.programs.length === 0) return null;
-  // One tap starts a program; the panel switches to its status row.
+      <ProgramActions a={a} offline={offline} send={send} />
+    </div>
+  );
+}
+
+/** A no-break space: a blank line that still takes its height. */
+const BLANK = "\u00a0";
+
+/** A running program's readout with blank lines: a headline, the name and its three lines. */
+function ReadoutReserve() {
   return (
-    <div className="hud-module accent-yellow">
+    <div className="hud-auto-readout hud-reserve" aria-hidden="true">
+      <span className="hud-ready-headline">{BLANK}</span>
+      <span className="hud-value hud-value-sm">{BLANK}</span>
+      <span className="hud-sub">{BLANK}</span>
+      <span className="hud-sub">{BLANK}</span>
+      <span className="hud-sub">{BLANK}</span>
+    </div>
+  );
+}
+
+/**
+ * A blank running program over its three buttons. Laid unseen under whatever
+ * the module shows, so the module is never shorter than a running program and
+ * nothing moves when one starts, waits, rests or ends.
+ */
+function RunReserve() {
+  return (
+    <div className="hud-program-run hud-reserve" aria-hidden="true" inert>
+      <ReadoutReserve />
+      <ProgramActions a={null} offline send={() => Promise.resolve(false)} />
+    </div>
+  );
+}
+
+/** One button per saved program (up to six); one tap starts it. */
+function ProgramGrid({
+  programs,
+  offline,
+  send,
+  reserve = false,
+}: {
+  programs: AppSnapshot["programs"];
+  offline: boolean;
+  send: Send;
+  /** Laid unseen under a running program, so the module keeps the grid's height. */
+  reserve?: boolean;
+}) {
+  return (
+    <div className={`hud-program-grid${reserve ? " hud-reserve" : ""}`} aria-hidden={reserve || undefined} inert={reserve || undefined}>
       <span className="hud-label">RUN PROGRAM</span>
       <div className="hud-programs">
-        {snapshot.programs.slice(0, 6).map((p) => (
+        {programs.slice(0, 6).map((p) => (
           <button
             key={p.id}
             type="button"
             className="hud-btn hud-btn-program hud-btn-stack"
-            disabled={offline}
-            title={describePlan(p)}
+            disabled={offline || reserve}
+            title={`${p.name}: ${describePlan(p)}`}
             onClick={() => send({ type: "program_run", id: p.id })}
           >
-            {p.name}{" "}
+            <span className="hud-btn-program-name">{p.name}</span>{" "}
             <span className="hud-btn-sub">{firstStepLine(p)}</span>
           </button>
         ))}
@@ -444,16 +529,46 @@ export function ProgramsModule({ snapshot, send }: { snapshot: AppSnapshot; send
   );
 }
 
+/**
+ * The running program's controls, or one button per saved program. Both
+ * shapes, and a blank running program, share one cell, so the module is as
+ * tall as the tallest of them in every state: nothing on the panel moves when
+ * a program starts, waits for GO, rests, pauses or ends, in a top or a bottom
+ * corner. HOLD / GO, SKIP and END sit at the module's foot.
+ */
+export function ProgramsModule({ snapshot, send }: { snapshot: AppSnapshot; send: Send }) {
+  const a = snapshot.active_program;
+  // HOLD, GO and SKIP act on the walk, which needs the treadmill; END always works.
+  const offline = !snapshot.connection.connected;
+  const programs = snapshot.programs;
+  if (!a && programs.length === 0) return null;
+  const wait = a?.wait ?? null;
+  return (
+    <div className={`hud-module hud-program accent-yellow${wait ? " hud-ready" : ""}`} role={wait ? "alert" : undefined}>
+      <div className="hud-program-stack">
+        <RunReserve />
+        {programs.length > 0 && <ProgramGrid programs={programs} offline={offline} send={send} reserve={a !== null} />}
+        {a && <RunLayer a={a} offline={offline} send={send} />}
+      </div>
+    </div>
+  );
+}
+
+/** Every word the status row's link button takes, so it keeps one size. */
+const CONNECT_WORDS = ["CONNECT", "RETRY NOW", "LINKING…"] as const;
+
 /** Why the belt and program buttons are off while no treadmill is linked, with
  *  the same relink the header's link label does. It only links; it never starts the belt. */
 function OfflineLine({ connection, relink }: { connection: AppSnapshot["connection"]; relink: ReturnType<typeof useRelink> }) {
   const pending = relink.view?.text != null;
+  // While RELINK counts down to its own retry, a press only brings it forward.
+  const retrying = linkState(connection).state === "reconnecting";
   return (
     <div className="hud-offline accent-cyan" data-testid="hud-offline" title={linkView(connection).title}>
       <span className="hud-offline-text">{offlineText(connection)}</span>
       {(relink.view?.clickable || pending) && (
         <button type="button" className="hud-btn hud-btn-connect" disabled={pending} onClick={relink.relink}>
-          {pending ? "LINKING…" : "CONNECT"}
+          <Swap shown={pending ? "LINKING…" : retrying ? "RETRY NOW" : "CONNECT"} all={CONNECT_WORDS} />
         </button>
       )}
     </div>
@@ -463,10 +578,10 @@ function OfflineLine({ connection, relink }: { connection: AppSnapshot["connecti
 /**
  * The whole panel's status row, between the readings and the controls. It
  * always takes one line, so nothing above or under it moves: the offline line
- * first, else the most pressing quiet line (EASY STOP, QUIET // HOLD, ABOVE
+ * first, else the most pressing quiet line (EASY STOP, QUIET // DAMPED, ABOVE
  * STRIDE_FIT, NEURAL_FLUIDITY, SPEED DRIFT, PRESENTING; hud.css shows only the
- * first), else nothing. A note covers it and the readings over it, never the
- * controls (`NotePop`).
+ * first), else nothing. A note covers it, and the readings over it only when
+ * it needs more than one line; never the controls (`NotePop`).
  */
 export function StatusRow({
   snapshot,
@@ -478,7 +593,7 @@ export function StatusRow({
   note: PanelNote | null;
 }) {
   return (
-    <div className="hud-status-row" data-testid="hud-status-row">
+    <div className="hud-status-row" data-testid="hud-status-row" title={note?.detail ?? undefined}>
       <div className="hud-status-line">
         {!snapshot.connection.connected && <OfflineLine connection={snapshot.connection} relink={relink} />}
         <EasyStopLine snapshot={snapshot} />

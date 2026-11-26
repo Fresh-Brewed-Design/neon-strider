@@ -59,7 +59,8 @@ describe("HUD distance readouts at larger text sizes", () => {
   });
 
   it("caps a program button at the row's width and wraps its line, as END does at 225 % text size", () => {
-    expect(css).toMatch(/\.hud-auto-actions \.hud-btn\s*\{[^}]*min-width:\s*min\(max-content,\s*100%\)/);
+    // min-content: each button keeps its longest word whole, and the three share the row equally.
+    expect(css).toMatch(/\.hud-auto-actions \.hud-btn\s*\{[^}]*min-width:\s*min\(min-content,\s*100%\)/);
     expect(rule(".hud-auto-actions .hud-btn-sub")).toMatch(/white-space:\s*normal/);
   });
 
@@ -104,8 +105,10 @@ describe("HUD controls share one right edge", () => {
   it("wraps DUMP under STASIS when the two don't fit side by side", () => {
     expect(rule(".hud-transport")).toMatch(/flex-wrap:\s*wrap/);
     const main = css.match(/\.hud-transport \.hud-btn-main\s*\{([^}]*)\}/)?.[1] ?? "";
-    expect(main).toMatch(/min-width:\s*max-content/);
-    expect(main).toMatch(/flex:\s*\d+ 1 auto/);
+    // Never narrower than its longest word; its width comes from the row, not its words, so DUMP
+    // and QUIET sit at one x in every state.
+    expect(main).toMatch(/min-width:\s*min-content/);
+    expect(main).toMatch(/flex:\s*\d+ 1 0/);
   });
 
   it("lets DUMP grow into the row instead of holding a fixed width", () => {

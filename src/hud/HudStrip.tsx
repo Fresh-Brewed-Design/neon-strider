@@ -111,7 +111,8 @@ function PulseRow({ snapshot }: { snapshot: AppSnapshot }) {
 
 /**
  * The panel minified by the user (`hud_view` "minified"): speed, time and
- * distance, heart rate with a sensor picked, the program step when one runs,
+ * distance, heart rate with a sensor picked, the program step (its room kept
+ * while none runs),
  * then Engage/Stasis and Dump with their plain lines, as on the whole panel.
  * Expand is in the header. A note covers the readings over the buttons, so the
  * buttons never move for it. It stays until expanded again.
@@ -139,11 +140,14 @@ export function RunStripRow({ snapshot, send, note }: { snapshot: AppSnapshot; s
         })}
       </div>
       <PulseRow snapshot={snapshot} />
-      {a && (
-        <div className="hud-run-program accent-yellow">
+      {/* With no program the line keeps its room, so STASIS and DUMP stay put when a program starts or ends. */}
+      {a ? (
+        <div className="hud-run-program accent-yellow" title={`${a.name} · ${describeActive(a)}`}>
           <span className="hud-label">{a.paused ? "PAUSED" : "PROGRAM"}</span>
           <ProgramLine name={a.name} detail={describeActive(a)} />
         </div>
+      ) : (
+        <div className="hud-run-program hud-reserve" aria-hidden="true" />
       )}
       <div className="hud-strip-row">
         <NotePop note={note} />
