@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.78.2 (2026-11-26)
+
+### Changed
+
+- DUMP has its own look on the HUD and the Live page: a thick magenta outline with a stop square. STASIS stays cyan.
+- Colours keep one meaning everywhere: cyan for on and selected, magenta for incline and actions that delete or end, yellow for programs and warnings. Every switch turns on cyan.
+
 ## 1.78.1 (2026-11-26)
 
 ### Fixed
