@@ -1,0 +1,1 @@
+- The HUD's program buttons now stay inside the panel at larger Windows text sizes.

@@ -204,3 +204,14 @@ describe("HUD controls stay put", () => {
     expect(rule(".hud-panel.is-offline .hud-stats")).toMatch(/opacity:\s*0\.45/);
   });
 });
+
+// RUN PROGRAM at a large text size: the 340 px window lays out narrower, and a grid track that
+// can't shrink below its button's text pushed the right column past the module (232 vs 218 px at 135 %).
+describe("HUD program picker at larger text sizes", () => {
+  it("lets columns shrink and drops to one column instead of overflowing", () => {
+    const cols = rule(".hud-programs");
+    expect(cols).toMatch(/grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(min\(100%,\s*\d+px\),\s*1fr\)\)/);
+    expect(rule(".hud-programs .hud-btn-program")).toMatch(/min-width:\s*0/);
+    expect(rule(".hud-programs .hud-btn-program .hud-btn-sub")).toMatch(/max-width:\s*100%/);
+  });
+});

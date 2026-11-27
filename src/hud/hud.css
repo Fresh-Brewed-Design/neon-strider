@@ -914,7 +914,10 @@ body,
 
 .hud-programs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* Two columns while each keeps 100px (the plain line wraps to two lines, 11px text); at a
+     large text size the layout is narrower, so the picker drops to one column instead of
+     letting a button run past the module. min(100%, ...) keeps a track inside a tiny module. */
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 100px), 1fr));
   gap: 6px;
 }
 
@@ -931,7 +934,8 @@ body,
 /* RUN PROGRAM: every button is one name line over one plain line, so no
    button grows taller than its neighbours. A name too long for its button
    ends in an ellipsis; the tooltip gives it whole. */
-.hud-programs .hud-btn-program { padding-left: 4px; padding-right: 4px; letter-spacing: 0.04em; }
+.hud-programs .hud-btn-program { padding-left: 4px; padding-right: 4px; letter-spacing: 0.04em; min-width: 0; }
+.hud-programs .hud-btn-program .hud-btn-sub { max-width: 100%; text-align: center; overflow-wrap: anywhere; }
 .hud-programs .hud-btn-program-name { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* A saved program's first-step speed under its name, in plain lower case. */
 .hud-btn-program .hud-btn-sub { white-space: normal; text-transform: none; letter-spacing: 0.02em; }
