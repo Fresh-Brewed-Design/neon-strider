@@ -2,11 +2,12 @@
 // ?program=ready: Workday's rest is over on a still belt, and cycle 4 waits for GO
 // (REST COMPLETE // PRESS GO). ?program=hold: a walking step after a 0 km/h step waits.
 // ?program=still: the belt was found still after a reconnect. ?program=resting: mid-rest.
-// ?program=paused: paused by the user (plain GO, no wait).
+// ?program=paused: paused by the user (plain GO, no wait). ?program=unanswered: ready's wait,
+// unanswered past its 30 s hold (the strip with GO as its main button).
 // ?program=interval: Interval walk on its 3rd brisk round (INTERVAL 3/5, step 6 of 11), with
 // T-MINUS 17:08 to its end.
 import type { ActiveProgram, Program, ProgramStep, StepKindSpot } from "../../ipc";
-import { params, snapshot } from "../mockState";
+import { params, snapshot, startGoWait } from "../mockState";
 import type { Scenario } from "./types";
 
 /** Rust's `StepKindSpot::of_step`: the step's kind, counted within that kind. */
@@ -74,6 +75,7 @@ export const setProgramPaused = (paused: boolean) => {
 
 const PROGRAM_SCENARIOS: Record<string, Partial<ActiveProgram>> = {
   ready: { cycle: 4, paused: true, wait: "rest_complete", seconds_remaining: 300 },
+  unanswered: { cycle: 4, paused: true, wait: "rest_complete", seconds_remaining: 300 },
   hold: {
     step_index: 1,
     step_count: 3,
@@ -128,6 +130,7 @@ export const programs: Scenario = {
     if (programFlag !== null && snapshot.active_program && PROGRAM_SCENARIOS[programFlag]) {
       Object.assign(snapshot.active_program, PROGRAM_SCENARIOS[programFlag]);
       if (programFlag !== "resting") Object.assign(snapshot.deck, { status: "Paused", speed_kmh: 0, raw_speed_kmh: 0, target_speed_kmh: 0 });
+      if (programFlag === "unanswered") startGoWait(31_000);
     }
   },
   commands: {

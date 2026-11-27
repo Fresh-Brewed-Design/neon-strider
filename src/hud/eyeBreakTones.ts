@@ -23,15 +23,17 @@ const STEP_TONE: Record<BlinkStep, number[]> = {
 };
 
 /**
- * Plays the blink cue and end tones when Rust's counters move. The first snapshot only
- * sets the baseline, so opening the HUD never beeps for an old break.
+ * Plays the blink cue and end tones when Rust's counters move, unless Rust says the
+ * microphone is in use (`silent`). The first snapshot only sets the baseline, so
+ * opening the HUD never beeps for an old break.
  */
 export function useEyeBreakTones(eye: EyeBreakSnapshot | undefined): void {
   const last = useRef<{ blink: number; end: number } | null>(null);
   const blink = eye?.blink_seq;
   const end = eye?.end_seq;
   const step = eye?.blink ?? null;
-  const sound = eye?.sound ?? false;
+  // No tones while the microphone is in use (a call); the counters still move.
+  const sound = (eye?.sound ?? false) && !(eye?.silent ?? false);
   useEffect(() => {
     if (blink === undefined || end === undefined) return;
     const prev = last.current;

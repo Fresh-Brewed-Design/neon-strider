@@ -36,6 +36,8 @@ export interface Draft {
   repeat: boolean;
   repeatMinutes: string;
   zoneUnit: ZoneUnit;
+  /** The program a clone was copied from: keeps its editor apart from a New draft's (both have id 0). */
+  from?: number;
 }
 
 /** A zone switched on for a step starts at 60 to 70 % of max, a steady aerobic walk. */
@@ -93,6 +95,21 @@ export function toDraft(p: Program): Draft {
     repeatMinutes: p.repeat_every_minutes != null ? String(p.repeat_every_minutes) : "30",
     zoneUnit: "pct",
   };
+}
+
+/** What a clone's name ends with. */
+export const CLONE_SUFFIX = " // CLONE";
+
+/**
+ * A copy of `p` for the editor as a new program (id 0): the same steps, repeat and zones, named
+ * `<name> // CLONE`. Nothing is saved until SAVE. The note is left out: Rust gives a new program
+ * no note, so a save would drop it. The base name is cut so the whole name fits Rust's limit on
+ * program names, which a save would otherwise refuse.
+ */
+export function toClone(p: Program): Draft {
+  const room = SETTING_LIMITS.program_name_chars - [...CLONE_SUFFIX].length;
+  const base = [...p.name].slice(0, room).join("").trimEnd();
+  return { ...toDraft(p), id: 0, name: `${base}${CLONE_SUFFIX}`, from: p.id };
 }
 
 /** Show the zones in `unit`, converting what was typed; text that isn't a number is left as typed. */

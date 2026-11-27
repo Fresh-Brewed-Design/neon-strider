@@ -552,6 +552,12 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         Command::OpenPermissionSettings { permission } => {
             crate::platform::open_permission_settings(permission)
         }
+
+        // ---- DESK_SYNC ----
+        Command::DeskSyncLightShown => {
+            super::desk_sync::light_shown();
+            Ok(())
+        }
     }
 }
 

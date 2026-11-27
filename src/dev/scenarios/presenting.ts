@@ -1,6 +1,6 @@
 // ?presenting: Windows says a presentation or full-screen app is in front, so
 // the HUD holds its non-urgent cards (with ?seated, ?eyebreak=upcoming,
-// ?weekly, ?due or ?update=available) and shows PRESENTING // CARDS HELD.
+// ?weekly, ?due or ?update=available&autoinstall=off) and shows PRESENTING // CARDS HELD.
 // `=off`: the switch off in System -> Desk, so the cards show as usual.
 import { params, snapshot } from "../mockState";
 import type { Scenario } from "./types";
