@@ -1,0 +1,1 @@
+- The walk-away cards on the HUD put their buttons under the text at large Windows text sizes, so the text no longer wraps one word per line.
