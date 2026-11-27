@@ -56,6 +56,8 @@ pub enum TrayAction {
     /// HOLD on a walking program.
     ProgramHold,
     ProgramSkip,
+    /// PASS on a repeating program: sit out a cycle, keep the schedule.
+    ProgramPass,
     ProgramEnd,
     /// Run a saved program, as the Programs page and the HUD do.
     RunProgram(u32),
@@ -80,6 +82,7 @@ impl TrayAction {
             TrayAction::ProgramGo => Command::ProgramResume,
             TrayAction::ProgramHold => Command::ProgramPause,
             TrayAction::ProgramSkip => Command::ProgramSkip,
+            TrayAction::ProgramPass => Command::ProgramPass,
             TrayAction::ProgramEnd => Command::ProgramEnd,
             TrayAction::RunProgram(id) => Command::ProgramRun { id, minutes: None },
             TrayAction::OpenDashboard | TrayAction::ToggleHud | TrayAction::Quit => return None,
@@ -150,6 +153,8 @@ pub struct ProgramView {
     /// A cool-down past its minutes walks on until the pulse is down to this
     /// (`ActiveProgram::pulse_to_bpm`), shown in place of the time.
     pub pulse_to_bpm: Option<u32>,
+    /// The program repeats, so PASS has a cycle to pass.
+    pub repeats: bool,
 }
 
 /// What the menu is built from: the snapshot, plus whether the HUD shows.
@@ -205,6 +210,7 @@ impl MenuInput {
                 kind_label: a.kind.as_ref().map(|k| k.label.clone()),
                 seconds_remaining: a.seconds_remaining,
                 pulse_to_bpm: a.pulse_to_bpm,
+                repeats: a.repeat_every_minutes.is_some(),
             }),
             programs: s.programs.iter().map(|p| (p.id, p.name.clone())).collect(),
             hud_shown,
@@ -439,6 +445,14 @@ pub fn build(v: &MenuInput) -> Vec<Node> {
         "SKIP",
         c && program.is_some(),
         TrayAction::ProgramSkip,
+    )));
+    // Always listed so the menu keeps its layout; only a repeating program
+    // has a cycle to pass.
+    nodes.push(Node::Item(Item::act(
+        "program_pass",
+        "PASS",
+        c && program.is_some_and(|p| p.repeats),
+        TrayAction::ProgramPass,
     )));
     // END never moves the belt; it works while the link is down too.
     nodes.push(Node::Item(Item::act(
@@ -795,6 +809,7 @@ mod tests {
                 kind_label: None,
                 seconds_remaining: Some(190),
                 pulse_to_bpm: None,
+                repeats: true,
             }),
             ..walking()
         }
@@ -820,14 +835,14 @@ mod tests {
         assert_eq!(
             render_tree(&build(&disconnected())),
             "RELINK 12S [x]\nNO PROGRAM [x]\n----\nENGAGE [x]\nDUMP [x]\nVEL UP [x]\n\
-             VEL DOWN [x]\nTILT UP [x]\nTILT DOWN [x]\nQUIET NOW [x]\n----\nHOLD [x]\nSKIP [x]\nEND [x]\n\
+             VEL DOWN [x]\nTILT UP [x]\nTILT DOWN [x]\nQUIET NOW [x]\n----\nHOLD [x]\nSKIP [x]\nPASS [x]\nEND [x]\n\
              RUN PROGRAM >\n  Workday [x]\n  Climb & Cruise [x]\n----\nOpen dashboard\n\
              Hide HUD\nQuit\n"
         );
         assert_eq!(
             render_tree(&build(&program())),
             "VEL 3.2 KM/H \u{b7} 12:34 [x]\nPROGRAM Workday \u{b7} STEP 2/4 \u{b7} 3:10 [x]\n\
-             ----\nSTASIS\nDUMP\nVEL UP\nVEL DOWN\nTILT UP\nTILT DOWN\nQUIET NOW\n----\nHOLD\nSKIP\nEND\n\
+             ----\nSTASIS\nDUMP\nVEL UP\nVEL DOWN\nTILT UP\nTILT DOWN\nQUIET NOW\n----\nHOLD\nSKIP\nPASS\nEND\n\
              RUN PROGRAM >\n  Workday \u{b7} RUNNING [x]\n  Climb & Cruise\n----\n\
              Open dashboard\nHide HUD\nQuit\n"
         );
@@ -928,6 +943,7 @@ mod tests {
             "tilt_down",
             "program_go",
             "program_skip",
+            "program_pass",
             "program_end",
             "program:1",
             "program:2",
@@ -1037,6 +1053,15 @@ mod tests {
         assert!(find(&nodes, "program_end").enabled);
         assert!(!find(&nodes, "program_go").enabled);
         assert!(!find(&nodes, "program_skip").enabled);
+        assert!(!find(&nodes, "program_pass").enabled);
+
+        // PASS only for a program that repeats.
+        assert!(find(&build(&program()), "program_pass").enabled);
+        let mut once = program();
+        if let Some(p) = once.program.as_mut() {
+            p.repeats = false;
+        }
+        assert!(!find(&build(&once), "program_pass").enabled);
 
         // Resting between cycles.
         let mut resting = program();
@@ -1084,6 +1109,7 @@ mod tests {
             ("tilt_down", Command::NudgeIncline { up: false }),
             ("program_go", Command::ProgramPause),
             ("program_skip", Command::ProgramSkip),
+            ("program_pass", Command::ProgramPass),
             ("program_end", Command::ProgramEnd),
             (
                 "program:2",
@@ -1127,6 +1153,7 @@ mod tests {
             Command::ProgramResume,
             Command::ProgramPause,
             Command::ProgramSkip,
+            Command::ProgramPass,
             Command::ProgramEnd,
         ];
         let mut inputs = vec![disconnected(), still(), walking(), program()];

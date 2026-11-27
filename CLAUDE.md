@@ -262,7 +262,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?onemonitor`: a single display
 - `?pcwalk`: the WALKED stat pinned on the HUD at 38 % (2h 10m of 5h 40m); `=early` 6 minutes of PC time (`--`), `=long` 10h 05m of 11h 50m, `=none` no PC time today
 - `?presenting`: Windows says a presentation or full-screen app is in front, so the HUD holds its non-urgent cards (with `?seated`, `?eyebreak=upcoming`, `?weekly`, `?due` or `?update=available&autoinstall=off`) and shows PRESENTING // CARDS HELD; `=off` the switch off in System -> Desk
-- `?program=ready|hold|still|resting|paused|interval|unanswered`: a program waiting for GO after a rest, after a 0 km/h step (its steps have no kind), or after a reconnect found the belt still; mid-rest; paused by the user; or Interval walk on its 3rd brisk round (`INTERVAL 3/5`, `T-MINUS 17:08`); `unanswered` is `ready` past its 30 s hold (the strip, GO its main button); each shows STEP_MAP on the Live page and the next step on the HUD
+- `?program=ready|hold|still|resting|paused|interval|unanswered|passed`: a program waiting for GO after a rest, after a 0 km/h step (its steps have no kind), or after a reconnect found the belt still; mid-rest; paused by the user; or Interval walk on its 3rd brisk round (`INTERVAL 3/5`, `T-MINUS 17:08`); `unanswered` is `ready` past its 30 s hold (the strip, GO its main button); `passed` Workday resting after PASS on cycle 4 (CYCLE 4 PASSED on the HUD, the note on the Live card); each shows STEP_MAP on the Live page and the next step on the HUD
 - `?programtones`: Program tones switched on (System, Desk); 3 s after load a cue fires: `=step` (or no value) the running program moves to its next step, `=wait` it waits for GO after a rest, `=speedup` its next, faster step starts in 5 s; SKIP fires the step cue while the belt runs
 - `?quietnow`: Quiet now holds the belt at the 2.0 km/h quiet speed (the HUD's QUIET lit, its QUIET // DAMPED line, the tray's END QUIET); `=slow` the belt already at 1.8 km/h, so QUIET changes nothing and the HUD says why
 - `?reconnect`: the Strava login needs a fresh grant
@@ -363,7 +363,10 @@ the default.
   the deck reported the belt still since the pause, then moving for `DECK_GO_DEBOUNCE`, with
   no app start in flight), and during a rest it becomes a manual walk. A pause at the treadmill on a
   walking program pauses the program with it (`notice_deck_pause`), so GO resumes the step. SKIP is a press and
-  may start the belt; a step between two moving speeds stays automatic. A program that ends
+  may start the belt; a step between two moving speeds stays automatic. PASS (`pass_program`,
+  `Command::ProgramPass`, #428) sits out one cycle of a repeating program and rests until the next
+  cycle's usual time (`ProgramRun::cycle_s`, wall-clock seconds since the cycle was due); it never
+  starts the belt, and the next cycle on a still belt waits for GO. A program that ends
   (END, SKIP on its last step, or into a rest) while the belt isn't moving leaves it still: the
   speed from before waits in `engage_speed` for the next Engage or RE-JACK. New calibration
   points (a settings sync, a point saved or deleted) never move a running belt: the deck keeps

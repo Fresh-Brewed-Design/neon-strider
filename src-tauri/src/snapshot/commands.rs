@@ -134,6 +134,7 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         Command::ProgramPause => ORCHESTRATOR.lock().await.pause_program(Instant::now()),
         Command::ProgramResume => ORCHESTRATOR.lock().await.go_program(Instant::now()),
         Command::ProgramSkip => ORCHESTRATOR.lock().await.skip_program(Instant::now()),
+        Command::ProgramPass => ORCHESTRATOR.lock().await.pass_program(Instant::now()),
         Command::ProgramEnd => {
             ORCHESTRATOR.lock().await.end_program(true, Instant::now());
             Ok(())

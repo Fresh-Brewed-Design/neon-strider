@@ -1302,6 +1302,40 @@ mod tests {
         assert_eq!(r.program().wait, None);
     }
 
+    /// PASS (#428) mid-walk on the simulated deck: the belt the program
+    /// started pauses as at a cycle's end, the next cycle comes at its usual
+    /// time and waits for GO, and nothing in between starts the belt.
+    #[test]
+    fn pass_mid_walk_pauses_the_belt_and_the_next_cycle_waits_for_go_on_time() {
+        let mut r = Rig::new();
+        r.run(1.0);
+        r.run_program(WORKDAY);
+        r.run(2.0 * 60.0);
+        assert!(r.deck.running_at(3.0), "{} km/h", r.deck.speed_kmh());
+        r.state.set_test_now(r.t);
+        r.state.pass_program(r.t).unwrap();
+        r.run(20.0);
+        let a = r.program();
+        assert_eq!((a.phase, a.cycle), (ProgramPhase::Resting, 1));
+        assert_eq!(r.deck.status_code(), 10, "the rest pauses the belt");
+        let mark = r.mark();
+        // Cycle 2 is due 30 minutes after cycle 1 began: about 27:40 from here.
+        r.run(27.0 * 60.0);
+        assert_eq!(r.program().phase, ProgramPhase::Resting);
+        r.run(60.0);
+        let a = r.program();
+        assert_eq!(
+            (a.phase, a.cycle, a.wait),
+            (ProgramPhase::Walking, 2, Some(ProgramWait::RestComplete))
+        );
+        assert!(r.deck.belt_still());
+        assert!(
+            !app_starts(&r.commands_since(mark)),
+            "{:?}",
+            r.commands_since(mark)
+        );
+    }
+
     /// A 20 minute step at 4.0 km/h holding 85 to 95 % of 200 bpm (170 to 190).
     const ZONE: u32 = 9;
     fn zone_rig() -> Rig {

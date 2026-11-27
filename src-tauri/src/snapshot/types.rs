@@ -605,6 +605,9 @@ pub enum Command {
     ProgramPause,
     ProgramResume,
     ProgramSkip,
+    /// PASS (#428): sit out one cycle of a repeating program and keep its
+    /// schedule (`OrchestratorState::pass_program`). Never starts the belt.
+    ProgramPass,
     ProgramEnd,
     /// FIT_TO_DECK, after the user confirmed it: the seeded program's steps
     /// above STRIDE_FIT set to it with more incline. Refused unless the
