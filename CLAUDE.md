@@ -225,7 +225,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?deck=paused`: with `?stasis=...`, the belt is paused (Engage reads RE-JACK)
 - `?decknote=refused|adjusted`: the HUD note after the deck refuses or changes a target
 - `?deckprofile`: DECK_PROFILE learned (floor 0.6, ceiling 4.0, 1.5 skipped, top incline level 12, level 7 skipped; Diagnostics shows FORGET); `=sweep` with the LABS // DECK_SWEEP switch on and a speed sweep running, `=inclinesweep` an incline sweep running, `=sweepon` the switch on with no sweep running
-- `?desksync=open|new|few`: History's DESK_SYNC card
+- `?desksync=open|new|few|counted`: History's DESK_SYNC card; `=counted` today open, then 3 s after load today counts and its light pulses on
 - `?distance=12.34`: this walk's km (DIST)
 - `?due`: the belt reminder well past its interval
 - `?easystart=off`: Easy start switched off in System -> Treadmill (every belt start runs straight to its target)

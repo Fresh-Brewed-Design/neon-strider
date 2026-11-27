@@ -1027,6 +1027,11 @@ pub enum Command {
     OpenPermissionSettings {
         permission: crate::platform::PermissionKind,
     },
+
+    // ---- DESK_SYNC ----
+    /// History's DESK_SYNC card played today's light switching on
+    /// (`DeskSync::today_lit`), so no window plays it again today.
+    DeskSyncLightShown,
 }
 
 #[cfg(test)]
