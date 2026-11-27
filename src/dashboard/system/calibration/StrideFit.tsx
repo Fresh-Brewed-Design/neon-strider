@@ -3,7 +3,8 @@ import { dispatch } from "../../../ipc";
 import { ActionStatus } from "../../../components/ActionStatus";
 import { useAction } from "../../../components/useAction";
 import { useAppState } from "../../../state/useAppState";
-import { GhostButton, Hint, Label, NeonButton } from "../../ui";
+import { PLAIN } from "../../../names";
+import { GhostButton, Hint, Label, NeonButton, PlainLine } from "../../ui";
 import { cx } from "../../util";
 import { INPUT_CLASS } from "../fields";
 
@@ -23,7 +24,10 @@ export function StrideFit() {
   // Keyed by the saved speed, so the field shows Rust's value (held to the range) after a save.
   return (
     <div className="hacker-panel space-y-2 rounded-lg border-neon-cyan/20 bg-white/[0.02] p-3">
-      <Label className="text-neon-yellow">STRIDE_FIT</Label>
+      <div>
+        <Label className="text-neon-yellow">STRIDE_FIT</Label>
+        <PlainLine text={PLAIN.STRIDE_FIT} />
+      </div>
       <Hint>Fastest speed your walking stride still fits the deck, set by feel.</Hint>
       <Hint>Program steps faster than STRIDE_FIT get a flag in the editor.</Hint>
       <StrideFitForm key={fit ?? "off"} fit={fit} save={save} />
@@ -43,7 +47,7 @@ function StrideFitForm({ fit, save }: { fit: number | null; save: ReturnType<typ
   return (
     <div className="flex flex-wrap items-end gap-2">
       <label className="block">
-        <Label>SPEED</Label>
+        <Label>VELOCITY</Label>
         <input
           type="number"
           min={0}

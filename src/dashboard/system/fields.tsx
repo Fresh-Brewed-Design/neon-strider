@@ -1,6 +1,7 @@
 // Form controls for the System page sections.
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { Hint, Label, OptionPicker, Panel } from "../ui";
@@ -11,13 +12,6 @@ const ACCENT: Record<Tone, string> = {
   magenta: "accent-neon-magenta",
   yellow: "accent-neon-yellow",
   green: "accent-emerald-400",
-};
-
-const SWITCH_ON: Record<Tone, string> = {
-  cyan: "bg-neon-cyan",
-  magenta: "bg-neon-magenta",
-  yellow: "bg-neon-yellow",
-  green: "bg-emerald-400",
 };
 
 export const INPUT_CLASS =
@@ -42,7 +36,7 @@ export function Section({
     <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-3">
       <Panel className="p-4">
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-          <h2 id={`${id}-title`} className="font-digital text-sm font-bold uppercase tracking-[0.18em] text-white">
+          <h2 id={`${id}-title`} tabIndex={-1} className="font-digital text-sm font-bold uppercase tracking-[0.18em] text-white outline-none focus-visible:text-neon-cyan">
             {title}
           </h2>
           {status}
@@ -54,28 +48,57 @@ export function Section({
   );
 }
 
+/** A collapsed "More" under a switch: the facts past its one sentence. */
+function More({ lines, label }: { lines: string[]; label: string }) {
+  const [open, setOpen] = useState(false);
+  const panel = useId();
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={open ? panel : undefined}
+        aria-label={`More about ${label}`}
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-white/60 transition-colors hover:text-neon-cyan"
+      >
+        {open ? <ChevronDown size={12} aria-hidden /> : <ChevronRight size={12} aria-hidden />}
+        More
+      </button>
+      {open && (
+        <div id={panel} className="mt-1 flex flex-col gap-1">
+          {lines.map((line) => (
+            <Hint key={line}>{line}</Hint>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** An on/off switch. Every switch turns on cyan (the colour for on), whatever its section's colour. */
 export function Toggle({
   label,
   description,
   hint,
   checked,
   onChange,
-  tone = "cyan",
 }: {
   label: string;
+  /** One short sentence under the label. */
   description?: string;
-  /** A second line for caveats and detail, under the description. */
-  hint?: string;
+  /** Further facts, one line per item, behind a "More" expander that starts collapsed. */
+  hint?: string | string[];
   checked: boolean;
   onChange: (next: boolean) => void;
-  tone?: Tone;
 }) {
+  const more = [hint ?? []].flat();
   return (
     <div className="flex items-center justify-between gap-4">
       <div className="min-w-0">
         <div className="font-mono text-xs font-bold uppercase tracking-[0.12em] text-white/85">{label}</div>
         {description && <Hint>{description}</Hint>}
-        {hint && <Hint className="mt-1">{hint}</Hint>}
+        {more.length > 0 && <More lines={more} label={label} />}
       </div>
       <button
         type="button"
@@ -85,7 +108,7 @@ export function Toggle({
         onClick={() => onChange(!checked)}
         className={cx(
           "relative h-5 w-10 shrink-0 rounded-full transition-colors",
-          checked ? SWITCH_ON[tone] : "bg-white/15",
+          checked ? "bg-neon-cyan" : "bg-white/15",
         )}
       >
         <span
@@ -99,30 +122,21 @@ export function Toggle({
   );
 }
 
-const CHOICE_ON: Record<"magenta" | "green", string> = {
-  magenta: "border-neon-magenta bg-neon-magenta/15 text-neon-magenta",
-  green: "border-emerald-400 bg-emerald-400/15 text-emerald-400",
-};
+const CHOICE_ON = "border-neon-cyan bg-neon-cyan/15 text-neon-cyan";
+const CHOICE_OFF = "border-white/15 bg-black/40 text-white/60 hover:border-neon-cyan/50";
 
-const CHOICE_OFF: Record<"magenta" | "green", string> = {
-  magenta: "border-white/15 bg-black/40 text-white/60 hover:border-neon-magenta/50",
-  green: "border-white/15 bg-black/40 text-white/60 hover:border-emerald-400/50",
-};
-
-/** A row of radio buttons for picking one of a few named options. */
+/** A row of radio buttons for picking one of a few named options. The chosen one is cyan (selected). */
 export function ChoiceGroup<T extends string>({
   label,
   options,
   value,
   onChange,
-  tone,
 }: {
   /** The group's accessible name. */
   label: string;
   options: readonly { value: T; label: string }[];
   value: T;
   onChange: (next: T) => void;
-  tone: "magenta" | "green";
 }) {
   return (
     <OptionPicker
@@ -134,7 +148,7 @@ export function ChoiceGroup<T extends string>({
       optionClassName={(active) =>
         cx(
           "rounded border px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.12em] transition-colors",
-          active ? CHOICE_ON[tone] : CHOICE_OFF[tone],
+          active ? CHOICE_ON : CHOICE_OFF,
         )
       }
     />
@@ -235,7 +249,7 @@ export function NumberField({
   onCommit,
 }: {
   label: string;
-  hint?: string;
+  hint?: string | string[];
   value: number;
   min: number;
   max: number;
@@ -248,6 +262,7 @@ export function NumberField({
 }) {
   const [text, setText] = useState<string | null>(null);
   const action = useAction();
+  const unitSuffix = unit ? ` ${unit}` : "";
 
   const apply = () => {
     if (text === null) return;
@@ -256,7 +271,15 @@ export function NumberField({
     if (text.trim() === "" || !Number.isFinite(n)) return;
     const clamped = Math.min(max, Math.max(min, n));
     const next = snap ? Math.min(max, Math.max(min, snap(clamped))) : clamped;
-    if (next !== value) void action.run(async () => onCommit(next));
+    if (next === value && clamped === n) return;
+    const held = n > max ? `Kept to ${max}${unitSuffix}, the most allowed.` : n < min ? `Kept to ${min}${unitSuffix}, the least allowed.` : null;
+    if (next === value) {
+      // Held to a limit and already there: nothing to save, but the field shows the held value.
+      action.reset();
+      void action.run(async () => undefined, { done: held ?? "Saved." });
+      return;
+    }
+    void action.run(async () => onCommit(next), { done: held ?? "Saved." });
   };
 
   return (
@@ -279,8 +302,12 @@ export function NumberField({
         />
         {unit && <span className="font-mono text-xs text-white/60">{unit}</span>}
       </div>
-      <ActionStatus pending={action.pending} error={action.error} className="mt-1" />
-      {hint && <Hint className="mt-1">{hint}</Hint>}
+      <ActionStatus pending={action.pending} error={action.error} done={action.done} className="mt-1" />
+      {[hint ?? []].flat().map((line) => (
+        <Hint key={line} className="mt-1">
+          {line}
+        </Hint>
+      ))}
     </label>
   );
 }

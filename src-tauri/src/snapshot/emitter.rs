@@ -78,6 +78,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     let guided_task = crate::guided_task::snapshot();
     let has_saved_device = crate::link::has_saved_device();
     let start_result = crate::link::start_result();
+    let start_press = crate::link::start_press();
     let connect_dialog_at_ms = crate::link::connect_dialog_at_ms();
 
     let (mut snapshot, deck_silent) = {
@@ -93,6 +94,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
             last_error,
             start_pending: state.start_requested_at.is_some(),
             start_result,
+            start_press,
             connect_dialog_at_ms,
         };
         // A stopped session's leftover numbers are already in the saved totals.
@@ -152,7 +154,10 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     snapshot.lights_out = lights_out;
     snapshot.program_tones = program_tones;
     snapshot.presenting = super::presenting::snapshot();
-    // After every card is decided, before the HUD view and the card check.
+    // After every card is decided: the one card the HUD shows, picked before
+    // the presenting hold hides any (the queue applies the hold itself).
+    super::card_queue::apply(&mut snapshot, crate::util::now_ms_u64());
+    // Before the HUD view and the card check.
     super::presenting::hold_cards(&mut snapshot);
     // The first-connect offer only shows while the treadmill is connected.
     snapshot.calibration.offer &= snapshot.connection.connected;
@@ -162,9 +167,10 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     snapshot.guided_task = guided_task;
     snapshot.platform.permissions = crate::platform::permissions();
     snapshot.shortcuts = crate::shortcuts::snapshot();
-    // Recomputed every tick, so the end of the grace after a stop reaches the
-    // HUD with the next on-change emit (within a tick).
-    snapshot.hud_view = stasis::view(&snapshot, deck_silent, Instant::now());
+    // Recomputed every tick, so the end of the grace after a stop, or of the
+    // GO prompt's hold, reaches the HUD with the next on-change emit.
+    (snapshot.hud_view, snapshot.hud_go_hold) =
+        stasis::view(&snapshot, deck_silent, Instant::now());
     snapshot
 }
 
@@ -321,12 +327,7 @@ impl Loop {
     /// invisible and click-through.
     /// A HUD hidden from the tray menu comes back when a card appears.
     fn ensure_hud_for_cards(&mut self, snapshot: &AppSnapshot) {
-        let card = snapshot.maintenance.hud_card
-            || snapshot.weekly.show_card
-            || snapshot.seated.show_card
-            || snapshot.eye_break.phase != eyebreak::EyeBreakPhase::Idle
-            || snapshot.walkaway.card != walkaway::WalkAwayCard::None
-            || snapshot.update.hud_card;
+        let card = snapshot.hud_card != super::card_queue::HudCard::None;
         if card && self.app.get_webview_window("hud").is_none() {
             crate::ensure_hud_native(&self.app);
         } else if card && !self.card_up && !crate::hud::shown(&self.app) {

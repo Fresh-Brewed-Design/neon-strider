@@ -13,12 +13,12 @@
 //! This file is declared from `snapshot.rs` (`#[path]`), not `lib.rs`.
 
 use crate::bluetooth::{self, ORCHESTRATOR};
-use crate::engine::{DeckAction, OrchestratorState};
+use crate::engine::{DeckAction, OrchestratorState, SessionCut};
 use crate::programs::{self, ProgramPhase};
 use crate::protocol::MachineStatus;
 use crate::snapshot::{
-    calls, desk_sync, eyebreak, lights_out, pc_walk_share, presenting, program_tones, seated,
-    walkaway,
+    calls, card_queue, desk_resume, desk_sync, eyebreak, lights_out, pc_walk_share, presenting,
+    program_tones, seated, walkaway,
 };
 use crate::util::{blocking, now_ms_u64 as now_ms};
 use std::time::Duration;
@@ -154,6 +154,8 @@ pub(crate) struct EyeScreen {
     pub display_off: bool,
     /// The HUD holds its non-urgent cards back (`presenting`).
     pub held: bool,
+    /// Some app uses the microphone (a call): the break plays no tones.
+    pub mic_in_use: bool,
 }
 
 /// One eye-break tick against the belt: runs the machine and applies a pause.
@@ -175,6 +177,7 @@ pub(crate) fn eye_break_tick(
         belt,
         rest_in_ms,
         rest_len_ms,
+        mic_in_use: screen.mic_in_use,
     };
     if let Some(eyebreak::Effect::Pause(hold)) = rt.machine.tick(&rt.cfg, now, &tick) {
         eye_break_pause(state, hold);
@@ -197,7 +200,9 @@ pub(crate) fn eye_break_resume_on(
         return Ok(());
     }
     let refused = state.start_refusal().is_some();
+    state.start_press = crate::link::StartPress::SeatedEngage;
     state.trigger_action(DeckAction::Start);
+    state.start_press = crate::link::StartPress::Engage;
     if !refused {
         log::info!("Eye break: RESUME from the card");
         machine.release();
@@ -261,7 +266,10 @@ async fn step(connected: bool, now: u64, idle_ms: Option<u64>) -> Outcome {
         idle_ms,
         locked,
         display_off: crate::platform::display_off(),
-        held: presenting::holding(),
+        // The presenting hold, or a card above the eye break holding its card
+        // back (`card_queue`, decided with the last snapshot).
+        held: presenting::holding() || card_queue::eye_break_waits(),
+        mic_in_use: calls::mic::in_use_now(),
     };
     eyebreak::with(|rt| eye_break_tick(state, rt, ready, now, screen));
 
@@ -278,7 +286,6 @@ async fn step(connected: bool, now: u64, idle_ms: Option<u64>) -> Outcome {
         idle_ms,
         belt_running: belt_running(state),
         ready: treadmill_ready(connected, state),
-        program_waiting: state.program.as_ref().is_some_and(|r| r.wait.is_some()),
     };
     let effect = seated::with(|rt| rt.machine.tick(&rt.cfg, now, &tick));
     if let Some(seated::Effect::StartProgram(id)) = effect {
@@ -378,6 +385,8 @@ pub fn init(app: &AppHandle) {
     walkaway::init(app);
     lights_out::init(app);
     presenting::init(app);
+    // After the settings: a restart carries on the timers where they were.
+    desk_resume::restore(app);
 }
 
 /// Start the microphone poller and the one-second loop.
@@ -387,6 +396,7 @@ pub fn spawn(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let mut ticker = tokio::time::interval(TICK);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut saver = desk_resume::Saver::default();
         loop {
             ticker.tick().await;
             // Asked before the orchestrator lock is taken (see snapshot.rs's locking rule).
@@ -413,6 +423,16 @@ pub fn spawn(app: AppHandle) {
             }
             if let Some((kind, message)) = out.toast {
                 announce(&app, kind, message);
+            }
+            // Keep the timers on disk so a restart carries them on.
+            let kept = desk_resume::capture(now);
+            if saver.due(kept, std::time::Instant::now()) {
+                let app_c = app.clone();
+                let _ = blocking(move || {
+                    desk_resume::write(&app_c, &kept);
+                    Ok(())
+                })
+                .await;
             }
         }
     });
@@ -494,12 +514,30 @@ pub async fn walkaway_resume() -> Result<(), String> {
     }
 }
 
-/// END on the walk-away paused card: stop, which ends the session (and any
-/// program).
+/// Where DUMP cuts the open walk: at the start of the stretch the belt ran
+/// empty (`walkaway::WalkAway::empty_stretch`), taking off its running time.
+fn walkaway_cut(stretch: Option<(u64, u64)>, session_id: Option<i64>) -> Option<SessionCut> {
+    let (from_ms, paused_ms) = stretch?;
+    Some(SessionCut {
+        session_id: session_id?,
+        at_ms: from_ms as i64,
+        empty_s: (paused_ms.saturating_sub(from_ms) / 1000) as i64,
+    })
+}
+
+/// DUMP on the walk-away paused card: stop, which ends the session (and any
+/// program). The walk ends where the walk-away began, so the minutes the
+/// belt ran with nobody on it are not in it.
 pub async fn walkaway_end() -> Result<(), String> {
-    walkaway::with(|rt| rt.machine.acknowledge(now_ms()));
+    let stretch = walkaway::with(|rt| {
+        let s = rt.machine.empty_stretch();
+        rt.machine.acknowledge(now_ms());
+        s
+    });
     log::info!("Walk-away: ending the session");
-    ORCHESTRATOR.lock().await.trigger_action(DeckAction::Stop);
+    let mut state = ORCHESTRATOR.lock().await;
+    state.session_cut = walkaway_cut(stretch, state.session.active_session_id);
+    state.trigger_action(DeckAction::Stop);
     Ok(())
 }
 
@@ -519,7 +557,7 @@ pub fn eye_break_stay_still() {
     }
 }
 
-/// SNOOZE 15 MIN.
+/// SNOOZE on the card (15, 30, then 60 minutes).
 pub fn snooze() {
     seated::with(|rt| rt.machine.snooze(now_ms()));
 }
@@ -531,7 +569,9 @@ const ENGAGE_OFFLINE: &str = "The treadmill is offline";
 /// (`DeckAction::Start`, which is also GO on a paused program). Nothing is
 /// remembered for later: without a link it fails at once. A deck in standby
 /// refuses the start in the engine, which says why (`start_result`, shown
-/// under the card's buttons), and the card stays up.
+/// under the card's buttons), and the card stays up. The start belongs to the
+/// card (`StartPress::SeatedEngage`), so its result shows there and nowhere
+/// else while the card is up.
 fn engage(
     state: &mut OrchestratorState,
     ready: bool,
@@ -542,7 +582,9 @@ fn engage(
         return Err(ENGAGE_OFFLINE.to_string());
     }
     let refused = state.start_refusal().is_some();
+    state.start_press = crate::link::StartPress::SeatedEngage;
     state.trigger_action(DeckAction::Start);
+    state.start_press = crate::link::StartPress::Engage;
     if !refused {
         log::info!("Nudge: Engage from the card");
         machine.engaged(now);
@@ -614,7 +656,6 @@ mod tests {
                     idle_ms: Some(0),
                     belt_running: false,
                     ready: true,
-                    program_waiting: false,
                 },
             );
             t += 1000;
@@ -629,6 +670,30 @@ mod tests {
             hold_auto_start: true,
             ..OrchestratorState::default()
         }
+    }
+
+    #[test]
+    fn dump_cuts_the_walk_where_the_walk_away_began() {
+        let from = T0;
+        let paused = T0 + 10 * MIN + 30_000;
+        assert_eq!(
+            walkaway_cut(Some((from, paused)), Some(7)),
+            Some(SessionCut {
+                session_id: 7,
+                at_ms: T0 as i64,
+                empty_s: 630,
+            })
+        );
+        assert_eq!(
+            walkaway_cut(None, Some(7)),
+            None,
+            "a lock: nothing ran empty"
+        );
+        assert_eq!(
+            walkaway_cut(Some((from, paused)), None),
+            None,
+            "no walk open"
+        );
     }
 
     #[test]
@@ -680,5 +745,10 @@ mod tests {
         assert!(state.start_requested_at.is_none());
         assert!(state.start_blocked, "nothing starts it once it wakes");
         assert!(m.show_card());
+        assert_eq!(
+            state.start_press,
+            crate::link::StartPress::Engage,
+            "the next start is Engage's again"
+        );
     }
 }

@@ -60,9 +60,16 @@ it as the same session, and a running program carries on at the same step, its t
 the time the app was closed. Background check failures only show in System -> Updates.
 With "Install automatically" on (default, `update_auto_install`), the scheduler (5 s tick) installs an
 offered update by itself only when the belt has been still with no program (walking, resting,
-paused or waiting for GO), start or countdown/stopping for 10 minutes and the PC has had no input
-for 5 (`platform::input_idle_for`); `auto_install` is the pure rule, and it runs again right
-before the installer starts.
+paused or waiting for GO), start or countdown/stopping for 10 minutes, the PC has had no input
+for 5 (`platform::input_idle_for`), and no app has used the microphone (`calls::mic`, a call) and
+Windows hasn't said presenting (`presenting::presenting_now`, whatever the hold-cards switch) for 5;
+at most once a local calendar day (`update_auto_day`, saved right before the installer runs, so it
+survives the restart); an offer from a check over 5 minutes old is checked again first, so the
+newest version goes in. `auto_install` is the pure rule, and it runs again right before the
+installer starts. While it's on there is no HUD UPDATE READY card (`show_hud_card`; the dot on
+System and the tray icon is the only sign) and "What's new" never opens the dashboard by itself:
+it shows the next time the dashboard is opened, with any still-unread notes kept below the new
+ones (`notes_with_unread`). Switched off, the card and the self-opening "What's new" work as before.
 The installer is per-user NSIS; "launch at login" (`get/set_launch_at_login`, through `platform`: the autostart plugin on Windows, an SMAppService Login Item on macOS) and single-instance are Rust plugins.
 `traffic.rs` is the Diagnostics traffic recorder: while switched on (`traffic_record`, off at every
 start) `bluetooth.rs` hands it every packet written and every notification received, and it appends
@@ -97,10 +104,10 @@ sentence) feed `snapshot.connection.link` and `snapshot.strava.activity`; countd
 fields Rust recomputes each snapshot. Strava's no-API fallback is `strava_save.rs` (TCX file plus
 the upload page). In the UI, every button that can fail or take time uses `useAction` /
 `useBackendAction` (`src/components/useAction.ts`) and shows `<ActionStatus>` directly under
-itself; `send()` toasts rejections as a backstop, the HUD uses `useHudSend` + `<HudNote>`.
+itself; `send()` toasts rejections as a backstop, the HUD uses `useHudSend` + `<HudNote>` on its cards, and on the panel one `<NotePop>` drawn over the readings in a fixed status row (`StatusRow`), so no HUD control moves when a note, quiet line or the offline line comes or goes.
 GHOST_POD (`ghost_pod.rs`: pure RSC foot-pod encoding, Labs switch off by default; `ghost_pod/worker.rs`) advertises the belt's speed and cadence to a watch as a Running Speed and Cadence sensor. Its power switch (`ghost_pod_power`, off by default) also serves the Cycling Power service with watts from METABOLIC_BURN's estimate (`engine::walking_kcal_per_min`). It only reports the belt; nothing from the watch moves it. See docs/watch-pod.md.
 HEART_LINK (`heart_rate.rs`: pure Heart Rate Measurement decoding and snapshot types; `heart_rate/worker.rs`: the picked sensor, scan and link, apart from the treadmill's) reads a standard 0x180D sensor such as a watch with Broadcast Heart Rate, off until one is picked (`heart_rate_sensor_id`), and feeds `snapshot.heart_rate` and the `HEART_RATE` stat. It only reads; it never moves the belt. Its scans and the treadmill's share `bluetooth::SCAN_LOCK`, one at a time. Each second of a walk saves the fresh reading with its sample (`samples.heart_rate`, migration 6), and each session save writes `sessions.avg_heart_rate` and `max_heart_rate` from running totals (`SessionState.heart_rate`, `persistence::HeartRateTotals`, seeded from the samples once when a walk is resumed; #277, with the `(session_id, timestamp)` index of migration 16); History shows both. Strava uploads (auto-sync and the manual-upload TCX) carry it as `HeartRateBpm` on each trackpoint with a reading, plus the lap's average and maximum; a walk without heart rate builds the same TCX as before. A program step may carry a `zone` (`programs.rs`: `HeartZone`, `trim_speed_to_zone`): while the belt runs, the speed is trimmed within 1 km/h of the step's speed to hold the pulse in it, once the belt has run `ZONE_SETTLE` (2 minutes) into the step, counted again after a pause and GO (`ProgramRun::zone_settle_s`, the pulse lags a change in effort); it never starts, resumes or stops the belt, and the engine never auto-resumes a paused belt for a program target (max heart rate: `HeartRateMaxSet`). The max heart rate is set in System, Heart rate (`snapshot.heart_rate.max_bpm`), zones are edited per step in the program editor (% of max or bpm, saved as %), and the seeded VO2 max holds its climbs at 85 to 95 % (migration 7 adds the zones to an unedited one). While a zone step runs with a sensor picked, `snapshot.heart_rate.zone` carries the zone in bpm and whether the reading is under, in or over it (`heart_rate::zone_band`, the trim's own bounds), with Rust's label and sentence (`ZONE // SETTLING` and `settle_s` while the step waits for the pulse); PULSE_RATE shows it on the HUD and the Live page. ZONE_TILT (Labs switch off by default, `heart_rate_incline_trim_set`, `snapshot.heart_rate.incline_trim`, read into `OrchestratorState::zone_incline_trim`) lets a zone also trim incline: each step's `HeartZone::trim` (`ZoneTrim`: speed, the default stored as none so older programs need no migration; incline; or both) is picked in the editor while the switch is on. Incline moves one level the deck runs (DECK_PROFILE, up to the top level) at most every 60 s, within 2 % of the step's incline; both moves the incline first away from the step and the speed first back to it. Off, every zone trims speed only. With STRIDE_FIT set (`OrchestratorState::stride_fit_kmh`, set each second), `programs::fit_lever` turns a trim that would take the speed above it into one incline level up (up to `ZONE_FIT_INCLINE_PCT`, 2 %, past the zone's own incline range, held to the top level), and easing off above it lowers the speed to the fit first, then that extra incline; unset, the zones behave as before. A step may also carry a `kind` (`StepKind`: WARM_UP, WALK, INTERVAL, REST, COOL_DOWN; none for steps saved before #235, which show as before); `ActiveProgram.kind` (`StepKindSpot`) is the walking step's kind counted within that kind, labelled `INTERVAL 3/5` by Rust for the HUD, the Live page and the tray. Migration 10 gave the kinds to unedited seeded programs. `ActiveProgram.steps` and `repeat_every_minutes` are the copy that runs (a save mid-run reaches the next run), which STEP_MAP draws (`src/dashboard/programs/stepMap.ts`, pure: the step list, the chart geometry and the HUD's `NEXT // ...` line): on the Live page it takes the stats' place while a program runs (MAP on the program card switches back, kept in `localPrefs`). A COOL_DOWN step may also carry `pulse_end` (`PulseEnd`, % of max like a zone, 50 to 76; #233; `PULSE_END_DEFAULT_PCT`, 60 %, for every cool-down: the editor ticks it when a step becomes COOL_DOWN, the seeded VO2 max carries it, and migration 11 gives it to an unedited one with its new note): its minutes run first, then it walks on until the pulse has stayed at or under the target for `PULSE_END_HOLD` (30 s), with no upper limit (SKIP and END still work); with no fresh reading it ends on its minutes. Heart rate only decides when the step ends: it never starts, resumes or stops the belt, and the next step or the program end follows the timed-step rules. `snapshot.heart_rate.cool_down` (`PulseTarget`, `heart_rate::pulse_target`) carries the target and Rust's label for PULSE_RATE, and `ActiveProgram.pulse_to_bpm` is set while the step walks past its minutes (the program line reads `pulse to 114`).
-Program tones (`program_tones.rs`, declared from `snapshot.rs`; off by default, Programs page, `program_tones_set`, `snapshot.program_tones`): the desk loop feeds `ProgramTones` the running program once a second and it picks the cue (a step change with the belt running, a wait for GO beginning, or `SPEED_UP_LEAD_S` before a faster step, once per step); each cue bumps `seq` and stamps `at_ms`, and the HUD (`src/hud/programTones.ts`, pitches from `src/hud/tones.ts` shared with the eye-break tones) only plays it, skipping the first snapshot and any cue over 5 s old. It only reads the program and the belt.
+Program tones (`program_tones.rs`, declared from `snapshot.rs`; off by default, System, Desk, `program_tones_set`, `snapshot.program_tones`): the desk loop feeds `ProgramTones` the running program once a second and it picks the cue (a step change with the belt running, a wait for GO beginning, or `SPEED_UP_LEAD_S` before a faster step, once per step); each cue bumps `seq` and stamps `at_ms`, and the HUD (`src/hud/programTones.ts`, pitches from `src/hud/tones.ts` shared with the eye-break tones) only plays it, skipping the first snapshot and any cue over 5 s old. It only reads the program and the belt.
 Hold cards while presenting (`presenting.rs`, declared from `snapshot.rs`; System -> Desk, Windows only, on by default, `presenting_set_config`, `snapshot.presenting`): the desk loop asks `platform::presenting` (`SHQueryUserNotificationState`: busy, Direct3D full screen or presentation mode) once a second; while on and presenting, `presenting::hold_cards` clears the HUD-only card flags in the snapshot (sit-too-long, eye-break heads-up, last-week, update offer, `maintenance.hud_card`), `hud::toast` drops every toast but a program's, and the eye-break machine begins no break (`eyebreak::Tick::held`). Walk-away, a break under way, the resume card and a program waiting for GO still show. It never touches the belt; the HUD shows PRESENTING // CARDS HELD meanwhile.
 Easy start (`easy_start.rs`, System -> Treadmill, on by default, `easy_start_set`, `snapshot.easy_start`): once the belt runs after a start seen from still on this connection (Engage, GO, a program, a speed set by hand, a start at the treadmill), `control_packet` sends the target's byte held to a ramp from the slowest speed (`floor_hw_speed`; a start at the treadmill from the deck's own speed) up to it over `RAMP` (30 s) in `STEP`s (2 s), stepping down past bytes DECK_PROFILE says the deck skips. It only lowers the speed sent: it never starts, resumes or pauses the belt; a pause, stop, speed set by hand or DECK_SWEEP ends it, and a belt found moving is never eased again. Calibration runs are never eased: `calibration::begin_run` calls `measure_at_set_speed`, which holds off the ramp until a speed is set another way, a program runs or the belt is stopped. Program step timers and zone settling count from the start as before (`RAMP` < `ZONE_SETTLE`).
 Easy stop (`easy_stop.rs`, System -> Treadmill, off by default, `easy_stop_set`, `snapshot.easy_stop`): `DeckAction::Stop` (DUMP, the tray's Stop, the stop shortcut) on a manual walk running above the slowest speed goes to `stop_pressed`, which eases the sent byte down from the deck's speed to `floor_hw_speed` over `RAMP` (20 s) in easy start's `STEP`s, then sends the Stop (`do_stop`). The bytes only fall and never exceed the target; the intents and session carry on, so the saved walk includes the ramp. A second STOP, Lights out (`stop_now`), a program's stop, the switch going off and any stop the deck makes are immediate; a pause wins and ends the ramp (the Stop waits while a pause is in flight), a speed set by hand ends it and the walk goes on, a lost link clears the intents as a STOP does (`easy_stop_link_lost`). Speed drift holds while the belt eases down. `snapshot.easy_stop` carries the countdown and Rust's sentence for the HUD's EASY STOP line and the Live page; DUMP reads "stop now" meanwhile.
@@ -112,8 +119,8 @@ Quiet now (`calls.rs`, #345; the HUD's QUIET in CONTROLS, the tray's QUIET NOW, 
     popup: nav rail with Live, Programs, History, HUD, System pages in `src/dashboard/pages/`).
     Each page's pieces live in a folder beside it: `system/` (with `calibration/`, `strava/` and
     `updates/` inside), `history/`, `live/`, `programs/` and `link/` (Bluetooth scan and link control).
-    System shows its sections on four group tabs, DECK, LINKS, ROUTINE and CORE
-    (`system/systemTabs.ts`, the open one kept in `localPrefs`); a link from elsewhere calls
+    System shows its sections on four group tabs, DECK, LINKS, AUTOMATION (id `routine`) and CORE
+    (`system/systemTabs.ts`, the open one kept in `localPrefs`; Shortcuts is on CORE); a link from elsewhere calls
     `showSystemSection(<section id>)`, which opens the section's tab and scrolls to it
   - `hud` → `hud.html` → `src/hud/HudApp.tsx` (transparent, always-on-top, click-through except
     over its panel; separate small bundle). `HudApp` handles state and events; the panel is
@@ -209,8 +216,8 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?anchor=top_left` (or any corner): the HUD's corner
 - `?autoinstall=off`: "Install automatically" switched off (with `?update=...`)
 - `?blink=squeeze|open`: the guided blink step during an eye-break cooldown (CLOSE by default)
-- `?call`: on a call, the belt held at the quiet speed (the HUD preview also shows the toast)
-- `?caloffer`: a connected treadmill with no calibration, so the first-connect "Calibrate this treadmill" card shows (outside System)
+- `?call`: on a call, the belt held at the quiet speed, 3.5 km/h back after it (QUIET lit and its QUIET // DAMPED line; the HUD preview also shows the toast)
+- `?caloffer`: a connected treadmill with no calibration, so the first-connect "Calibrate this treadmill" card shows (outside System; on Live under the controls)
 - `?calwizard`: GROUND_TRUTH with a 280 cm belt loop, two saved points and the top speed question; `=belt` the BELT_LOOP step, `=tapping|dropped` a tap run five passes in or with a dropped tap and a restart note, `=measured` the plain-words result with the point already saved (UNDO, TAP AGAIN), `=sweep|sweeprun` RUN ALL between speeds or tapping, `=oldpoint` a point stored below the factor limit, `=targets` an added 3.5 km/h and a stored 14.0 km/h outside the range, `=steps` GAIT_SYNC tapping footsteps after a measured run, `=stepsaved` the stride measured and saved by itself, with UNDO, `=guiderun` the guided walk from 0.6 to 5.0 km/h tapping at 5.0, `=guidecheck` both ends saved and the midpoint check up next, `=guidesplit` the check 3.2 % off and split, `=guidedone` the walk done with its summary, `=guideskip` both ends saved on a deck that skips 2.8 km/h, so the check moved to 2.7, `=guideran` the 2.8 check the deck ran at 2.9 (chip, line and note show 2.9), `=aside` START FRESH with the two points set aside (POINTS_ASIDE, RESTORE, KEEP NEW), `=asidedone` the new walk done with the old set still aside
 - `?connect=fail`: connecting from the connect dialog fails
 - `?custom`: the HUD sits where it was dragged
@@ -218,14 +225,15 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?deck=paused`: with `?stasis=...`, the belt is paused (Engage reads RE-JACK)
 - `?decknote=refused|adjusted`: the HUD note after the deck refuses or changes a target
 - `?deckprofile`: DECK_PROFILE learned (floor 0.6, ceiling 4.0, 1.5 skipped, top incline level 12, level 7 skipped; Diagnostics shows FORGET); `=sweep` with the LABS // DECK_SWEEP switch on and a speed sweep running, `=inclinesweep` an incline sweep running, `=sweepon` the switch on with no sweep running
-- `?desksync=open|new|few`: History's DESK_SYNC card
+- `?desksync=open|new|few|counted`: History's DESK_SYNC card; `=counted` today open, then 3 s after load today counts and its light pulses on
 - `?distance=12.34`: this walk's km (DIST)
 - `?due`: the belt reminder well past its interval
 - `?easystart=off`: Easy start switched off in System -> Treadmill (every belt start runs straight to its target)
 - `?easystop=on|easing`: Easy stop switched on in System -> Treadmill; `=easing` a manual walk easing down after DUMP, 12 s before the Stop (EASY STOP on the HUD, DUMP reads "stop now")
 - `?echo=short`: ECHO on a History walk is refused as too short, with Rust's message
+- `?engage=go`: the deck's screen is off with a program waiting for GO (`?program=ready` unless another is given), so the last GO's failure shows under GO, not Engage, and GO waits and fails there
 - `?engage=timeout`: the deck's screen is off, so Engage waits and fails
-- `?eyebreak=upcoming|rest|break|still|resume`: the OCULAR_IMPLANT cards: heads-up, heads-up set for a program rest, cooldown with the belt paused or left alone, resume card
+- `?eyebreak=upcoming|rest|moved|waiting|break|still|silent|resume`: the OCULAR_IMPLANT cards: heads-up, heads-up set for a program rest, heads-up for a break moved earlier to fit the rest (with `?program=resting`), DEFERRED (due mid-walk, waiting for the belt to stop, 8:12 before the pause), cooldown with the belt paused or left alone, cooldown during a call (no tones), RE-JACK card
 - `?ghostpod=advertising|connected|error`: System -> Labs GHOST_POD
 - `?ghostpower=waiting|linked`: GHOST_POD's power switch on, with no watch or a watch reading 135 W
 - `?guided`: a guided task (GROUND_TRUTH) holding the dashboard open and on top, with UNPIN
@@ -251,21 +259,21 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?offline`: no treadmill saved yet
 - `?onemonitor`: a single display
 - `?pcwalk`: the WALKED stat pinned on the HUD at 38 % (2h 10m of 5h 40m); `=early` 6 minutes of PC time (`--`), `=long` 10h 05m of 11h 50m, `=none` no PC time today
-- `?presenting`: Windows says a presentation or full-screen app is in front, so the HUD holds its non-urgent cards (with `?seated`, `?eyebreak=upcoming`, `?weekly`, `?due` or `?update=available`) and shows PRESENTING // CARDS HELD; `=off` the switch off in System -> Desk
-- `?program=ready|hold|still|resting|paused|interval`: a program waiting for GO after a rest, after a 0 km/h step (its steps have no kind), or after a reconnect found the belt still; mid-rest; paused by the user; or Interval walk on its 3rd brisk round (`INTERVAL 3/5`, `T-MINUS 17:08`); each shows STEP_MAP on the Live page and the next step on the HUD
-- `?programtones`: Program tones switched on (Programs page); 3 s after load a cue fires: `=step` (or no value) the running program moves to its next step, `=wait` it waits for GO after a rest, `=speedup` its next, faster step starts in 5 s; SKIP fires the step cue while the belt runs
-- `?quietnow`: Quiet now holds the belt at the 2.0 km/h quiet speed (the HUD's QUIET lit, its QUIET // HOLD line, the tray's END QUIET); `=slow` the belt already at 1.8 km/h, so QUIET changes nothing and the HUD says why
+- `?presenting`: Windows says a presentation or full-screen app is in front, so the HUD holds its non-urgent cards (with `?seated`, `?eyebreak=upcoming`, `?weekly`, `?due` or `?update=available&autoinstall=off`) and shows PRESENTING // CARDS HELD; `=off` the switch off in System -> Desk
+- `?program=ready|hold|still|resting|paused|interval|unanswered`: a program waiting for GO after a rest, after a 0 km/h step (its steps have no kind), or after a reconnect found the belt still; mid-rest; paused by the user; or Interval walk on its 3rd brisk round (`INTERVAL 3/5`, `T-MINUS 17:08`); `unanswered` is `ready` past its 30 s hold (the strip, GO its main button); each shows STEP_MAP on the Live page and the next step on the HUD
+- `?programtones`: Program tones switched on (System, Desk); 3 s after load a cue fires: `=step` (or no value) the running program moves to its next step, `=wait` it waits for GO after a rest, `=speedup` its next, faster step starts in 5 s; SKIP fires the step cue while the belt runs
+- `?quietnow`: Quiet now holds the belt at the 2.0 km/h quiet speed (the HUD's QUIET lit, its QUIET // DAMPED line, the tray's END QUIET); `=slow` the belt already at 1.8 km/h, so QUIET changes nothing and the HUD says why
 - `?reconnect`: the Strava login needs a fresh grant
 - `?reject`: every command fails
 - `?saved`: a walk saved for a manual Strava upload
 - `?savefail`: saving a walk for Strava fails
 - `?scan=empty|error|bt-off`: the connect dialog's Bluetooth scan
-- `?seated`: the idle-nudge card (STASIS_ALERT); comma-separated variants `off`, `queued`, `long`, `none`, `one`, `many`
+- `?seated`: the sit-too-long card (ATROPHY_WARNING); comma-separated variants `off`, `queued`, `long`, `none`, `one`, `many`, `folded` (the card folded into the strip's seated-time readout), `snoozed` (two snoozes taken, so SNOOZE 60 MIN)
 - `?shortcuts=changed|taken`: System -> Shortcuts with Start or pause moved to Ctrl+Alt+S (RESET shows), or on a Mac (with `?mac`) ⌃⌥P held by another app
 - `?sim`: the SIM tag
 - `?speeddrift=drifting|held|waiting|outside|ended`: System -> Speed drift on (3.2 to 3.8 km/h, every 5 minutes) on a manual walk: setting the belt at 3.6 km/h (the HUD's SPEED DRIFT line), holding while Neural flow eases off, counting to the first change, the speed set outside the band, or ended by a speed set by hand; `?speeddrift` alone is the switch on with the belt still
 - `?stasis=strip|hidden`: "When the belt is still" set to that, with the belt stopped
-- `?status=9|countdown|stopping|standby`: an unknown status byte, the 3-2-1, the belt winding down, or the deck asleep
+- `?status=9|countdown|stopping|standby`: an unknown status byte, the 3-2-1, the belt winding down, or the deck asleep (with `?program=...` the program stays and its GO is refused under GO)
 - `?strava=authorizing|uploading|processing|checking|backoff|error|paused`: each Strava state
 - `?stridefit=4.5`: STRIDE_FIT set to 4.5 km/h in System, Calibration, so the program editor flags Brisk's 5.0 km/h step and Interval walk's 6.0 km/h steps; the belt runs at 5.0 km/h, so the Live speed slider shows the FIT mark and the HUD its ABOVE STRIDE_FIT line; Programs offers FIT_TO_DECK on Brisk, VO2 max and Interval walk
 - `?textscale=121`: the Windows text size setting, any whole percent from 100 to 225, as the page zoom WebView2 applies for it (dev previews only; size the HUD preview window to 340 px wide)
@@ -273,8 +281,8 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?today=early|long`: History's Today timeline for 08:02 to 14:25 with a walk after lunch; `=early` 20 minutes in, `=long` 06:40 to 21:30
 - `?traffic=recording|saved`: the Diagnostics traffic recorder
 - `?typingspeed`: System -> Labs typing by speed on, with a table of five speed bands from 12 walks; `=empty` on with no walks counted yet
-- `?update=available|downloading|failed|whatsnew`: auto-update states
-- `?walkaway=warning|paused|idle`: the walk-away cards
+- `?update=available|downloading|failed|tomorrow|whatsnew`: auto-update states (`=tomorrow` on offer after today's automatic install; the HUD's UPDATE READY card needs `?autoinstall=off`)
+- `?walkaway=warning|paused|idle`: the walk-away cards (RE-JACK and DUMP on the paused one)
 - `?weekly`: the last-week HUD card; `=long|new|down` variants
 - `?wallclock=new|late|none`: History's WALL_CLOCK card with no desk days, a walk at 21:00 widening the row, or desk days with no walks
 - `?zonetilt`: System -> Labs ZONE_TILT on, so the program editor offers each heart zone step speed, incline or both
@@ -314,16 +322,27 @@ environment (deployments limited to `main` and `v*` tags, so no other branch's w
 ## Voice
 
 The neon/cyberpunk theme is part of the product, including text the app writes elsewhere
-(Strava titles and descriptions, HUD messages, toasts). Use the existing codenames
-(`DECK_CYCLES`, `DISPLACEMENT`, `ALTITUDE_BIAS`, `METABOLIC_BURN`, `LOCOMOTION_INC`,
-`DAILY_TOTAL`, `NEURAL_FLUIDITY`) and the `NEON STRIDER // ...` style; keep explanations in
-plain sentence-case English so they stay readable. Units: the user's stats are metric (km,
-km/h, kg); a manufacturer's spec is quoted in its own unit. The belt reminder is km: the
-sticker on the deck gives 200 km (125 miles), which is the default.
+(Strava titles and descriptions, HUD messages, toasts). One name per thing (#392, names chosen
+by Fresh Brewed Design): each reading has one codename, the name on Live tiles and the HUD page
+(`DECK_CYCLES`, `DISPLACEMENT`, `DAILY_TOTAL`, `LOCOMOTION_INC`, `METABOLIC_BURN`,
+`NEURAL_FLUIDITY`, `LIFETIME_ODOMETER`, `PULSE_RATE`); speed is `VELOCITY` and incline `TILT`
+everywhere in the UI. The HUD panel keeps its short labels (VEL, TILT, TIME, DIST, TODAY, STEPS,
+BURN, FLOW, ODO, HR). Each codename's plain meaning is in `src/names.ts` (`PLAIN`): a small grey
+line under the codename on Live tiles and cards (`PlainLine`, `.hud-plain`), `plain meaning ·
+HUD: SHORT` on the HUD page's rows; `CODENAME: Plain phrase` in System labels
+(`systemLabel`). Add a codename there before giving it a plain line. The treadmill link reads
+LINKED, RELINK 11S or NO_CARRIER (plain line: treadmill offline) on the HUD chip and the
+dashboard rail and banner; the HEART_LINK and GHOST_POD chips say NO_CARRIER too. The HUD chip
+stays on one line. The sit-too-long card and its setting are ATROPHY_WARNING; STASIS is only the paused
+belt. The Strava templates' default text keeps its own codenames, ALTITUDE_BIAS included. Use the
+`NEON STRIDER // ...` style; keep explanations in plain sentence-case English so they stay
+readable. Units: the user's stats are metric (km, km/h, kg); a manufacturer's spec is quoted in
+its own unit. The belt reminder is km: the sticker on the deck gives 200 km (125 miles), which is
+the default.
 
 ## Conventions
 
-- **The belt never starts moving without a user action in that moment** (Engage, GO/Resume,
+- **The belt never starts moving without a user action in that moment** (Engage, GO, RE-JACK,
   starting a program, a speed set by hand, a HUD or shortcut press, or a start at the treadmill
   with its own buttons or remote). The app never starts or
   resumes the belt by itself after a restart, a reconnect, an update, an unlock or a call

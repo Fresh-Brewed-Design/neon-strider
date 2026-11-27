@@ -92,7 +92,8 @@
   container: dash / size;
 }
 
-.dash-compact-only {
+.dash-compact-only,
+.dash-rail-state {
   display: none;
 }
 
@@ -133,6 +134,10 @@
     clip-path: inset(50%);
     white-space: nowrap;
   }
+  /* The link's label is hidden here, so its state shows as the tone's icon beside the glyph. */
+  .dash-rail-state {
+    display: block;
+  }
   .dash-rail-dot {
     position: absolute;
     top: 0.3rem;
@@ -153,6 +158,27 @@
 @container dash (max-height: 339px) {
   .dash-rail-logo {
     display: none;
+  }
+}
+
+/* Under 450 px tall (above about 133 %) a page marked fitHeader (Live) hides its codename and
+   title from view, so its controls get the height; screen readers still read the title, and the
+   rail marks the page. Header actions (Live's warnings) keep their row. */
+@container dash (max-height: 449px) {
+  .dash-page-fit {
+    padding-top: 0.5rem;
+  }
+  .dash-page-fit .dash-page-heading {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .dash-page-fit:not(:has(.dash-page-heading ~ *)) {
+    padding-bottom: 0;
   }
 }
 
@@ -240,4 +266,18 @@
   .hud-page-cols {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* DESK_SYNC: today's mark pulses on once, the moment today first counts (`today_lit`). */
+@keyframes desk-sync-light {
+  0% { opacity: 0.25; box-shadow: 0 0 0 rgba(0, 243, 255, 0); }
+  20%, 55% { opacity: 1; box-shadow: 0 0 12px rgba(0, 243, 255, 0.95); }
+  37% { opacity: 0.55; box-shadow: 0 0 3px rgba(0, 243, 255, 0.4); }
+  100% { opacity: 1; box-shadow: 0 0 6px rgba(0, 243, 255, 0.6); }
+}
+.desk-sync-light {
+  animation: desk-sync-light 1.6s ease-out 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .desk-sync-light { animation: none; }
 }

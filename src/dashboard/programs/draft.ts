@@ -36,6 +36,8 @@ export interface Draft {
   repeat: boolean;
   repeatMinutes: string;
   zoneUnit: ZoneUnit;
+  /** The program a clone was copied from: keeps its editor apart from a New draft's (both have id 0). */
+  from?: number;
 }
 
 /** A zone switched on for a step starts at 60 to 70 % of max, a steady aerobic walk. */
@@ -93,6 +95,21 @@ export function toDraft(p: Program): Draft {
     repeatMinutes: p.repeat_every_minutes != null ? String(p.repeat_every_minutes) : "30",
     zoneUnit: "pct",
   };
+}
+
+/** What a clone's name ends with. */
+export const CLONE_SUFFIX = " // CLONE";
+
+/**
+ * A copy of `p` for the editor as a new program (id 0): the same steps, repeat and zones, named
+ * `<name> // CLONE`. Nothing is saved until SAVE. The note is left out: Rust gives a new program
+ * no note, so a save would drop it. The base name is cut so the whole name fits Rust's limit on
+ * program names, which a save would otherwise refuse.
+ */
+export function toClone(p: Program): Draft {
+  const room = SETTING_LIMITS.program_name_chars - [...CLONE_SUFFIX].length;
+  const base = [...p.name].slice(0, room).join("").trimEnd();
+  return { ...toDraft(p), id: 0, name: `${base}${CLONE_SUFFIX}`, from: p.id };
 }
 
 /** Show the zones in `unit`, converting what was typed; text that isn't a number is left as typed. */
@@ -201,4 +218,121 @@ export function strideFitFlag(speedText: string, fitKmh: number | null): string 
   if (!Number.isFinite(v)) return null;
   const tenths = (x: number) => Math.round(x * 10);
   return tenths(v) > tenths(fitKmh) ? `Above STRIDE_FIT ${fitKmh.toFixed(1)} km/h` : null;
+}
+
+/**
+ * The draft would save something other than what the editor opened with. Compared as the
+ * programs they save, so a zone unit switch or "3" for "3.0" is no change; a draft that
+ * doesn't parse yet is compared as typed.
+ */
+export function draftChanged(opened: Draft, d: Draft, maxBpm: number): boolean {
+  const a = fromDraft(opened, maxBpm);
+  const b = fromDraft(d, maxBpm);
+  if (typeof a === "string" || typeof b === "string") return JSON.stringify(opened) !== JSON.stringify(d);
+  return JSON.stringify(a) !== JSON.stringify(b);
+}
+
+/** A step's fields that can be wrong, each with the line shown under it. */
+export interface StepErrors {
+  minutes?: string;
+  speed?: string;
+  incline?: string;
+  zone?: string;
+  pulse?: string;
+}
+
+export interface DraftErrors {
+  name?: string;
+  steps: StepErrors[];
+  repeat?: string;
+}
+
+/** A speed limit as text: to 0.1 km/h, or 0.01 when a calibrated limit needs it. */
+const kmh = (v: number) => (Math.abs(v * 10 - Math.round(v * 10)) < 1e-6 ? v.toFixed(1) : v.toFixed(2));
+
+/** The speeds a step may have besides 0, in calibrated km/h: Rust's floor and top. */
+export interface SpeedRange {
+  min: number;
+  max: number;
+}
+
+/**
+ * What the editor can tell is wrong before Rust sees the program, field by field. Rust still
+ * checks everything on save. A field left empty only counts once `showEmpty` is set (after a
+ * Save), so clearing a field to retype it shows nothing.
+ */
+export function draftErrors(d: Draft, range: SpeedRange | null, maxBpm: number, showEmpty: boolean): DraftErrors {
+  const out: DraftErrors = { steps: [] };
+  // A field's number, or why there isn't one: "empty" (only an error once shown) or "nan".
+  const num = (text: string): number | "empty" | "nan" => {
+    if (text.trim() === "") return "empty";
+    const v = Number(text);
+    return Number.isFinite(v) ? v : "nan";
+  };
+  const needs = (v: number | "empty" | "nan", text: string) => (v === "nan" || (v === "empty" && showEmpty) ? text : undefined);
+  const pct = (v: number) => (d.zoneUnit === "bpm" ? (v / maxBpm) * 100 : v);
+
+  if (showEmpty && d.name.trim() === "") out.name = "Enter a name.";
+
+  for (const s of d.steps) {
+    const e: StepErrors = {};
+    if (!s.open) {
+      const m = num(s.minutes);
+      e.minutes = typeof m === "number" ? (m < 0 ? "Minutes can't be below 0." : undefined) : needs(m, "Minutes need a number.");
+    }
+    const v = num(s.speed);
+    if (typeof v === "number") {
+      // Rust's rule: 0, or from the floor (to the 0.01 km/h it is shown to) to the top.
+      const outside = v !== 0 && (v < 0 || (range !== null && (v < range.min - 0.005 || v > range.max)));
+      if (outside) e.speed = range ? `Speed must be 0 or ${kmh(range.min)} to ${kmh(range.max)} km/h.` : "Speed can't be below 0.";
+    } else e.speed = needs(v, "Speed needs a number.");
+    const inc = num(s.incline);
+    e.incline = typeof inc === "number" ? (inc < 0 ? "Incline can't be below 0 %." : undefined) : needs(inc, "Incline needs a number.");
+    if (s.zone) {
+      const low = num(s.zoneLow);
+      const high = num(s.zoneHigh);
+      if (typeof low === "number" && typeof high === "number") {
+        if (low >= high) e.zone = "Heart zone low must be less than high.";
+      } else e.zone = needs(low === "nan" || high === "nan" ? "nan" : "empty", "Heart zone needs both bounds.");
+    }
+    if (s.pulse && s.kind === "cool_down") {
+      const t = num(s.pulseTarget);
+      const { min, max } = SETTING_LIMITS.cool_down_pulse_pct;
+      if (typeof t === "number") {
+        const p = pct(t);
+        if (p < min - 0.05 || p > max + 0.05) {
+          e.pulse =
+            d.zoneUnit === "bpm"
+              ? `Pulse target must be ${Math.ceil((min / 100) * maxBpm)} to ${Math.floor((max / 100) * maxBpm)} bpm.`
+              : `Pulse target must be ${min} to ${max} % of max.`;
+        }
+      } else e.pulse = needs(t, "Pulse target needs a number.");
+    }
+    out.steps.push(Object.fromEntries(Object.entries(e).filter(([, text]) => text !== undefined)) as StepErrors);
+  }
+
+  if (d.repeat) {
+    const r = num(d.repeatMinutes);
+    out.repeat = typeof r === "number" ? (r < 0 ? "Repeat minutes can't be below 0." : undefined) : needs(r, "Repeat needs a number of minutes.");
+    if (out.repeat === undefined) delete out.repeat;
+  }
+  return out;
+}
+
+/** Where the draft has errors, for Save's line ("step 2", "the name and steps 1 and 3"), or null. */
+export function errorPlaces(e: DraftErrors): string | null {
+  const steps = e.steps.flatMap((s, i) => (Object.keys(s).length > 0 ? [i + 1] : []));
+  const list = (items: string[]) => (items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`);
+  const parts: string[] = [];
+  if (e.name) parts.push("the name");
+  if (steps.length > 0) parts.push(`${steps.length === 1 ? "step" : "steps"} ${list(steps.map(String))}`);
+  if (e.repeat) parts.push("the repeat minutes");
+  return parts.length > 0 ? list(parts) : null;
+}
+
+/** Rust's save error for one step ("Step 2: speed must be ..."), as its step and a sentence. */
+export function rustStepError(message: string): { step: number; text: string } | null {
+  const m = /^Step (\d+): (.+?)\.?$/.exec(message.trim());
+  if (!m) return null;
+  return { step: Number(m[1]), text: `${m[2].charAt(0).toUpperCase()}${m[2].slice(1)}.` };
 }

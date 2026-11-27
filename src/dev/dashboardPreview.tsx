@@ -1,5 +1,6 @@
 // Dev-only dashboard preview (dashboard-preview.html) on the mocked backend.
 import { StrictMode } from "react";
+import { MotionConfig } from "framer-motion";
 import ReactDOM from "react-dom/client";
 import { installMockBackend, previewSettings } from "./mockBackend";
 import { applyTextScale } from "./textScale";
@@ -15,6 +16,9 @@ if (seed) useTreadmillStore.getState().updateSettings(seed);
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <StrictMode>
-    <DashboardApp />
+    {/* The dashboard's motion follows the OS's reduce motion setting, as the HUD's does. */}
+    <MotionConfig reducedMotion="user">
+      <DashboardApp />
+    </MotionConfig>
   </StrictMode>,
 );

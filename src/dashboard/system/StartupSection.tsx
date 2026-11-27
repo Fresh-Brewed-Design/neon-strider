@@ -44,8 +44,8 @@ export function StartupSection() {
           label="Launch at login"
           description={
             mac
-              ? "Adds a login item for your account. No administrator password needed."
-              : "Adds a per-user startup entry. No administrator rights needed."
+              ? "Adds a login item for your account without an administrator password."
+              : "Adds a per-user startup entry without administrator rights."
           }
           checked={enabled === true}
           onChange={toggle}

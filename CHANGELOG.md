@@ -1,5 +1,191 @@
 # Changelog
 
+## 1.87.2 (2026-11-27)
+
+### Fixed
+
+- Live no longer scrolls with a program running, paused or waiting for GO and the STATS view open.
+- The program card puts the step and the time left on one line. LIFETIME_ODOMETER no longer wraps its name.
+
+## 1.87.1 (2026-11-27)
+
+### Fixed
+
+- The Strava TCX preview now says when Copy could not reach the clipboard, and confirms when it worked.
+
+## 1.87.0 (2026-11-27)
+
+### New
+
+- DESK_SYNC on the History page: today's mark pulses on once, the moment today's walking first counts. It stays still when animation effects are off in Windows.
+
+## 1.86.0 (2026-11-27)
+
+### New
+
+- Programs has a Clone button beside Edit: it opens the editor with a copy of the program as a new one, named with // CLONE, and saves nothing until SAVE.
+
+## 1.85.0 (2026-11-26)
+
+### Changed
+
+- While the treadmill is asleep, ENGAGE, GO, the sit-too-long card's buttons and a program's 30-second warning say "wake deck first" before you press.
+- The HUD strip shows a program's rest with the time to its next walk. An unanswered GO folds the HUD back to the strip after 30 seconds, with GO as the strip's main button. Toasts no longer repeat the belt and link states the HUD header already shows.
+
+## 1.84.1 (2026-11-26)
+
+### Fixed
+
+- A restart keeps the desk timers, LIGHTS_OUT leaves a program at rest alone and DUMP ends a walk where the walk-away began.
+- Week cards count desk days and compare km per desk day, so a day off the PC never counts against a week.
+
+## 1.84.0 (2026-11-26)
+
+### Changed
+
+- The HUD shows one card at a time, most urgent first. GO, RE-JACK or ENGAGE drops a waiting ATROPHY_WARNING because the belt is starting. Cards held during a presentation come back one by one after the presentation ends.
+- ATROPHY_WARNING shows once: left unanswered for a minute, the card folds into a yellow seated-time readout on the HUD. Snoozes in a row get longer: 15, 30, then 60 minutes.
+
+## 1.83.0 (2026-11-26)
+
+### Changed
+
+- An eye break that comes due while you walk now waits for the belt to stop. After 10 minutes of waiting the belt pauses for the break as before.
+- Eye breaks play no tones while the microphone is in use. A break moved earlier to fit a program rest now gets its heads-up.
+
+## 1.82.0 (2026-11-26)
+
+### Changed
+
+- With Install automatically on, updates install at most once a day with no UPDATE READY card on the HUD and never during a call or presentation.
+- What's new now waits until you open the dashboard yourself and keeps any notes you haven't read yet.
+
+## 1.81.0 (2026-11-26)
+
+### Changed
+
+- HUD buttons keep their place in every program state, in a top or a bottom corner. The header stays on screen at large text sizes.
+- QUIET lights up during a call and its line reads QUIET // DAMPED. Belt and program buttons say pause belt, pause program, resume belt or resume program. The status row's button reads RETRY NOW while RELINK counts down.
+
+## 1.80.0 (2026-11-26)
+
+### Changed
+
+- Live: while QUIET holds the belt, the header shows the quiet speed and the speed QUIET puts back. With no treadmill linked the last readings dim as on the HUD. The NO_CARRIER row is as tall as STASIS and DUMP, so the panels under the row stay put. STEP_MAP keeps a rest row on one line and shows three steps at large text sizes.
+- History: the time frame tabs sit on the totals, right over the session list they change. EXPORT CSV stays off until a walk is saved. DESK_SYNC's plain line sits apart from its sentence.
+- Strava's rollup time is greyed out while Daily rollup is off. Wrapped lines on Live, History, Programs and the HUD page never start or end with a lone dot.
+
+## 1.79.1 (2026-11-26)
+
+### Changed
+
+- Connect, delete, What's new and TCX preview dialogs now share one look.
+- The connect dialog's scan button reads "Scan again".
+
+## 1.79.0 (2026-11-26)
+
+### Changed
+
+- Each reading has one name: speed is VELOCITY and incline is TILT everywhere. Each codename on Live tiles, cards and the HUD page's rows has a small grey line under it saying what it means.
+- The treadmill link reads LINKED, RELINK or NO_CARRIER on the HUD and the dashboard; the heart sensor and foot pod chips say NO_CARRIER too. The sit-too-long card and its setting are now ATROPHY_WARNING. System's ROUTINE tab is now AUTOMATION. Shortcuts moved to CORE.
+
+## 1.78.2 (2026-11-26)
+
+### Changed
+
+- DUMP has its own look on the HUD and the Live page: a thick magenta outline with a stop square. STASIS stays cyan.
+- Colours keep one meaning everywhere: cyan for on and selected, magenta for incline and actions that delete or end, yellow for programs and warnings. Every switch turns on cyan.
+
+## 1.78.1 (2026-11-26)
+
+### Fixed
+
+- HUD buttons stay in place when a note, a status line or the offline line comes or goes, in every view and corner.
+- HUD notes say in plain words what the treadmill did; steppers say TARGET, program buttons show their first speed and QUIET fills while holding the belt. The link word in the HUD header stays on one line.
+
+## 1.78.0 (2026-11-26)
+
+### Changed
+
+- System: a calibrated treadmill shows its Calibration as one status line with a GROUND_TRUTH details expander, and RUN says on its own row why it is off.
+- System: each tab has links to its sections, and each switch has one short sentence with a collapsed More for the rest.
+
+## 1.77.0 (2026-11-26)
+
+### Changed
+
+- Programs and History now label their controls: the run length, heart zone and remove buttons, the Strava upload state and the totals range.
+- A new History starts with one line instead of cards of zeros, and Save stays in view in the program editor.
+- Program tones moved to System, ROUTINE.
+
+## 1.76.9 (2026-11-26)
+
+### Fixed
+
+- The Live page keeps speed, tilt, STASIS, DUMP and the program's HOLD, SKIP and END in view at 125 % and 150 % Windows text size. The calibration offer sits under the controls, so the controls stay put when the offer shows or after SKIP.
+- The slider reads SET TARGET and the preset at the target shows as pressed. MAP is now a switch between MAP and STATS. With large text the rail's link icon also shows the link state by shape.
+
+## 1.76.8 (2026-11-25)
+
+### Changed
+
+- Settings and HUD text is shorter and clearer, and the empty History page now says how a walk gets recorded.
+
+## 1.76.7 (2026-11-25)
+
+### Fixed
+
+- A dashboard button that fails now shows the reason right under the button, not in a toast in the corner.
+- Buttons covered: GO, Pause, Skip and End on the program card, program delete, stat pins, the HUD page's lists and pickers, Live speed and tilt, Desk settings, Maintenance and Pin open.
+
+## 1.76.6 (2026-11-25)
+
+### Fixed
+
+- Number fields in System now say "Saved." after a change, and name the limit when a value was held to it.
+- Icon buttons in Programs, History and the HUD page have titles, a bigger click area and a gap before Delete.
+- Delete is off for a walk that is still recording.
+- The History year grid is one tab stop, and arrow keys move between days.
+- Pin open and Pinned report their state to screen readers.
+- Diagnostics steps no faster than every 200 ms.
+- Strava sync times, Shortcut "Off" and skipped calibration speeds are easier to read.
+
+## 1.76.5 (2026-11-25)
+
+### Fixed
+
+- The speed and tilt sliders now have names for screen readers and show a focus ring on Tab. Both stay locked while the treadmill is offline.
+- The Live page writes km/h in lower case beside TARGET.
+- STEP_MAP labels its top speed and tilt as a legend on the chart. Finished steps and the STASIS and DUMP hint lines are easier to read. The rest between cycles reads "speed before program".
+
+## 1.76.4 (2026-11-25)
+
+### Fixed
+
+- Dashboard dialogs take keyboard focus and close on Escape. Dashboard animations follow the system setting to reduce motion.
+- Strava Disconnect, template reset, shortcut reset, Forget heart rate sensor and deleting a calibration point now ask before they run.
+
+## 1.76.3 (2026-11-25)
+
+### Fixed
+
+- The program editor asks before discarding unsaved edits on X, Cancel, Escape or a change of page.
+- Program steps show a mistyped minutes, speed or incline value as an error under the step.
+
+## 1.76.2 (2026-11-25)
+
+### Changed
+
+- Pausing and resuming now use one word per thing. The belt is STASIS and RE-JACK. A program is HOLD and GO.
+- The walk-away card's RE-JACK and DUMP match the belt controls everywhere else.
+
+## 1.76.1 (2026-11-25)
+
+### Fixed
+
+- While the belt rests, the HUD dims only the live stats. Errors, the link status, a program waiting for GO and the new not-connected line under the controls stay at full strength.
+- A program waiting for GO shows one prompt on its card. The HUD's update card button reads NOTES, since the button opens the release notes in the dashboard.
+
 ## 1.76.0 (2026-11-25)
 
 ### New

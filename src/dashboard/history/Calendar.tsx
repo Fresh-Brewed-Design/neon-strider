@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { cx } from "../util";
 import { dayKey, km } from "../../format";
 
@@ -46,6 +46,26 @@ export function Calendar({
     return { days: cells, months: labels, today: dayKey(now.getTime()) };
   }, []);
 
+  // One tab stop for the whole grid: the cell that was last focused (today at first) takes it.
+  const lastIndex = useMemo(() => days.reduce((last, d, i) => (d.future ? last : i), 0), [days]);
+  const [active, setActive] = useState<number | null>(null);
+  const cells = useRef<(HTMLButtonElement | null)[]>([]);
+  const stop = Math.min(active ?? lastIndex, lastIndex);
+
+  const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>, i: number) => {
+    // Columns are weeks and rows are days, so left and right move a week and up and down a day.
+    const step: Record<string, number> = { ArrowUp: -1, ArrowDown: 1, ArrowLeft: -7, ArrowRight: 7 };
+    let to: number | null = null;
+    if (e.key in step) to = i + step[e.key];
+    else if (e.key === "Home") to = 0;
+    else if (e.key === "End") to = lastIndex;
+    if (to === null) return;
+    e.preventDefault();
+    to = Math.min(lastIndex, Math.max(0, to));
+    setActive(to);
+    cells.current[to]?.focus();
+  };
+
   return (
     <div>
       <div className="mb-1 grid gap-x-px" style={{ gridTemplateColumns: `repeat(${WEEKS}, minmax(0, 1fr))` }}>
@@ -65,24 +85,33 @@ export function Calendar({
         role="group"
         aria-label="Distance by day, past year"
       >
-        {days.map(({ key, date, future }) => {
+        {days.map(({ key, date, future }, i) => {
           const meters = metersByDay.get(key) ?? 0;
           const isSelected = key === selected;
+          const empty = future || meters === 0;
           return (
             <button
               key={key}
+              ref={(el) => {
+                cells.current[i] = el;
+              }}
               type="button"
-              disabled={future || meters === 0}
+              tabIndex={i === stop ? 0 : -1}
+              aria-disabled={empty || undefined}
               aria-pressed={isSelected}
+              onFocus={() => setActive(i)}
+              onKeyDown={(e) => onKeyDown(e, i)}
               aria-label={`${date.toLocaleDateString()}: ${km(meters)} km`}
               title={`${date.toLocaleDateString()}: ${km(meters)} km`}
-              onClick={() => onSelect(isSelected ? null : key)}
+              onClick={() => {
+                if (!empty) onSelect(isSelected ? null : key);
+              }}
               className={cx(
-                "aspect-square rounded-[2px]",
+                "aspect-square rounded-[2px] focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:opacity-100! focus-visible:outline-white",
                 future ? "bg-transparent" : meters > 0 ? "bg-neon-cyan" : "bg-white/[0.06]",
                 key === today && "outline outline-1 outline-white/70",
-                isSelected && "outline outline-2 outline-neon-magenta",
-                meters > 0 && !future && "cursor-pointer hover:brightness-150",
+                isSelected && "outline outline-2 outline-offset-1 outline-neon-cyan",
+                !empty && "cursor-pointer hover:brightness-150",
               )}
               style={meters > 0 ? { opacity: opacityFor(meters) } : undefined}
             />

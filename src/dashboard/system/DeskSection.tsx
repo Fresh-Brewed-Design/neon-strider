@@ -3,11 +3,13 @@ import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { roundSpeed, snapToDeck } from "../../state/deckSpeeds";
 import { useAppSnapshot } from "../../state/useAppState";
+import { systemLabel } from "../../names";
 import { GhostButton, Hint, Label } from "../ui";
-import { cx, send } from "../util";
+import { cx } from "../util";
 import { NumberField, Section, Toggle } from "./fields";
 import { LightsOutSetting } from "./LightsOutSetting";
 import { PresentingSetting } from "./PresentingSetting";
+import { ProgramTonesSetting } from "./ProgramTonesSetting";
 
 const L = SETTING_LIMITS;
 const MAX_PROGRAM_BUTTONS = L.seated_program_buttons;
@@ -34,26 +36,29 @@ function WalkAwaySettings() {
       <div>
         <Toggle
           label={`Pause when I lock the ${s.platform.computer}`}
-          tone="yellow"
           checked={w.lock_enabled}
           onChange={(lock_enabled) => void lockAction.run(() => save({ lock_enabled }))}
           description={
             mac
-              ? "Locking the Mac (⌃⌘Q) pauses a moving belt and any running program."
-              : "Locking Windows (Win+L) pauses a moving belt and any running program."
+              ? "Locking the Mac (⌃⌘Q) pauses the belt and any program."
+              : "Locking Windows (Win+L) pauses the belt and any program."
           }
-          hint="The session is kept and the belt never restarts by itself: the HUD asks to resume or end."
+          hint={["The session is kept and the belt never restarts by itself.", "The HUD asks for RE-JACK or DUMP."]}
         />
         <ActionStatus pending={lockAction.pending} error={lockAction.error} className="mt-1" />
       </div>
       <div>
         <Toggle
-          label={`Pause after no input for ${w.idle_minutes} minutes`}
-          tone="yellow"
+          label={`Pause when the ${s.platform.computer} sits idle`}
           checked={w.idle_enabled}
           onChange={(idle_enabled) => void idleAction.run(() => save({ idle_enabled }))}
-          description={`After ${w.idle_minutes} minutes with no keyboard or mouse input, the HUD warns for 30 seconds, then pauses the belt.`}
-          hint="Any input or STAY on the HUD card cancels the pause, and a call never triggers one."
+          description={`After ${w.idle_minutes} minutes without input the belt pauses.`}
+          hint={[
+            "The HUD warns for 30 seconds first.",
+            "Any keyboard or mouse input cancels the pause.",
+            "STAY on the HUD card cancels the pause too.",
+            "A call never starts a pause.",
+          ]}
         />
         <ActionStatus pending={idleAction.pending} error={idleAction.error} className="mt-1" />
       </div>
@@ -80,6 +85,8 @@ function WalkAwaySettings() {
  */
 function EyeBreakSettings() {
   const s = useAppSnapshot();
+  const enableAction = useAction();
+  const soundAction = useAction();
   const pauseAction = useAction();
   const restsAction = useAction();
   if (!s) return null;
@@ -101,16 +108,18 @@ function EyeBreakSettings() {
     fit_rests: e.fit_rests,
     ...patch,
   });
-  const save = (patch: Parameters<typeof config>[0]) => send(config(patch));
+  const save = (patch: Parameters<typeof config>[0]) => dispatch(config(patch));
   return (
     <>
-      <Toggle
-        label="OCULAR_IMPLANT"
-        tone="cyan"
-        checked={e.enabled}
-        onChange={(enabled) => save({ enabled })}
-        description="The HUD reminds you to look away from the screen, with a minute's warning."
-      />
+      <div>
+        <Toggle
+          label={systemLabel("OCULAR_IMPLANT")}
+          checked={e.enabled}
+          onChange={(enabled) => void enableAction.run(() => save({ enabled }))}
+          description="The HUD gives a minute's warning before each break."
+        />
+        <ActionStatus pending={enableAction.pending} error={enableAction.error} className="mt-1" />
+      </div>
       {e.enabled && (
         <>
           <NumberField
@@ -120,7 +129,7 @@ function EyeBreakSettings() {
             max={L.eye_break_minutes.max}
             step={5}
             value={e.minutes}
-            hint={`${L.eye_break_minutes.min} to ${L.eye_break_minutes.max}. The 20-minute habit is popular, but studies on myopia favour 5 minutes an hour.`}
+            hint={`${L.eye_break_minutes.min} to ${L.eye_break_minutes.max}. Studies on myopia favour 5 minutes an hour.`}
             onCommit={(minutes) => save({ minutes })}
           />
           <NumberField
@@ -130,33 +139,36 @@ function EyeBreakSettings() {
             max={L.eye_break_seconds.max}
             step={10}
             value={e.seconds}
-            hint={`${L.eye_break_seconds.min} to ${L.eye_break_seconds.max}. Focusing needs about 90 seconds to relax; 20 seconds is often too short.`}
+            hint={`${L.eye_break_seconds.min} to ${L.eye_break_seconds.max}. Focusing needs about 90 seconds to relax.`}
             onCommit={(seconds) => save({ seconds })}
-          />
-          <Toggle
-            label="Tones"
-            tone="cyan"
-            checked={e.sound}
-            onChange={(sound) => save({ sound })}
-            description="Beeps guide each full blink: falling to close, low to squeeze, high to open, rising at the end."
           />
           <div>
             <Toggle
+              label="Tones"
+              checked={e.sound}
+              onChange={(sound) => void soundAction.run(() => save({ sound }))}
+              description="Beeps guide each full blink except during calls."
+              hint="A falling tone closes the eyes, a low one squeezes, a high one opens and a rising one ends the blink."
+            />
+            <ActionStatus pending={soundAction.pending} error={soundAction.error} className="mt-1" />
+          </div>
+          <div>
+            <Toggle
               label="Pause the belt for breaks"
-              tone="cyan"
               checked={e.pause_belt}
-              onChange={(pause_belt) => void pauseAction.run(() => dispatch(config({ pause_belt })))}
-              description="A break pauses a walking belt, and the HUD then offers RESUME or STAY STILL."
+              onChange={(pause_belt) => void pauseAction.run(() => save({ pause_belt }))}
+              description="A break waits up to 10 minutes for a walk to end, then pauses the belt."
+              hint="The HUD then offers RE-JACK or STAY STILL."
             />
             <ActionStatus pending={pauseAction.pending} error={pauseAction.error} className="mt-1" />
           </div>
           <div>
             <Toggle
               label="Take breaks at program rests"
-              tone="cyan"
               checked={e.fit_rests}
-              onChange={(fit_rests) => void restsAction.run(() => dispatch(config({ fit_rests })))}
-              description="A break due near a program's rest moves to that rest, so the walk carries on."
+              onChange={(fit_rests) => void restsAction.run(() => save({ fit_rests }))}
+              description="A break due near a program rest waits for the rest."
+              hint="The walk carries on without a pause."
             />
             <ActionStatus pending={restsAction.pending} error={restsAction.error} className="mt-1" />
           </div>
@@ -169,6 +181,10 @@ function EyeBreakSettings() {
 /** Settings for the idle nudge and for easing the belt during calls. */
 export function DeskSection() {
   const s = useAppSnapshot();
+  const nudgeAction = useAction();
+  // The program chips and Use the first three share one status line, under the chips.
+  const chipsAction = useAction();
+  const callsAction = useAction();
   if (!s) return null;
   const { seated, calls, programs } = s;
   const pc = s.platform.computer;
@@ -176,7 +192,7 @@ export function DeskSection() {
   // The card's buttons as Rust resolves them. Sending `null` goes back to the
   // default (the first three saved programs).
   const saveSeated = (patch: { enabled?: boolean; minutes?: number; program_ids?: number[] | null }) =>
-    send({
+    dispatch({
       type: "seated_set_config",
       enabled: seated.enabled,
       minutes: seated.minutes,
@@ -188,11 +204,11 @@ export function DeskSection() {
     const next = seated.program_ids.includes(id)
       ? seated.program_ids.filter((p) => p !== id)
       : [...seated.program_ids, id].slice(0, MAX_PROGRAM_BUTTONS);
-    saveSeated({ program_ids: next.length > 0 ? next : null });
+    void chipsAction.run(() => saveSeated({ program_ids: next.length > 0 ? next : null }));
   };
 
   const saveCalls = (patch: { enabled?: boolean; quiet_kmh?: number }) =>
-    send({ type: "calls_set_config", enabled: calls.enabled, quiet_kmh: calls.quiet_kmh, ...patch });
+    dispatch({ type: "calls_set_config", enabled: calls.enabled, quiet_kmh: calls.quiet_kmh, ...patch });
 
   const full = seated.program_ids.length >= MAX_PROGRAM_BUTTONS;
 
@@ -202,14 +218,16 @@ export function DeskSection() {
       title="Desk"
       description="Small nudges that never start the belt."
     >
-      <Toggle
-        label="Idle nudge"
-        tone="yellow"
-        checked={seated.enabled}
-        onChange={(enabled) => saveSeated({ enabled })}
-        description={`After a stretch of ${pc} use without walking, a HUD card offers a walk or a program.`}
-        hint="A program picked on the card waits until the treadmill connects. Only the time of the last input is kept, never which keys."
-      />
+      <div>
+        <Toggle
+          label={systemLabel("ATROPHY_WARNING")}
+          checked={seated.enabled}
+          onChange={(enabled) => void nudgeAction.run(() => saveSeated({ enabled }))}
+          description={`After a stretch of ${pc} use without walking, a HUD card offers a walk or a program.`}
+          hint="Only the time of the last input is kept, never which keys."
+        />
+        <ActionStatus pending={nudgeAction.pending} error={nudgeAction.error} className="mt-1" />
+      </div>
       {seated.enabled && (
         <>
           <NumberField
@@ -219,14 +237,19 @@ export function DeskSection() {
             max={L.seated_minutes.max}
             step={5}
             value={seated.minutes}
-            hint={`${L.seated_minutes.min} to ${L.seated_minutes.max}. Walking for 2 minutes, or being away from the ${pc} for 15, starts the count again.`}
+            hint={`${L.seated_minutes.min} to ${L.seated_minutes.max}. Walking for 2 minutes or being away from the ${pc} for 15 starts the count again.`}
             onCommit={(minutes) => saveSeated({ minutes })}
           />
           <div>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <Label>Programs on the card</Label>
               {seated.custom_programs && (
-                <GhostButton onClick={() => saveSeated({ program_ids: null })}>Use the first three</GhostButton>
+                <GhostButton
+                  disabled={chipsAction.pending}
+                  onClick={() => void chipsAction.run(() => saveSeated({ program_ids: null }))}
+                >
+                  Use the first three
+                </GhostButton>
               )}
             </div>
             {programs.length === 0 ? (
@@ -242,14 +265,14 @@ export function DeskSection() {
                       <button
                         type="button"
                         aria-pressed={picked}
-                        disabled={!picked && full}
+                        disabled={(!picked && full) || chipsAction.pending}
                         onClick={() => toggleProgram(p.id)}
                         className={cx(
                           "max-w-full break-words rounded border px-2.5 py-1.5 text-left font-mono text-[11px] transition-colors",
                           "disabled:cursor-default disabled:opacity-35",
                           picked
-                            ? "border-neon-yellow bg-neon-yellow/15 text-neon-yellow"
-                            : "border-white/15 text-white/70 hover:border-neon-yellow/50",
+                            ? "border-neon-cyan bg-neon-cyan/15 text-neon-cyan"
+                            : "border-white/15 text-white/70 hover:border-neon-cyan/50",
                         )}
                       >
                         {p.name}
@@ -259,6 +282,8 @@ export function DeskSection() {
                 })}
               </ul>
             )}
+            <ActionStatus pending={chipsAction.pending} error={chipsAction.error} className="mt-1.5" />
+            <Hint className="mt-1.5">A program picked on the card waits until the treadmill connects.</Hint>
             <Hint className="mt-1.5">
               Up to {MAX_PROGRAM_BUTTONS}.{" "}
               {seated.custom_programs
@@ -272,6 +297,10 @@ export function DeskSection() {
       <div className="border-t border-white/10" />
 
       <EyeBreakSettings />
+
+      <div className="border-t border-white/10" />
+
+      <ProgramTonesSetting />
 
       <div className="border-t border-white/10" />
 
@@ -292,14 +321,19 @@ export function DeskSection() {
 
       {/* Slow down on calls needs the OS's list of apps using the microphone (`platform.microphone`). */}
       {s.platform.microphone && (
-        <Toggle
-          label="Slow down on calls"
-          tone="yellow"
-          checked={calls.enabled}
-          onChange={(enabled) => saveCalls({ enabled })}
-          description="While an app uses the microphone, a running belt eases to the quiet speed until 10 seconds after the call."
-          hint="The belt never speeds up for a call, and a speed changed during the call stays."
-        />
+        <div>
+          <Toggle
+            label="Slow down on calls"
+            checked={calls.enabled}
+            onChange={(enabled) => void callsAction.run(() => saveCalls({ enabled }))}
+            description="A running belt eases to the quiet speed while an app uses the microphone."
+            hint={[
+              "The belt stays slow until 10 seconds after the call.",
+              "The belt never speeds up for a call and keeps a speed changed during the call.",
+            ]}
+          />
+          <ActionStatus pending={callsAction.pending} error={callsAction.error} className="mt-1" />
+        </div>
       )}
       {/* The HUD's QUIET button (Quiet now) uses the same speed, with or without call detection. */}
       <NumberField
@@ -309,7 +343,10 @@ export function DeskSection() {
         max={L.calls_quiet_kmh.max}
         step={0.1}
         value={calls.quiet_kmh}
-        hint={`${s.platform.microphone ? "Calls and QUIET on the HUD ease" : "QUIET on the HUD eases"} a running belt to this speed. A running program eases for the current step only, and the saved program stays as it was.`}
+        hint={[
+          `${s.platform.microphone ? "Calls and QUIET on the HUD ease" : "QUIET on the HUD eases"} a running belt to the quiet speed.`,
+          "A running program eases for the current step only.",
+        ]}
         snap={(kmh) => roundSpeed(snapToDeck(kmh, s.deck))}
         onCommit={(quiet_kmh) => saveCalls({ quiet_kmh: Math.round(quiet_kmh * 100) / 100 })}
       />
@@ -321,8 +358,8 @@ export function DeskSection() {
               ? "Microphone in use."
               : "Microphone is free."}{" "}
           {s.platform.os === "macos"
-            ? "This asks macOS which apps are taking microphone input; no audio is recorded or heard."
-            : "This uses the list Windows keeps of apps using the microphone; no audio is recorded or heard."}
+            ? "Asks macOS which apps take microphone input and never records or hears audio."
+            : "Reads the list Windows keeps of apps using the microphone and never records or hears audio."}
         </Hint>
       )}
     </Section>

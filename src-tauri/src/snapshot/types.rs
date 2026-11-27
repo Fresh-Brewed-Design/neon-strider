@@ -54,6 +54,12 @@ pub struct AppSnapshot {
     /// How the HUD panel shows right now: in full, as a strip or not at all
     /// (`hud.idle_mode` while the belt is still; see `snapshot/stasis.rs`).
     pub hud_view: HudView,
+    /// A program's wait for GO holds the whole panel (its first 30 s,
+    /// `stasis::GO_HOLD`): the HUD keeps minify off meanwhile.
+    pub hud_go_hold: bool,
+    /// The one card the HUD shows now, picked by rank from the cards due
+    /// (`card_queue.rs`, #421). The HUD renders this one and no other.
+    pub hud_card: crate::snapshot::card_queue::HudCard,
     /// Displays the HUD can be placed on. Refreshed every few seconds, not per tick.
     pub hud_monitors: Vec<HudMonitor>,
 
@@ -238,6 +244,10 @@ pub struct ConnectionSnapshot {
     /// How the last Engage went; a failure says what to do. None while one is
     /// pending, and cleared once the deck's status changes (it woke up).
     pub start_result: Option<crate::link::StartResult>,
+    /// Which press `start_pending` and `start_result` belong to: Engage, a
+    /// program's GO or the sit-too-long card's ENGAGE, so each shows under the
+    /// control that was pressed.
+    pub start_press: crate::link::StartPress,
     /// When the HUD asked the dashboard to open its connect dialog (epoch ms);
     /// the dashboard opens it once per new value.
     #[ts(type = "number | null")]
@@ -280,6 +290,9 @@ pub struct DeckSnapshot {
     /// The deck changed or refused the last target ("asked X, got Y"), for a
     /// few seconds; the HUD shows it under the speed controls.
     pub target_note: Option<String>,
+    /// Plain words under `target_note`: what the deck did and, where known,
+    /// the limit it met (its top or slowest speed, its top tilt).
+    pub target_note_hint: Option<String>,
     /// The speeds the controls may offer, slowest first: every speed from
     /// the floor to the top that DECK_PROFILE does not know the deck skips.
     /// Empty until the deck has answered a target, and the controls then
@@ -708,7 +721,7 @@ pub enum Command {
     /// The user dismissed the last-week card; remembered per ISO week.
     WeeklySummaryAck,
 
-    // ---- Idle nudge (STASIS_ALERT) ----
+    // ---- Idle nudge (ATROPHY_WARNING) ----
     /// Idle nudge settings: on or off, minutes 15 to 240, and up to three
     /// programs for the card's buttons (`None` or empty = the first three saved).
     SeatedSetConfig {
@@ -722,7 +735,8 @@ pub enum Command {
     SeatedStart {
         id: u32,
     },
-    /// SNOOZE 15 MIN on the card: hide it for 15 minutes; the idle time is kept.
+    /// SNOOZE on the card: hide it for 15 minutes, 30 the second time, then 60
+    /// (`seated.snooze_minutes`); the idle time is kept.
     SeatedSnooze,
 
     // ---- Eye breaks (OCULAR_IMPLANT) ----
@@ -805,7 +819,7 @@ pub enum Command {
     UpdateInstall,
     /// "Not now": hide the offer for this version until the next daily check.
     UpdateDismiss,
-    /// INSTALL (`open`) or LATER on the HUD's update card. INSTALL opens the
+    /// NOTES (`open`) or LATER on the HUD's update card. NOTES opens the
     /// dashboard on the notes; it never installs by itself.
     UpdateHudCard {
         open: bool,
@@ -1017,6 +1031,11 @@ pub enum Command {
     OpenPermissionSettings {
         permission: crate::platform::PermissionKind,
     },
+
+    // ---- DESK_SYNC ----
+    /// History's DESK_SYNC card played today's light switching on
+    /// (`DeskSync::today_lit`), so no window plays it again today.
+    DeskSyncLightShown,
 }
 
 #[cfg(test)]

@@ -17,13 +17,23 @@ export function updateBusy(u: UpdateSnapshot): boolean {
   return u.status.state === "checking" || u.status.state === "downloading" || u.status.state === "installing";
 }
 
+/**
+ * The quiet line beside Install while "Install automatically" is on: when the
+ * offer goes in by itself. Rust installs at most once a local day
+ * (`update::auto_install`), so after today's install it says tomorrow.
+ */
+export function autoInstallTag(u: UpdateSnapshot): string | null {
+  if (!u.auto_install || u.dismissed || updateBusy(u)) return null;
+  return u.auto_installed_today ? "Installs tomorrow" : "Installs when idle";
+}
+
 /** The spinner text while an install runs, or null. */
 export function installProgress(u: UpdateSnapshot): string | null {
   const s = u.status;
   if (s.state === "downloading") {
     return s.percent === null ? "Downloading…" : `Downloading ${s.percent}%…`;
   }
-  if (s.state === "installing") return "Installing. Neon Strider closes and opens again by itself.";
+  if (s.state === "installing") return "Installing: Neon Strider closes and opens again by itself.";
   return null;
 }
 

@@ -37,12 +37,39 @@ describe("EyeBreakCard", () => {
     expect(screen.queryByText(/The belt will pause/)).toBeNull();
   });
 
+  it("says a break moved earlier to fit the program's rest", () => {
+    render(
+      <EyeBreakCard snapshot={withEye({ phase: "upcoming", remaining_s: 52, at_rest: true, moved_to_rest: true })} />,
+    );
+    expect(screen.getByText("IMPLANT COOLDOWN IN 52 S")).toBeInTheDocument();
+    expect(
+      screen.getByText("Finish what you are typing, then look away. The break moved earlier to fit the program's rest."),
+    ).toBeInTheDocument();
+  });
+
+  it("shows a break waiting for the walk to end, with the time before the pause", async () => {
+    const s = withEye({ phase: "waiting", remaining_s: 492 });
+    s.deck.status = "Running";
+    render(<EyeBreakCard snapshot={s} />);
+    expect(screen.getByText("OCULAR_IMPLANT // DEFERRED")).toBeInTheDocument();
+    expect(screen.getByText("The break starts once the belt stops.")).toBeInTheDocument();
+    expect(screen.getByText("The belt pauses for the break in 8:12.")).toBeInTheDocument();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "SKIP BREAK" })));
+    expect(sent()).toEqual([{ command: { type: "eye_break_skip" } }]);
+  });
+
+  it("says no tones play while the microphone is in use", () => {
+    render(<EyeBreakCard snapshot={withEye({ phase: "break", remaining_s: 30, sound: true, silent: true })} />);
+    expect(screen.getByText("No tones while the microphone is on.")).toBeInTheDocument();
+    expect(screen.queryByText("Two rising tones end the break.")).toBeNull();
+  });
+
   it("counts down a break and SKIP sends one command", async () => {
     render(<EyeBreakCard snapshot={withEye({ phase: "break", remaining_s: 72 })} />);
     expect(screen.getByText("OCULAR_IMPLANT // COOLDOWN")).toBeInTheDocument();
     expect(screen.getByText("72 S")).toBeInTheDocument();
     expect(screen.getByText("Look away from the screen.")).toBeInTheDocument();
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "SKIP" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "SKIP BREAK" })));
     expect(sent()).toEqual([{ command: { type: "eye_break_skip" } }]);
   });
 
@@ -60,16 +87,33 @@ describe("EyeBreakCard", () => {
     expect(screen.getByText("Open your eyes and look far away. The belt is paused.")).toBeInTheDocument();
   });
 
+  it("says the end tone ends the break only while tones are on", () => {
+    const { rerender } = render(<EyeBreakCard snapshot={withEye({ phase: "break", remaining_s: 30, sound: true })} />);
+    expect(screen.getByText("Two rising tones end the break.")).toBeInTheDocument();
+    rerender(<EyeBreakCard snapshot={withEye({ phase: "break", remaining_s: 30, sound: false })} />);
+    expect(screen.queryByText("Two rising tones end the break.")).toBeNull();
+  });
+
   it("says the belt is paused while the break holds it", () => {
     render(<EyeBreakCard snapshot={withEye({ phase: "break", remaining_s: 30, holds_belt: true })} />);
     expect(screen.getByText("Look away from the screen. The belt is paused.")).toBeInTheDocument();
   });
 
+  it("says GO when a program is paused", () => {
+    const s = withEye({ phase: "complete", holds_belt: true });
+    s.active_program = { ...structuredClone(mock.active_program!), phase: "walking", paused: true, wait: null };
+    render(<EyeBreakCard snapshot={s} />);
+    expect(screen.getByText("The belt stays paused until you press GO.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "GO" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "RE-JACK" })).toBeNull();
+  });
+
   it("asks before the belt moves again after a break", async () => {
     render(<EyeBreakCard snapshot={withEye({ phase: "complete", holds_belt: true })} />);
     expect(screen.getByText("OCULAR_IMPLANT // RECALIBRATED")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "SKIP" })).toBeNull();
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "RESUME" })));
+    expect(screen.queryByRole("button", { name: "SKIP BREAK" })).toBeNull();
+    expect(screen.getByText("The belt stays paused until you press RE-JACK.")).toBeInTheDocument();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "RE-JACK" })));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "STAY STILL" })));
     expect(sent()).toEqual([
       { command: { type: "eye_break_resume" } },

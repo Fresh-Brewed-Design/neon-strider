@@ -1,0 +1,2 @@
+- When GO on the Live program card fails to start the treadmill, the reason now shows under GO instead of under Engage.
+- The sit-too-long card on the HUD shows a failed start only for its own ENGAGE. The HUD panel no longer shows the same failure a second time.

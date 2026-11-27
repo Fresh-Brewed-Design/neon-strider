@@ -77,8 +77,8 @@ function GearPicker({ strava }: { strava: StravaSnapshot }) {
       />
       <Hint>
         {strava.needs_reconnect
-          ? "Strava needs two more permissions (shoes, duplicate check). Disconnect, connect again and keep every box ticked."
-          : "The chosen shoes go on every upload, and each pair shows Strava's logged distance."}
+          ? "Strava needs two more permissions (shoes, duplicate check): disconnect, connect again and keep every box ticked."
+          : "The chosen shoes go on every upload and each pair shows Strava's logged distance."}
       </Hint>
     </div>
   );
@@ -103,7 +103,6 @@ function MuteChoice({ strava }: { strava: StravaSnapshot }) {
       <Label>Home feed</Label>
       <ChoiceGroup
         label="Mute from home feed"
-        tone="magenta"
         options={MUTE_CHOICES}
         value={strava.mute_mode}
         onChange={(mode) =>

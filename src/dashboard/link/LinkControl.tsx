@@ -5,7 +5,9 @@ import type { LinkError, LinkErrorKind } from "../../ipc";
 import { linkView } from "../../state/linkStatus";
 import { subscribeAppSnapshot, useAppSnapshot } from "../../state/useAppState";
 import { readPref, writePref } from "../localPrefs";
+import { PLAIN } from "../../names";
 import { StatusPill } from "../StatusPill";
+import { PlainLine } from "../ui";
 import { OPEN_LINK_EVENT } from "../util";
 import { BleDiscoveryModal, type BleDevice, type ConnectFailure } from "./BleDiscoveryModal";
 import { CONNECT_SHOWN_KEY, isNewConnectRequest } from "./connectRequest";
@@ -81,6 +83,7 @@ export function LinkControl() {
   };
 
   const view = conn ? linkView(conn, snapshot?.platform.settings) : null;
+  const sub = view ? view.sub : PLAIN.NO_CARRIER;
   const adapterOff =
     scanError?.kind === "adapter_off" ||
     scanError?.kind === "adapter_missing" ||
@@ -94,14 +97,18 @@ export function LinkControl() {
         title={view?.title ?? "Find and connect a treadmill"}
         className="dash-rail-item flex w-full items-center gap-2 rounded px-2.5 py-2 text-left transition-colors hover:bg-white/5"
       >
-        <StatusPill
-          bare
-          icon="bluetooth"
-          tone={view?.tone ?? "problem"}
-          label={view?.label ?? "OFFLINE"}
-          className="tracking-[0.12em]"
-          labelClassName="dash-rail-text"
-        />
+        <span className="flex min-w-0 flex-col">
+          <StatusPill
+            bare
+            icon="bluetooth"
+            tone={view?.tone ?? "problem"}
+            label={view?.label ?? "NO_CARRIER"}
+            className="tracking-[0.12em]"
+            labelClassName="dash-rail-text"
+            toneIconClassName="dash-rail-state"
+          />
+          {sub && <PlainLine text={sub} className="dash-rail-text pl-5" />}
+        </span>
         {conn?.simulated && (
           <span
             className="ml-auto shrink-0 rounded border border-neon-yellow/60 px-1 text-[11px] font-bold tracking-[0.12em] text-neon-yellow"
