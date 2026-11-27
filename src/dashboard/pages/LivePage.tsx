@@ -174,7 +174,7 @@ type NoteFrom = "speed" | "tilt";
 
 /**
  * The Live page. `onCalibrate` opens System, Calibration from the first-connect offer, which
- * shows here under the controls so its arrival and SKIP never move them.
+ * shows here in the stats' place, under the controls, so its arrival and SKIP never move them.
  */
 export function LivePage({ onCalibrate }: { onCalibrate?: () => void } = {}) {
   const s = useAppSnapshot();
@@ -269,11 +269,12 @@ export function LivePage({ onCalibrate }: { onCalibrate?: () => void } = {}) {
 
         <ActiveProgramCard stepMap={{ open: mapOpen, onToggle: toggleMap }} />
 
-        {onCalibrate && <CalibrateOffer onCalibrate={onCalibrate} />}
-
-        {/* STEP_MAP takes the stats' place and the height left under the program card;
-            time, distance and today's distance stay in its header. */}
-        {s.active_program && mapOpen ? (
+        {/* The first-connect offer stands in the stats' place (compact, no taller than them), so its
+            arrival and SKIP move nothing above it and the page keeps its height; the stats or
+            STEP_MAP come back at SKIP. */}
+        {onCalibrate && s.calibration.offer ? (
+          <CalibrateOffer compact onCalibrate={onCalibrate} />
+        ) : s.active_program && mapOpen ? (
           <StepMap a={s.active_program} readout={<WalkReadout s={s} />} />
         ) : (
           // At most three tiles a row (each a third of the row, less the two 0.375rem gaps), as at
