@@ -7,9 +7,11 @@ import { SessionRepository } from "../../services/db/repositories/sessionReposit
 import { mergeSessions, type MergedSession } from "../../services/sessionMerge";
 import { useAppState } from "../../state/useAppState";
 import { useTreadmillStore } from "../../store/treadmillStore";
+import { DailyUplink } from "../DailyUplink";
+import { useDailyUplink } from "../dailyUplinkText";
 import { Calendar } from "../history/Calendar";
 import { DeskSyncPanel } from "../history/DeskSync";
-import { groupByDay, RANGES, visibleSessions, type Range } from "../history/sessions";
+import { groupByDay, RANGES, todayKey, visibleSessions, type Range } from "../history/sessions";
 import { SessionRow } from "../history/SessionRow";
 import { TotalsPanel, WeeklyPanel } from "../history/Summary";
 import { TcxModal } from "../history/TcxModal";
@@ -42,6 +44,8 @@ export function HistoryPage() {
   const wallClock = useAppState((s) => s.wall_clock);
   const todayTimeline = useAppState((s) => s.today_timeline);
   const savedIds = useAppState((s) => s.strava.saved_session_ids) ?? NO_IDS;
+  const strava = useAppState((s) => s.strava);
+  const uplink = useDailyUplink(strava);
 
   const [reloads, setReloads] = useState(0);
   const [range, setRange] = useState<Range>("7d");
@@ -191,7 +195,15 @@ export function HistoryPage() {
         ) : (
           groups.map((g) => (
             <section key={g.key} className="flex flex-col gap-1.5">
-              <h2 className="px-1 font-mono text-xs font-bold tracking-[0.08em] text-white/60">{g.heading}</h2>
+              {/* Today's heading carries DAILY_UPLINK while a Strava account is linked, like the rows' upload buttons. */}
+              {strava?.connected && g.key === todayKey() ? (
+                <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1 px-1">
+                  <h2 className="pt-1.5 font-mono text-xs font-bold tracking-[0.08em] text-white/60">{g.heading}</h2>
+                  <DailyUplink strava={strava} action={uplink} compact onDone={reload} />
+                </div>
+              ) : (
+                <h2 className="px-1 font-mono text-xs font-bold tracking-[0.08em] text-white/60">{g.heading}</h2>
+              )}
               {g.items.map((s) => {
                 const row = s.id ?? 0;
                 const up = uploads.rowUpload(s, row);

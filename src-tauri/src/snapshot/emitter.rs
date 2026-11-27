@@ -58,7 +58,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     let hud = hud::hud_config();
     let hud_monitors = hud::monitors(&hud);
     let daily = daily_base();
-    let strava = strava::snapshot();
+    let mut strava = strava::snapshot();
     let weekly = weekly::snapshot();
     let eye_break = eyebreak::snapshot();
     let program_tones = program_tones::snapshot();
@@ -108,6 +108,10 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
         } else {
             (0.0, 0)
         };
+        // DAILY_UPLINK waits for a running walk at once, not at its next refresh.
+        if live_open {
+            strava::hold_today_while_walking(&mut strava.today);
+        }
         let deck_silent = state
             .last_frame_at
             .is_some_and(|t| t.elapsed() >= stasis::SILENCE);

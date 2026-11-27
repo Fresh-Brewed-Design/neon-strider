@@ -121,3 +121,33 @@ describe("History beyond the listed months", () => {
     expect(screen.queryByTestId("history-older")).toBeNull();
   });
 });
+
+describe("DAILY_UPLINK on History", () => {
+  // Today even just after midnight.
+  const TODAY_START = Math.max(new Date().setHours(0, 0, 30, 0), Date.now() - 60_000 * 45);
+  function today(connected: boolean) {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "history_sessions") return [walk(7, TODAY_START), ...RECENT];
+      if (cmd === "history_stats") return stats(OLD_START);
+      return null;
+    });
+    const s = structuredClone(mock);
+    s.strava.connected = connected;
+    s.strava.today = { walks: 1, distance_km: 2, on_strava: 0, blocked: null, note: null };
+    current = s;
+    return render(<HistoryPage />);
+  }
+
+  it("sits on today's heading while Strava is linked", async () => {
+    today(true);
+    const uplink = await screen.findByTestId("daily-uplink");
+    expect(within(uplink).getByRole("button", { name: /DAILY_UPLINK/ })).toBeEnabled();
+    expect(screen.getAllByTestId("daily-uplink")).toHaveLength(1);
+  });
+
+  it("stays off History without a Strava account", async () => {
+    today(false);
+    await screen.findAllByText(formatDayHeading(TODAY_START));
+    expect(screen.queryByTestId("daily-uplink")).toBeNull();
+  });
+});

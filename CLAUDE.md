@@ -41,7 +41,7 @@ older `hud_minify_hotkey` setting until the first save). `platform::set_shortcut
 (the Windows hook's atomic table, or macOS Carbon hot keys, where `taken_shortcuts` lists the ones
 another app holds); `shortcuts_recording` pauses them while the dashboard records a key.
 Strava is Rust-owned too (`strava.rs` plus its `strava/` submodules: `settings`, `live`, `auth`,
-`api`, `upload`, `worker` for the background auto-sync, and `fallback` for the manual-upload TCX;
+`api`, `upload`, `worker` for the background auto-sync, `fallback` for the manual-upload TCX, and `today` for DAILY_UPLINK, `strava_upload_today`: today's walks not on Strava yet sent now as one activity by the daily rollup's rules, `strava_plan::plan_today`, `snapshot.strava.today`;
 `strava_plan.rs` pure logic, `strava_template.rs` title/description templates, whose fields cover every walk stat and collapse with their label and one separator when a walk has no value; `sessions.program_name`, migration 15, holds the programs a walk ran):
 windows dispatch `strava_*` commands and read `snapshot.strava`; tokens never reach JS. The client secret and
 tokens live in Windows Credential Manager (the Keychain on macOS; `secrets.rs`): a save the store refuses fails with
@@ -280,6 +280,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?status=9|countdown|stopping|standby`: an unknown status byte, the 3-2-1, the belt winding down, or the deck asleep (with `?program=...` the program stays and its GO is refused under GO)
 - `?stepsweep`: the running program moves to its next step 3 s after load and every 6 s after, so the HUD scanline sweeps with the step's name; with `?program=interval` Interval walk's names (WARM_UP, INTERVAL 3/5)
 - `?strava=authorizing|uploading|processing|checking|backoff|error|paused`: each Strava state
+- `?stravatoday=ready|mixed|running|none|fail`: DAILY_UPLINK (System -> Strava, and History's Today heading) with two walks of today to send, one more already on Strava (its note), a walk running, no walk today, or the upload failing; no flag follows the mock History (today already on Strava)
 - `?stridefit=4.5`: STRIDE_FIT set to 4.5 km/h in System, Calibration, so the program editor flags Brisk's 5.0 km/h step and Interval walk's 6.0 km/h steps; the belt runs at 5.0 km/h, so the Live speed slider shows the FIT mark and the HUD its ABOVE STRIDE_FIT line; Programs offers FIT_TO_DECK on Brisk, VO2 max and Interval walk
 - `?textscale=121`: the Windows text size setting, any whole percent from 100 to 225, as the page zoom WebView2 applies for it (dev previews only; size the HUD preview window to 340 px wide)
 - `?toasts`: the HUD toasts; `=deck` for the deck-start GO toast

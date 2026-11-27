@@ -435,6 +435,7 @@ mod tests {
             title_template: String::new(),
             rollup_title_template: String::new(),
             description_template: String::new(),
+            today: Default::default(),
         }
     }
 

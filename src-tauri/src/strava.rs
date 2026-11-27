@@ -12,6 +12,7 @@
 //! - `api`: the REST calls and running them with a valid token
 //! - `upload`: uploading sessions as one activity, and the shoe list
 //! - `worker`: the background auto-sync pass
+//! - `today`: DAILY_UPLINK, today's walks uploaded now as one activity
 //! - `fallback`: "Save for Strava", the TCX file for a manual upload
 //!
 //! The client secret and the token set live in Windows Credential Manager
@@ -23,6 +24,7 @@ mod auth;
 mod fallback;
 mod live;
 mod settings;
+mod today;
 mod upload;
 mod worker;
 
@@ -33,6 +35,7 @@ pub use settings::{
     init, open_api_settings, set_auto_sync, set_credentials, set_daily_rollup, set_gear, set_mute,
     set_templates,
 };
+pub use today::{hold_while_walking as hold_today_while_walking, upload_today};
 pub use upload::{refresh_gear_command, upload_manual};
 pub use worker::{notify_session_ended, retry_now, spawn_worker, sync_now};
 

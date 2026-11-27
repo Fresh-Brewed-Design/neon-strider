@@ -236,9 +236,20 @@ fn report_failure(app: &AppHandle, item: &Work, error: &str) {
     );
 }
 
+/// Re-read today's walks for DAILY_UPLINK, off the async runtime.
+async fn refresh_today(app: &AppHandle) {
+    let app = app.clone();
+    let _ = super::blocking(move || {
+        super::today::refresh(&app);
+        Ok(())
+    })
+    .await;
+}
+
 /// Start the worker: a pass every minute, and one shortly after a session ends.
 pub fn spawn_worker(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
+        refresh_today(&app).await;
         let mut tick = tokio::time::interval_at(
             tokio::time::Instant::now() + FIRST_PASS_DELAY,
             PASS_INTERVAL,
@@ -255,6 +266,8 @@ pub fn spawn_worker(app: AppHandle) {
             // Its own task, so a panic in one pass cannot end the worker.
             let app_c = app.clone();
             let _ = tauri::async_runtime::spawn(async move { run_pass(&app_c, None).await }).await;
+            // Each minute also picks up a new day, a deleted walk or a walk begun.
+            refresh_today(&app).await;
         }
     });
 }

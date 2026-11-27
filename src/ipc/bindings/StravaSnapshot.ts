@@ -3,6 +3,7 @@ import type { MuteMode } from "./MuteMode";
 import type { StravaActivity } from "./StravaActivity";
 import type { StravaGear } from "./StravaGear";
 import type { StravaResult } from "./StravaResult";
+import type { StravaToday } from "./StravaToday";
 
 /**
  * Strava as the windows see it. Tokens and the client secret never appear here.
@@ -69,4 +70,8 @@ mute_under_minutes: number,
 /**
  * Templates in effect (a blank saved template shows its default).
  */
-title_template: string, rollup_title_template: string, description_template: string, };
+title_template: string, rollup_title_template: string, description_template: string, 
+/**
+ * DAILY_UPLINK: today's walks not on Strava yet, to upload now as one activity.
+ */
+today: StravaToday, };

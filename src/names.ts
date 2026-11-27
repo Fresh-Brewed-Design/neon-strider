@@ -24,6 +24,7 @@ export const PLAIN = {
   STRIDE_FIT: "stride limit",
   ATROPHY_WARNING: "sit-too-long reminder",
   NO_CARRIER: "treadmill offline",
+  DAILY_UPLINK: "today as one Strava activity",
 } as const;
 
 export type Codename = keyof typeof PLAIN;
