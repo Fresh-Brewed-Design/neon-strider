@@ -28,6 +28,8 @@ export interface StatWidget {
   target?: (s: AppSnapshot) => PulseTarget | null;
   /** A short line under the value; null shows none. */
   detail?: (s: AppSnapshot) => string | null;
+  /** False keeps `detail` off the HUD panel's stat cell, where its line would make every panel taller. */
+  panelDetail?: boolean;
   /** The HUD keeps a zone line's room under the value while true, so a zone step coming or going moves nothing. */
   reserveZone?: (s: AppSnapshot) => boolean;
 }
@@ -94,7 +96,9 @@ export const STAT_WIDGETS: StatWidget[] = [
     plain: PLAIN.DAILY_TOTAL,
     accent: "green",
     read: (s) => ({ value: km(s.session.daily_distance_m), unit: "KM" }),
+    // On the Live tile, the HUD strip and STEP_MAP's readout; the HUD panel keeps its height.
     detail: (s) => todayTimeDetail(s),
+    panelDetail: false,
   },
   {
     id: "NEURAL",

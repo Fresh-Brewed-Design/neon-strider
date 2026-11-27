@@ -95,6 +95,10 @@ describe("Live page STEP_MAP", () => {
     const tile = screen.getByText("DAILY_TOTAL").closest("[class*='@container']")!;
     expect(tile).toHaveTextContent("6.20KM");
     expect(tile).toHaveTextContent("2h 14m");
+    // The time can't break, so on a narrow tile it drops under the km; DESK TIME WALKED's line breaks inside instead.
+    expect(screen.getByText("2h 14m").parentElement).toHaveClass("flex-wrap");
+    const walked = screen.getByText("DESK TIME WALKED").closest("[class*='@container']")!;
+    expect(walked.querySelector(".flex-wrap")).toBeNull();
   });
 
   it("puts each stat's plain line under its codename", () => {

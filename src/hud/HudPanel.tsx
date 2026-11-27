@@ -24,7 +24,8 @@ export function StatCell({ id, snapshot }: { id: HudWidget; snapshot: AppSnapsho
   const spark = def.spark?.(snapshot);
   const zone = def.zone?.(snapshot);
   const target = def.target?.(snapshot);
-  const detail = def.detail?.(snapshot);
+  const hasDetail = def.detail !== undefined && def.panelDetail !== false;
+  const detail = hasDetail ? def.detail?.(snapshot) : null;
   return (
     <div className={`hud-stat accent-${def.accent}`}>
       <span className="hud-label">{def.label}</span>
@@ -42,7 +43,7 @@ export function StatCell({ id, snapshot }: { id: HudWidget; snapshot: AppSnapsho
           <span className="hud-sub">{BLANK}</span>
         </div>
       )}
-      {def.detail && (
+      {hasDetail && (
         <span className={`hud-sub hud-stat-detail${detail ? "" : " hud-reserve"}`} aria-hidden={detail ? undefined : true}>
           {detail ?? BLANK}
         </span>

@@ -261,6 +261,8 @@ export function LivePage({ onCalibrate }: { onCalibrate?: () => void } = {}) {
               const zone = w.zone?.(s);
               const target = w.target?.(s);
               const detail = w.detail?.(s);
+              // A detail with no space to break at (today's walking time) drops under the value when the tile is too narrow.
+              const unbreakable = detail != null && !detail.includes(" ");
               // PULSE_RATE with a sensor takes two tiles, so its chart sits
               // beside the bpm and the zone beside the name, and the page keeps
               // the height it has without one. It is the last stat, so its row
@@ -281,9 +283,8 @@ export function LivePage({ onCalibrate }: { onCalibrate?: () => void } = {}) {
                       <PinToggle widget={w.id} pinned={pinned.has(w.id)} />
                     </div>
                   </div>
-                  {/* A detail drops under the value when the tile is too narrow for both (large text).
-                      Offline, the reading is the treadmill's last one, dimmed as on the HUD. */}
-                  <div className={cx("flex items-center gap-x-3 gap-y-0.5", detail && "flex-wrap", offline && "opacity-45")}>
+                  {/* Offline, the reading is the treadmill's last one, dimmed as on the HUD. */}
+                  <div className={cx("flex items-center gap-x-3", unbreakable && "flex-wrap", offline && "opacity-45")}>
                     <span className={cx("shrink-0 font-digital text-base leading-5 tracking-wider", TONE_TEXT[w.accent])}>
                       {value}
                       {unit && <span className="ml-1 font-mono text-xs text-white/60">{unit}</span>}
