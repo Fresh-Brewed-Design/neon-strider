@@ -25,6 +25,12 @@ describe("Transport belt buttons", () => {
     expect(screen.getByRole("button", { name: "Stasis pause belt" })).toBeInTheDocument();
   });
 
+  it("keeps Re-jack's plain line while the STASIS clock counts (Velocity has the clock)", () => {
+    show((s) => (s.deck = { ...s.deck, status: "Paused", speed_kmh: 0, paused_for_s: 3909 }));
+    expect(screen.getByRole("button", { name: "Re-jack resume belt" })).toBeInTheDocument();
+    expect(screen.queryByText("1h05")).toBeNull();
+  });
+
   it("reads GO with resume on a paused program", () => {
     show((s) => {
       s.deck = { ...s.deck, status: "Paused", speed_kmh: 0 };

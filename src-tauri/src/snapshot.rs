@@ -183,6 +183,9 @@ fn deck_snapshot(state: &OrchestratorState, max_incline_level: u8) -> DeckSnapsh
             target_speed,
             stride_fit_kmh,
         ),
+        paused_for_s: state
+            .paused_for()
+            .map(|d| u32::try_from(d.as_secs()).unwrap_or(u32::MAX)),
     }
 }
 
@@ -575,6 +578,36 @@ mod tests {
         crate::calibration::stride_fit::set_for_test("TEST", Some(top + 5.0));
         assert_eq!(snap(&state, 0.0, 15).deck.stride_fit_kmh, Some(top));
         crate::calibration::stride_fit::set_for_test("TEST", None);
+    }
+
+    #[test]
+    fn paused_for_s_is_the_stasis_clock() {
+        use crate::protocol::MachineStatus;
+        let t0 = std::time::Instant::now();
+        let mut state = OrchestratorState::default();
+        state.set_test_now(t0);
+        let frame = |status| crate::protocol::Telemetry {
+            status,
+            status_code: 2,
+            status_known: true,
+            speed_kmh: 0.0,
+            incline: 0,
+            time_sec: 0,
+            distance_km: 0.0,
+            calories: 0.0,
+            steps: 0,
+        };
+        state.take_status(&frame(MachineStatus::Running));
+        assert_eq!(snap(&state, 0.0, 15).deck.paused_for_s, None, "running");
+        state.take_status(&frame(MachineStatus::Paused));
+        state.set_test_now(t0 + std::time::Duration::from_secs(3725));
+        state.take_status(&frame(MachineStatus::Paused));
+        assert_eq!(snap(&state, 0.0, 15).deck.paused_for_s, Some(3725));
+        state.take_status(&frame(MachineStatus::Running));
+        assert_eq!(snap(&state, 0.0, 15).deck.paused_for_s, None, "resumed");
+        state.take_status(&frame(MachineStatus::Paused));
+        state.take_status(&frame(MachineStatus::Stopped));
+        assert_eq!(snap(&state, 0.0, 15).deck.paused_for_s, None, "stopped");
     }
 
     #[test]

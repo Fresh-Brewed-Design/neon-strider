@@ -156,6 +156,27 @@ describe("Live page QUIET", () => {
   });
 });
 
+describe("Live page STASIS clock", () => {
+  it("shows how long the belt has been paused beside Velocity's pin, never on Re-jack", () => {
+    current!.deck = { ...current!.deck, status: "Paused", speed_kmh: 0, paused_for_s: 3909 };
+    current!.active_program = null;
+    render(<LivePage />);
+    const clock = screen.getByRole("status", { name: "STASIS 1h05" });
+    expect(clock).toHaveAttribute("title", "Time since the belt paused.");
+    // In Velocity's title row, beside its pin.
+    const row = clock.parentElement!;
+    expect(within(row).getByRole("button", { name: /HUD/ })).toBeInTheDocument();
+    expect(row.parentElement).toHaveTextContent(/^Velocity/);
+    expect(screen.getByRole("button", { name: "Re-jack resume belt" })).toBeInTheDocument();
+  });
+
+  it("shows nothing while the belt moves", () => {
+    current!.deck = { ...current!.deck, status: "Running", speed_kmh: 3, paused_for_s: null };
+    render(<LivePage />);
+    expect(screen.queryByTestId("live-stasis-clock")).toBeNull();
+  });
+});
+
 describe("Live page maintenance banner", () => {
   it("sits in the header, so the page keeps its height at 760x600", () => {
     current!.maintenance.due = true;

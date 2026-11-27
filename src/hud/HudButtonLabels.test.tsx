@@ -62,6 +62,12 @@ describe("HUD belt buttons", () => {
     });
     expect(engageSub(go)).toBe("resume program");
     expect(engageTitle(go)).toBe("Resume the program.");
+    const clocked = panel((s) => {
+      s.deck.status = "Paused";
+      s.deck.paused_for_s = 200;
+    });
+    // The STASIS clock has its own place: the plain line still says what a press does.
+    expect(engageSub(clocked)).toBe("resume belt");
   });
 
   it("say the deck must be woken first while it sleeps, on ENGAGE and on GO", () => {

@@ -1,4 +1,5 @@
 import type { AppSnapshot, ConnectionSnapshot } from "../ipc";
+import { stasisClock } from "../format";
 import { PLAIN } from "../names";
 import { isMoving, linkState, linkView } from "../state/linkStatus";
 
@@ -29,6 +30,17 @@ export function linkLabel(s: AppSnapshot): { text: string; tone: LinkTone } {
     default:
       return { text: "STANDBY", tone: "idle" };
   }
+}
+
+/**
+ * The STASIS clock while the belt is paused ("3:20", "1h05"): Rust's count of
+ * the pause (`deck.paused_for_s`). Null while the belt isn't paused. Only
+ * shown, in a place of its own: the panel's status row, the strip's stat slot
+ * and the running strip's program line, never on a button.
+ */
+export function stasisClockOf(s: AppSnapshot): string | null {
+  const p = s.deck.paused_for_s;
+  return s.connection.connected && s.deck.status === "Paused" && p !== null ? stasisClock(p) : null;
 }
 
 /** What the header's link label does when clicked. */

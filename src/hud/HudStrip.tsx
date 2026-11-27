@@ -5,9 +5,9 @@ import { formatClock } from "../format";
 import { statTitle, statWidget } from "../widgets/registry";
 import { Sparkline } from "../widgets/Sparkline";
 import { NotePop, type PanelNote } from "./HudNote";
-import { EngageButton } from "./HudPanel";
+import { EngageButton, STASIS_CLOCK_TITLE, StasisClock } from "./HudPanel";
 import { DumpName } from "./DumpName";
-import { dumpTitle } from "./status";
+import { dumpTitle, stasisClockOf } from "./status";
 
 type Send = (c: Command) => Promise<boolean>;
 
@@ -35,7 +35,8 @@ function RestCell({ name, left }: { name: string; left: number }) {
  * logo above it, beside Engage, so Engage never moves for it. The slot shows,
  * first that applies: a program's rest and its countdown (`RestCell`), a
  * folded ATROPHY_WARNING card (`SeatedReadout`: today's total can't change
- * while the belt is still; a walk lets the card go), or today's total.
+ * while the belt is still; a walk lets the card go), the STASIS clock while
+ * the belt is paused (`StasisCell`), or today's total.
  */
 export function StripRow({ snapshot, send, note }: { snapshot: AppSnapshot; send: Send; note: PanelNote | null }) {
   const daily = statWidget("DAILY");
@@ -43,6 +44,7 @@ export function StripRow({ snapshot, send, note }: { snapshot: AppSnapshot; send
   const time = daily?.detail?.(snapshot);
   const a = snapshot.active_program;
   const rest = a?.phase === "resting" && a.seconds_remaining !== null ? { name: a.name, left: a.seconds_remaining } : null;
+  const clock = stasisClockOf(snapshot);
   return (
     <div className="hud-strip">
       <div className="hud-strip-row">
@@ -51,6 +53,8 @@ export function StripRow({ snapshot, send, note }: { snapshot: AppSnapshot; send
             <RestCell name={rest.name} left={rest.left} />
           ) : snapshot.seated.folded ? (
             <SeatedReadout snapshot={snapshot} />
+          ) : clock !== null ? (
+            <StasisCell clock={clock} />
           ) : (
             daily &&
             total && (
@@ -74,6 +78,22 @@ export function StripRow({ snapshot, send, note }: { snapshot: AppSnapshot; send
         </div>
         <EngageButton snapshot={snapshot} send={send} sub strip />
       </div>
+    </div>
+  );
+}
+
+/**
+ * The STASIS clock in today's total's place while the belt is paused: how
+ * long the pause has lasted. Same label-over-value shape as the total, so
+ * Engage beside it keeps its place and RE-JACK keeps its plain line.
+ */
+function StasisCell({ clock }: { clock: string }) {
+  return (
+    <div className="hud-strip-total hud-strip-stasis accent-cyan" data-testid="hud-strip-stasis" title={STASIS_CLOCK_TITLE}>
+      <span className="hud-label">STASIS</span>{" "}
+      <span className="hud-value hud-value-sm">
+        <StasisClock clock={clock} />
+      </span>
     </div>
   );
 }
@@ -179,6 +199,7 @@ export function RunStripRow({ snapshot, send, note }: { snapshot: AppSnapshot; s
   const { deck, connection } = snapshot;
   const a = snapshot.active_program;
   const stopped = deck.status === "Stopped" || deck.status === "Stopping";
+  const clock = stasisClockOf(snapshot);
   return (
     <div className="hud-strip hud-run-strip">
       <div className="hud-run-stats">
@@ -198,11 +219,25 @@ export function RunStripRow({ snapshot, send, note }: { snapshot: AppSnapshot; s
         })}
       </div>
       <PulseRow snapshot={snapshot} />
-      {/* With no program the line keeps its room, so STASIS and DUMP stay put when a program starts or ends. */}
+      {/* With no program the line keeps its room, so STASIS and DUMP stay put when a program starts or ends.
+          While the belt is paused the line carries the STASIS clock: after the program's label, or alone. */}
       {a ? (
         <div className="hud-run-program accent-yellow" title={`${a.name} · ${describeActive(a)}`}>
-          <span className="hud-label">{a.paused ? "PAUSED" : "PROGRAM"}</span>
+          <span className="hud-label">
+            {a.paused ? "PAUSED" : "PROGRAM"}
+            {clock !== null && " "}
+            {clock !== null && (
+              <span className="hud-run-clock" data-testid="hud-run-clock" title={STASIS_CLOCK_TITLE}>
+                {clock}
+              </span>
+            )}
+          </span>
           <ProgramLine name={a.name} detail={describeActive(a)} />
+        </div>
+      ) : clock !== null ? (
+        <div className="hud-run-program hud-run-stasis accent-cyan" data-testid="hud-run-stasis" title={STASIS_CLOCK_TITLE}>
+          <span className="hud-label">STASIS</span>{" "}
+          <StasisClock clock={clock} />
         </div>
       ) : (
         <div className="hud-run-program hud-reserve" aria-hidden="true" />

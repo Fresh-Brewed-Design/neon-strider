@@ -336,6 +336,7 @@ body,
 .hud-easystop,
 .hud-quiet,
 .hud-seated-line,
+.hud-stasis-line,
 .hud-presenting {
   display: flex;
   flex-wrap: wrap;
@@ -352,6 +353,7 @@ body,
 .hud-easystop .hud-label,
 .hud-quiet .hud-label,
 .hud-seated-line .hud-label,
+.hud-stasis-line .hud-label,
 .hud-presenting .hud-label {
   color: var(--accent);
   letter-spacing: 0.14em;
@@ -374,6 +376,49 @@ body,
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--accent);
+}
+
+/* The STASIS clock (the time, then PAUSED): tabular, so it ticks in place. In
+   the status row and the running strip's program line it reads like the
+   lines' speeds; in the strip's stat slot it takes the value's size. */
+.hud-stasis-clock {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.hud-stasis-line .hud-stasis-clock,
+.hud-run-program .hud-stasis-clock {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-family: var(--hud-font-display);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.hud-run-program .hud-stasis-clock { margin-left: 0; }
+/* In the status row and the running strip's program line the clock stays on
+   the label's line at any text size: the label and the time keep their room,
+   and PAUSED wraps onto a hidden second line when there is none left for it. */
+.hud-status-line > .hud-stasis-line,
+.hud-run-program.hud-run-stasis { flex-wrap: nowrap; }
+.hud-status-line > .hud-stasis-line .hud-label,
+.hud-run-stasis .hud-label { flex-shrink: 0; }
+.hud-status-line .hud-stasis-clock,
+.hud-run-stasis .hud-stasis-clock {
+  flex: 0 1 auto;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  height: 1.25em;
+  line-height: 1.25;
+  overflow: hidden;
+}
+/* A paused program's label on the running strip, then the clock. */
+.hud-run-clock {
+  margin-left: 0.3em;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---- Strip (stasis) ------------------------------------------------- */

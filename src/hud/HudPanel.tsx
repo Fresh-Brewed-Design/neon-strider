@@ -9,7 +9,7 @@ import { NotePop, type PanelNote } from "./HudNote";
 import { linkState, linkView } from "../state/linkStatus";
 import { SmallButton } from "./SmallButton";
 import { DumpName } from "./DumpName";
-import { deckAsleep, dumpTitle, ENGAGE_SUBS, ENGAGE_WORDS, engageLabel, engageSub, engageTitle, firstStepLine, offlineText, quietHold, WAKE_FIRST, WAKE_FIRST_SUB } from "./status";
+import { deckAsleep, dumpTitle, ENGAGE_SUBS, ENGAGE_WORDS, engageLabel, engageSub, engageTitle, firstStepLine, offlineText, quietHold, stasisClockOf, WAKE_FIRST, WAKE_FIRST_SUB } from "./status";
 import { Swap } from "./Swap";
 import type { useRelink } from "./useRelink";
 import { useWheelSteps } from "./useWheelSteps";
@@ -243,6 +243,35 @@ export function SeatedLine({ snapshot }: { snapshot: AppSnapshot }) {
         {snapshot.seated.seated_minutes}
         <span className="hud-unit">MIN IDLE</span>
       </span>
+    </div>
+  );
+}
+
+/** The STASIS clock's tooltip, the same on the panel and both strips. */
+export const STASIS_CLOCK_TITLE = "Time since the belt paused.";
+
+/** The STASIS clock's reading: the time and its plain word, PAUSED. */
+export function StasisClock({ clock }: { clock: string }) {
+  return (
+    <span className="hud-stasis-clock">
+      {clock}{" "}
+      <span className="hud-unit">PAUSED</span>
+    </span>
+  );
+}
+
+/**
+ * The STASIS clock in the whole panel's status row while the belt is paused:
+ * how long the pause has lasted (Rust's `deck.paused_for_s`). It has the row
+ * to itself, so RE-JACK keeps its plain line and nothing moves as it counts.
+ */
+export function StasisLine({ snapshot }: { snapshot: AppSnapshot }) {
+  const clock = stasisClockOf(snapshot);
+  if (clock === null) return null;
+  return (
+    <div className="hud-stasis-line accent-cyan" data-testid="hud-stasis-line" title={STASIS_CLOCK_TITLE}>
+      <span className="hud-label">STASIS</span>{" "}
+      <StasisClock clock={clock} />
     </div>
   );
 }
@@ -612,9 +641,9 @@ function OfflineLine({ connection, relink }: { connection: AppSnapshot["connecti
 /**
  * The whole panel's status row, between the readings and the controls. It
  * always takes one line, so nothing above or under it moves: the offline line
- * first, else the most pressing quiet line (EASY STOP, QUIET // DAMPED, ABOVE
- * STRIDE_FIT, NEURAL_FLUIDITY, SPEED DRIFT, PRESENTING; hud.css shows only the
- * first), else nothing. A note covers it, and the readings over it only when
+ * first, else the most pressing quiet line (STASIS and its clock, EASY STOP,
+ * QUIET // DAMPED, ABOVE STRIDE_FIT, NEURAL_FLUIDITY, SPEED DRIFT, PRESENTING,
+ * a folded ATROPHY_WARNING; hud.css shows only the first), else nothing. A note covers it, and the readings over it only when
  * it needs more than one line; never the controls (`NotePop`).
  */
 export function StatusRow({
@@ -630,6 +659,7 @@ export function StatusRow({
     <div className="hud-status-row" data-testid="hud-status-row" title={note?.detail ?? undefined}>
       <div className="hud-status-line">
         {!snapshot.connection.connected && <OfflineLine connection={snapshot.connection} relink={relink} />}
+        <StasisLine snapshot={snapshot} />
         <EasyStopLine snapshot={snapshot} />
         <QuietNowLine snapshot={snapshot} />
         <StrideFitLine snapshot={snapshot} />

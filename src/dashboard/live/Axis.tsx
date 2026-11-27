@@ -61,6 +61,7 @@ export function Axis({
   pin,
   mark = null,
   wheelHint,
+  status = null,
 }: {
   pin: { widget: HudWidget; pinned: boolean };
   /** Tooltip on the readout, where the mouse wheel nudges the value. */
@@ -85,6 +86,8 @@ export function Axis({
   note?: string | null;
   /** A labelled mark on the slider (STRIDE_FIT on speed). */
   mark?: SliderMark | null;
+  /** A short reading beside the pin in the title row (the STASIS clock on Velocity); the row keeps its height. */
+  status?: ReactNode;
 }) {
   const [value, setDraft] = useDraft(target);
   // The last press, drag or scroll: its refusal shows under the presets.
@@ -110,7 +113,10 @@ export function Axis({
       <div className="flex flex-col gap-2 p-3 @max-[14rem]:gap-1.5 @max-[14rem]:p-2">
         <div className="flex items-center justify-between gap-x-2">
           <Label>{title}</Label>
-          <PinToggle widget={pin.widget} pinned={pin.pinned} />
+          <div className="flex min-w-0 items-center gap-x-2">
+            {status}
+            <PinToggle widget={pin.widget} pinned={pin.pinned} />
+          </div>
         </div>
 
         <div className="flex items-center gap-2 @max-[14rem]:gap-1">

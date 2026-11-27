@@ -1037,6 +1037,63 @@ mod tests {
         assert!(r.finalised.is_empty());
     }
 
+    /// The STASIS clock counts from the first paused frame, clears on
+    /// RE-JACK and on a stop, and sends the deck nothing of its own.
+    #[test]
+    fn the_stasis_clock_counts_the_pause_and_clears_on_resume_and_stop() {
+        let mut r = Rig::new();
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(5.0);
+        r.set_speed(3.0);
+        r.run(20.0);
+        assert_eq!(r.state.paused_for(), None, "walking");
+        r.press(DeckAction::Pause);
+        // Run until the deck reports the pause, then time from there.
+        let mut waited = 0;
+        while r.state.paused_for().is_none() && waited < 200 {
+            r.run(0.05);
+            waited += 1;
+        }
+        assert!(r.state.paused_for().is_some(), "paused");
+        let mark = r.mark();
+        r.run(200.0);
+        let s = r.state.paused_for().unwrap().as_secs();
+        assert!((199..=201).contains(&s), "{s} s");
+        assert_eq!(r.commands_since(mark), vec![], "the clock sends nothing");
+
+        // RE-JACK clears it.
+        r.press(DeckAction::Start);
+        r.run(10.0);
+        assert!(r.deck.running_at(3.0));
+        assert_eq!(r.state.paused_for(), None, "resumed");
+
+        // A second pause starts from zero, and a stop clears it.
+        r.press(DeckAction::Pause);
+        r.run(30.0);
+        let s = r.state.paused_for().unwrap().as_secs();
+        assert!(s < 30, "{s} s, counted afresh");
+        r.press(DeckAction::Stop);
+        r.run(15.0);
+        assert!(r.deck.belt_still());
+        assert_eq!(r.state.paused_for(), None, "stopped");
+    }
+
+    /// A pause at the treadmill's own buttons counts the same way.
+    #[test]
+    fn the_stasis_clock_counts_a_pause_at_the_treadmill() {
+        let mut r = Rig::new();
+        r.run(1.0);
+        r.press(DeckAction::Start);
+        r.run(5.0);
+        r.set_speed(3.0);
+        r.run(20.0);
+        r.deck.press_pause(r.t);
+        r.run(65.0);
+        let s = r.state.paused_for().unwrap().as_secs();
+        assert!((60..=65).contains(&s), "{s} s");
+    }
+
     #[test]
     fn a_reconnect_while_walking_carries_on_and_sends_nothing() {
         let mut r = post_meal_walking();

@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { stasisClock } from "../../format";
 import { dispatch, type AppSnapshot, type DeckSnapshot } from "../../ipc";
 import { linkView } from "../../state/linkStatus";
 import { snapToDeck, snapToLevel } from "../../state/deckSpeeds";
@@ -131,6 +132,29 @@ function headerActions(s: AppSnapshot): ReactNode {
   );
 }
 
+/**
+ * The STASIS clock while the belt is paused: how long the pause has lasted (Rust's
+ * `deck.paused_for_s`, the HUD's STASIS line). It sits in Velocity's title row beside the pin, a
+ * row the pin already makes tall enough, so nothing moves and Re-jack keeps its plain line. Where
+ * the row is short of room (150 % Windows text) STASIS wraps onto a hidden line and the time stays.
+ */
+function stasisClockStatus(s: AppSnapshot): ReactNode {
+  const p = s.deck.paused_for_s;
+  if (!s.connection.connected || s.deck.status !== "Paused" || p === null) return null;
+  return (
+    <span
+      role="status"
+      data-testid="live-stasis-clock"
+      title="Time since the belt paused."
+      aria-label={`STASIS ${stasisClock(p)}`}
+      className="flex h-4 min-w-0 flex-row-reverse flex-wrap items-center gap-x-1.5 overflow-hidden whitespace-nowrap font-mono text-[11px] font-bold leading-4 text-neon-cyan"
+    >
+      <span className="tabular-nums tracking-[0.04em]">{stasisClock(p)}</span>
+      <span className="tracking-[0.15em]">STASIS</span>
+    </span>
+  );
+}
+
 /** STRIDE_FIT's mark on the speed slider, or none while it is unset. Only a mark: the slider still goes to the top. */
 function strideFitMark(deck: DeckSnapshot) {
   const fit = deck.stride_fit_kmh;
@@ -212,6 +236,7 @@ export function LivePage({ onCalibrate }: { onCalibrate?: () => void } = {}) {
             snap={(kmh) => snapToDeck(kmh, deck)}
             mark={strideFitMark(deck)}
             pin={{ widget: "VELOCITY", pinned: pinned.has("VELOCITY") }}
+            status={stasisClockStatus(s)}
           />
           <Axis
             title="Tilt"
