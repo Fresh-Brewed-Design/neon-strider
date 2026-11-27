@@ -1,0 +1,3 @@
+- New DAILY_UPLINK button in System, Strava, and on History's heading for today: it uploads today's walks to Strava now as one activity, named like the daily rollup. It works with auto-sync off and before the rollup time.
+- Walks of today already on Strava stay as their own activity and are never sent again. A walk after the press goes up as a separate activity on the next press.
+- The button is off while a walk runs, with no walks today, or once today is on Strava, and the line under it says which.
