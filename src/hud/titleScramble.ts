@@ -17,8 +17,8 @@ export const ADVANCE: Readonly<Record<string, number>> = {
   "8": 9.174, "9": 9.108, "#": 8.767, "/": 5.731, "<": 5.203, ">": 5.225, _: 9.108, "|": 2.354,
 };
 /**
- * The scramble clips at the logo's edge (the overlay is overflow: hidden), so a noise glyph
- * must be no wider than the letter it covers. Per title letter: every glyph in ADVANCE no
+ * Each noise glyph is clipped to the cell of the letter it covers (hud.css), so it must be no
+ * wider than that letter. Per title letter: every glyph in ADVANCE no
  * wider than it. Wide ones (V, W, M, %, &) are left out; the I (2.354 px) can only be
  * covered by I or |.
  */

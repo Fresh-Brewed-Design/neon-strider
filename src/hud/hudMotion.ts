@@ -71,7 +71,7 @@ export function useStepSweep(a: ActiveProgram | null | undefined): StepSweep | n
   return sweep;
 }
 
-/** A box in the panel's own coordinates. */
+/** A box in the sweep overlay's own coordinates. */
 export interface Spot {
   top: number;
   left: number;
@@ -79,32 +79,40 @@ export interface Spot {
   height: number;
 }
 
+/** Screen px per CSS px for `el`: 1 in the app, where text size is a page zoom; the dev preview's ?textscale zooms with CSS instead. */
+function scaleOf(el: HTMLElement): number {
+  return el.offsetWidth > 0 ? el.getBoundingClientRect().width / el.offsetWidth : 1;
+}
+
 /**
- * Where the step name may sit: over readings only, never over a control.
- * The whole panel: the stats and the status row under them, down to the
- * controls. The running strip: its stats and program line, down to its
- * buttons. The still strip: the total's cell beside Engage. None found: the
- * whole panel. In `origin`'s coordinates (the overlay, inside the panel's border).
+ * Where the sweep overlay starts, in the panel's own CSS px (from inside its
+ * border): the top of the body under the header, so the scanline never
+ * crosses the logo, the link chip or the minify button. 0 with no body.
  */
-export function sweepSpot(panel: HTMLElement, origin: HTMLElement = panel): Spot {
+export function sweepTop(panel: HTMLElement): number {
+  const body = panel.querySelector<HTMLElement>(".hud-body");
+  if (!body) return 0;
+  // Rounded up: at a fractional zoom the overlay never reaches the header's border.
+  return Math.max(0, Math.ceil((body.getBoundingClientRect().top - panel.getBoundingClientRect().top) / scaleOf(panel) - panel.clientTop));
+}
+
+/**
+ * Where the step name may sit on the whole panel: over the stats only, as
+ * much of them as the body shows (it scrolls at the largest text sizes). The
+ * status row, the controls and the programs card under them stay clear, and
+ * so does the header over them. Null with no stats on view: the scanline
+ * then runs without the name (the programs card names the step). In
+ * `origin`'s coordinates (the overlay).
+ */
+export function sweepSpot(panel: HTMLElement, origin: HTMLElement = panel): Spot | null {
+  const stats = panel.querySelector<HTMLElement>(".hud-stats")?.getBoundingClientRect();
+  if (!stats) return null;
+  const body = panel.querySelector<HTMLElement>(".hud-body")?.getBoundingClientRect() ?? stats;
+  const top = Math.max(stats.top, body.top);
+  const bottom = Math.min(stats.bottom, body.bottom);
+  if (bottom - top <= 0) return null;
   const o = origin.getBoundingClientRect();
   const box = panel.getBoundingClientRect();
-  // Screen px per CSS px: 1 in the app, where text size is a page zoom; the dev
-  // preview's ?textscale zooms the page with CSS instead.
-  const k = origin.offsetWidth > 0 ? o.width / origin.offsetWidth : 1;
-  const rel = (top: number, bottom: number, left = box.left, right = box.right): Spot => ({
-    top: (top - o.top) / k,
-    left: (left - o.left) / k,
-    width: (right - left) / k,
-    height: (bottom - top) / k,
-  });
-  const q = (selector: string) => panel.querySelector<HTMLElement>(selector)?.getBoundingClientRect();
-  const status = q(".hud-status-row");
-  if (status) return rel((q(".hud-stats") ?? status).top, status.bottom);
-  const runStats = q(".hud-run-stats");
-  const runButtons = q(".hud-run-strip > .hud-strip-row");
-  if (runStats && runButtons) return rel(runStats.top, runButtons.top);
-  const cell = q(".hud-strip-cell");
-  if (cell) return rel(cell.top, cell.bottom, cell.left, cell.right);
-  return rel(box.top, box.bottom);
+  const k = scaleOf(origin);
+  return { top: (top - o.top) / k, left: (box.left - o.left) / k, width: box.width / k, height: (bottom - top) / k };
 }

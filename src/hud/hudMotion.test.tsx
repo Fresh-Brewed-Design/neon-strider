@@ -28,7 +28,7 @@ afterEach(() => {
 });
 
 const { snapshot: mock } = await import("../dev/mockBackend");
-const { useLinkUp, useStepSweep, stepSweepLabel, sweepSpot } = await import("./hudMotion");
+const { useLinkUp, useStepSweep, stepSweepLabel, sweepSpot, sweepTop } = await import("./hudMotion");
 const { SCRAMBLE_FRAME_MS, SCRAMBLE_FRAMES } = await import("./HudHeader");
 const { STEP_SWEEP_MS } = await import("./StepSweep");
 const { HudApp } = await import("./HudApp");
@@ -147,9 +147,15 @@ describe("HUD motion", () => {
     current = linked(true);
     rerender(<HudApp />);
     act(() => vi.advanceTimersByTime(SCRAMBLE_FRAME_MS));
-    const noise = screen.getByTestId("hud-title-scramble");
-    expect(noise).toHaveAttribute("aria-hidden", "true");
-    expect(screen.getByText("NEON STRIDER")).toBeInTheDocument();
+    const title = screen.getByTestId("hud-title-scramble");
+    // One noise glyph over each letter, all hidden from screen readers.
+    const noise = [...title.querySelectorAll(".hud-title-scramble")];
+    expect(noise).toHaveLength("NEONSTRIDER".length);
+    for (const n of noise) expect(n).toHaveAttribute("aria-hidden", "true");
+    // What a screen reader gets: the real letters, in place.
+    const read = title.cloneNode(true) as HTMLElement;
+    read.querySelectorAll("[aria-hidden]").forEach((n) => n.remove());
+    expect(read.textContent).toBe("NEON STRIDER");
     act(() => vi.advanceTimersByTime(SCRAMBLE_FRAME_MS * SCRAMBLE_FRAMES));
     expect(screen.queryByTestId("hud-title-scramble")).not.toBeInTheDocument();
     // The heartbeat re-sends the linked snapshot: no second decode.
@@ -170,6 +176,38 @@ describe("HUD motion", () => {
     expect(sweep).toHaveAttribute("aria-hidden", "true");
     expect(sweep).toHaveTextContent("STEP // WALK 2/3");
     act(() => vi.advanceTimersByTime(STEP_SWEEP_MS));
+    expect(screen.queryByTestId("hud-step-sweep")).not.toBeInTheDocument();
+    current = snap({ active_program: program({ step_index: 1 }) });
+    rerender(<HudApp />);
+    expect(screen.queryByTestId("hud-step-sweep")).not.toBeInTheDocument();
+  });
+
+  it("never sweeps a step change made while the HUD is a strip, then or on expand", () => {
+    vi.useFakeTimers();
+    current = snap({ hud_view: "minified", active_program: program() });
+    const { rerender } = render(<HudApp />);
+    current = snap({ hud_view: "minified", active_program: program({ step_index: 1 }) });
+    rerender(<HudApp />);
+    expect(screen.queryByTestId("hud-step-sweep")).not.toBeInTheDocument();
+    // Expanded straight after: the step is old news.
+    current = snap({ hud_view: "full", active_program: program({ step_index: 1 }) });
+    rerender(<HudApp />);
+    expect(screen.queryByTestId("hud-step-sweep")).not.toBeInTheDocument();
+    // The next change on the whole panel sweeps as usual.
+    current = snap({ hud_view: "full", active_program: program({ step_index: 2 }) });
+    rerender(<HudApp />);
+    expect(screen.getByTestId("hud-step-sweep")).toHaveTextContent("STEP // WALK 3/3");
+  });
+
+  it("stops a sweep when the HUD shrinks to a strip mid-way", () => {
+    vi.useFakeTimers();
+    current = snap({ active_program: program() });
+    const { rerender } = render(<HudApp />);
+    current = snap({ active_program: program({ step_index: 1 }) });
+    rerender(<HudApp />);
+    expect(screen.getByTestId("hud-step-sweep")).toBeInTheDocument();
+    current = snap({ hud_view: "minified", active_program: program({ step_index: 1 }) });
+    rerender(<HudApp />);
     expect(screen.queryByTestId("hud-step-sweep")).not.toBeInTheDocument();
     current = snap({ active_program: program({ step_index: 1 }) });
     rerender(<HudApp />);
@@ -221,27 +259,27 @@ describe("sweepSpot", () => {
     }
     return el;
   }
+  const whole = '<header class="hud-header"></header><div class="hud-body"><div class="hud-stats"></div><div class="hud-status-row"></div><div class="hud-controls"></div></div>';
 
-  it("keeps the name over the whole panel's readings, above its controls", () => {
-    const p = panel('<div class="hud-stats"></div><div class="hud-status-row"></div><div class="hud-controls"></div>', {
-      ".hud-stats": [31, 230],
-      ".hud-status-row": [230, 260],
-    });
-    expect(sweepSpot(p)).toEqual({ top: 31, left: 0, width: 300, height: 229 });
+  it("keeps the name over the stats, clear of the status row and the controls", () => {
+    const p = panel(whole, { ".hud-body": [31, 500], ".hud-stats": [31, 230], ".hud-status-row": [230, 260] });
+    expect(sweepSpot(p)).toEqual({ top: 31, left: 0, width: 300, height: 199 });
   });
 
-  it("keeps the name over the running strip's readings, above its buttons", () => {
-    const p = panel(
-      '<div class="hud-strip hud-run-strip"><div class="hud-run-stats"></div><div class="hud-strip-row"></div></div>',
-      { ".hud-run-stats": [31, 80], ".hud-strip-row": [110, 150] },
-    );
-    expect(sweepSpot(p)).toEqual({ top: 31, left: 0, width: 300, height: 79 });
+  it("keeps the name to the stats the body shows while it scrolls", () => {
+    const p = panel(whole, { ".hud-body": [31, 500], ".hud-stats": [-60, 90], ".hud-status-row": [90, 120] });
+    expect(sweepSpot(p)).toEqual({ top: 31, left: 0, width: 300, height: 59 });
   });
 
-  it("keeps the name over the still strip's total, beside Engage", () => {
-    const p = panel('<div class="hud-strip-row"><div class="hud-strip-cell"></div><button></button></div>', {
-      ".hud-strip-cell": [31, 75, 0, 180],
-    });
-    expect(sweepSpot(p)).toEqual({ top: 31, left: 0, width: 180, height: 44 });
+  it("drops the name with no stats on view", () => {
+    expect(sweepSpot(panel('<div class="hud-body"><div class="hud-status-row"></div></div>', {}))).toBeNull();
+    const scrolledPast = panel(whole, { ".hud-body": [31, 500], ".hud-stats": [-200, 20] });
+    expect(sweepSpot(scrolledPast)).toBeNull();
+  });
+
+  it("starts the overlay under the header", () => {
+    expect(sweepTop(panel(whole, { ".hud-body": [31, 500] }))).toBe(31);
+    expect(sweepTop(panel(whole, { ".hud-body": [30.4, 500] }))).toBe(31);
+    expect(sweepTop(panel("<div></div>", {}))).toBe(0);
   });
 });

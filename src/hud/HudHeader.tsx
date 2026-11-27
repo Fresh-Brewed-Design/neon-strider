@@ -29,9 +29,11 @@ export const SCRAMBLE_FRAMES = SCRAMBLE_LEAD + TITLE.length;
 
 /**
  * NEON STRIDER, which decodes once each time `linkUp` moves (LINK UP, #374).
- * The real words stay in place, only see-through, so the header never moves
- * and a screen reader always reads NEON STRIDER; the noise is drawn over them
- * and hidden from it.
+ * The real letters stay in place, only see-through, so the header never moves
+ * and a screen reader always reads NEON STRIDER. Each noise glyph is drawn
+ * over the letter it replaces and clipped to it, hidden from screen readers,
+ * so the noise wraps with the logo when a large text size breaks it in two
+ * and never leaves it.
  */
 function HudTitle({ linkUp }: { linkUp: number }) {
   const [glyphs, setGlyphs] = useState<string | null>(null);
@@ -51,15 +53,22 @@ function HudTitle({ linkUp }: { linkUp: number }) {
     }, SCRAMBLE_FRAME_MS);
     return () => window.clearInterval(timer);
   }, [linkUp, shownAt]);
+  if (!glyphs) return <span className="hud-title-text">{TITLE}</span>;
   return (
-    <>
-      <span className={`hud-title-text${glyphs ? " is-decoding" : ""}`}>{TITLE}</span>
-      {glyphs && (
-        <span className="hud-title-scramble" aria-hidden="true" data-testid="hud-title-scramble">
-          {glyphs}
-        </span>
+    <span className="hud-title-text is-decoding" data-testid="hud-title-scramble">
+      {Array.from(TITLE, (ch, i) =>
+        ch === " " ? (
+          " "
+        ) : (
+          <span key={i} className="hud-title-letter">
+            {ch}
+            <span className="hud-title-scramble" aria-hidden="true">
+              {glyphs[i]}
+            </span>
+          </span>
+        ),
       )}
-    </>
+    </span>
   );
 }
 

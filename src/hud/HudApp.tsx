@@ -174,7 +174,8 @@ export function HudApp() {
                 <StripRow snapshot={snapshot} send={panel.send} note={note} />
               )}
             </div>
-            <StepSweep sweep={stepSweep} />
+            {/* The whole panel only: a step change on a strip never sweeps, then or on expand. */}
+            {full && <StepSweep sweep={stepSweep} />}
           </section>
         )}
         {snapshot && <HudCardView card={card} snapshot={snapshot} />}

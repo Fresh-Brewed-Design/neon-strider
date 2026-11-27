@@ -210,12 +210,15 @@ body,
 .hud-header:has(.hud-led.tone-down, .hud-led.tone-warn) .hud-title { letter-spacing: 0.14em; }
 
 /* LINK UP (#374): once per connect the logo decodes, about 0.7 s. The real
-   words keep their place, only see-through, so the header never moves and a
-   screen reader still reads NEON STRIDER; the noise is laid over them, in the
-   link's cyan with a magenta split, and takes no clicks (the logo is the drag
-   handle). Under reduced motion HudApp never starts it, and this hides it. */
-.hud-title { position: relative; }
+   letters keep their place, only see-through, so the header never moves and
+   a screen reader still reads NEON STRIDER. Each noise glyph is laid over the
+   letter it replaces and clipped to that letter's cell (titleScramble.ts only
+   picks glyphs no wider), so it wraps with the logo at a large text size and
+   never leaves it. Cyan with a magenta split; it takes no clicks (the logo is
+   the drag handle). Under reduced motion HudApp never starts it, and this
+   hides it. */
 .hud-title-text.is-decoding { color: transparent; }
+.hud-title-letter { position: relative; }
 .hud-title-scramble {
   position: absolute;
   inset: 0;
@@ -1348,14 +1351,15 @@ body,
 .hud-walkaway .hud-toast-message { text-transform: none; }
 
 /* Step change (#376): once per new step a yellow scanline (programs are
-   yellow) runs down the panel with the step's name, 0.9 s, the same time as
-   STEP_SWEEP_MS. Drawn over the panel and taking no clicks, so no control
-   moves or stops working under it. HudApp never starts it under reduced
-   motion, and this hides it. */
+   yellow) runs down the whole panel's body with the step's name, 0.9 s, the
+   same time as STEP_SWEEP_MS. StepSweep sets its top to the body's, so the
+   header stays clear. Drawn over the panel and taking no clicks, so no control
+   moves or stops working under it; the panel's note (z-index 2) draws over
+   it. HudApp never starts it under reduced motion, and this hides it. */
 .hud-step-sweep {
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: 1;
   overflow: hidden;
   pointer-events: none;
 }
@@ -1375,11 +1379,11 @@ body,
   85% { opacity: 1; }
   to { transform: translateY(0); opacity: 0; }
 }
-/* The name sits over the readings (StepSweep's sweepSpot sets this box: the
-   stats and status row, the running strip's stats and program line, or the
-   still strip's total), never over a control. Centred while it fits; a name
-   too tall for the box grows upward (auto margins give way to flex-end), away
-   from the controls under the readings. */
+/* The name sits over the stats (StepSweep's sweepSpot sets this box), never
+   over the status row, a control or the programs card under them. Centred
+   while it fits; a name too tall for the box grows upward (auto margins give
+   way to flex-end), away from the status row, and the overlay clips it at the
+   header. */
 .hud-step-sweep-spot {
   position: absolute;
   inset: 0;
