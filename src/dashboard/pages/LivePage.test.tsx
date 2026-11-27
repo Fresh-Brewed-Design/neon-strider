@@ -237,3 +237,14 @@ describe("Live page header", () => {
     expect(screen.getByRole("heading", { name: "Live" })).toBeInTheDocument();
   });
 });
+
+describe("Live page speed trace", () => {
+  it("draws VELOCITY's trace in the speed panel only while Rust sends one", () => {
+    const velocity = () => screen.getAllByRole("slider")[0].closest("[class*='@container']") as HTMLElement;
+    const { rerender } = render(<LivePage />);
+    expect(within(velocity()).queryByTestId("sparkline")).toBeNull();
+    current = { ...(current as AppSnapshot), speed_trace: [3.4, 3.5, null, 3.5] };
+    rerender(<LivePage />);
+    expect(within(velocity()).getByTestId("sparkline")).toBeTruthy();
+  });
+});

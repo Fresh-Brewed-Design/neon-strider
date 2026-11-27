@@ -273,6 +273,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?shortcuts=changed|taken`: System -> Shortcuts with Start or pause moved to Ctrl+Alt+S (RESET shows), or on a Mac (with `?mac`) ⌃⌥P held by another app
 - `?sim`: the SIM tag
 - `?speeddrift=drifting|held|waiting|outside|ended`: System -> Speed drift on (3.2 to 3.8 km/h, every 5 minutes) on a manual walk: setting the belt at 3.6 km/h (the HUD's SPEED DRIFT line), holding while Neural flow eases off, counting to the first change, the speed set outside the band, or ended by a speed set by hand; `?speeddrift` alone is the switch on with the belt still
+- `?speedspark=steady|dips|gap`: VELOCITY's speed trace under VEL on the HUD and in Velocity's title row on the Live page: a steady 3.5 km/h walk, Neural flow easing off and then a call's quiet speed, or a minute with the link down; with the belt paused (`?program=paused`, `?deck=paused`) it ends in 3:20 at 0 km/h
 - `?stasisclock=3909`: with the belt paused (`?program=paused`, or `?deck=paused` with `?stasis=...`), the STASIS clock starts at that many seconds instead of 3:20
 - `?stasis=strip|hidden`: "When the belt is still" set to that, with the belt stopped
 - `?status=9|countdown|stopping|standby`: an unknown status byte, the 3-2-1, the belt winding down, or the deck asleep (with `?program=...` the program stays and its GO is refused under GO)

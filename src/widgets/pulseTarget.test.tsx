@@ -6,7 +6,7 @@ import type { AppSnapshot, PulseTarget } from "../ipc";
 import { StatCell } from "../hud/HudPanel";
 import { TargetReadout } from "../dashboard/live/TargetReadout";
 import { statWidget } from "./registry";
-import { sparkGeometry } from "./spark";
+import { MIN_SPAN_BPM, sparkGeometry } from "./spark";
 
 function withTarget(target: PulseTarget | null, bpm: number | null = 126): AppSnapshot {
   return {
@@ -56,7 +56,7 @@ describe("PULSE_RATE cool-down target (#233)", () => {
   });
 
   it("shades the chart from the target down", () => {
-    const g = sparkGeometry({ points: [100, 140], zone: null, target: 120 }, 100, 24);
+    const g = sparkGeometry({ minSpan: MIN_SPAN_BPM, points: [100, 140], zone: null, target: 120 }, 100, 24);
     // 100 to 140 over 21 units of height inside a 1.5 edge: 120 is the middle.
     expect(g?.band?.y).toBeCloseTo(1.5 + 10.5, 5);
     expect(g?.band?.height).toBeCloseTo(24 - 12, 5);

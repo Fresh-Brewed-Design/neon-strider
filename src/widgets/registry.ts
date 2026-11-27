@@ -1,7 +1,7 @@
 import { formatClock, formatDuration, km, lifetimeKm } from "../format";
 import type { AppSnapshot, HudWidget, PulseTarget, ZoneBand } from "../ipc";
 import { PLAIN } from "../names";
-import type { SparkData } from "./spark";
+import { MIN_SPAN_BPM, MIN_SPAN_KMH, type SparkData } from "./spark";
 
 export type Accent = "cyan" | "magenta" | "yellow" | "green";
 
@@ -32,6 +32,8 @@ export interface StatWidget {
   panelDetail?: boolean;
   /** The HUD keeps a zone line's room under the value while true, so a zone step coming or going moves nothing. */
   reserveZone?: (s: AppSnapshot) => boolean;
+  /** The HUD keeps the spark chart's room under the value while it has none, so a chart coming or going moves nothing. */
+  reserveSpark?: boolean;
 }
 
 /**
@@ -48,6 +50,12 @@ export const STAT_WIDGETS: StatWidget[] = [
     plain: PLAIN.VELOCITY,
     accent: "cyan",
     read: (s) => ({ value: s.deck.speed_kmh.toFixed(1), unit: "KM/H" }),
+    // The belt's speed over the last 10 minutes; Rust sends none while that
+    // window holds no walk, so there is no chart.
+    spark: (s) => (s.speed_trace.length > 0 ? { points: s.speed_trace, minSpan: MIN_SPAN_KMH, zone: null } : null),
+    // The chart comes with the first walk and goes 10 minutes after the last,
+    // so the HUD cell keeps its room and the controls under it never move.
+    reserveSpark: true,
   },
   {
     id: "INCLINE",
@@ -137,7 +145,12 @@ export const STAT_WIDGETS: StatWidget[] = [
     // Rust sends no history while no sensor is picked: no chart.
     spark: (s) =>
       s.heart_rate.history.length > 0
-        ? { points: s.heart_rate.history, zone: s.heart_rate.zone, target: s.heart_rate.cool_down?.target_bpm ?? null }
+        ? {
+            points: s.heart_rate.history,
+            minSpan: MIN_SPAN_BPM,
+            zone: s.heart_rate.zone,
+            target: s.heart_rate.cool_down?.target_bpm ?? null,
+          }
         : null,
     // Rust sends a zone only while a zone step runs with a sensor picked.
     zone: (s) => s.heart_rate.zone,

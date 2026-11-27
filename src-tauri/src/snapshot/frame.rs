@@ -57,7 +57,7 @@ macro_rules! snapshot_parts {
 
 snapshot_parts! {
     hot: [
-        connection, deck, session, active_program, neural, speed_drift, hud_view, hud_go_hold, hud_card,
+        connection, deck, session, speed_trace, active_program, neural, speed_drift, hud_view, hud_go_hold, hud_card,
         maintenance, odometer, seated, eye_break, calls, walkaway, easy_start,
         easy_stop, traffic, calibration, ghost_pod, heart_rate, guided_task,
         pc_walk_share, presenting, program_tones,

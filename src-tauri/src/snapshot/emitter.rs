@@ -68,6 +68,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     let pc_walk_share = pc_walk_share::snapshot();
     let speed_drift_config = crate::speed_drift::config();
     let today_timeline = pc_walk_share::today_timeline();
+    let speed_trace = super::speed_trace::snapshot();
     let walkaway = walkaway::snapshot(now_ms);
     let update = crate::update::snapshot(now_ms);
     let traffic = crate::traffic::snapshot();
@@ -147,6 +148,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     snapshot.wall_clock = wall_clock;
     snapshot.pc_walk_share = pc_walk_share;
     snapshot.today_timeline = today_timeline;
+    snapshot.speed_trace = speed_trace;
     snapshot.walkaway = walkaway;
     snapshot.update = update;
     snapshot.traffic = traffic;

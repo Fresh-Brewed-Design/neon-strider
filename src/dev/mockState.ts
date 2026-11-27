@@ -92,6 +92,8 @@ export const snapshot: AppSnapshot = {
     },
   },
   session: { active_id: 1, duration_s: 1934, distance_m: 1720, steps: 2412, calories: 103, daily_distance_m: 4310, daily_time_s: 4740 },
+  // No VELOCITY chart unless ?speedspark asks for one.
+  speed_trace: [],
   programs: [
     { id: 1, name: "Post-meal", steps: [{ duration_minutes: 10, speed_kmh: 4, incline_pct: 5, kind: "walk" }], repeat_every_minutes: null, note: "Walking soon after a meal blunts the rise in blood sugar." },
     { id: 2, name: "Workday", steps: [{ duration_minutes: 5, speed_kmh: 3, incline_pct: 5, kind: "walk" }], repeat_every_minutes: 30, note: "Five easy minutes every half hour keep the body online." },

@@ -34,6 +34,7 @@ export function StatCell({ id, snapshot }: { id: HudWidget; snapshot: AppSnapsho
         {unit && <span className="hud-unit">{unit}</span>}
       </span>
       {spark && <Sparkline data={spark} className="hud-spark" />}
+      {!spark && def.reserveSpark && <span className="hud-spark hud-reserve" aria-hidden="true" data-testid="hud-spark-reserve" />}
       {zone && <ZoneLine zone={zone} />}
       {target && <TargetLine target={target} />}
       {/* Room for a zone or pulse target line that comes and goes with program steps, so the panel keeps its height. */}

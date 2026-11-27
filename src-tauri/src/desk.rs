@@ -1,6 +1,7 @@
 //! Desk features at runtime: the sit-too-long nudge, eye breaks, program
-//! tones, slow-down-on-calls, walk-away safety, lights out, and whether Windows
-//! says the user is presenting (`presenting`, which holds cards back).
+//! tones, VELOCITY's speed trace, slow-down-on-calls, walk-away safety, lights
+//! out, and whether Windows says the user is presenting (`presenting`, which
+//! holds cards back).
 //!
 //! One loop, once a second. It reads the belt and the treadmill link under one
 //! short lock of the orchestrator, runs the pure state machines (`seated.rs`,
@@ -18,7 +19,7 @@ use crate::programs::{self, ProgramPhase};
 use crate::protocol::MachineStatus;
 use crate::snapshot::{
     calls, card_queue, desk_resume, desk_sync, eyebreak, lights_out, pc_walk_share, presenting,
-    program_tones, seated, walkaway,
+    program_tones, seated, speed_trace, walkaway,
 };
 use crate::util::{blocking, now_ms_u64 as now_ms};
 use std::time::Duration;
@@ -251,6 +252,8 @@ struct Outcome {
     toast: Option<(&'static str, &'static str)>,
     /// The connected belt is Running, for the PC walk share.
     belt_running: bool,
+    /// This second's point for VELOCITY's speed trace (none is a gap).
+    speed_trace: Option<f32>,
 }
 
 async fn step(connected: bool, now: u64, idle_ms: Option<u64>) -> Outcome {
@@ -262,6 +265,11 @@ async fn step(connected: bool, now: u64, idle_ms: Option<u64>) -> Outcome {
     // Eye breaks. First, so a break's pause is in before walk-away looks.
     let ready = treadmill_ready(connected, state);
     out.belt_running = ready && belt_running(state);
+    out.speed_trace = speed_trace::reading(
+        ready,
+        state.session.active_session_id.is_some(),
+        state.to_physical_speed(state.hardware_speed),
+    );
     let screen = EyeScreen {
         idle_ms,
         locked,
@@ -414,6 +422,7 @@ pub fn spawn(app: AppHandle) {
             // Read before the desk features acted, so a walk-away pause this
             // second still counts the second it ends.
             pc_walk_share::tick(&app, idle, out.belt_running);
+            speed_trace::record(out.speed_trace);
             if let Some(id) = out.started_program {
                 let app_c = app.clone();
                 let saved = blocking(move || programs::persist_last_run(&app_c, Some(id))).await;

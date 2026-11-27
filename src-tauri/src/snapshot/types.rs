@@ -22,6 +22,12 @@ pub struct AppSnapshot {
     pub connection: ConnectionSnapshot,
     pub deck: DeckSnapshot,
     pub session: SessionSnapshot,
+    /// VELOCITY's spark chart (#362, `speed_trace.rs`): the belt's speed in
+    /// km/h over the last 10 minutes, one point per 5 s, oldest first, always
+    /// a full window; `None` is a step with the link down or no walk open.
+    /// Empty while the window holds no speed, so there is no chart. Hot: it
+    /// moves every 5 s while walking.
+    pub speed_trace: Vec<Option<f32>>,
 
     // ---- Programs ----
     pub programs: Vec<Program>,
