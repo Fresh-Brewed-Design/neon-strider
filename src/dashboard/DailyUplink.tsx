@@ -39,7 +39,7 @@ export function DailyUplink({
   }, [action.done, onDone]);
 
   return (
-    <div className={cx("flex flex-col items-start gap-1.5", !compact && "max-w-56")} data-testid="daily-uplink">
+    <div className={cx("flex flex-col gap-1.5", compact ? "items-end text-right" : "max-w-56 items-start")} data-testid="daily-uplink">
       <NeonButton
         disabled={!ready}
         title={DAILY_UPLINK_TITLE}
