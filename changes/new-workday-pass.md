@@ -1,0 +1,4 @@
+- PASS sits out one cycle of a repeating program such as Workday and keeps its schedule. The next walk comes at its usual time, one repeat after the passed one was due.
+- PASS is on the HUD, the Live program card and the tray menu. During a rest it passes the next walk; on a walk or a walk waiting for GO it passes that one.
+- PASS never starts the belt. A walk that comes due on a still belt waits for GO as before, and SKIP keeps its meaning.
+- A passed cycle walked nothing, so History has no entry for it. The HUD and the Live card say which cycle was passed until the next one begins.

@@ -442,7 +442,8 @@ function NextLine({ next }: { next: string }) {
 }
 
 /**
- * HOLD / GO, SKIP and END. `a` null draws them for the reserve, unlabelled by state.
+ * HOLD / GO, SKIP, PASS and END. `a` null draws them for the reserve, unlabelled by state.
+ * PASS keeps its slot on a program that does not repeat (greyed out), so the row never changes.
  * `asleep`: the deck refuses starts, so GO says to wake it first (the press is the same).
  */
 function ProgramActions({ a, offline, asleep = false, send }: { a: ActiveProgram | null; offline: boolean; asleep?: boolean; send: Send }) {
@@ -479,6 +480,20 @@ function ProgramActions({ a, offline, asleep = false, send }: { a: ActiveProgram
       >
         SKIP
       </SmallButton>
+      <SmallButton
+        disabled={offline || a?.repeat_every_minutes == null}
+        sub="skip cycle"
+        title={
+          offline
+            ? "Treadmill not connected."
+            : a?.repeat_every_minutes == null
+              ? "Only a program that repeats has a cycle to pass."
+              : "Skip one cycle and keep the schedule."
+        }
+        onClick={() => send({ type: "program_pass" })}
+      >
+        PASS
+      </SmallButton>
       <SmallButton sub="end program" title="End the program." onClick={() => send({ type: "program_end" })}>
         END
       </SmallButton>
@@ -486,7 +501,7 @@ function ProgramActions({ a, offline, asleep = false, send }: { a: ActiveProgram
   );
 }
 
-/** The running program: what it does now over its three buttons. */
+/** The running program: what it does now over its four buttons. */
 function RunLayer({ a, offline, asleep, send }: { a: ActiveProgram; offline: boolean; asleep: boolean; send: Send }) {
   // Waiting for GO: the next step would start a still belt, so nothing moves
   // until GO (Rust says why in `wait`).
@@ -496,7 +511,9 @@ function RunLayer({ a, offline, asleep, send }: { a: ActiveProgram; offline: boo
   const next = nextStepLine(a);
   const timeLeft = describeTimeLeft(a);
   // Every line whole, for the tooltip: a larger text size may cut one short.
-  const lines = [wait ? waitHeadline(wait) : a.paused ? "PAUSED" : "PROGRAM", a.name, describeActive(a), timeLeft, next].filter(
+  // After a PASS, the rest's label says what it did (Rust's words).
+  const label = a.pass_note?.label ?? (a.paused ? "PAUSED" : "PROGRAM");
+  const lines = [wait ? waitHeadline(wait) : label, a.name, describeActive(a), timeLeft, next].filter(
     (l): l is string => !!l,
   );
   return (
@@ -509,7 +526,9 @@ function RunLayer({ a, offline, asleep, send }: { a: ActiveProgram; offline: boo
           {wait ? (
             <span className="hud-ready-headline">{waitHeadline(wait)}</span>
           ) : (
-            <span className="hud-label">{a.paused ? "PAUSED" : "PROGRAM"}</span>
+            <span className={a.pass_note ? "hud-label hud-pass-label" : "hud-label"} data-testid="hud-program-label">
+              {label}
+            </span>
           )}
           <span className="hud-value hud-value-sm">{a.name}</span>
           <span className="hud-sub hud-run-status">{describeActive(a)}</span>
@@ -543,7 +562,7 @@ function ReadoutReserve() {
 }
 
 /**
- * A blank running program over its three buttons. Laid unseen under whatever
+ * A blank running program over its four buttons. Laid unseen under whatever
  * the module shows, so the module is never shorter than a running program and
  * nothing moves when one starts, waits, rests or ends.
  */

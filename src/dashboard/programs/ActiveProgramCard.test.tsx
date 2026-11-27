@@ -159,3 +159,47 @@ describe("ActiveProgramCard GO", () => {
     expect(screen.queryByText(NO_ANSWER)).toBeNull();
   });
 });
+
+describe("ActiveProgramCard PASS (#428)", () => {
+  it("offers Pass on a repeating program and sends the command", async () => {
+    current!.active_program = { ...current!.active_program!, repeat_every_minutes: 30, paused: true, wait: "rest_complete" };
+    render(<ActiveProgramCard />);
+    const pass = screen.getByRole("button", { name: /Pass/ });
+    expect(pass).toHaveAttribute("title", "Skip one cycle and keep the schedule.");
+    await act(async () => fireEvent.click(pass));
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith("dispatch", { command: { type: "program_pass" } });
+  });
+
+  it("leaves Pass off a program that does not repeat", () => {
+    current!.active_program = { ...current!.active_program!, repeat_every_minutes: null };
+    render(<ActiveProgramCard />);
+    expect(screen.queryByRole("button", { name: /Pass/ })).toBeNull();
+  });
+
+  it("shows a refused Pass under the buttons", async () => {
+    current!.active_program = { ...current!.active_program!, repeat_every_minutes: 30 };
+    vi.mocked(invoke).mockRejectedValueOnce("PASS needs a program that repeats.");
+    render(<ActiveProgramCard />);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: /Pass/ })));
+    expect(within(screen.getByRole("alert")).getByText("PASS needs a program that repeats.")).toBeInTheDocument();
+  });
+
+  it("says what the press did under the buttons while the rest runs", () => {
+    current!.active_program = {
+      ...current!.active_program!,
+      repeat_every_minutes: 30,
+      phase: "resting",
+      paused: false,
+      wait: null,
+      pass_note: { label: "CYCLE 4 PASSED", sentence: "Cycle 4 passed. Cycle 5 stays on schedule." },
+    };
+    render(<ActiveProgramCard />);
+    expect(screen.getByTestId("program-pass-note")).toHaveTextContent("Cycle 4 passed. Cycle 5 stays on schedule.");
+  });
+
+  it("shows no note without a pass", () => {
+    current!.active_program = { ...current!.active_program!, repeat_every_minutes: 30, phase: "resting", pass_note: undefined };
+    render(<ActiveProgramCard />);
+    expect(screen.queryByTestId("program-pass-note")).toBeNull();
+  });
+});

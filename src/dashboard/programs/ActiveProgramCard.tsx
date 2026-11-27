@@ -1,4 +1,5 @@
-import { ChartNoAxesColumn, Pause, Play, SkipForward, Square } from "lucide-react";
+import { CalendarClock, ChartNoAxesColumn, Pause, Play, SkipForward, Square } from "lucide-react";
+import type { ReactNode } from "react";
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction, useBackendAction } from "../../components/useAction";
 import { isMoving, startOf } from "../../state/linkStatus";
@@ -57,6 +58,14 @@ function ButtonSub({ children }: { children: string }) {
 }
 
 /**
+ * A codename over its plain words, as on the Live page's Engage, so four buttons fit beside the
+ * program's name at 760 px (#428). The space between them stays for copying and screen readers.
+ */
+function Stack({ children }: { children: ReactNode }) {
+  return <span className="flex flex-col items-center leading-tight">{children}</span>;
+}
+
+/**
  * The running program, with pause/resume, skip and end. Renders nothing when
  * idle. With `stepMap` (the Live page) it also offers the STEP_MAP switch.
  */
@@ -88,7 +97,7 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
     >
       <div className="min-w-0 flex-1 basis-40">
         {wait ? (
-          <div role="alert" className="break-words font-digital text-xs font-bold tracking-widest text-neon-yellow">{waitHeadline(wait)}</div>
+          <div role="alert" className="break-words font-digital text-xs font-bold tracking-wider text-neon-yellow">{waitHeadline(wait)}</div>
         ) : (
           <div className="flex min-w-0 flex-wrap items-baseline gap-x-2" data-testid="program-label-line">
             <Label className="shrink-0 whitespace-nowrap !tracking-[0.12em] text-neon-yellow/70">{a.paused ? "Program paused" : "Program running"}</Label>
@@ -101,16 +110,17 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
         )}
         <div className="line-clamp-2 break-words font-digital text-base font-bold leading-tight tracking-wider text-neon-yellow">{a.name}</div>
       </div>
-      <div className="flex flex-wrap items-center gap-1">
+      {/* Four buttons beside the name at 760 px: GO and HOLD stack their words, and Skip, Pass and End keep their padding small (#428). */}
+      <div className="flex flex-wrap items-center">
         {wait ? (
           <button
             type="button"
             disabled={busy}
             onClick={pressGo}
-            className="flex items-center gap-1.5 rounded bg-neon-yellow px-3 py-1.5 disabled:opacity-60 font-digital text-xs font-bold tracking-widest text-black shadow-[0_0_14px_rgba(255,243,0,0.6)] hover:shadow-[0_0_20px_rgba(255,243,0,0.9)]"
+            className="flex items-center gap-1.5 rounded bg-neon-yellow px-2 py-0.5 disabled:opacity-60 font-digital text-xs font-bold tracking-widest text-black shadow-[0_0_14px_rgba(255,243,0,0.6)] hover:shadow-[0_0_20px_rgba(255,243,0,0.9)]"
             title="Start the belt and the next walk"
           >
-            <Play size={14} /> GO <span className="font-mono text-[11px] font-normal normal-case tracking-normal">start belt</span>
+            <Play size={14} /> <Stack>GO <span className="font-mono text-[11px] font-normal normal-case tracking-normal">start belt</span></Stack>
           </button>
         ) : a.paused ? (
           <GhostButton
@@ -119,7 +129,7 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
             className="flex items-center gap-1.5 text-neon-yellow"
             title="Resume the program."
           >
-            <Play size={14} /> GO <ButtonSub>resume program</ButtonSub>
+            <Play size={14} /> <Stack>GO <ButtonSub>resume program</ButtonSub></Stack>
           </GhostButton>
         ) : (
           <GhostButton
@@ -128,21 +138,32 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
             className="flex items-center gap-1.5"
             title="Hold the program."
           >
-            <Pause size={14} /> HOLD <ButtonSub>pause program</ButtonSub>
+            <Pause size={14} /> <Stack>HOLD <ButtonSub>pause program</ButtonSub></Stack>
           </GhostButton>
         )}
         <GhostButton
           disabled={control.pending}
           onClick={() => void control.run(post({ type: "program_skip" }))}
-          className="flex items-center gap-1.5"
+          className="flex items-center gap-1 px-1.5"
           title="Skip to the next step"
         >
           <SkipForward size={14} /> Skip
         </GhostButton>
+        {/* PASS: only a repeating program has a cycle to sit out. */}
+        {a.repeat_every_minutes != null && (
+          <GhostButton
+            disabled={control.pending}
+            onClick={() => void control.run(post({ type: "program_pass" }))}
+            className="flex items-center gap-1 px-1.5"
+            title="Skip one cycle and keep the schedule."
+          >
+            <CalendarClock size={14} /> Pass
+          </GhostButton>
+        )}
         <GhostButton
           disabled={control.pending}
           onClick={() => void control.run(post({ type: "program_end" }))}
-          className="flex items-center gap-1.5 hover:text-neon-yellow"
+          className="flex items-center gap-1 px-1.5 hover:text-neon-yellow"
           title="End the program and go back to the earlier speed."
         >
           <Square size={14} /> End
@@ -166,6 +187,12 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
             )}
           </div>
           {wait && <div className="font-mono text-xs text-white/70">{waitReason(wait)}</div>}
+          {/* What PASS did, in Rust's words, under the buttons until the next cycle begins. */}
+          {!wait && a.pass_note && (
+            <div role="status" data-testid="program-pass-note" className="font-mono text-xs text-emerald-400">
+              {a.pass_note.sentence}
+            </div>
+          )}
         </div>
         {stepMap && <ViewSwitch {...stepMap} />}
       </div>

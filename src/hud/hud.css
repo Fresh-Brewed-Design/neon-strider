@@ -883,7 +883,7 @@ body,
 @container (max-width: 259px) { .hud-program-run .hud-auto-readout > * { --lines: 2; } }
 @container (max-width: 129px) { .hud-program-run .hud-auto-readout > * { --lines: 3; } }
 
-/* Running program: name and status on top, the three controls on their own
+/* Running program: name and status on top, the four controls on their own
    row below, so the row never gets wider than the HUD window. */
 .hud-auto-readout { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .hud-auto-readout .hud-value { display: block; white-space: normal; overflow-wrap: anywhere; line-height: 1.2; }
@@ -945,6 +945,9 @@ body,
 .hud-auto-actions .hud-btn { flex: 1 1 0; min-width: min(min-content, 100%); }
 .hud-auto-actions .hud-btn { padding-left: 3px; padding-right: 3px; }
 .hud-auto-actions .hud-btn-sub { white-space: normal; text-align: center; letter-spacing: 0; }
+/* HOLD / GO, SKIP, PASS and END share one row while the module has room for four. Narrower (the
+   readout's own two-line width) they go two by two, so END never sits alone under three (#428). */
+@container (max-width: 259px) { .hud-auto-actions .hud-btn { flex-basis: calc(50% - 3px); } }
 
 /* A program waiting for GO (its next step would start a still belt): a
    yellow edge, a headline that can't be missed, and a filled, glowing GO. */
@@ -953,6 +956,8 @@ body,
   box-shadow: inset 4px 0 0 var(--hud-yellow);
   background: color-mix(in srgb, var(--hud-yellow) 9%, transparent);
 }
+/* After PASS: the rest's label names the cycles passed, in the programs' yellow. */
+.hud-pass-label { color: var(--hud-yellow); }
 .hud-ready-headline {
   font-family: var(--hud-font-display);
   font-size: 12px;

@@ -6,6 +6,7 @@
 // unanswered past its 30 s hold (the strip with GO as its main button).
 // ?program=interval: Interval walk on its 3rd brisk round (INTERVAL 3/5, step 6 of 11), with
 // T-MINUS 17:08 to its end.
+// ?program=passed: PASS on Workday's cycle 4 while it waited for GO: resting, cycle 5 on schedule.
 import type { ActiveProgram, Program, ProgramStep, StepKindSpot } from "../../ipc";
 import { params, snapshot, startGoWait } from "../mockState";
 import type { Scenario } from "./types";
@@ -73,6 +74,15 @@ export const setProgramPaused = (paused: boolean) => {
   Object.assign(snapshot.deck, paused ? { status: "Paused", speed_kmh: 0 } : { status: "Running", speed_kmh: snapshot.active_program.speed_kmh });
 };
 
+/** Rust's `PassNote::new`: what PASS did, for cycles `first` to `last`. */
+export function passNote(first: number, last: number): NonNullable<ActiveProgram["pass_note"]> {
+  const one = first === last;
+  return {
+    label: one ? `CYCLE ${first} PASSED` : `CYCLES ${first} TO ${last} PASSED`,
+    sentence: `${one ? `Cycle ${first} passed.` : `Cycles ${first} to ${last} passed.`} Cycle ${last + 1} stays on schedule.`,
+  };
+}
+
 export const PROGRAM_SCENARIOS: Record<string, Partial<ActiveProgram>> = {
   ready: { cycle: 4, paused: true, wait: "rest_complete", seconds_remaining: 300 },
   unanswered: { cycle: 4, paused: true, wait: "rest_complete", seconds_remaining: 300 },
@@ -94,6 +104,7 @@ export const PROGRAM_SCENARIOS: Record<string, Partial<ActiveProgram>> = {
   },
   still: { paused: true, wait: "belt_still" },
   resting: { phase: "resting", seconds_remaining: 1294 },
+  passed: { phase: "resting", cycle: 4, seconds_remaining: 1440, pass_note: passNote(4, 4) },
   paused: { paused: true },
 };
 
@@ -129,11 +140,21 @@ export const programs: Scenario = {
     }
     if (programFlag !== null && snapshot.active_program && PROGRAM_SCENARIOS[programFlag]) {
       Object.assign(snapshot.active_program, PROGRAM_SCENARIOS[programFlag]);
-      if (programFlag !== "resting") Object.assign(snapshot.deck, { status: "Paused", speed_kmh: 0, raw_speed_kmh: 0, target_speed_kmh: 0 });
+      if (programFlag !== "resting" && programFlag !== "passed") Object.assign(snapshot.deck, { status: "Paused", speed_kmh: 0, raw_speed_kmh: 0, target_speed_kmh: 0 });
       if (programFlag === "unanswered") startGoWait(31_000);
     }
   },
   commands: {
+    // PASS, roughly as Rust does it: resting until the next cycle's time, the belt left alone.
+    program_pass: () => {
+      const a = snapshot.active_program;
+      if (!a || a.repeat_every_minutes == null) throw new Error("PASS needs a program that repeats.");
+      const repeat = a.repeat_every_minutes * 60;
+      const first = a.pass_note ? Number(/\d+/.exec(a.pass_note.label)?.[0] ?? a.cycle + 1) : a.phase === "resting" ? a.cycle + 1 : a.cycle;
+      const cycle = a.phase === "resting" ? a.cycle + 1 : a.cycle;
+      const left = a.phase === "resting" ? (a.seconds_remaining ?? 0) + repeat : repeat - 60;
+      Object.assign(a, { phase: "resting", cycle, paused: false, wait: null, seconds_remaining: left, pass_note: passNote(first, cycle) });
+    },
     program_run: (c) => {
       const p = snapshot.programs.find((x) => x.id === c.id);
       if (p) {
