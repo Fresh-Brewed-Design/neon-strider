@@ -47,6 +47,14 @@ describe("ActiveProgramCard T-MINUS", () => {
     expect(screen.getByText(/cycle 3/)).toBeInTheDocument();
   });
 
+  it("shares a wrapping row with the step line, so a waiting card is no taller than a running one", () => {
+    current!.active_program = { ...current!.active_program!, paused: true, wait: "hold_complete", program_seconds_remaining: 420 };
+    render(<ActiveProgramCard />);
+    const row = screen.getByTestId("program-time-left").parentElement!;
+    expect(row).toHaveClass("flex", "flex-wrap");
+    expect(row.firstElementChild).toHaveTextContent(/cycle 3/);
+  });
+
   it("shows only the time left while paused", () => {
     current!.active_program = { ...current!.active_program!, paused: true, wait: null, program_seconds_remaining: 1390 };
     render(<ActiveProgramCard />);

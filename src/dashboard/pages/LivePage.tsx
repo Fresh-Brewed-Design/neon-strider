@@ -182,7 +182,7 @@ export function LivePage({ onCalibrate }: { onCalibrate?: () => void } = {}) {
       {/* The controls fit the 760x600 popup without scrolling up to 150 % Windows text, even with
           the maintenance banner and a running program both showing: both banners sit in the
           header, and the calibration offer and the stats come after the controls. */}
-      <div className="flex min-h-full flex-col gap-2">
+      <div className="flex min-h-full flex-col gap-1.5">
         {/* Two columns while each gets 12rem, which keeps them side by side up to 150 % Windows
             text (each panel lays itself out narrower under 14rem); above that they stack. */}
         <div className="grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-3">
@@ -250,10 +250,11 @@ export function LivePage({ onCalibrate }: { onCalibrate?: () => void } = {}) {
         {s.active_program && mapOpen ? (
           <StepMap a={s.active_program} readout={<WalkReadout s={s} />} />
         ) : (
-          // At most three tiles a row (each a third of the row, less the two 0.5rem gaps), as at
+          // At most three tiles a row (each a third of the row, less the two 0.375rem gaps), as at
           // 100 %; under 8.5rem a tile (DISPLACEMENT at 11 px and the pin) would not fit, so a large Windows
-          // text size gives fewer, wider tiles.
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(max(8.5rem,calc((100%_-_1rem)/3)),1fr))] gap-2">
+          // text size gives fewer, wider tiles. The tight spacing and the -mb-2 (12 px under the grid
+          // in place of the page's 20) keep three rows under a program card at 760x600.
+          <div className="-mb-2 grid grid-cols-[repeat(auto-fit,minmax(max(8.5rem,calc((100%_-_0.75rem)/3)),1fr))] gap-1.5">
             {stats.map((w) => {
               const { value, unit } = w.read(s);
               const spark = w.spark?.(s);
@@ -265,8 +266,9 @@ export function LivePage({ onCalibrate }: { onCalibrate?: () => void } = {}) {
               // the height it has without one. It is the last stat, so its row
               // always has a free tile to take.
               return (
-                <Panel key={w.id} className={cx("@container flex flex-col px-3 py-1", spark && "col-span-2")}>
-                  <div className="flex items-start justify-between gap-1">
+                <Panel key={w.id} className={cx("@container flex flex-col px-3 py-[3px]", spark && "col-span-2")}>
+                  {/* With no readout beside the name, the pin sits snug so LIFETIME_ODOMETER keeps one line. */}
+                  <div className={cx("flex items-start justify-between", (zone || target) && "gap-1")}>
                     <div className="min-w-0">
                       <Label className={cx("block leading-tight", CODENAME_FIT)}>
                         <Codename text={w.codename} />
@@ -275,11 +277,13 @@ export function LivePage({ onCalibrate }: { onCalibrate?: () => void } = {}) {
                     </div>
                     {zone && <ZoneReadout zone={zone} />}
                     {target && <TargetReadout target={target} />}
-                    <PinToggle widget={w.id} pinned={pinned.has(w.id)} />
+                    <div className="-mr-1 shrink-0">
+                      <PinToggle widget={w.id} pinned={pinned.has(w.id)} />
+                    </div>
                   </div>
                   {/* Offline, the reading is the treadmill's last one, dimmed as on the HUD. */}
                   <div className={cx("flex items-center gap-3", offline && "opacity-45")}>
-                    <span className={cx("shrink-0 font-digital text-base tracking-wider", TONE_TEXT[w.accent])}>
+                    <span className={cx("shrink-0 font-digital text-base leading-5 tracking-wider", TONE_TEXT[w.accent])}>
                       {value}
                       {unit && <span className="ml-1 font-mono text-xs text-white/60">{unit}</span>}
                     </span>

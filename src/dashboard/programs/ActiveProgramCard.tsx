@@ -75,7 +75,7 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
         // The status lines sit in a row of their own under the buttons, so the buttons never squeeze them onto two lines.
         // The name keeps at least 10rem beside the buttons; with less room (a large Windows text
         // size) the buttons wrap under it instead of crushing it.
-        "flex flex-wrap items-center gap-x-4 px-4 py-2",
+        "flex flex-wrap items-center gap-x-2 px-3 py-2",
         wait ? "border-l-4 border-neon-yellow bg-neon-yellow/10" : "border-neon-yellow/30",
       )}
     >
@@ -144,13 +144,16 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
       <ActionStatus error={control.error} className="basis-full justify-end text-right" />
       {/* The step lines, with the Live page's view switch at their end, a row apart from the program's buttons. */}
       <div className="flex min-w-0 basis-full flex-wrap items-end justify-between gap-x-3 gap-y-1">
-        <div className="min-w-0">
-          <Joined className="font-mono text-xs text-white/60" text={describeActive(a)} />
-          {timeLeft && (
-            <div data-testid="program-time-left">
-              <Joined className="font-mono text-xs text-neon-yellow/70" text={timeLeft} />
-            </div>
-          )}
+        <div className="min-w-0 flex-1 basis-48">
+          {/* The step and the time left share a line while they fit, and wrap apart when they do not. */}
+          <div className="flex flex-wrap gap-x-3">
+            <Joined className="font-mono text-xs text-white/60" text={describeActive(a)} />
+            {timeLeft && (
+              <div data-testid="program-time-left">
+                <Joined className="font-mono text-xs text-neon-yellow/70" text={timeLeft} />
+              </div>
+            )}
+          </div>
           {wait && <div className="font-mono text-xs text-white/70">{waitReason(wait)}</div>}
         </div>
         {stepMap && <ViewSwitch {...stepMap} />}
