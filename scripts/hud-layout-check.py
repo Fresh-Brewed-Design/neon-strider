@@ -12,6 +12,9 @@ Each state is opened in the 340 px wide HUD preview with ?textscale=<n> (src/dev
   folded ATROPHY_WARNING or the STASIS clock (#436);
 - after a refused press on the strip, its note stays under the header and beside ENGAGE, and
   ENGAGE stays where it was (#435).
+- the strip and the running strip never scroll sideways, every button stays inside the panel
+  and keeps its words inside itself, and the program line hides whole lines, never half of
+  one (#443).
 It is not a project dependency, like scripts/screenshots.py.
 """
 import sys
@@ -46,6 +49,41 @@ STRIP_STATES = {
     "ATROPHY_WARNING": "stasis=strip&idle&seated=folded",
     "STASIS clock": "stasis=strip&deck=paused&stasisclock=3909",
 }
+
+FIT_STATES = {
+    "strip": "stasis=strip&idle",
+    "strip rest": "stasis=strip&program=resting",
+    "strip STASIS clock": "stasis=strip&deck=paused&stasisclock=3909",
+    "running strip": "minified",
+    "running strip program": "minified&program=running",
+    "running strip paused": "minified&program=paused",
+}
+# Sideways scroll, a button past the panel or its words past the button, a text line cut across the
+# program box's foot. Returns the problems found.
+FIT = """() => {
+  const bad = [];
+  const body = document.querySelector('.hud-body');
+  if (body.scrollWidth > body.clientWidth + 0.5) bad.push('body scrolls sideways ' + body.scrollWidth + ' > ' + body.clientWidth);
+  const panel = document.querySelector('.hud-panel').getBoundingClientRect();
+  for (const b of document.querySelectorAll('.hud-strip .hud-btn')) {
+    const r = b.getBoundingClientRect();
+    const name = b.textContent.trim().slice(0, 14);
+    if (r.left < panel.left - 0.5 || r.right > panel.right + 0.5) bad.push('button ' + name + ' leaves the panel');
+    for (const t of b.querySelectorAll('.is-shown')) {
+      const q = t.getBoundingClientRect();
+      if (q.left < r.left - 0.5 || q.right > r.right + 0.5 || t.scrollWidth > t.clientWidth + 1) bad.push('button ' + name + ' clips its words');
+    }
+  }
+  const prog = document.querySelector('.hud-run-program');
+  if (prog) {
+    const box = prog.getBoundingClientRect();
+    for (const el of prog.querySelectorAll('.hud-label, .hud-run-seg, .hud-run-clock')) {
+      const q = el.getBoundingClientRect();
+      if (q.height > 0 && q.top < box.bottom - 1 && q.bottom > box.bottom + 1) bad.push('program line cut: ' + el.textContent.trim().slice(0, 12));
+    }
+  }
+  return bad;
+}"""
 
 HEADER = "() => Math.round(document.querySelector('.hud-header').getBoundingClientRect().height)"
 ENGAGE = """() => {
@@ -99,6 +137,12 @@ def main():
             print(f"{scale:>3} % strip ENGAGE: {'ok' if ok else 'FAIL'} {sorted(set(places.values()))}")
             if not ok:
                 print(f"        {places}")
+
+            for name, query in FIT_STATES.items():
+                open_view(page, scale, query)
+                bad = page.evaluate(FIT)
+                failed += 0 if not bad else 1
+                print(f"{scale:>3} % fit ({name}): {'ok' if not bad else 'FAIL'} {bad or ''}")
 
             open_view(page, scale, STRIP_STATES["TODAY"] + "&reject")
             before = page.evaluate(ENGAGE)
