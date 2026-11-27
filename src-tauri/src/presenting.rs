@@ -10,7 +10,8 @@
 //! ending, GO taken at the treadmill) still show too.
 //!
 //! Each card is still decided by its own machine, every second, so when the
-//! hold ends the ones still relevant show at once and the rest are gone. The
+//! hold ends only the ones still relevant are due; `card_queue` brings them
+//! back one at a time, after a short grace, in rank order. The
 //! eye-break machine is told (`eyebreak::Tick::held`) so no break begins
 //! unseen; it keeps a heads-up's minute in reserve for when the hold ends.
 //! Toasts are moments, so a held toast is dropped, not saved for later.
@@ -88,6 +89,12 @@ pub fn observe(presenting: bool) {
             if presenting { "started" } else { "ended" }
         );
     }
+}
+
+/// Windows says the user is presenting or full screen now, whatever the
+/// switch (auto-update never installs then).
+pub fn presenting_now() -> bool {
+    with(|rt| rt.presenting)
 }
 
 /// Cards and toasts are held back now.
@@ -200,7 +207,16 @@ mod tests {
 
     #[test]
     fn plain_toasts_are_held_and_program_toasts_pass() {
-        for kind in ["STATUS", "VELOCITY", "ELEVATION", "STRAVA", "CALL", "TRAY"] {
+        for kind in [
+            "STATUS",
+            "DECK",
+            "LINK",
+            "VELOCITY",
+            "ELEVATION",
+            "STRAVA",
+            "CALL",
+            "TRAY",
+        ] {
             assert!(holds_toast(Some(kind), true), "{kind}");
         }
         assert!(!holds_toast(Some(URGENT_TOAST), true));

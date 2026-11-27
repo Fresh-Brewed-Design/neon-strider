@@ -42,7 +42,8 @@ export function DeskSyncPanel({ sync }: { sync: DeskSync }) {
   const [pulse, endPulse] = useTodayLight(sync.today_lit);
   const lastIndex = sync.days.length - 1;
   return (
-    <Panel className="flex flex-wrap items-center gap-2 p-3">
+    // A wide gap keeps the grey plain line under DESK_SYNC apart from the grey sentence beside it.
+    <Panel className="flex flex-wrap items-center gap-x-6 gap-y-2 p-3">
       <div className="shrink-0">
         <Label>DESK_SYNC</Label>
         <PlainLine text={PLAIN.DESK_SYNC} />

@@ -314,9 +314,10 @@ const START_NO_RESPONSE: &str =
 pub const START_SPINNING_DOWN: &str = "Belt is still stopping. Press Engage once it stops.";
 
 /// Shown under Engage (and in the HUD) for a start asked for while the deck
-/// is in standby: it refuses every start, and the app can't wake it. It can't
-/// tell a screen timeout from a power-off, hence "off or asleep".
-pub const START_STANDBY: &str = "Treadmill is off or asleep. Switch it on, then press Engage.";
+/// is in standby: it refuses every start, and the app can't wake it. The same
+/// words the HUD's start buttons give before the press (`WAKE_FIRST` in
+/// `src/hud/status.ts`), and they name no button: the press may have been GO.
+pub const START_STANDBY: &str = "Wake the deck first at the treadmill or remote.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StartCheck {

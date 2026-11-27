@@ -2,7 +2,7 @@ import { ChartNoAxesColumn, Pause, Play, SkipForward, Square } from "lucide-reac
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { useAppSnapshot } from "../../state/useAppState";
-import { GhostButton, Label, Panel } from "../ui";
+import { GhostButton, Joined, Label, Panel } from "../ui";
 import { cx, post } from "../util";
 import { describeActive, describeTimeLeft, waitHeadline, waitReason } from "./format";
 
@@ -48,6 +48,11 @@ function ViewSwitch({ open, onToggle }: StepMapToggle) {
       </button>
     </div>
   );
+}
+
+/** What HOLD or GO does to the program, in plain words beside the codename (as on the HUD). */
+function ButtonSub({ children }: { children: string }) {
+  return <span className="font-mono text-[11px] font-normal normal-case tracking-normal opacity-70">{children}</span>;
 }
 
 /**
@@ -98,7 +103,7 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
             className="flex items-center gap-1.5 rounded bg-neon-yellow px-3 py-1.5 disabled:opacity-60 font-digital text-xs font-bold tracking-widest text-black shadow-[0_0_14px_rgba(255,243,0,0.6)] hover:shadow-[0_0_20px_rgba(255,243,0,0.9)]"
             title="Start the belt and the next walk"
           >
-            <Play size={14} /> GO
+            <Play size={14} /> GO <span className="font-mono text-[11px] font-normal normal-case tracking-normal">start belt</span>
           </button>
         ) : a.paused ? (
           <GhostButton
@@ -107,7 +112,7 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
             className="flex items-center gap-1.5 text-neon-yellow"
             title="Resume the program."
           >
-            <Play size={14} /> GO
+            <Play size={14} /> GO <ButtonSub>resume program</ButtonSub>
           </GhostButton>
         ) : (
           <GhostButton
@@ -116,7 +121,7 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
             className="flex items-center gap-1.5"
             title="Hold the program."
           >
-            <Pause size={14} /> HOLD
+            <Pause size={14} /> HOLD <ButtonSub>pause program</ButtonSub>
           </GhostButton>
         )}
         <GhostButton
@@ -140,10 +145,10 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
       {/* The step lines, with the Live page's view switch at their end, a row apart from the program's buttons. */}
       <div className="flex min-w-0 basis-full flex-wrap items-end justify-between gap-x-3 gap-y-1">
         <div className="min-w-0">
-          <div className="font-mono text-xs text-white/60">{describeActive(a)}</div>
+          <Joined className="font-mono text-xs text-white/60" text={describeActive(a)} />
           {timeLeft && (
-            <div className="font-mono text-xs text-neon-yellow/70" data-testid="program-time-left">
-              {timeLeft}
+            <div data-testid="program-time-left">
+              <Joined className="font-mono text-xs text-neon-yellow/70" text={timeLeft} />
             </div>
           )}
           {wait && <div className="font-mono text-xs text-white/70">{waitReason(wait)}</div>}

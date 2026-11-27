@@ -98,14 +98,17 @@ impl MachineStatus {
         matches!(self, MachineStatus::Running | MachineStatus::Starting)
     }
 
-    /// The word after `STATUS:` in the HUD toast for this state.
-    pub fn toast_label(self) -> &'static str {
+    /// The HUD's word for this state, reached from `from`: the header's words
+    /// (`src/hud/status.ts` `linkLabel`), and RE-JACK for a belt moving again
+    /// after STASIS. The DECK toast says it only while no HUD panel shows.
+    pub fn hud_word(self, from: MachineStatus) -> &'static str {
         match self {
-            MachineStatus::Stopped => "STOPPED",
-            MachineStatus::Starting => "COUNTDOWN",
+            MachineStatus::Stopped => "STANDBY",
+            MachineStatus::Starting => "SPIN-UP",
+            MachineStatus::Running if from == MachineStatus::Paused => "RE-JACK",
             MachineStatus::Running => "RUNNING",
-            MachineStatus::Paused => "PAUSED",
-            MachineStatus::Stopping => "SPINNING DOWN",
+            MachineStatus::Paused => "STASIS",
+            MachineStatus::Stopping => "SPIN-DOWN",
         }
     }
 }
@@ -498,11 +501,13 @@ mod tests {
     }
 
     #[test]
-    fn toast_labels() {
-        assert_eq!(MachineStatus::Stopping.toast_label(), "SPINNING DOWN");
-        assert_eq!(MachineStatus::Starting.toast_label(), "COUNTDOWN");
-        assert_eq!(MachineStatus::Running.toast_label(), "RUNNING");
-        assert_eq!(MachineStatus::Paused.toast_label(), "PAUSED");
-        assert_eq!(MachineStatus::Stopped.toast_label(), "STOPPED");
+    fn hud_words_are_the_apps_not_the_protocols() {
+        use MachineStatus::*;
+        assert_eq!(Stopping.hud_word(Running), "SPIN-DOWN");
+        assert_eq!(Starting.hud_word(Stopped), "SPIN-UP");
+        assert_eq!(Running.hud_word(Starting), "RUNNING");
+        assert_eq!(Running.hud_word(Paused), "RE-JACK");
+        assert_eq!(Paused.hud_word(Running), "STASIS");
+        assert_eq!(Stopped.hud_word(Stopping), "STANDBY");
     }
 }

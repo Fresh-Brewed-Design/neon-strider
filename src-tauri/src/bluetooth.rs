@@ -343,9 +343,10 @@ async fn write_packet(deck: &DeckLink, packet: &Packet) -> bool {
 
 /// Drive one connection until the link drops or a newer worker takes over.
 pub(crate) async fn spawn_protocol_worker(app: tauri::AppHandle, deck: DeckLink) {
+    // The header says so too: the HUD shows this only while no panel does.
     crate::hud::toast(
         &app,
-        serde_json::json!({ "type": "STATUS", "message": "DEVICE_CONNECTED", "isActionable": true }),
+        serde_json::json!({ "type": "LINK", "message": "LINKED" }),
     );
 
     // Read before taking the belt lock: a slow database must not stall the
@@ -679,11 +680,15 @@ async fn listen_for_status(
             || state.speed_drift.changed_within(NEURAL_RAMP_QUIET)
             || state.easy_start_quiet(state.now())
             || state.easing_down();
+        let before = toasts.status;
         let changes = toasts.on_frame(&t, neural_easing);
+        // The belt's state in the header's words; the HUD shows it only while
+        // no panel (and so no header) does. Its own slot, so it never pushes
+        // SESSION SAVED (STATUS) off the HUD.
         if let Some(status) = changes.status {
             crate::hud::toast(
                 &app,
-                serde_json::json!({ "type": "STATUS", "message": format!("STATUS: {}", status.toast_label()), "isActionable": true }),
+                serde_json::json!({ "type": "DECK", "message": status.hud_word(before) }),
             );
         }
         if changes.speed {
