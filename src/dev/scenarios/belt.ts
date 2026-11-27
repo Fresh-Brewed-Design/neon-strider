@@ -1,5 +1,6 @@
 // The belt itself. ?idle: the belt stopped. ?daily=12.34: today's total
-// (DAILY_TOTAL) in km, to check long values fit; ?distance=12.34 the same for
+// (DAILY_TOTAL) in km, to check long values fit; ?dailytime=659 today's
+// walking time beside it in minutes (659 is 10h 59m); ?distance=12.34 the same for
 // this walk's distance (DIST). ?decknote=refused|adjusted:
 // the HUD note after the deck refuses or changes a target, with Rust's plain words.
 import { params, snapshot } from "../mockState";
@@ -11,6 +12,8 @@ export const belt: Scenario = {
     if (params.has("idle")) snapshot.deck.status = "Stopped";
     const dailyFlag = Number(params.get("daily"));
     if (params.has("daily") && Number.isFinite(dailyFlag)) snapshot.session.daily_distance_m = Math.round(dailyFlag * 1000);
+    const dailyTimeFlag = Number(params.get("dailytime"));
+    if (params.has("dailytime") && Number.isFinite(dailyTimeFlag)) snapshot.session.daily_time_s = Math.round(dailyTimeFlag * 60);
     const distanceFlag = Number(params.get("distance"));
     if (params.has("distance") && Number.isFinite(distanceFlag)) snapshot.session.distance_m = Math.round(distanceFlag * 1000);
     const deckNoteFlag = params.get("decknote");

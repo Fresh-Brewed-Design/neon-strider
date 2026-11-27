@@ -57,7 +57,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     // worker and the status listener never wait on them.
     let hud = hud::hud_config();
     let hud_monitors = hud::monitors(&hud);
-    let (daily_base_m, live_counts_today) = daily_base();
+    let daily = daily_base();
     let strava = strava::snapshot();
     let weekly = weekly::snapshot();
     let eye_break = eyebreak::snapshot();
@@ -116,8 +116,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
                 connection,
                 hud,
                 hud_monitors,
-                daily_base_m,
-                live_counts_today,
+                daily,
                 max_incline_level: state.max_incline,
                 strava,
                 maintenance: maintenance::snapshot(live_m, live_s),

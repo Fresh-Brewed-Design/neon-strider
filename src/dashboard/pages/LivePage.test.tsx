@@ -69,11 +69,12 @@ describe("Live page STEP_MAP", () => {
     current!.session.duration_s = 754;
     current!.session.distance_m = 1234;
     current!.session.daily_distance_m = 4560;
+    current!.session.daily_time_s = 8_040;
     render(<LivePage />);
     const readout = screen.getByRole("group", { name: "Walk stats" });
     expect(readout).toHaveTextContent("TIME 12:34");
     expect(readout).toHaveTextContent("DIST 1.23 KM");
-    expect(readout).toHaveTextContent("TODAY 4.56 KM");
+    expect(readout).toHaveTextContent("TODAY 4.56 KM · 2h 14m");
 
     fireEvent.click(screen.getByRole("button", { name: /stats/i }));
     expect(screen.queryByRole("group", { name: "Walk stats" })).not.toBeInTheDocument();
@@ -84,6 +85,20 @@ describe("Live page STEP_MAP", () => {
     render(<LivePage />);
     expect(screen.queryByRole("list", { name: "Program steps" })).not.toBeInTheDocument();
     expect(screen.getByText("DECK_CYCLES")).toBeInTheDocument();
+  });
+
+  it("shows today's walking time on the DAILY_TOTAL tile", () => {
+    current!.active_program = null;
+    current!.session.daily_distance_m = 6_200;
+    current!.session.daily_time_s = 8_040;
+    render(<LivePage />);
+    const tile = screen.getByText("DAILY_TOTAL").closest("[class*='@container']")!;
+    expect(tile).toHaveTextContent("6.20KM");
+    expect(tile).toHaveTextContent("2h 14m");
+    // The time can't break, so on a narrow tile it drops under the km; DESK TIME WALKED's line breaks inside instead.
+    expect(screen.getByText("2h 14m").parentElement).toHaveClass("flex-wrap");
+    const walked = screen.getByText("DESK TIME WALKED").closest("[class*='@container']")!;
+    expect(walked.querySelector(".flex-wrap")).toBeNull();
   });
 
   it("puts each stat's plain line under its codename", () => {

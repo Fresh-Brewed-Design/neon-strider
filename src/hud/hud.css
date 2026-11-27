@@ -433,6 +433,22 @@ body,
 
 .hud-strip-total .hud-value { color: var(--accent); }
 
+/* Today's walking time on the label's line. The line adds no width (width 0,
+   then the total's full width), so the row wraps just as it would without the
+   time. It is one label line high: a time with no room beside TODAY wraps to
+   a hidden second line, so it shows whole or not at all. */
+.hud-strip-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 8px;
+  width: 0;
+  min-width: 100%;
+  height: calc(11px * 1.2);
+  overflow: hidden;
+}
+/* The label's size and line, so the time never makes the strip taller. */
+.hud-strip-total .hud-strip-time { font-size: 11px; line-height: 1.2; font-variant-numeric: tabular-nums; }
 /* A program's rest in the total's place: a long name ends in an ellipsis (the
    tooltip has it whole), so the slot never pushes Engage. */
 .hud-strip-total.hud-strip-rest { flex: 1 1 auto; min-width: 0; }

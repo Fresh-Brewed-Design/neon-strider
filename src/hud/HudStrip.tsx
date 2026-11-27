@@ -30,7 +30,8 @@ function RestCell({ name, left }: { name: string; left: number }) {
 /**
  * The panel collapsed during stasis (`hud_view` "strip"): under the header
  * (whose expand button shows the whole panel until the belt next moves),
- * today's total (DAILY_TOTAL) and Engage. A note covers the slot and the
+ * today's total (DAILY_TOTAL, today's walking time beside its label) and
+ * Engage. A note covers the slot and the
  * logo above it, beside Engage, so Engage never moves for it. The slot shows,
  * first that applies: a program's rest and its countdown (`RestCell`), a
  * folded ATROPHY_WARNING card (`SeatedReadout`: today's total can't change
@@ -39,6 +40,7 @@ function RestCell({ name, left }: { name: string; left: number }) {
 export function StripRow({ snapshot, send, note }: { snapshot: AppSnapshot; send: Send; note: PanelNote | null }) {
   const daily = statWidget("DAILY");
   const total = daily?.read(snapshot);
+  const time = daily?.detail?.(snapshot);
   const a = snapshot.active_program;
   const rest = a?.phase === "resting" && a.seconds_remaining !== null ? { name: a.name, left: a.seconds_remaining } : null;
   return (
@@ -53,7 +55,14 @@ export function StripRow({ snapshot, send, note }: { snapshot: AppSnapshot; send
             daily &&
             total && (
               <div className={`hud-strip-total accent-${daily.accent}`} title={statTitle(daily)}>
-                <span className="hud-label">{daily.label}</span>
+                <span className="hud-strip-head">
+                  <span className="hud-label">{daily.label}</span>
+                  {time && (
+                    <span className="hud-sub hud-strip-time" data-testid="hud-strip-time">
+                      {time}
+                    </span>
+                  )}
+                </span>
                 <span className="hud-value hud-value-sm">
                   {total.value}
                   {total.unit && <span className="hud-unit">{total.unit}</span>}

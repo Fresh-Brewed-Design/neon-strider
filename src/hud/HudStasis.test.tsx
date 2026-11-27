@@ -55,6 +55,26 @@ describe("HUD strip", () => {
     expect(container.querySelector(".hud-stats")).toBeNull();
   });
 
+  it("shows today's walking time beside TODAY, and none before the first walk", () => {
+    show(still("strip", (s) => (s.session.daily_time_s = 8_040)));
+    expect(screen.getByTestId("hud-strip-time")).toHaveTextContent("2h 14m");
+    expect(screen.getByTestId("hud-strip-time").closest(".hud-strip-total")).toHaveTextContent("TODAY");
+  });
+
+  it("leaves the time out before the first walk of the day", () => {
+    show(still("strip", (s) => (s.session.daily_time_s = 0)));
+    expect(screen.getByText("TODAY")).toBeInTheDocument();
+    expect(screen.queryByTestId("hud-strip-time")).toBeNull();
+  });
+
+  it("keeps the time off the whole panel's TODAY cell, so the panel keeps its height", () => {
+    const { container } = show(still("full", (s) => (s.session.daily_time_s = 8_040)));
+    const cell = [...container.querySelectorAll(".hud-stat")].find((c) => c.querySelector(".hud-label")?.textContent === "TODAY")!;
+    expect(cell).toBeTruthy();
+    expect(cell).not.toHaveTextContent("2h 14m");
+    expect(cell.querySelector(".hud-stat-detail")).toBeNull();
+  });
+
   it("shows a program's rest and its countdown in the total's place, Engage where it was", () => {
     const { container } = show(
       still("strip", (s) => {

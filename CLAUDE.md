@@ -222,6 +222,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?connect=fail`: connecting from the connect dialog fails
 - `?custom`: the HUD sits where it was dragged
 - `?daily=12.34`: today's km (DAILY_TOTAL)
+- `?dailytime=659`: today's walking time beside DAILY_TOTAL, in minutes (659 is 10h 59m)
 - `?deck=paused`: with `?stasis=...`, the belt is paused (Engage reads RE-JACK)
 - `?decknote=refused|adjusted`: the HUD note after the deck refuses or changes a target
 - `?deckprofile`: DECK_PROFILE learned (floor 0.6, ceiling 4.0, 1.5 skipped, top incline level 12, level 7 skipped; Diagnostics shows FORGET); `=sweep` with the LABS // DECK_SWEEP switch on and a speed sweep running, `=inclinesweep` an incline sweep running, `=sweepon` the switch on with no sweep running
