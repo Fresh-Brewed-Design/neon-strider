@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.89.0 (2026-11-27)
+
+### New
+
+- While the belt is paused, a STASIS clock counts how long the pause has lasted. The HUD shows the clock in its status row or strip. The Live page shows the clock beside Velocity's pin.
+
 ## 1.88.0 (2026-11-27)
 
 ### New
