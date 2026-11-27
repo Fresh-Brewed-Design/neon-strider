@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import type { LinkTone, RelinkView } from "./status";
 import type { useLogoDrag } from "./useHudDrag";
+import { SCRAMBLE_LEAD, TITLE, scrambled } from "./titleScramble";
 
 /** The header's size button: minify on the whole panel, expand on either strip. */
 export interface HeaderToggle {
@@ -20,12 +22,63 @@ function ToggleIcon({ kind }: { kind: HeaderToggle["kind"] }) {
   );
 }
 
+/** One frame of the LINK UP scramble. */
+export const SCRAMBLE_FRAME_MS = 45;
+/** Frames in the whole scramble: the last letter settles, then it ends (about 0.7 s). */
+export const SCRAMBLE_FRAMES = SCRAMBLE_LEAD + TITLE.length;
+
+/**
+ * NEON STRIDER, which decodes once each time `linkUp` moves (LINK UP, #374).
+ * The real letters stay in place, only see-through, so the header never moves
+ * and a screen reader always reads NEON STRIDER. Each noise glyph is drawn
+ * over the letter it replaces and clipped to it, hidden from screen readers,
+ * so the noise wraps with the logo when a large text size breaks it in two
+ * and never leaves it.
+ */
+function HudTitle({ linkUp }: { linkUp: number }) {
+  const [glyphs, setGlyphs] = useState<string | null>(null);
+  // A connect from before the panel showed (a hidden HUD) is old news: never replay it.
+  const [shownAt] = useState(linkUp);
+  useEffect(() => {
+    if (linkUp === shownAt) return;
+    let frame = 0;
+    const timer = window.setInterval(() => {
+      frame += 1;
+      if (frame >= SCRAMBLE_FRAMES) {
+        window.clearInterval(timer);
+        setGlyphs(null);
+      } else {
+        setGlyphs(scrambled(frame));
+      }
+    }, SCRAMBLE_FRAME_MS);
+    return () => window.clearInterval(timer);
+  }, [linkUp, shownAt]);
+  if (!glyphs) return <span className="hud-title-text">{TITLE}</span>;
+  return (
+    <span className="hud-title-text is-decoding" data-testid="hud-title-scramble">
+      {Array.from(TITLE, (ch, i) =>
+        ch === " " ? (
+          " "
+        ) : (
+          <span key={i} className="hud-title-letter">
+            {ch}
+            <span className="hud-title-scramble" aria-hidden="true">
+              {glyphs[i]}
+            </span>
+          </span>
+        ),
+      )}
+    </span>
+  );
+}
+
 /**
  * The panel's top row, also the strips': the link LED, the draggable logo and
  * the link status, which is a relink button while the link is down. It ends
  * with the size button (`toggle`), in the same corner in every view: minify on
  * the whole panel, expand on the strips. A SIM tag marks the dev builds'
- * simulated treadmill.
+ * simulated treadmill. The logo decodes once per connect (`linkUp`, from
+ * `useLinkUp`).
  */
 export function HudHeader({
   link,
@@ -35,6 +88,7 @@ export function HudHeader({
   dragging,
   toggle,
   simulated = false,
+  linkUp = 0,
 }: {
   link: { text: string; tone: LinkTone };
   relink: RelinkView | null;
@@ -45,6 +99,8 @@ export function HudHeader({
   toggle?: HeaderToggle;
   /** The linked deck is the dev builds' simulated treadmill. */
   simulated?: boolean;
+  /** Moves by one on each connect; 0 before the first. */
+  linkUp?: number;
 }) {
   return (
     <header className="hud-header">
@@ -54,7 +110,7 @@ export function HudHeader({
         title="Drag to move the HUD. Double-click to put it back in its corner."
         {...logo}
       >
-        NEON STRIDER
+        <HudTitle linkUp={linkUp} />
       </span>
       {/* The status and minify stay together; the SIM tag wraps above them. */}
       <span className="hud-header-end">

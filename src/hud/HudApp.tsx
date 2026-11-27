@@ -4,6 +4,8 @@ import { statWidget } from "../widgets/registry";
 import { HudCardView } from "./HudCards";
 import { useEyeBreakTones } from "./eyeBreakTones";
 import { useProgramTones } from "./programTones";
+import { useLinkUp, useStepSweep } from "./hudMotion";
+import { StepSweep } from "./StepSweep";
 import { HudHeader, type HeaderToggle } from "./HudHeader";
 import type { PanelNote } from "./HudNote";
 import { hotkeyTitle } from "./shortcutLabel";
@@ -47,6 +49,10 @@ export function HudApp() {
 
   useEyeBreakTones(snapshot?.eye_break);
   useProgramTones(snapshot?.program_tones);
+  // LINK UP: the logo decodes once per connect (display only).
+  const linkUp = useLinkUp(snapshot?.connection.connected);
+  // A program step change sweeps the panel once with the step's name (display only).
+  const stepSweep = useStepSweep(snapshot === null ? undefined : snapshot.active_program);
 
   const widgets = snapshot?.hud.widgets ?? [];
   const view = snapshot?.hud_view ?? "full";
@@ -145,6 +151,7 @@ export function HudApp() {
               dragging={placement.dragging}
               toggle={toggle}
               simulated={snapshot.connection.simulated}
+              linkUp={linkUp}
             />
             {/* Everything under the header: it scrolls if the panel can't fit the screen (a large text size), so the header stays on it. */}
             <div className="hud-body">
@@ -167,6 +174,8 @@ export function HudApp() {
                 <StripRow snapshot={snapshot} send={panel.send} note={note} />
               )}
             </div>
+            {/* The whole panel only: a step change on a strip never sweeps, then or on expand. */}
+            {full && <StepSweep sweep={stepSweep} />}
           </section>
         )}
         {snapshot && <HudCardView card={card} snapshot={snapshot} />}
