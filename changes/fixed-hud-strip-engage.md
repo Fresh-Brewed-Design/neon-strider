@@ -1,0 +1,1 @@
+- ENGAGE keeps its place on the HUD strip while a program rests, the strip shows ATROPHY_WARNING or the belt is paused.

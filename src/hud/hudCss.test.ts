@@ -202,6 +202,24 @@ describe("HUD header keeps one height whatever the chip reads", () => {
   });
 });
 
+// The strip's stat slot pushed ENGAGE onto its own line where TODAY didn't (#436).
+describe("HUD strip keeps ENGAGE and the logo row in place", () => {
+  it("sizes the stat slot from the row, never from what it shows", () => {
+    const cell = rule(".hud-strip-cell");
+    expect(cell).toMatch(/flex:\s*1 1 0;/);
+    expect(cell).toMatch(/min-width:\s*60px/);
+    expect(rule(".hud-strip-cell > .hud-strip-total")).toMatch(/min-width:\s*0/);
+  });
+
+  it("keeps the slot's value one line, its units wrapping out of sight", () => {
+    const value = rule(".hud-strip-cell .hud-value");
+    expect(value).toMatch(/flex-wrap:\s*wrap/);
+    expect(value).toMatch(/height:\s*calc\(15px \* 1\.1\)/);
+    expect(value).toMatch(/overflow:\s*hidden/);
+    expect(rule(".hud-strip-cell .hud-value .hud-stasis-clock")).toMatch(/display:\s*contents/);
+  });
+});
+
 // A note, a quiet line or the link going down never moves a control (#387).
 describe("HUD controls stay put", () => {
   it("draws the panel's note over the readings, out of the layout, letting clicks through", () => {

@@ -467,15 +467,31 @@ body,
 
 /* ---- Strip (stasis) ------------------------------------------------- */
 
-/* Today's total, and the strip's note over it and the logo, beside Engage. */
+/* Today's total (or what takes its place), and the strip's note over it,
+   beside Engage. The cell's size never comes from what it shows (#436):
+   Engage shares its line while the cell gets 60px, room for a two-digit
+   TODAY, and takes a line of its own below that, the same for TODAY, a
+   rest, a folded ATROPHY_WARNING and the STASIS clock. */
 .hud-strip-cell {
   position: relative;
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 1 1 0;
+  min-width: 60px;
   align-self: stretch;
   display: flex;
   align-items: center;
 }
+/* What the cell shows fits the cell: a long label ends in an ellipsis, and
+   the value keeps one line, its unit words wrapping onto a hidden second
+   line when there is no room (63 MIN, then 63), so the strip keeps its
+   height. The STASIS clock's time and PAUSED wrap the same way. */
+.hud-strip-cell > .hud-strip-total { flex-shrink: 1; min-width: 0; }
+.hud-strip-cell > .hud-strip-total > .hud-label { overflow: hidden; text-overflow: ellipsis; }
+.hud-strip-cell .hud-value {
+  flex-wrap: wrap;
+  height: calc(15px * 1.1);
+  overflow: hidden;
+}
+.hud-strip-cell .hud-value .hud-stasis-clock { display: contents; }
 .hud-strip-cell > .hud-note-pop {
   left: -12px;
   bottom: -9px;
