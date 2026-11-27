@@ -1,6 +1,6 @@
 // The dashboard's shared building blocks: page frame, panel, label, buttons and the option picker.
 
-import { Fragment, useRef, type ButtonHTMLAttributes, type HTMLAttributes, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useRef, type ButtonHTMLAttributes, type HTMLAttributes, type KeyboardEvent, type ReactNode, type Ref } from "react";
 import { cx, type Tone } from "./util";
 
 const TONE_BUTTON: Record<Tone, string> = {
@@ -15,18 +15,24 @@ export function Page({
   codename,
   title,
   actions,
+  fitHeader = false,
   children,
 }: {
   codename: string;
   title: string;
   actions?: ReactNode;
+  /** In a short window (index.css, `.dash-page-fit`) the codename and title are hidden but still read out; the actions stay. */
+  fitHeader?: boolean;
   children: ReactNode;
 }) {
   return (
     <section className="dash-page flex h-full min-h-0 flex-col">
       {/* The actions wrap under the title when both don't fit (a large Windows text size). */}
-      <header className="flex shrink-0 flex-wrap items-end justify-between gap-3 px-5 pb-2 pt-3" data-tauri-drag-region>
-        <div data-tauri-drag-region>
+      <header
+        className={cx("flex shrink-0 flex-wrap items-end justify-between gap-3 px-5 pb-2 pt-3", fitHeader && "dash-page-fit")}
+        data-tauri-drag-region
+      >
+        <div className="dash-page-heading" data-tauri-drag-region>
           <div className="font-mono text-xs tracking-[0.25em] text-white/60" data-tauri-drag-region>
             {codename}
           </div>
@@ -68,6 +74,43 @@ export function Codename({ text }: { text: string }) {
   ));
 }
 
+/** Splits a line at its separators: " · " or " // ", with a plain or no-break space either side. */
+const SEPARATOR = { "·": /\s·\s/, "//": /\s\/\/\s/ } as const;
+
+/**
+ * A monospace line of parts joined by " · " (or " // "), such as a program's step line. Each part
+ * stays whole while it fits a line, and where the line wraps the separator that would start the
+ * new line is clipped, so no line starts or ends with a lone separator. The separator is three (or
+ * four) characters wide, so this is for monospace text with no letter spacing.
+ */
+export function Joined({ text, sep = "·", className }: { text: string; sep?: keyof typeof SEPARATOR; className?: string }) {
+  const parts = text.split(SEPARATOR[sep]);
+  const width = `${sep.length + 2}ch`;
+  return (
+    <span data-joined className={cx("block overflow-hidden", className)}>
+      {/* Every part opens with its separator (the first with as much space), and the row is pulled
+          left by that width, so the one at the start of each line falls outside the box. */}
+      <span className="flex flex-wrap" style={{ marginLeft: `-${width}` }}>
+        {parts.map((part, i) => (
+          <span key={i} className="min-w-0" style={i === 0 ? { paddingLeft: width } : undefined}>
+            {i > 0 && (
+              <span data-joined-sep className="whitespace-pre">
+                {` ${sep} `}
+              </span>
+            )}
+            {part}
+          </span>
+        ))}
+      </span>
+    </span>
+  );
+}
+
+/** A codename's plain meaning: the small grey line under it (`PLAIN` in src/names.ts). */
+export function PlainLine({ text, className }: { text: string; className?: string }) {
+  return <span className={cx("block font-mono text-[11px] font-normal normal-case leading-tight tracking-normal text-white/60", className)}>{text}</span>;
+}
+
 /** Small grey explanation under or beside a control. */
 export function Hint({ className, ...rest }: HTMLAttributes<HTMLParagraphElement>) {
   return <p className={cx("font-mono text-xs leading-relaxed text-white/60", className)} {...rest} />;
@@ -78,7 +121,7 @@ export function NeonButton({
   className,
   children,
   ...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & { tone?: Tone }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { tone?: Tone; ref?: Ref<HTMLButtonElement> }) {
   return (
     <button
       type="button"

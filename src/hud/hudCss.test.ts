@@ -59,7 +59,8 @@ describe("HUD distance readouts at larger text sizes", () => {
   });
 
   it("caps a program button at the row's width and wraps its line, as END does at 225 % text size", () => {
-    expect(css).toMatch(/\.hud-auto-actions \.hud-btn\s*\{[^}]*min-width:\s*min\(max-content,\s*100%\)/);
+    // min-content: each button keeps its longest word whole, and the three share the row equally.
+    expect(css).toMatch(/\.hud-auto-actions \.hud-btn\s*\{[^}]*min-width:\s*min\(min-content,\s*100%\)/);
     expect(rule(".hud-auto-actions .hud-btn-sub")).toMatch(/white-space:\s*normal/);
   });
 
@@ -104,8 +105,10 @@ describe("HUD controls share one right edge", () => {
   it("wraps DUMP under STASIS when the two don't fit side by side", () => {
     expect(rule(".hud-transport")).toMatch(/flex-wrap:\s*wrap/);
     const main = css.match(/\.hud-transport \.hud-btn-main\s*\{([^}]*)\}/)?.[1] ?? "";
-    expect(main).toMatch(/min-width:\s*max-content/);
-    expect(main).toMatch(/flex:\s*\d+ 1 auto/);
+    // Never narrower than its longest word; its width comes from the row, not its words, so DUMP
+    // and QUIET sit at one x in every state.
+    expect(main).toMatch(/min-width:\s*min-content/);
+    expect(main).toMatch(/flex:\s*\d+ 1 0/);
   });
 
   it("lets DUMP grow into the row instead of holding a fixed width", () => {
@@ -141,7 +144,63 @@ describe("HUD header end group at 340 px", () => {
 
   it("keeps negative margins off the children, so they stay inside the group's box", () => {
     expect(rule(".hud-relink")).not.toMatch(/margin:[^;]*-\d+px\s+-\d+px/);
-    expect(rule(".hud-btn.hud-btn-minify")).toMatch(/margin:\s*-2px 0;/);
+    expect(rule(".hud-btn.hud-btn-minify")).toMatch(/margin:\s*-4px 0;/);
     expect(css).toMatch(/\.hud-header-end:has\(\.hud-btn-minify\)\s*\{\s*margin-right:\s*-6px/);
+  });
+});
+
+// While the belt rests only the live stats dim: errors, notes, the link state and GO stay readable.
+describe("HUD at rest", () => {
+  it("dims only the stats, and not while a note shows", () => {
+    expect(rule(".hud-panel.is-resting")).toBe("");
+    expect(rule(".hud-panel.is-resting:not(:has(.hud-note)) .hud-stats")).toMatch(/opacity:\s*0\.8/);
+    expect(rule(".hud-panel.is-resting:not(:has(.hud-note)) .hud-strip-total")).toMatch(/opacity:\s*0\.8/);
+  });
+
+  it("keeps GO's plain-words line dark on its yellow fill", () => {
+    expect(rule(".hud-btn.hud-btn-go .hud-btn-sub")).toMatch(/color:\s*color-mix\(in srgb, #05080c 75%/);
+  });
+
+  it("gives the header's relink and minify buttons a 24px target", () => {
+    expect(rule(".hud-relink")).toMatch(/min-height:\s*24px/);
+    expect(rule(".hud-btn.hud-btn-minify")).toMatch(/height:\s*24px/);
+  });
+});
+
+// NO_CARRIER and RELINK 12S stay on one line up to 225 % text size (#392).
+describe("HUD link chip in a narrow header", () => {
+  it("closes up its letters and padding under 120px", () => {
+    expect(css).toMatch(/\.hud-header\s*\{\s*container-type:\s*inline-size;\s*\}/);
+    const narrow = css.match(/@container \(max-width: 120px\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
+    expect(narrow).toMatch(/\.hud-header:has\(\.hud-led\) \.hud-header-live > \.hud-status\s*\{\s*letter-spacing:\s*0;/);
+    expect(narrow).toMatch(/\.hud-header:has\(\.hud-led\) \.hud-header-live > \.hud-relink\s*\{\s*padding:\s*3px 2px;/);
+  });
+});
+
+// A note, a quiet line or the link going down never moves a control (#387).
+describe("HUD controls stay put", () => {
+  it("draws the panel's note over the readings, out of the layout, letting clicks through", () => {
+    const pop = rule(".hud-note.hud-note-pop");
+    expect(pop).toMatch(/position:\s*absolute/);
+    expect(pop).toMatch(/bottom:\s*0/);
+    expect(pop).toMatch(/pointer-events:\s*none/);
+  });
+
+  it("keeps the status row one fixed line and shows only its first line", () => {
+    expect(rule(".hud-status-row")).toMatch(/height:\s*30px/);
+    expect(rule(".hud-status-line > :not(:first-child)")).toMatch(/display:\s*none/);
+  });
+
+  it("sizes QUIET for both of its lines, so turning it on moves nothing", () => {
+    expect(rule(".hud-swap > *")).toMatch(/grid-area:\s*1 \/ 1/);
+    expect(rule(".hud-swap > :not(.is-shown)")).toMatch(/visibility:\s*hidden/);
+  });
+
+  it("keeps the header one line while the link word is long", () => {
+    expect(css).toMatch(/\.hud-header:has\(\.hud-led\.tone-down, \.hud-led\.tone-warn\) \.hud-status \{ letter-spacing: 0\.08em; \}/);
+  });
+
+  it("dims the readings while no treadmill is linked", () => {
+    expect(rule(".hud-panel.is-offline .hud-stats")).toMatch(/opacity:\s*0\.45/);
   });
 });

@@ -1,4 +1,4 @@
-import type { Change } from "../../ipc";
+import type { Change, WeekStats } from "../../ipc";
 
 export type ChangeTone = "up" | "down" | "flat" | "new";
 
@@ -17,4 +17,13 @@ export function formatChange(change: Change): { text: string; tone: ChangeTone }
   const shown = Math.min(Math.abs(pct), MAX_SHOWN_PCT);
   const more = Math.abs(pct) > MAX_SHOWN_PCT ? "+" : "";
   return pct > 0 ? { text: `▲ ${shown}%${more}`, tone: "up" } : { text: `▼ ${shown}%${more}`, tone: "down" };
+}
+
+/**
+ * Walked days out of desk days (days the PC was used, as DESK_SYNC counts them): "4 / 5 desk days".
+ * A day off the PC is not a desk day, so it never counts against the week.
+ */
+export function formatDeskDays(week: WeekStats): string {
+  if (week.desk_days === 0) return "No desk days yet";
+  return `${week.active_days} / ${week.desk_days} desk ${week.desk_days === 1 ? "day" : "days"}`;
 }

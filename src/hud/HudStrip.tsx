@@ -1,70 +1,99 @@
 import { Fragment, useLayoutEffect, useRef } from "react";
-import type { AppSnapshot, HudWidget } from "../ipc";
+import type { AppSnapshot, Command, HudWidget } from "../ipc";
 import { describeActive } from "../dashboard/programs/format";
-import { startFailure } from "../state/linkStatus";
-import { statWidget } from "../widgets/registry";
+import { formatClock } from "../format";
+import { statTitle, statWidget } from "../widgets/registry";
 import { Sparkline } from "../widgets/Sparkline";
-import { HudNote } from "./HudNote";
+import { NotePop, type PanelNote } from "./HudNote";
 import { EngageButton } from "./HudPanel";
-import { hotkeyTitle } from "./shortcutLabel";
-import { useHudSend } from "./useHudSend";
+import { DumpName } from "./DumpName";
+import { dumpTitle } from "./status";
 
-/** Four corners pointing out: show the whole HUD. */
-function ExpandIcon() {
+type Send = (c: Command) => Promise<boolean>;
+
+/**
+ * A program's rest in the strip's stat slot: the program's name over the time
+ * to its next walk, in the programs' yellow. A rest outranks today's total
+ * there: it is what the still belt is doing. Same label-over-value shape as
+ * the total, so Engage beside it keeps its place.
+ */
+function RestCell({ name, left }: { name: string; left: number }) {
+  const clock = formatClock(left);
   return (
-    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-      <path
-        d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="square"
-      />
-    </svg>
+    <div className="hud-strip-total hud-strip-rest accent-yellow" title={`${name} · Rest · next walk in ${clock}`} data-testid="hud-strip-rest">
+      <span className="hud-label">{name} // REST</span>
+      <span className="hud-value hud-value-sm">{clock}</span>
+    </div>
   );
 }
 
 /**
- * The panel collapsed during stasis (`hud_view` "strip"): under the header,
- * today's total (DAILY_TOTAL, with today's walking time beside its label), expand (the whole panel until the belt next
- * moves) and Engage.
+ * The panel collapsed during stasis (`hud_view` "strip"): under the header
+ * (whose expand button shows the whole panel until the belt next moves),
+ * today's total (DAILY_TOTAL, today's walking time beside its label) and
+ * Engage. A note covers the slot and the
+ * logo above it, beside Engage, so Engage never moves for it. The slot shows,
+ * first that applies: a program's rest and its countdown (`RestCell`), a
+ * folded ATROPHY_WARNING card (`SeatedReadout`: today's total can't change
+ * while the belt is still; a walk lets the card go), or today's total.
  */
-export function StripRow({ snapshot }: { snapshot: AppSnapshot }) {
-  const { send, error } = useHudSend();
+export function StripRow({ snapshot, send, note }: { snapshot: AppSnapshot; send: Send; note: PanelNote | null }) {
   const daily = statWidget("DAILY");
   const total = daily?.read(snapshot);
   const time = daily?.detail?.(snapshot);
+  const a = snapshot.active_program;
+  const rest = a?.phase === "resting" && a.seconds_remaining !== null ? { name: a.name, left: a.seconds_remaining } : null;
   return (
     <div className="hud-strip">
       <div className="hud-strip-row">
-        {daily && total && (
-          <div className={`hud-strip-total accent-${daily.accent}`} title={daily.codename}>
-            <span className="hud-strip-head">
-              <span className="hud-label">{daily.label}</span>
-              {time && (
-                <span className="hud-sub hud-strip-time" data-testid="hud-strip-time">
-                  {time}
+        <div className="hud-strip-cell">
+          {rest ? (
+            <RestCell name={rest.name} left={rest.left} />
+          ) : snapshot.seated.folded ? (
+            <SeatedReadout snapshot={snapshot} />
+          ) : (
+            daily &&
+            total && (
+              <div className={`hud-strip-total accent-${daily.accent}`} title={statTitle(daily)}>
+                <span className="hud-strip-head">
+                  <span className="hud-label">{daily.label}</span>
+                  {time && (
+                    <span className="hud-sub hud-strip-time" data-testid="hud-strip-time">
+                      {time}
+                    </span>
+                  )}
                 </span>
-              )}
-            </span>
-            <span className="hud-value hud-value-sm">
-              {total.value}
-              {total.unit && <span className="hud-unit">{total.unit}</span>}
-            </span>
-          </div>
-        )}
-        <button
-          type="button"
-          className="hud-btn hud-btn-expand"
-          aria-label="Show the whole HUD"
-          title="Show the whole HUD until the belt moves again"
-          onClick={() => void send({ type: "hud_expand" })}
-        >
-          <ExpandIcon />
-        </button>
-        <EngageButton snapshot={snapshot} send={send} />
+                <span className="hud-value hud-value-sm">
+                  {total.value}
+                  {total.unit && <span className="hud-unit">{total.unit}</span>}
+                </span>
+              </div>
+            )
+          )}
+          <NotePop note={note} />
+        </div>
+        <EngageButton snapshot={snapshot} send={send} sub strip />
       </div>
-      <HudNote error={error ?? startFailure(snapshot)} />
+    </div>
+  );
+}
+
+/**
+ * ATROPHY_WARNING folded into the strip (#422): the card showed once and went
+ * unanswered, so the seated time stays in today's total's place, in yellow,
+ * until a walk. Rust decides when (`seated.folded`, `card_queue.rs`). Engage
+ * keeps its place: the label shortens first.
+ */
+export function SeatedReadout({ snapshot }: { snapshot: AppSnapshot }) {
+  const s = snapshot.seated;
+  if (!s.folded) return null;
+  return (
+    <div className="hud-strip-total hud-seated-readout accent-yellow" data-testid="hud-seated-readout" title="Minutes at the PC since the last walk of 2 minutes or more.">
+      <span className="hud-label">ATROPHY_WARNING</span>
+      <span className="hud-value hud-value-sm">
+        {s.seated_minutes}
+        <span className="hud-unit">MIN IDLE</span>
+      </span>
     </div>
   );
 }
@@ -125,7 +154,7 @@ function PulseRow({ snapshot }: { snapshot: AppSnapshot }) {
   const { value, unit } = def.read(snapshot);
   const spark = def.spark?.(snapshot);
   return (
-    <div className={`hud-run-pulse accent-${def.accent}`} title={def.codename} data-testid="hud-run-pulse">
+    <div className={`hud-run-pulse accent-${def.accent}`} title={statTitle(def)} data-testid="hud-run-pulse">
       <div className="hud-strip-total">
         <span className="hud-label">{def.label}</span>
         <span className="hud-value hud-value-sm">
@@ -140,11 +169,13 @@ function PulseRow({ snapshot }: { snapshot: AppSnapshot }) {
 
 /**
  * The panel minified by the user (`hud_view` "minified"): speed, time and
- * distance, heart rate with a sensor picked, the program step when one runs,
- * then expand, Engage/Stasis and Dump. It stays until expanded again.
+ * distance, heart rate with a sensor picked, the program step (its room kept
+ * while none runs),
+ * then Engage/Stasis and Dump with their plain lines, as on the whole panel.
+ * Expand is in the header. A note covers the readings over the buttons, so the
+ * buttons never move for it. It stays until expanded again.
  */
-export function RunStripRow({ snapshot }: { snapshot: AppSnapshot }) {
-  const { send, error } = useHudSend();
+export function RunStripRow({ snapshot, send, note }: { snapshot: AppSnapshot; send: Send; note: PanelNote | null }) {
   const { deck, connection } = snapshot;
   const a = snapshot.active_program;
   const stopped = deck.status === "Stopped" || deck.status === "Stopping";
@@ -156,7 +187,7 @@ export function RunStripRow({ snapshot }: { snapshot: AppSnapshot }) {
           if (!def) return null;
           const { value, unit } = def.read(snapshot);
           return (
-            <div key={id} className={`hud-strip-total accent-${def.accent}`} title={def.codename}>
+            <div key={id} className={`hud-strip-total accent-${def.accent}`} title={statTitle(def)}>
               <span className="hud-label">{def.label}</span>
               <span className="hud-value hud-value-sm">
                 {value}
@@ -167,33 +198,29 @@ export function RunStripRow({ snapshot }: { snapshot: AppSnapshot }) {
         })}
       </div>
       <PulseRow snapshot={snapshot} />
-      {a && (
-        <div className="hud-run-program accent-yellow">
+      {/* With no program the line keeps its room, so STASIS and DUMP stay put when a program starts or ends. */}
+      {a ? (
+        <div className="hud-run-program accent-yellow" title={`${a.name} · ${describeActive(a)}`}>
           <span className="hud-label">{a.paused ? "PAUSED" : "PROGRAM"}</span>
           <ProgramLine name={a.name} detail={describeActive(a)} />
         </div>
+      ) : (
+        <div className="hud-run-program hud-reserve" aria-hidden="true" />
       )}
       <div className="hud-strip-row">
+        <NotePop note={note} />
+        <EngageButton snapshot={snapshot} send={send} sub strip />
         <button
           type="button"
-          className="hud-btn hud-btn-expand"
-          aria-label="Show the whole HUD"
-          title={hotkeyTitle("Show the whole HUD", snapshot.shortcuts)}
-          onClick={() => void send({ type: "hud_set_minified", minified: false })}
-        >
-          <ExpandIcon />
-        </button>
-        <EngageButton snapshot={snapshot} send={send} />
-        <button
-          type="button"
-          className="hud-btn hud-btn-stop accent-magenta"
+          className="hud-btn hud-btn-stop hud-btn-stack hud-btn-dump"
           disabled={!connection.connected || stopped}
+          title={dumpTitle(snapshot)}
           onClick={() => void send({ type: "stop" })}
         >
-          DUMP
+          <DumpName />{" "}
+          <span className="hud-btn-sub">{snapshot.easy_stop.easing ? "stop now" : "end walk"}</span>
         </button>
       </div>
-      <HudNote error={error ?? startFailure(snapshot)} />
     </div>
   );
 }

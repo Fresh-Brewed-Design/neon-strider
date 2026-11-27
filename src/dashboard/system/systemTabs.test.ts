@@ -38,10 +38,10 @@ describe("SYSTEM_TABS", () => {
     expect(SYSTEM_TABS.flatMap((t) => t.sections).sort()).toEqual(ids);
   });
 
-  it("groups the sections the way issue 359 asks", () => {
+  it("groups the sections the way issues 359 and 392 ask", () => {
     expect(tabOfSection("sys-calibration")).toBe("deck");
     expect(tabOfSection("sys-strava")).toBe("links");
-    expect(tabOfSection("sys-shortcuts")).toBe("routine");
+    expect(tabOfSection("sys-shortcuts")).toBe("core");
     expect(tabOfSection("sys-updates")).toBe("core");
     expect(tabOfSection("sys-nothing")).toBeNull();
   });

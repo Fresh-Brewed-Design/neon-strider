@@ -328,9 +328,15 @@ value you set is kept. The range stays 15 to 240.
 
 ## Snooze
 
-**Was and is:** 15 minutes. Kept. No study tests a snooze. Idle time keeps counting while it
-is snoozed, so the next card still comes about half an interval later, which keeps the breaks
-close to every 30 minutes.
+**Was:** 15 minutes. No study tests a snooze. Idle time keeps counting while it is snoozed,
+so the next card still comes about half an interval later, which keeps the breaks close to
+every 30 minutes.
+
+**Now (#422):** the first snooze is 15 minutes, the second 30, then 60 each time, until a walk
+or time away resets the seated time. A simulated desk day from the owner's settings had 16
+cards and 12 snoozes, one every 15 minutes; the longer snoozes cut that repeat demand. The
+card also shows once: left unanswered for a minute it folds into a yellow seated-time readout
+on the HUD. Fresh Brewed Design's decision, not a study's; the 30 minute threshold stays.
 
 ## Walk-away timings
 

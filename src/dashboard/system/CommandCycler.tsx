@@ -6,6 +6,9 @@ import { ActionStatus } from "../../components/ActionStatus";
 import { INPUT_CLASS } from "./fields";
 import { DEFAULT_TEMPLATE, fillTemplate, frameBody, hex, parseTemplate } from "./rawFrame";
 
+/** The shortest step the cycler allows, so a typo cannot flood the treadmill. */
+const MIN_DELAY_MS = 200;
+
 /**
  * Protocol discovery tool: fills the `XX` slot of a body template with each
  * byte in a range, one step at a time or on a timer, so you can watch what the
@@ -20,6 +23,7 @@ export function CommandCycler({ onSend }: { onSend: (body: number[]) => Promise<
   const [endByte, setEndByte] = useState(0x20);
   const [currentByte, setCurrentByte] = useState(0x00);
   const [delay, setDelay] = useState(2000);
+  const [delayText, setDelayText] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
 
   const parsed = parseTemplate(templateText);
@@ -86,10 +90,10 @@ export function CommandCycler({ onSend }: { onSend: (body: number[]) => Promise<
       </label>
 
       <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0 font-digital text-sm tracking-[0.12em] text-neon-magenta/60" aria-label="Frame to send">
+        <div className="min-w-0 font-digital text-sm tracking-[0.12em] text-white/60" aria-label="Frame to send">
           {frame
             ? frame.map((b, i) => (
-                <span key={i} className={cx("mr-1.5 inline-block", i === slot && "text-neon-magenta")}>
+                <span key={i} className={cx("mr-1.5 inline-block", i === slot && "text-neon-cyan")}>
                   {hex(b)}
                 </span>
               ))
@@ -100,7 +104,7 @@ export function CommandCycler({ onSend }: { onSend: (body: number[]) => Promise<
             <ChevronLeft size={16} />
           </GhostButton>
           <NeonButton
-            tone="magenta"
+            tone="yellow"
             className="px-3 py-1.5"
             disabled={!template}
             onClick={() => {
@@ -139,16 +143,26 @@ export function CommandCycler({ onSend }: { onSend: (body: number[]) => Promise<
           <Label>Step every (ms)</Label>
           <input
             type="number"
-            value={delay}
-            onChange={(e) => setDelay(parseInt(e.target.value) || 1000)}
+            min={MIN_DELAY_MS}
+            value={delayText ?? delay}
+            onChange={(e) => {
+              setDelayText(e.target.value);
+              const n = parseInt(e.target.value);
+              if (n >= MIN_DELAY_MS) setDelay(n);
+            }}
+            onBlur={() => {
+              const n = parseInt(delayText ?? "");
+              if (delayText !== null) setDelay(Math.max(MIN_DELAY_MS, Number.isFinite(n) ? n : 1000));
+              setDelayText(null);
+            }}
             className={cx(INPUT_CLASS, "mt-1 block w-24")}
           />
         </label>
         <NeonButton
-          tone="magenta"
+          tone="yellow"
           disabled={!template && !isRunning}
           onClick={() => setIsRunning(!isRunning)}
-          className={cx("ml-auto flex items-center gap-2 px-4 py-2", isRunning && "animate-pulse")}
+          className={cx("ml-auto flex items-center gap-2 px-4 py-2", isRunning && "motion-safe:animate-pulse")}
         >
           {isRunning ? <Square size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
           {isRunning ? "Stop stepping" : "Auto-step"}

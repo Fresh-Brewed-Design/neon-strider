@@ -12,6 +12,8 @@ export function StylizedSlider({
   onChange,
   color,
   mark = null,
+  label,
+  disabled = false,
 }: {
   min: number;
   max: number;
@@ -20,6 +22,10 @@ export function StylizedSlider({
   onChange: (val: number) => void;
   color: "cyan" | "magenta";
   mark?: SliderMark | null;
+  /** The control's accessible name. */
+  label: string;
+  /** Offline: the input is really disabled, so the keyboard can't move it either. */
+  disabled?: boolean;
 }) {
   const isCyan = color === "cyan";
   // The 16 px thumb travels the track minus its own width so it never pokes past either end.
@@ -28,14 +34,13 @@ export function StylizedSlider({
   const markPct = mark && mark.value >= min - 1e-6 && mark.value <= max + 1e-6 ? trackPct(mark.value, min, max) : null;
 
   return (
-    // With a mark, a 1 px gap and an 11 px label row take the 8 px gap and 4 px
-    // tick row's 12 px, so the Live page keeps its height at 760x600.
-    <div className={`flex w-full flex-col group ${markPct !== null ? "gap-px" : "gap-2"}`}>
-      <div className="relative h-6 flex items-center">
+    // With a mark, its 11 px label row sits under the track, 1 px below it.
+    <div className="flex w-full flex-col gap-px group">
+      <div className="relative h-5 flex items-center">
         <div className="absolute inset-0 h-1 bg-white/5 top-1/2 -translate-y-1/2 rounded-full overflow-hidden">
           <div
             className={`h-full ${isCyan ? "bg-neon-cyan" : "bg-neon-magenta"}`}
-            style={{ width: `${((value - min) / (max - min)) * 100}%` }}
+            style={{ width: `${pct}%` }}
           />
         </div>
 
@@ -53,12 +58,14 @@ export function StylizedSlider({
           max={max}
           step={step}
           value={value}
+          disabled={disabled}
+          aria-label={label}
           onChange={(e) => onChange(sliderValue(e.target.value, min, max))}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+          className="peer absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-10"
         />
 
         <div
-          className="absolute h-4 w-4 rounded-sm border-2 pointer-events-none z-0"
+          className="absolute h-4 w-4 rounded-sm border-2 pointer-events-none z-0 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-white"
           style={{
             left: `calc(${pct}% - ${pct * 0.16}px)`,
             borderColor: isCyan ? "var(--color-neon-cyan)" : "var(--color-neon-magenta)",
@@ -68,10 +75,9 @@ export function StylizedSlider({
         />
       </div>
 
-      {markPct !== null && mark ? (
-        // The mark's label sits where the decorative ticks were, so the
-        // slider keeps its height. Near either end it lines up with that end
-        // instead of centring, so it never pokes past the track.
+      {markPct !== null && mark && (
+        // Near either end the mark's label lines up with that end instead of
+        // centring, so it never pokes past the track.
         <div className="relative h-[11px]">
           <span
             title={mark.title}
@@ -83,12 +89,6 @@ export function StylizedSlider({
           >
             {mark.label}
           </span>
-        </div>
-      ) : (
-        <div className="flex justify-between px-1">
-          {[0, 1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-1 w-[1px] bg-white/10" />
-          ))}
         </div>
       )}
     </div>

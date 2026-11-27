@@ -1,7 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import type { ActiveProgram } from "../../ipc";
 import { planRows, rowTime, stepChart, zoneText, type PlanRow, type StepChart } from "../programs/stepMap";
-import { Label, Panel } from "../ui";
+import { Joined, Label, Panel } from "../ui";
 import { cx } from "../util";
 
 // The chart's own units; the SVG stretches to the panel's width.
@@ -58,14 +58,21 @@ function Row({ row }: { row: PlanRow }) {
       aria-current={current ? "step" : undefined}
       className={cx(
         "step-map-row grid grid-cols-[1.5rem_minmax(0,1fr)_5.5rem_6.5rem_3.5rem_6rem] items-center gap-2 rounded px-1.5 font-mono text-[11px] leading-4",
-        current ? "bg-neon-yellow/10 text-neon-yellow" : row.state === "done" ? "text-white/30" : "text-white/70",
+        current ? "bg-neon-yellow/10 text-neon-yellow" : row.state === "done" ? "text-white/50" : "text-white/70",
       )}
     >
       <span>{current ? "▶" : row.number != null ? String(row.number).padStart(2, "0") : ""}</span>
       <span className="truncate font-bold tracking-[0.08em]">{row.code}</span>
       <span>{rowTime(row.minutes)}</span>
-      <span>{row.speedKmh != null ? `${row.speedKmh.toFixed(1)} km/h` : "speed as before"}</span>
-      <span>{row.inclinePct != null ? `${num(row.inclinePct)}%` : ""}</span>
+      {row.speedKmh != null ? (
+        <>
+          <span>{`${row.speedKmh.toFixed(1)} km/h`}</span>
+          <span>{row.inclinePct != null ? `${num(row.inclinePct)}%` : ""}</span>
+        </>
+      ) : (
+        // A rest row has no speed or incline of its own: its words take both columns on one line.
+        <span className="col-span-2 truncate">speed before program</span>
+      )}
       <span className="truncate">{row.zone ? zoneText(row.zone) : ""}</span>
     </li>
   );
@@ -74,8 +81,8 @@ function Row({ row }: { row: PlanRow }) {
 /**
  * STEP_MAP on the Live page: the running program's steps and a stepped speed
  * and incline chart with a "you are here" line. It takes the stats' place and
- * the height left on the page (at least two list rows), so the page still fits
- * 760x600; the list scrolls inside it. `readout` sits in its header (the Live
+ * the height left on the page (at least three list rows: the step before, the current one and
+ * the next), so the page still fits 760x600; the list scrolls inside it. `readout` sits in its header (the Live
  * page's time and distances), so those stay in view while the map is open.
  */
 export function StepMap({ a, readout }: { a: ActiveProgram; readout?: ReactNode }) {
@@ -95,25 +102,35 @@ export function StepMap({ a, readout }: { a: ActiveProgram; readout?: ReactNode 
   const repeat = a.repeat_every_minutes;
   const chart = stepChart(a, W, H);
   return (
-    <Panel className="flex min-h-[130px] flex-1 basis-0 flex-col gap-1.5 px-3 py-2">
+    <Panel className="flex min-h-min flex-1 basis-0 flex-col gap-1.5 px-3 py-2">
       <div className="flex shrink-0 flex-wrap items-baseline gap-x-3 font-mono text-[11px]">
         <Label className="text-neon-yellow/80">STEP_MAP</Label>
-        {repeat != null && (
-          <span className="text-white/60">
-            Cycle {a.cycle} · repeats every {num(repeat)} min
-          </span>
-        )}
+        {repeat != null && <Joined className="text-white/60" text={`Cycle ${a.cycle} · repeats every ${num(repeat)} min`} />}
         {readout}
-        {/* Each axis top in its line's colour, so the labels double as the legend. */}
-        <span className="ml-auto text-neon-cyan/80">{chart.maxSpeed.toFixed(1)} km/h</span>
-        <span className="text-neon-magenta/80">{chart.maxIncline.toFixed(1)}% tilt</span>
       </div>
-      <Chart c={chart} />
-      <ol ref={listRef} aria-label="Program steps" className="step-map-list relative min-h-0 flex-1 overflow-y-auto">
-        {rows.map((r) => (
-          <Row key={r.key} row={r} />
-        ))}
-      </ol>
+      <div className="relative shrink-0">
+        <Chart c={chart} />
+        {/* The chart's legend: each line's colour with the top of its axis, on the chart itself. */}
+        <div className="pointer-events-none absolute right-1 top-1 flex gap-2 rounded bg-black/60 px-1 font-mono text-[11px] leading-4">
+          <span className="flex items-center gap-1.5 text-neon-cyan">
+            <span aria-hidden className="h-0.5 w-3 bg-neon-cyan" />
+            Max {chart.maxSpeed.toFixed(1)} km/h
+          </span>
+          <span className="flex items-center gap-1.5 text-neon-magenta">
+            <span aria-hidden className="h-0.5 w-3 bg-neon-magenta" />
+            Max {chart.maxIncline.toFixed(1)}%
+          </span>
+        </div>
+      </div>
+      {/* The list's box keeps three rows of height however short the page is; the list scrolls
+          inside it, so its length never adds to the panel's own minimum. */}
+      <div className="relative min-h-12 flex-1">
+        <ol ref={listRef} aria-label="Program steps" className="step-map-list absolute inset-0 overflow-y-auto">
+          {rows.map((r) => (
+            <Row key={r.key} row={r} />
+          ))}
+        </ol>
+      </div>
     </Panel>
   );
 }

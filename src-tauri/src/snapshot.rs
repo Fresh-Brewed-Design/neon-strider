@@ -11,15 +11,19 @@
 //! - `emitter`: collecting the snapshot and pushing it to the windows
 //!
 //! The feature modules that contribute a part of the snapshot or act on it
-//! (calls, desk, desk_sync, eyebreak, hud_drag, lights_out, maintenance, odometer, pc_walk_share, presenting,
+//! (calls, card_queue, desk, desk_sync, eyebreak, hud_drag, lights_out, maintenance, odometer, pc_walk_share, presenting,
 //! program_tones, seated, tray, tray_menu,
 //! walkaway, wall_clock, weekly) are declared here rather than in `lib.rs`, so this module owns
 //! their wiring.
 
 #[path = "calls.rs"]
 pub mod calls;
+#[path = "card_queue.rs"]
+pub mod card_queue;
 #[path = "desk.rs"]
 pub mod desk;
+#[path = "desk_resume.rs"]
+pub mod desk_resume;
 #[path = "desk_sync.rs"]
 pub mod desk_sync;
 #[path = "eyebreak.rs"]
@@ -164,6 +168,7 @@ fn deck_snapshot(state: &OrchestratorState, max_incline_level: u8) -> DeckSnapsh
         incline_offset_pct: state.incline_offset,
         incline_pct_per_level: state.tilt_multiplier,
         target_note: state.current_target_note(),
+        target_note_hint: state.current_target_note_hint(),
         speed_steps: state
             .deck_speeds()
             .into_iter()
@@ -250,7 +255,7 @@ fn neural_snapshot(state: &OrchestratorState) -> NeuralSnapshot {
 
 /// Build a snapshot from state. Pure (no Tauri, no locks, no I/O) so it can be
 /// unit-tested. `speed_drift`, `desk_sync`, `wall_clock`, `pc_walk_share`, `today_timeline`, `walkaway`, `update`, `traffic`, `lights_out`, `presenting`, `ghost_pod`,
-/// `calibration`, `guided_task`, `program_tones` and `hud_view` are left at their defaults: they depend on the clock or shared
+/// `calibration`, `guided_task`, `program_tones`, `hud_view`, `hud_go_hold` and `hud_card` are left at their defaults: they depend on the clock or shared
 /// state, so the emitter fills them in.
 pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSnapshot {
     let deck = deck_snapshot(state, parts.max_incline_level);
@@ -268,6 +273,8 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         speed_drift: crate::speed_drift::SpeedDriftSnapshot::default(),
         hud: parts.hud,
         hud_view: HudView::Full,
+        hud_go_hold: false,
+        hud_card: card_queue::HudCard::None,
         hud_monitors: parts.hud_monitors,
         strava: parts.strava,
         maintenance: parts.maintenance,
@@ -302,7 +309,7 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
 /// Blocking; call it from a blocking context. Never called per snapshot tick.
 pub fn refresh_daily_base(app: &AppHandle, exclude: Option<i64>) {
     let midnight = persistence::local_midnight_ms(chrono::Local::now());
-    let (m, s) = persistence::usage_since(app, midnight, exclude);
+    let (m, s) = persistence::daily_totals(app, midnight, exclude);
     let live_counts_today = match exclude {
         Some(id) => started_today(persistence::session_start_ms(app, id), midnight),
         None => false,
@@ -312,6 +319,16 @@ pub fn refresh_daily_base(app: &AppHandle, exclude: Option<i64>) {
         s: s.max(0) as u64,
         live_counts_today,
     };
+}
+
+/// A saved walk changed (cut after a walk-away): re-read every cached total
+/// that sums saved walks. Blocking.
+pub fn refresh_after_session_edit(app: &AppHandle) {
+    weekly::refresh(app, None);
+    desk_sync::refresh(app, None);
+    crate::typing_speed::refresh(app);
+    odometer::refresh_current(app);
+    maintenance::refresh(app, None);
 }
 
 /// A session started at or after local midnight belongs to today, the same
@@ -382,6 +399,7 @@ mod tests {
             last_error: None,
             start_pending: false,
             start_result: None,
+            start_press: crate::link::StartPress::Engage,
             connect_dialog_at_ms: None,
             simulated: false,
         }

@@ -5,7 +5,7 @@ import { ActionStatus, InlineAction } from "../../../components/ActionStatus";
 import { useAction, useBackendAction, type BackendAction } from "../../../components/useAction";
 import type { SavedFile, StravaSnapshot } from "../../../ipc";
 import { Hint, Label, NeonButton } from "../../ui";
-import { post } from "../../util";
+import { cx, post } from "../../util";
 import { INPUT_CLASS, Toggle } from "../fields";
 
 const HH_MM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -29,7 +29,6 @@ export function AutoSyncOptions({ strava }: { strava: StravaSnapshot }) {
         label="Auto-sync"
         description="Uploads finished walks in the background, even with the dashboard closed."
         hint="Walks that ended before auto-sync was on stay manual, in History."
-        tone="magenta"
         checked={strava.auto_sync}
         onChange={(v) => void toggles.run(post({ type: "strava_set_auto_sync", enabled: v }))}
       />
@@ -37,20 +36,25 @@ export function AutoSyncOptions({ strava }: { strava: StravaSnapshot }) {
         label="Daily rollup"
         description="Uploads each day's walks as one Strava activity after the rollup time."
         hint="A day missed while Neon Strider was closed uploads on the next start."
-        tone="magenta"
         checked={strava.daily_rollup}
         onChange={(v) =>
           void toggles.run(post({ type: "strava_set_daily_rollup", enabled: v, shift_end: strava.shift_end }))
         }
       />
-      <label className="flex items-center justify-between gap-4">
+      {/* The time only matters to the rollup: while it is off the field is greyed out and can't be
+          changed, and it keeps the saved time for when it is switched back on. */}
+      <label
+        className={cx("flex items-center justify-between gap-4", !strava.daily_rollup && "opacity-40")}
+        title={strava.daily_rollup ? undefined : "Switch on Daily rollup to set its time."}
+      >
         <Label>Rollup time</Label>
         <input
           type="time"
           value={timeDraft ?? strava.shift_end}
+          disabled={!strava.daily_rollup}
           onChange={(e) => changeShiftEnd(e.target.value)}
           onBlur={() => setTimeDraft(null)}
-          className={INPUT_CLASS}
+          className={cx(INPUT_CLASS, "disabled:cursor-not-allowed")}
         />
       </label>
       <ActionStatus error={toggles.error} />
@@ -86,7 +90,7 @@ export function SyncActions({
 
   const saveForStrava = () =>
     void save.run(() => invoke<SavedFile>("strava_save_for_strava", { sessionIds: null }), {
-      done: (f) => `Saved ${f.file_name}. Drop it on the Strava page that just opened.`,
+      done: (f) => `Saved ${f.file_name}. Drop the file on the open Strava page.`,
     });
 
   const shownElsewhere = [connect.error, connect.done, sync.error, sync.done, save.error, save.done];
@@ -101,9 +105,9 @@ export function SyncActions({
 
   return (
     <div className="flex flex-col gap-2 border-t border-white/10 pt-4">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
+        <div className="flex max-w-56 flex-col items-start gap-1.5">
         <NeonButton
-          tone="magenta"
           disabled={!connected || !strava.auto_sync || busy || sync.pending}
           onClick={() => void sync.run(post({ type: "strava_sync_now" }))}
           className="flex shrink-0 items-center gap-2 px-3 py-2"
@@ -111,22 +115,22 @@ export function SyncActions({
           {busy || sync.pending ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
           {busy || sync.pending ? "Syncing…" : "Sync now"}
         </NeonButton>
+        <Hint>Uploads new walks to the linked Strava account.</Hint>
+        </div>
+        <div className="flex max-w-56 flex-col items-start gap-1.5">
         <NeonButton
           tone="cyan"
           disabled={save.pending}
           onClick={saveForStrava}
-          title="Save the latest walk as a TCX file for Strava's upload page, which works without a linked account."
           className="flex shrink-0 items-center gap-2 px-3 py-2"
         >
           {save.pending ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
           {save.pending ? "Saving…" : "Save for Strava"}
         </NeonButton>
+        <Hint>Writes the latest walk to a file for Strava&apos;s upload page.</Hint>
+        </div>
       </div>
-      {!connected && (
-        <Hint>
-          Sync now needs a connected account, and Save for Strava works without one.
-        </Hint>
-      )}
+      {!connected && <Hint>Link a Strava account to use Sync now.</Hint>}
       {connected && !strava.auto_sync && (
         <Hint>Turn auto-sync on to use Sync now.</Hint>
       )}
@@ -169,7 +173,7 @@ function LastResult({ result }: { result: NonNullable<StravaSnapshot["last_resul
   return (
     <Hint className="min-w-0 break-words" role="status">
       Last result: <span className={result.ok ? "text-emerald-400/80" : "text-red-400/80"}>{result.message}</span>
-      <span className="text-white/35"> · {new Date(result.at_ms).toLocaleString()}</span>
+      <span className="text-white/60"> · {new Date(result.at_ms).toLocaleString()}</span>
     </Hint>
   );
 }

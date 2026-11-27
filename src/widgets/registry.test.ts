@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { snapshot } from "../dev/mockBackend";
 import { lifetimeKm } from "../format";
-import { statWidget, widgetName } from "./registry";
+import { STAT_WIDGETS, statTitle, statWidget, widgetName } from "./registry";
 
 describe("ODOMETER widget", () => {
   it("is a stat widget with the ODO label and LIFETIME_ODOMETER codename", () => {
@@ -83,5 +83,30 @@ describe("PC_WALK_SHARE widget", () => {
 
   it("is not on the HUD until picked", () => {
     expect(snapshot.hud.widgets).not.toContain("PC_WALK_SHARE");
+  });
+});
+
+describe("one name per thing (#392)", () => {
+  it("names speed VELOCITY and incline TILT, with the HUD's short labels kept", () => {
+    expect([statWidget("VELOCITY")?.codename, statWidget("VELOCITY")?.label]).toEqual(["VELOCITY", "VEL"]);
+    expect([statWidget("INCLINE")?.codename, statWidget("INCLINE")?.label]).toEqual(["TILT", "TILT"]);
+  });
+
+  it("gives every codename stat its plain line", () => {
+    const plain = Object.fromEntries(STAT_WIDGETS.map((w) => [w.codename, w.plain ?? null]));
+    expect(plain).toEqual({
+      VELOCITY: "belt speed",
+      TILT: "incline",
+      DECK_CYCLES: "walk time",
+      DISPLACEMENT: "walk distance",
+      LOCOMOTION_INC: "step count",
+      METABOLIC_BURN: "calories burned",
+      DAILY_TOTAL: "distance today",
+      NEURAL_FLUIDITY: "pace while typing",
+      LIFETIME_ODOMETER: "all-time distance",
+      "DESK TIME WALKED": null,
+      PULSE_RATE: "heart rate",
+    });
+    expect(statTitle(statWidget("TIMER")!)).toBe("DECK_CYCLES: walk time");
   });
 });

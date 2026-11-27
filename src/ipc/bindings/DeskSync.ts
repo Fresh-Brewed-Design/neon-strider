@@ -21,4 +21,9 @@ days: Array<DeskDay>,
 /**
  * Today is a desk day not walked on yet; it isn't counted.
  */
-today_open: boolean, };
+today_open: boolean, 
+/**
+ * Today first counted while the app ran and the card hasn't played its
+ * light switching on yet (`Command::DeskSyncLightShown`).
+ */
+today_lit: boolean, };

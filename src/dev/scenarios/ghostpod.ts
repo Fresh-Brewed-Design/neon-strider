@@ -6,7 +6,7 @@ import { params, publish, snapshot } from "../mockState";
 import type { Scenario } from "./types";
 
 const GHOST_POD: Record<"off" | "starting" | "advertising" | "connected" | "error", [string, string]> = {
-  off: ["OFFLINE", "Switch GHOST_POD on to let a watch read the belt as a foot pod."],
+  off: ["NO_CARRIER", "Switch GHOST_POD on to let a watch read the belt as a foot pod."],
   starting: ["BOOTING", "Starting the pod."],
   advertising: ["BROADCASTING", "Waiting for a watch. Add a foot pod sensor on it; the pod shows under this PC's Bluetooth name."],
   connected: ["LINKED", "A watch is connected and gets the belt speed every second."],

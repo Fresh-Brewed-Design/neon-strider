@@ -4,6 +4,7 @@ import { dispatch, type KeyCombo, type Shortcut, type ShortcutView } from "../..
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { useAppSnapshot } from "../../state/useAppState";
+import { useTreadmillStore } from "../../store/treadmillStore";
 import { GhostButton, Hint } from "../ui";
 import { cx } from "../util";
 import { Section } from "./fields";
@@ -14,12 +15,12 @@ const SHORTCUT_TEXT: Record<Shortcut, { name: string; does: string }> = {
   speed_down: { name: "Speed down", does: "Lowers the belt speed one step." },
   incline_up: { name: "Incline up", does: "Raises the incline one level." },
   incline_down: { name: "Incline down", does: "Lowers the incline one level." },
-  toggle_start: { name: "Start or pause", does: "Pauses a moving belt, otherwise starts it (GO on a paused program)." },
-  toggle_program: { name: "Run or end a program", does: "Ends the running program, or runs the last one again." },
-  toggle_minified: { name: "Minify the HUD", does: "Shrinks the HUD to a strip, or brings the whole panel back." },
+  toggle_start: { name: "Start or pause", does: "Pauses a moving belt, starts a stopped one and sends GO to a paused program." },
+  toggle_program: { name: "Run or end a program", does: "Ends the running program or runs the last one again." },
+  toggle_minified: { name: "Minify the HUD", does: "Shrinks the HUD to a strip or brings the whole panel back." },
   calibration_tap: {
     name: "GROUND_TRUTH tap",
-    does: "Only while a tap run listens; the rest of the time the keys go to the app in front.",
+    does: "Counts only during a tap run and leaves the keys to the app in front otherwise.",
   },
 };
 
@@ -117,12 +118,12 @@ function ShortcutRow({
         </div>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
           {view.keys.length === 0 && !recording && (
-            <span className="font-mono text-xs uppercase tracking-[0.15em] text-white/40">Off</span>
+            <span className="font-mono text-xs uppercase tracking-[0.15em] text-white/60">Off</span>
           )}
           {view.keys.map((k, i) => (
             <span
               key={k.label}
-              title={k.taken ? "Another app already uses this shortcut, so it does nothing here." : undefined}
+              title={k.taken ? "Another app holds the key combination, so the shortcut does nothing." : undefined}
               className={cx(
                 "flex items-center gap-1 rounded border px-2 py-1 font-mono text-xs",
                 k.taken ? "border-red-400/50 text-red-300 line-through" : "border-neon-cyan/40 text-neon-cyan",
@@ -134,7 +135,7 @@ function ShortcutRow({
                 aria-label={`Remove ${k.label} from ${text.name}`}
                 disabled={change.pending || recording}
                 onClick={() => save(combos.filter((_, j) => j !== i))}
-                className="rounded text-white/50 hover:text-white disabled:opacity-30"
+                className="rounded text-white/60 hover:text-white disabled:opacity-30"
               >
                 <X size={12} />
               </button>
@@ -177,8 +178,8 @@ export function ShortcutsSection() {
       title="Shortcuts"
       description={
         mac
-          ? "Work from any app. Each needs ⌃ or ⌘; ⌥ and ⇧ can join them."
-          : "Work from any app. Each needs Ctrl, Alt or the Windows key; Shift can join them."
+          ? "Shortcuts work from any app and need ⌃ or ⌘, with ⌥ and ⇧ optional."
+          : "Shortcuts work from any app and need Ctrl, Alt or the Windows key, with Shift optional."
       }
     >
       {s.shortcuts.list.map((view) => (
@@ -194,7 +195,15 @@ export function ShortcutsSection() {
         <div className="flex flex-col items-start gap-1">
           <GhostButton
             disabled={reset.pending || recording !== null}
-            onClick={() => void reset.run(() => dispatch({ type: "shortcuts_reset" }))}
+            onClick={() =>
+              useTreadmillStore.getState().confirm({
+                title: "Reset shortcuts",
+                message: "Every shortcut you changed goes back to its default keys.",
+                confirmLabel: "Reset",
+                tone: "danger",
+                onConfirm: () => void reset.run(() => dispatch({ type: "shortcuts_reset" })),
+              })
+            }
           >
             Reset to the defaults
           </GhostButton>

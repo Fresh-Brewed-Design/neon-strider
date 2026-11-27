@@ -1,5 +1,5 @@
 import type { AppSnapshot, HudWidget } from "../../ipc";
-import { STAT_WIDGETS } from "../../widgets/registry";
+import { STAT_WIDGETS, statTitle } from "../../widgets/registry";
 import { cx, TONE_TEXT } from "../util";
 
 /** The walk's stats STEP_MAP keeps in view: time, distance and today's distance and walking time. */
@@ -12,12 +12,17 @@ const READOUT = READOUT_IDS.map((id) => STAT_WIDGETS.find((w) => w.id === id)!);
  */
 export function WalkReadout({ s }: { s: AppSnapshot }) {
   return (
-    <span role="group" aria-label="Walk stats" className="flex flex-wrap items-baseline gap-x-3 font-mono text-[11px]">
+    // With no treadmill linked the stats are the last ones it sent, dimmed as on the HUD.
+    <span
+      role="group"
+      aria-label="Walk stats"
+      className={cx("flex flex-wrap items-baseline gap-x-3 font-mono text-[11px]", !s.connection.connected && "opacity-45")}
+    >
       {READOUT.map((w) => {
         const { value, unit } = w.read(s);
         const detail = w.detail?.(s);
         return (
-          <span key={w.id} className="whitespace-nowrap" title={w.codename}>
+          <span key={w.id} className="whitespace-nowrap" title={statTitle(w)}>
             <span className="text-white/60">{w.label}</span>{" "}
             <span className={cx("font-digital tracking-wider", TONE_TEXT[w.accent])}>{value}</span>
             {unit && <span className="text-white/60"> {unit}</span>}

@@ -23,6 +23,7 @@ export function StatusPill({
   bare = false,
   className,
   labelClassName,
+  toneIconClassName,
 }: {
   tone: StatusTone;
   label: string;
@@ -34,6 +35,11 @@ export function StatusPill({
   className?: string;
   /** Extra classes for the label text (the rail hides it when it shows icons only). */
   labelClassName?: string;
+  /**
+   * With `icon`, the tone's own icon also follows the label, with these classes: the icon-only
+   * rail shows it so the link state reads by shape as well as colour.
+   */
+  toneIconClassName?: string;
 }) {
   const t = TONE[tone];
   const Icon = icon === "bluetooth" ? Bluetooth : t.Icon;
@@ -49,6 +55,9 @@ export function StatusPill({
     >
       <Icon size={12} className={cx("shrink-0", tone === "working" && "animate-spin")} />
       <span className={cx("truncate", labelClassName)}>{label}</span>
+      {icon && toneIconClassName !== undefined && (
+        <t.Icon size={12} aria-hidden className={cx("shrink-0", tone === "working" && "animate-spin", toneIconClassName)} />
+      )}
     </span>
   );
 }
