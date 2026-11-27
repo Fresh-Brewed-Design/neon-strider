@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { AppSnapshot } from "../../ipc";
+import type { AppSnapshot, StartPress } from "../../ipc";
 
 const { snapshot: mock } = await import("../../dev/mockBackend");
 const { Transport } = await import("./Transport");
@@ -45,9 +45,10 @@ describe("Transport belt buttons", () => {
     expect(dump.querySelector(".bg-current")).not.toBeNull();
   });
 
-  // #385: a start a program's GO made shows under that GO, so Engage never repeats it.
-  it("shows its own start failure but not one a program's GO made", () => {
-    const failed = (s: AppSnapshot, press: "engage" | "program_go") => {
+  // #385: a start a program's GO (or the HUD's sit-too-long card) made shows under that control, so
+  // Engage never repeats it.
+  it("shows its own start failure but not one a program's GO or the HUD card made", () => {
+    const failed = (s: AppSnapshot, press: StartPress) => {
       s.deck = { ...s.deck, status: "Stopped", speed_kmh: 0 };
       s.connection = {
         ...s.connection,
@@ -59,8 +60,11 @@ describe("Transport belt buttons", () => {
     const own = show((s) => failed(s, "engage"));
     expect(screen.getByText("The treadmill didn't respond.")).toBeInTheDocument();
     own.unmount();
-    show((s) => failed(s, "program_go"));
-    expect(screen.queryByText("The treadmill didn't respond.")).toBeNull();
+    for (const press of ["program_go", "seated_engage"] as const) {
+      const other = show((s) => failed(s, press));
+      expect(screen.queryByText("The treadmill didn't respond.")).toBeNull();
+      other.unmount();
+    }
   });
 
   it("leaves the waiting line to GO while GO's start is in flight", () => {

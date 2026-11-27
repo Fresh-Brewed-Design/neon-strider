@@ -200,7 +200,9 @@ pub(crate) fn eye_break_resume_on(
         return Ok(());
     }
     let refused = state.start_refusal().is_some();
+    state.start_press = crate::link::StartPress::SeatedEngage;
     state.trigger_action(DeckAction::Start);
+    state.start_press = crate::link::StartPress::Engage;
     if !refused {
         log::info!("Eye break: RESUME from the card");
         machine.release();
@@ -567,7 +569,9 @@ const ENGAGE_OFFLINE: &str = "The treadmill is offline";
 /// (`DeckAction::Start`, which is also GO on a paused program). Nothing is
 /// remembered for later: without a link it fails at once. A deck in standby
 /// refuses the start in the engine, which says why (`start_result`, shown
-/// under the card's buttons), and the card stays up.
+/// under the card's buttons), and the card stays up. The start belongs to the
+/// card (`StartPress::SeatedEngage`), so its result shows there and nowhere
+/// else while the card is up.
 fn engage(
     state: &mut OrchestratorState,
     ready: bool,
@@ -578,7 +582,9 @@ fn engage(
         return Err(ENGAGE_OFFLINE.to_string());
     }
     let refused = state.start_refusal().is_some();
+    state.start_press = crate::link::StartPress::SeatedEngage;
     state.trigger_action(DeckAction::Start);
+    state.start_press = crate::link::StartPress::Engage;
     if !refused {
         log::info!("Nudge: Engage from the card");
         machine.engaged(now);
@@ -739,5 +745,10 @@ mod tests {
         assert!(state.start_requested_at.is_none());
         assert!(state.start_blocked, "nothing starts it once it wakes");
         assert!(m.show_card());
+        assert_eq!(
+            state.start_press,
+            crate::link::StartPress::Engage,
+            "the next start is Engage's again"
+        );
     }
 }

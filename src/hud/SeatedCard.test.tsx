@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AppSnapshot } from "../ipc";
+import type { AppSnapshot, StartPress } from "../ipc";
 
 const { snapshot: mock } = await import("../dev/mockBackend");
 const { SeatedCard } = await import("./HudCards");
@@ -84,17 +84,17 @@ describe("SeatedCard", () => {
     expect(screen.getByText(`${s.programs[1].name} starts when the treadmill is on.`)).toBeInTheDocument();
   });
 
-  it("shows a refused start (deck asleep) right under the buttons, after its own ENGAGE", async () => {
+  it("shows its own refused start (deck asleep) right under the buttons", () => {
     const message = "Wake the deck first at the treadmill or remote.";
-    const refused = (at_ms: number) =>
-      seated((x) => {
-        x.deck.standby = true;
-        x.connection.start_press = "engage";
-        x.connection.start_result = { ok: false, message, at_ms };
-      });
-    const { rerender } = render(<SeatedCard snapshot={refused(1)} />);
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "ENGAGE wake deck first" })));
-    rerender(<SeatedCard snapshot={refused(Date.now() + 100)} />);
+    render(
+      <SeatedCard
+        snapshot={seated((x) => {
+          x.deck.standby = true;
+          x.connection.start_press = "seated_engage";
+          x.connection.start_result = { ok: false, message, at_ms: 1 };
+        })}
+      />,
+    );
     const card = screen.getAllByRole("alert")[0];
     expect(within(card).getByText(message)).toBeInTheDocument();
     // The refusal is the standing hint's own sentence, shown once.
@@ -129,31 +129,26 @@ describe("SeatedCard", () => {
     expect(screen.getByText("SYS // THE TREADMILL IS OFFLINE")).toBeInTheDocument();
   });
 
+  // #403: the card shows only a start its own ENGAGE made (`start_press`), never one from elsewhere.
   describe("a failed start", () => {
-    const failed = (press: "engage" | "program_go", at_ms: number) => (s: AppSnapshot) => {
-      s.connection.connected = true;
+    const failed = (press: StartPress) => (s: AppSnapshot) => {
       s.connection.start_press = press;
-      s.connection.start_result = { ok: false, message: "No answer from the belt", at_ms };
+      s.connection.start_result = { ok: false, message: "No answer from the belt", at_ms: 1 };
     };
 
     it("does not show a GO failure", () => {
-      render(<SeatedCard snapshot={seated(failed("program_go", Date.now()))} />);
+      render(<SeatedCard snapshot={seated(failed("program_go"))} />);
       expect(screen.queryByText(/No answer/)).not.toBeInTheDocument();
     });
 
-    it("does not show an Engage failure the card's own ENGAGE did not make", () => {
-      render(<SeatedCard snapshot={seated(failed("engage", Date.now()))} />);
+    it("does not show an Engage failure from the dashboard or the panel", () => {
+      render(<SeatedCard snapshot={seated(failed("engage"))} />);
       expect(screen.queryByText(/No answer/)).not.toBeInTheDocument();
     });
 
-    it("shows the failure of the card's own ENGAGE", async () => {
-      const { rerender } = render(<SeatedCard snapshot={seated(failed("engage", Date.now() - 5000))} />);
-      await act(async () => fireEvent.click(screen.getByRole("button", { name: "ENGAGE" })));
-      expect(screen.queryByText(/No answer/)).not.toBeInTheDocument();
-      rerender(<SeatedCard snapshot={seated(failed("engage", Date.now() + 100))} />);
+    it("shows the failure of its own ENGAGE", () => {
+      render(<SeatedCard snapshot={seated(failed("seated_engage"))} />);
       expect(screen.getByText(/No answer/)).toBeInTheDocument();
-      rerender(<SeatedCard snapshot={seated(failed("program_go", Date.now() + 200))} />);
-      expect(screen.queryByText(/No answer/)).not.toBeInTheDocument();
     });
   });
 });

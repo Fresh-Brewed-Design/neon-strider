@@ -273,7 +273,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?sim`: the SIM tag
 - `?speeddrift=drifting|held|waiting|outside|ended`: System -> Speed drift on (3.2 to 3.8 km/h, every 5 minutes) on a manual walk: setting the belt at 3.6 km/h (the HUD's SPEED DRIFT line), holding while Neural flow eases off, counting to the first change, the speed set outside the band, or ended by a speed set by hand; `?speeddrift` alone is the switch on with the belt still
 - `?stasis=strip|hidden`: "When the belt is still" set to that, with the belt stopped
-- `?status=9|countdown|stopping|standby`: an unknown status byte, the 3-2-1, the belt winding down, or the deck asleep
+- `?status=9|countdown|stopping|standby`: an unknown status byte, the 3-2-1, the belt winding down, or the deck asleep (with `?program=...` the program stays and its GO is refused under GO)
 - `?strava=authorizing|uploading|processing|checking|backoff|error|paused`: each Strava state
 - `?stridefit=4.5`: STRIDE_FIT set to 4.5 km/h in System, Calibration, so the program editor flags Brisk's 5.0 km/h step and Interval walk's 6.0 km/h steps; the belt runs at 5.0 km/h, so the Live speed slider shows the FIT mark and the HUD its ABOVE STRIDE_FIT line; Programs offers FIT_TO_DECK on Brisk, VO2 max and Interval walk
 - `?textscale=121`: the Windows text size setting, any whole percent from 100 to 225, as the page zoom WebView2 applies for it (dev previews only; size the HUD preview window to 340 px wide)

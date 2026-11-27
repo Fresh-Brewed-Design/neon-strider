@@ -3,7 +3,8 @@
 /**
  * Which press a start belongs to, so its waiting line and its result show
  * under that control: a program's GO (`Command::ProgramResume`, from the
- * program card, the HUD or the tray), or Engage, which also covers every
- * other start (a program run, SKIP, a card's ENGAGE, a speed set by hand).
+ * program card, the HUD or the tray), the sit-too-long card's ENGAGE
+ * (`Command::SeatedEngage`), or Engage, which also covers every other start
+ * (a program run, SKIP, a speed set by hand).
  */
-export type StartPress = "engage" | "program_go";
+export type StartPress = "engage" | "program_go" | "seated_engage";

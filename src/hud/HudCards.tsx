@@ -105,12 +105,8 @@ export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
   const s = snapshot.seated;
   const programs = s.program_ids.flatMap((id) => snapshot.programs.find((p) => p.id === id) ?? []);
   const line = seatedLine(snapshot, programs.length);
-  // A dashboard Engage is also an `engage`, so only a failure after this card's own ENGAGE shows.
-  const [pressedAt, setPressedAt] = useState<number | null>(null);
-  const own = startOf(snapshot, "engage");
-  const answeredAt = snapshot.connection.start_result?.at_ms ?? 0;
-  const ownFailure = pressedAt !== null && answeredAt >= pressedAt ? own.failure : null;
-  const note = error ?? ownFailure;
+  // Only a start this card's own ENGAGE made: a failed Engage or GO elsewhere shows under that control.
+  const note = error ?? startOf(snapshot, "seated_engage").failure;
   // Linked but asleep: every button here is refused until the deck wakes, so each says so before the press.
   const asleep = deckAsleep(snapshot);
   return (
@@ -125,10 +121,7 @@ export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
         className={`hud-btn hud-seated-engage accent-cyan${asleep ? " is-asleep" : ""}`}
         disabled={!snapshot.connection.connected}
         title={asleep ? WAKE_FIRST : "Start walking at the usual speed, like Engage."}
-        onClick={() => {
-          setPressedAt(Date.now());
-          void send({ type: "seated_engage" });
-        }}
+        onClick={() => void send({ type: "seated_engage" })}
       >
         ENGAGE
         {asleep && " "}

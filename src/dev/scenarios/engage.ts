@@ -6,7 +6,8 @@
 // ?status=N: the deck sent an unknown status byte N. ?status=countdown: the
 // deck's 3-2-1 before the belt moves. ?status=stopping: the belt winding down
 // after Dump (Engage is refused until it stops). ?status=standby: the deck is
-// off or asleep (Engage is refused at once).
+// off or asleep (Engage is refused at once); with ?program=..., the program
+// stays and its GO is refused at once too, under GO.
 import type { StartPress } from "../../ipc";
 import { later, params, snapshot } from "../mockState";
 import { PROGRAM_SCENARIOS } from "./programs";
@@ -26,10 +27,10 @@ const statusFlag = params.get("status");
 const START_SPINNING_DOWN = "Belt is still stopping. Press Engage once it stops.";
 const START_STANDBY = "Wake the deck first at the treadmill or remote.";
 
-/** ?status=stopping: Engage while the belt spins down is refused at once. */
-export function refuseWhileStopping() {
+/** ?status=stopping: Engage (or `press`) while the belt spins down is refused at once. */
+export function refuseWhileStopping(press: StartPress = "engage") {
   const message = statusFlag === "standby" ? START_STANDBY : START_SPINNING_DOWN;
-  Object.assign(snapshot.connection, { start_press: "engage", start_result: { ok: false, message, at_ms: Date.now() } });
+  Object.assign(snapshot.connection, { start_press: press, start_result: { ok: false, message, at_ms: Date.now() } });
 }
 
 /** A start `press` made on a still deck waits, then reports no answer. */
@@ -62,7 +63,7 @@ export const engage: Scenario = {
       snapshot.active_program = null;
     } else if (statusFlag === "standby") {
       Object.assign(snapshot.deck, { status: "Stopped", standby: true, speed_kmh: 0, raw_speed_kmh: 0 });
-      snapshot.active_program = null;
+      if (!params.has("program")) snapshot.active_program = null;
     } else if (statusFlag !== null) {
       snapshot.deck.status = "Stopped";
       snapshot.deck.unknown_status_code = Number(statusFlag) || 7;
@@ -72,6 +73,9 @@ export const engage: Scenario = {
   commands: {
     ...(engageTimeout || goTimeout ? { start: engageWithTimeout, toggle_start: engageWithTimeout } : {}),
     ...(goTimeout ? { program_resume: () => startWithTimeout("program_go") } : {}),
-    ...(statusFlag === "stopping" || statusFlag === "standby" ? { start: refuseWhileStopping, toggle_start: refuseWhileStopping } : {}),
+    ...(statusFlag === "stopping" || statusFlag === "standby"
+      ? { start: () => refuseWhileStopping(), toggle_start: () => refuseWhileStopping() }
+      : {}),
+    ...(statusFlag === "standby" && params.has("program") ? { program_resume: () => refuseWhileStopping("program_go") } : {}),
   },
 };

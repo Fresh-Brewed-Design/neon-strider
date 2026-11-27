@@ -1,1 +1,0 @@
-- The sit-too-long card on the HUD no longer shows a start that failed from the dashboard. It shows only a failure of its own ENGAGE.

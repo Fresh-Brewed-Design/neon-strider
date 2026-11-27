@@ -352,8 +352,9 @@ pub struct StartResult {
 
 /// Which press a start belongs to, so its waiting line and its result show
 /// under that control: a program's GO (`Command::ProgramResume`, from the
-/// program card, the HUD or the tray), or Engage, which also covers every
-/// other start (a program run, SKIP, a card's ENGAGE, a speed set by hand).
+/// program card, the HUD or the tray), the sit-too-long card's ENGAGE
+/// (`Command::SeatedEngage`), or Engage, which also covers every other start
+/// (a program run, SKIP, a speed set by hand).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 #[serde(rename_all = "snake_case")]
 #[ts(export, export_to = "../../src/ipc/bindings/")]
@@ -361,6 +362,7 @@ pub enum StartPress {
     #[default]
     Engage,
     ProgramGo,
+    SeatedEngage,
 }
 
 // ---------------------------------------------------------------------------
@@ -801,6 +803,9 @@ mod tests {
         // A GO refused at once belongs to GO.
         l.note_start_refused(START_SPINNING_DOWN, StartPress::ProgramGo, 6);
         assert_eq!(l.start_press, StartPress::ProgramGo);
+        // The sit-too-long card's ENGAGE keeps its own.
+        l.note_start_refused(START_STANDBY, StartPress::SeatedEngage, 7);
+        assert_eq!(l.start_press, StartPress::SeatedEngage);
     }
 
     #[test]

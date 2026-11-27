@@ -32,8 +32,9 @@ start_pending: boolean,
  */
 start_result: StartResult | null, 
 /**
- * Which press `start_pending` and `start_result` belong to: Engage, or a
- * program's GO, so each shows under the control that was pressed.
+ * Which press `start_pending` and `start_result` belong to: Engage, a
+ * program's GO or the sit-too-long card's ENGAGE, so each shows under the
+ * control that was pressed.
  */
 start_press: StartPress, 
 /**

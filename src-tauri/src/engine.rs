@@ -406,7 +406,8 @@ pub struct OrchestratorState {
     /// auto-resume) until the user asks again.
     pub start_blocked: bool,
     /// The press a start armed now belongs to (`link::StartPress`): Engage,
-    /// except while a program's GO runs (`go_program`).
+    /// except while a program's GO (`go_program`) or the sit-too-long card's
+    /// ENGAGE (`desk::engage`) runs.
     pub start_press: crate::link::StartPress,
     /// When the engine last sent the deck a Start (the handshake's second
     /// half) that the deck hasn't answered yet: motion then is the app's own
