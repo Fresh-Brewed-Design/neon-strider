@@ -393,6 +393,7 @@ pub fn init(app: &AppHandle) {
     walkaway::init(app);
     lights_out::init(app);
     presenting::init(app);
+    crate::daily_quota::init(app);
     // After the settings: a restart carries on the timers where they were.
     desk_resume::restore(app);
 }

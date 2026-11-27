@@ -68,6 +68,11 @@ export const SETTING_LIMITS: SettingLimits = {
     "min": 0.5,
     "max": 6.0
   },
+  "daily_quota_km": {
+    "min": 0.5,
+    "max": 60.0
+  },
+  "default_daily_quota_km": 5.0,
   "maintenance_km": {
     "min": 50.0,
     "max": 5000.0

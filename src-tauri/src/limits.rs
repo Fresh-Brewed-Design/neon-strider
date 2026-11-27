@@ -48,6 +48,10 @@ pub struct SettingLimits {
     pub eye_break_seconds: SettingRange,
     pub walkaway_idle_minutes: SettingRange,
     pub calls_quiet_kmh: SettingRange,
+    // ---- DAILY_QUOTA (daily_quota.rs) ----
+    pub daily_quota_km: SettingRange,
+    /// The target the field offers when DAILY_QUOTA is switched on.
+    pub default_daily_quota_km: f32,
     // ---- Belt reminder (snapshot/maintenance.rs) ----
     pub maintenance_km: SettingRange,
     pub maintenance_days: SettingRange,
@@ -109,6 +113,8 @@ impl Default for SettingLimits {
                 walkaway::MAX_IDLE_MINUTES as f32,
             ),
             calls_quiet_kmh: range(calls::MIN_QUIET_KMH, calls::MAX_QUIET_KMH),
+            daily_quota_km: range(crate::daily_quota::MIN_KM, crate::daily_quota::MAX_KM),
+            default_daily_quota_km: crate::daily_quota::DEFAULT_KM,
             maintenance_km: range(m::MIN_INTERVAL_KM, m::MAX_INTERVAL_KM),
             maintenance_days: range(0.0, m::MAX_INTERVAL_DAYS as f32),
             maintenance_hours: range(m::MIN_INTERVAL_HOURS, m::MAX_INTERVAL_HOURS),

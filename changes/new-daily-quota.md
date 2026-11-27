@@ -1,0 +1,1 @@
+- **DAILY_QUOTA**, a daily km target, off by default. Switch it on in System, Desk, and set the km. TODAY on the Live page, the HUD and STEP_MAP then shows the day's km against the target with a thin bar. The bar fills as you walk and stays full past the target, with no alert.

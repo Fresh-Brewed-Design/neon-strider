@@ -16,7 +16,11 @@ speed_drift_width_kmh: SettingRange, speed_drift_minutes: SettingRange, max_hear
 /**
  * The max heart rate zones use until one is set (`DEFAULT_MAX_BPM`).
  */
-default_max_heart_rate_bpm: number, seated_minutes: SettingRange, seated_program_buttons: number, eye_break_minutes: SettingRange, eye_break_seconds: SettingRange, walkaway_idle_minutes: SettingRange, calls_quiet_kmh: SettingRange, maintenance_km: SettingRange, maintenance_days: SettingRange, maintenance_hours: SettingRange, strava_mute_minutes: SettingRange, session_merge_minutes: SettingRange, title_template_chars: number, description_template_chars: number, 
+default_max_heart_rate_bpm: number, seated_minutes: SettingRange, seated_program_buttons: number, eye_break_minutes: SettingRange, eye_break_seconds: SettingRange, walkaway_idle_minutes: SettingRange, calls_quiet_kmh: SettingRange, daily_quota_km: SettingRange, 
+/**
+ * The target the field offers when DAILY_QUOTA is switched on.
+ */
+default_daily_quota_km: number, maintenance_km: SettingRange, maintenance_days: SettingRange, maintenance_hours: SettingRange, strava_mute_minutes: SettingRange, session_merge_minutes: SettingRange, title_template_chars: number, description_template_chars: number, 
 /**
  * Where Strava titles are cut, after the placeholders are filled in.
  */

@@ -755,6 +755,34 @@ body,
    wraps rather than clips in a half-width cell. */
 .hud-stat-detail { line-height: 1.25; font-variant-numeric: tabular-nums; }
 
+/* DAILY_QUOTA's bar (#439): a 2px line at the foot of TODAY, out of the flow,
+   so a target set or cleared changes no cell's height and moves no control. */
+.hud-stat:has(> .hud-quota),
+.hud-strip-total:has(> .hud-quota) { position: relative; }
+.hud-quota {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 4px;
+  height: 2px;
+  overflow: hidden;
+  color: var(--accent);
+}
+.hud-strip-total > .hud-quota { left: 0; right: 0; bottom: -3px; }
+/* The target ("/ 5.0") beside the km only where "12.34 / 60.0 KM" fits on
+   the value's line: a half-width cell, or a large Windows text size, keeps the
+   bar alone rather than wrap the target and grow the cell. */
+@container (max-width: 200px) {
+  .hud-stat .hud-quota-of { display: none; }
+}
+/* On the strip the same, measured on the row: "12.34 / 60.0 KM" (126px) beside
+   Engage (124px) and the 8px gap needs 258px, so a narrower row (any large
+   text size) shows the bar alone and Engage never wraps under the total. */
+.hud-strip-row:has(.hud-quota) { container: hud-strip-row / inline-size; }
+@container hud-strip-row (max-width: 259.98px) {
+  .hud-strip-total .hud-quota-of { display: none; }
+}
+
 .hud-unit {
   font-family: var(--hud-font-mono);
   font-size: 12px;

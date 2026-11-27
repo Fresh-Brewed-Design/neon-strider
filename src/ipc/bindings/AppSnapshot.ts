@@ -3,6 +3,7 @@ import type { ActiveProgram } from "./ActiveProgram";
 import type { CalibrationSnapshot } from "./CalibrationSnapshot";
 import type { CallsSnapshot } from "./CallsSnapshot";
 import type { ConnectionSnapshot } from "./ConnectionSnapshot";
+import type { DailyQuotaSnapshot } from "./DailyQuotaSnapshot";
 import type { DeckSnapshot } from "./DeckSnapshot";
 import type { DeskSync } from "./DeskSync";
 import type { EasyStartSnapshot } from "./EasyStartSnapshot";
@@ -112,6 +113,11 @@ wall_clock: WallClock,
  * Distance and belt hours over every saved session plus the live one.
  */
 odometer: OdometerSnapshot, 
+/**
+ * DAILY_QUOTA (#439): today's km against the optional daily target,
+ * for the bar under DAILY_TOTAL. Default (no target) while off.
+ */
+daily_quota: DailyQuotaSnapshot, 
 /**
  * The idle nudge: its settings and whether the HUD card shows.
  */
