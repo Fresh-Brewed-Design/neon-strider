@@ -1,2 +1,0 @@
-- LINK UP: the HUD's NEON STRIDER logo decodes in a short glitch each time the treadmill connects.
-- A yellow scanline sweeps the HUD with the new step's name when a running program changes step. Both stay still when Windows asks for less motion.
