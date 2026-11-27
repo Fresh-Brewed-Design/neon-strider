@@ -613,6 +613,7 @@ pub(crate) fn apply_telemetry(state: &mut OrchestratorState, t: &Telemetry) {
     state.hardware_speed = t.speed_kmh;
     state.hardware_incline = t.incline;
     state.hardware_time = t.time_sec;
+    state.deck_steps = Some(t.steps);
     state.awaiting_first_packet = false;
     state.last_frame_at = Some(std::time::Instant::now());
 }

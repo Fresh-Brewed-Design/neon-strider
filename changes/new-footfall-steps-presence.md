@@ -1,0 +1,3 @@
+- FOOTFALL in System, Diagnostics, off by default: walk-away can count the treadmill's own step count as you on the belt. A video walk with no typing keeps going while the steps move.
+- With FOOTFALL on, no steps and no input for 45 s starts the walk-away warning, so an empty belt pauses about a minute and a quarter after you step off.
+- Diagnostics shows the treadmill's step count and whether it moves, so you can check the treadmill counts real steps first.

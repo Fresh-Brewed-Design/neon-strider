@@ -810,6 +810,11 @@ pub enum Command {
     WalkawayResume,
     /// END on the walk-away paused card: stop and end the session.
     WalkawayEnd,
+    /// Labs: the deck's step count as walk-away presence (`on`), or not
+    /// (off, the default).
+    WalkawayStepsSet {
+        on: bool,
+    },
 
     // ---- LIGHTS_OUT ----
     /// Lights out: a full Stop (any program ends) when the PC's

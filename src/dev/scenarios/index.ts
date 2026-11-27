@@ -16,6 +16,7 @@ import { echo } from "./echo";
 import { engage } from "./engage";
 import { eyeBreak } from "./eyebreak";
 import { fitToTime } from "./fittotime";
+import { footfall } from "./footfall";
 import { ghostPod } from "./ghostpod";
 import { guided } from "./guided";
 import { heartRate } from "./heart";
@@ -67,6 +68,7 @@ export const SCENARIOS: Scenario[] = [
   engage,
   lightsOut,
   walkaway,
+  footfall,
   update,
   stasis,
   traffic,

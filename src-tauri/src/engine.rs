@@ -296,6 +296,11 @@ pub struct OrchestratorState {
     pub hardware_speed: f32,
     pub hardware_incline: u8,
     pub hardware_time: u16,
+    /// The step count in the deck's latest status frame, raw (bytes 11 and
+    /// 12 of the 0x51 frame; 0 in a short frame). None before the first frame
+    /// on this connection. Only walk-away's Labs steps switch reads it; the
+    /// walk's own steps come from distance and stride.
+    pub deck_steps: Option<u16>,
 
     /// The target packet last sent (speed byte, incline byte, when) and not yet
     /// echoed or nacked.
@@ -512,6 +517,7 @@ impl Default for OrchestratorState {
             is_connecting: false,
             awaiting_first_packet: true,
             last_frame_at: None,
+            deck_steps: None,
             session_evaluated_on_connect: false,
             session_opening: None,
             session_open_seq: 0,
@@ -2097,6 +2103,7 @@ impl OrchestratorState {
 
     pub fn reset_connection(&mut self) {
         self.awaiting_first_packet = true;
+        self.deck_steps = None;
         self.session_evaluated_on_connect = false;
         // STOP was pressed before the drop: never back up to the walk speed.
         self.easy_stop_link_lost();

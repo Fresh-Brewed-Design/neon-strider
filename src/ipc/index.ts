@@ -27,6 +27,7 @@ export type { Change } from "./bindings/Change";
 export type { Command } from "./bindings/Command";
 export type { ConnectionSnapshot } from "./bindings/ConnectionSnapshot";
 export type { DeckProfileSnapshot } from "./bindings/DeckProfileSnapshot";
+export type { DeckStepsReading } from "./bindings/DeckStepsReading";
 export type { DeckSnapshot } from "./bindings/DeckSnapshot";
 export type { DeckSpeedStep } from "./bindings/DeckSpeedStep";
 export type { DeskDay } from "./bindings/DeskDay";

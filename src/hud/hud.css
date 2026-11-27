@@ -1329,6 +1329,12 @@ body,
 
 .hud-walkaway .hud-sub { overflow-wrap: anywhere; line-height: 1.35; }
 
+/* At large Windows text sizes the buttons go under the text instead of
+   squeezing it to a word per line: the text keeps at least 130px, which it
+   has beside the buttons up to about 121 %. */
+.hud-walkaway { flex-wrap: wrap; row-gap: 10px; }
+.hud-walkaway .hud-toast-body { flex: 1 1 130px; }
+
 /* A new version is ready (once per version). */
 .hud-update {
   align-items: flex-start;

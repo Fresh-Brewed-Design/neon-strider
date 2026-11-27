@@ -57,6 +57,20 @@ fn belt_walking(state: &OrchestratorState) -> bool {
             .is_none_or(|r| r.phase == ProgramPhase::Walking && !r.paused)
 }
 
+/// The deck's own step count for walk-away: the raw count from the latest
+/// status frame, while frames still arrive. Never the walk's steps, which the
+/// app works out from distance and stride and which move with the belt.
+fn deck_steps(state: &OrchestratorState) -> Option<u16> {
+    fresh_deck_steps(state.deck_steps, state.last_frame_at.map(|t| t.elapsed()))
+}
+
+/// `count` while the last frame is younger than the HUD's silence
+/// (`stasis::SILENCE`, 4 s): the deck reports about twice a second, so an
+/// older count is a stalled link, not a frozen counter.
+fn fresh_deck_steps(count: Option<u16>, frame_age: Option<Duration>) -> Option<u16> {
+    count.filter(|_| frame_age.is_some_and(|age| age < super::stasis::SILENCE))
+}
+
 /// Pause the belt for walk-away: the program's pause while one is walking (so
 /// it resumes at the same step), otherwise the treadmill's own pause. Never a
 /// stop, so the session carries on.
@@ -64,6 +78,7 @@ fn walkaway_pause(state: &mut OrchestratorState, reason: walkaway::WalkAwayReaso
     let why = match reason {
         walkaway::WalkAwayReason::Lock => "the PC was locked",
         walkaway::WalkAwayReason::Idle => "no keyboard or mouse input",
+        walkaway::WalkAwayReason::Steps => "no steps on the deck and no keyboard or mouse input",
     };
     if state.program_walking() {
         log::info!("Walk-away: pausing the program ({})", why);
@@ -331,6 +346,7 @@ async fn step(connected: bool, now: u64, idle_ms: Option<u64>) -> Outcome {
         locked,
         idle_ms,
         call_active: input.mic_in_use,
+        deck_steps: deck_steps(state),
     };
     let effect = walkaway::with(|rt| rt.machine.tick(&rt.cfg, now, &input));
     if let Some(walkaway::Effect::Pause(reason)) = effect {
@@ -648,6 +664,33 @@ mod tests {
 
     const T0: u64 = 1_800_000_000_000;
     const MIN: u64 = 60_000;
+
+    #[test]
+    fn walk_away_reads_the_deck_count_never_the_walks_own_steps() {
+        let mut state = OrchestratorState::default();
+        assert_eq!(deck_steps(&state), None, "no frame yet");
+        // The walk's own steps (distance over stride) climb with the belt;
+        // the deck sends a short frame with no counters.
+        state.session.steps = 5000.0;
+        let short = crate::protocol::raw_packet(&[0x51, 3]).unwrap();
+        let t = crate::protocol::parse_status(&short).unwrap();
+        bluetooth::apply_telemetry(&mut state, &t);
+        assert_eq!(deck_steps(&state), Some(0));
+        state.session.steps = 6000.0;
+        bluetooth::apply_telemetry(&mut state, &t);
+        assert_eq!(deck_steps(&state), Some(0), "still the deck's 0");
+        state.reset_connection();
+        assert_eq!(deck_steps(&state), None, "a new link starts with none");
+    }
+
+    #[test]
+    fn a_count_from_a_silent_link_is_not_fresh() {
+        let s = Duration::from_secs;
+        assert_eq!(fresh_deck_steps(Some(7), Some(s(1))), Some(7));
+        assert_eq!(fresh_deck_steps(Some(7), Some(s(4))), None);
+        assert_eq!(fresh_deck_steps(Some(7), None), None);
+        assert_eq!(fresh_deck_steps(None, Some(s(1))), None);
+    }
 
     /// A machine with the card up: 16 minutes of typing, belt off, at 15 minutes.
     fn card_up() -> (seated::Seated, seated::Config) {

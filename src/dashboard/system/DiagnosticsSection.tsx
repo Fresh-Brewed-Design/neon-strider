@@ -9,6 +9,7 @@ import { Label, NeonButton } from "../ui";
 import { CommandCycler } from "./CommandCycler";
 import { DeckProfile } from "./DeckProfile";
 import { Section, Toggle } from "./fields";
+import { FootfallSetting } from "./FootfallSetting";
 import { TrafficRecorder } from "./TrafficRecorder";
 
 const DEV_TOOLS_KEY = "system.devTools";
@@ -73,6 +74,7 @@ export function DiagnosticsSection() {
         <ActionStatus error={logs.error && `Could not open the log folder: ${logs.error}`} className="mt-1" />
       </div>
       <DeckProfile />
+      <FootfallSetting />
       <button
         type="button"
         aria-expanded={open}

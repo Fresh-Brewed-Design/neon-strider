@@ -1,6 +1,7 @@
 // ?walkaway=warning: the idle warning counting down (STAY cancels it, reaching 0
 // pauses). ?walkaway=paused (or =lock): the belt was paused because the PC was
-// locked; ?walkaway=idle: paused after no input.
+// locked; ?walkaway=idle: paused after no input. ?walkaway=steps: the warning
+// after the deck's step count stopped (FOOTFALL on); =stepspaused the pause.
 import { params, snapshot } from "../mockState";
 import type { Scenario } from "./types";
 
@@ -9,8 +10,11 @@ const endWalkaway = { card: "none", reason: null } as const;
 export const walkaway: Scenario = {
   apply() {
     const walkawayFlag = params.get("walkaway");
-    if (walkawayFlag === "warning") {
-      Object.assign(snapshot.walkaway, { card: "warning", pause_in_s: 30 });
+    if (walkawayFlag === "warning" || walkawayFlag === "steps") {
+      Object.assign(snapshot.walkaway, { card: "warning", pause_in_s: 30, reason: walkawayFlag === "steps" ? "steps" : "idle" });
+    } else if (walkawayFlag === "stepspaused") {
+      Object.assign(snapshot.walkaway, { card: "paused", reason: "steps" });
+      snapshot.deck.status = "Paused";
     } else if (walkawayFlag === "paused" || walkawayFlag === "lock" || walkawayFlag === "idle") {
       Object.assign(snapshot.walkaway, { card: "paused", reason: walkawayFlag === "idle" ? "idle" : "lock" });
       snapshot.deck.status = "Paused";
@@ -23,7 +27,7 @@ export const walkaway: Scenario = {
     if (w.pause_in_s > 1) {
       w.pause_in_s -= 1;
     } else {
-      Object.assign(w, { card: "paused", reason: "idle", pause_in_s: 0 });
+      Object.assign(w, { card: "paused", reason: w.reason ?? "idle", pause_in_s: 0 });
       snapshot.deck.status = "Paused";
     }
     return true;
