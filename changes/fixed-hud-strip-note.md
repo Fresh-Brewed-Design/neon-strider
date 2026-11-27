@@ -1,0 +1,1 @@
+- A refused press on the HUD strip shows its note beside ENGAGE and leaves the logo row clear for dragging.

@@ -202,7 +202,8 @@ describe("HUD header keeps one height whatever the chip reads", () => {
   });
 });
 
-// The strip's stat slot pushed ENGAGE onto its own line where TODAY didn't (#436).
+// The strip's stat slot pushed ENGAGE onto its own line where TODAY didn't (#436), and its
+// note covered the logo row (#435).
 describe("HUD strip keeps ENGAGE and the logo row in place", () => {
   it("sizes the stat slot from the row, never from what it shows", () => {
     const cell = rule(".hud-strip-cell");
@@ -217,6 +218,15 @@ describe("HUD strip keeps ENGAGE and the logo row in place", () => {
     expect(value).toMatch(/height:\s*calc\(15px \* 1\.1\)/);
     expect(value).toMatch(/overflow:\s*hidden/);
     expect(rule(".hud-strip-cell .hud-value .hud-stasis-clock")).toMatch(/display:\s*contents/);
+  });
+
+  it("keeps the note inside the strip: from the header's edge to the row's foot", () => {
+    const pop = rule(".hud-strip-cell > .hud-note-pop");
+    expect(pop).toMatch(/top:\s*-7px/);
+    expect(pop).toMatch(/bottom:\s*-6px/);
+    expect(pop).toMatch(/overflow:\s*hidden/);
+    expect(pop).not.toMatch(/min-height/);
+    expect(rule(".hud-strip-cell > .hud-note-pop > .hud-note-text")).toMatch(/-webkit-line-clamp:\s*var\(--note-lines/);
   });
 });
 

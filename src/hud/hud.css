@@ -492,10 +492,26 @@ body,
   overflow: hidden;
 }
 .hud-strip-cell .hud-value .hud-stasis-clock { display: contents; }
+/* The strip's note keeps to the strip's own space (#435): from the header's
+   edge to the row's foot, never over the logo row (the drag handle) or
+   Engage. Its line ends 6px down, the gap Engage keeps under the cell when
+   it takes its own line. A note too long for that box shows the lines that
+   fit (NotePop sets --note-lines), the last ending in an ellipsis; a screen
+   reader still reads it whole. */
 .hud-strip-cell > .hud-note-pop {
   left: -12px;
-  bottom: -9px;
-  min-height: calc(100% + 16px);
+  top: -7px;
+  bottom: -6px;
+  padding: 4px 8px;
+  justify-content: safe center;
+  line-height: 1.2;
+  overflow: hidden;
+}
+.hud-strip-cell > .hud-note-pop > .hud-note-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--note-lines, 3);
+  overflow: hidden;
 }
 
 /* The running strip's note sits on its buttons' top edge and covers the readings over them. */
