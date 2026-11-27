@@ -1,0 +1,1 @@
+- Live: the first-connect calibration card takes the place of the stats and is shorter, so the page no longer scrolls when it shows.

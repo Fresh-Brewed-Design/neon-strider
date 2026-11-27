@@ -10,9 +10,18 @@ import { cx } from "../../util";
  * The first-connect offer: Rust sets `calibration.offer` while a connected
  * treadmill has no belt length and no points, until SKIP for that treadmill
  * (`calibration_offer_skip`, kept per treadmill). "Calibrate this treadmill"
- * only opens System, Calibration; nothing here moves the belt.
+ * only opens System, Calibration; nothing here moves the belt. `compact` (the Live page) drops
+ * the plain lines and hints so the card takes no more height than the stats it stands in for.
  */
-export function CalibrateOffer({ onCalibrate, className }: { onCalibrate: () => void; className?: string }) {
+export function CalibrateOffer({
+  onCalibrate,
+  className,
+  compact = false,
+}: {
+  onCalibrate: () => void;
+  className?: string;
+  compact?: boolean;
+}) {
   const offer = useAppState((s) => s.calibration.offer) ?? false;
   const skip = useAction();
   if (!offer) return null;
@@ -26,10 +35,10 @@ export function CalibrateOffer({ onCalibrate, className }: { onCalibrate: () => 
         <div className="font-digital text-xs font-bold uppercase tracking-[0.18em] text-neon-yellow">
           NEON STRIDER // GROUND_TRUTH
         </div>
-        <PlainLine text={PLAIN.GROUND_TRUTH} />
+        {!compact && <PlainLine text={PLAIN.GROUND_TRUTH} />}
       </div>
       <div className="font-digital text-sm text-white">The connected treadmill has no calibration yet.</div>
-      <Hint>GROUND_TRUTH times the belt at a few speeds, so distance matches what you walk.</Hint>
+      {!compact && <Hint>GROUND_TRUTH times the belt at a few speeds, so distance matches what you walk.</Hint>}
       <div className="flex gap-2">
         <NeonButton className="flex-1 py-2" onClick={onCalibrate}>
           Calibrate this treadmill
@@ -42,7 +51,7 @@ export function CalibrateOffer({ onCalibrate, className }: { onCalibrate: () => 
         </GhostButton>
       </div>
       <ActionStatus pending={skip.pending} error={skip.error} />
-      <Hint>Calibration stays in System, DECK, Calibration.</Hint>
+      {!compact && <Hint>Calibration stays in System, DECK, Calibration.</Hint>}
     </div>
   );
 }

@@ -222,6 +222,27 @@ describe("Live page calibration offer", () => {
     }
   });
 
+  it("stands in the stats' place, compact, so the page keeps its height (#438)", () => {
+    current!.calibration.offer = true;
+    current!.active_program = null;
+    render(<LivePage onCalibrate={() => {}} />);
+    const offer = screen.getByRole("region", { name: "Calibrate this treadmill" });
+    // The stats tiles and the offer's two hints would add the height the page cannot spare.
+    expect(screen.queryByText("DECK_CYCLES")).not.toBeInTheDocument();
+    expect(within(offer).queryByText(/Calibration stays in System/)).toBeNull();
+    expect(within(offer).queryByText(/times the belt at a few speeds/)).toBeNull();
+    expect(within(offer).getByRole("button", { name: /calibrate this treadmill/i })).toBeInTheDocument();
+    expect(within(offer).getByRole("button", { name: "SKIP" })).toBeInTheDocument();
+  });
+
+  it("takes STEP_MAP's place too while a program runs, and the controls above stay", () => {
+    current!.calibration.offer = true;
+    render(<LivePage onCalibrate={() => {}} />);
+    expect(screen.getByRole("region", { name: "Calibrate this treadmill" })).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Program steps" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /hold/i })).toBeInTheDocument();
+  });
+
   it("stays out of the page without a way to open calibration", () => {
     current!.calibration.offer = true;
     render(<LivePage />);

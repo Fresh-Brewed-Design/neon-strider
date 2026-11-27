@@ -27,6 +27,8 @@ VIEWS = [
     ("live-map", "Live", "program=interval", None),
     ("live-offline", "Live", "offline", None),
     ("live-guided", "Live", "guided&noprogram", None),
+    ("live-caloffer", "Live", "caloffer&noprogram", None),
+    ("live-map-caloffer", "Live", "caloffer&program=interval", None),
     ("programs", "Programs", "stridefit=4.5", None),
     ("programs-lastrun", "Programs", "noprogram", None),
     ("programs-editor", "Programs", "", "New"),
@@ -39,6 +41,18 @@ VIEWS = [
     ("system-core", "System", "update=available", "tab:CORE"),
     ("system-calibration", "System", "calwizard=guidedone", "tab:DECK"),
 ]
+
+# Views whose page must not scroll up and down at 100 %: Live with the first-connect offer showing
+# takes the stats' place, so its arrival never makes the page scroll (#438).
+NO_SCROLL_AT_100 = {"live-caloffer", "live-map-caloffer"}
+SCROLL_PROBE = """() => {
+  let worst = 0;
+  for (const e of document.querySelectorAll("#root *")) {
+    const o = getComputedStyle(e).overflowY;
+    if ((o === "auto" || o === "scroll") && e.clientHeight > 100) worst = Math.max(worst, e.scrollHeight - e.clientHeight);
+  }
+  return worst;
+}"""
 
 # Every text node: past the window's sides, cut by an ancestor that hides overflow, or
 # wrapped one letter per line. Text inside a visually hidden accessible label is skipped.
@@ -115,6 +129,9 @@ def main():
                 open_view(page, scale, nav, flags, press)
                 res = page.evaluate(PROBE)
                 sideways = res["scrollWidth"] > res["clientWidth"]
+                scrolls = scale == 100 and name in NO_SCROLL_AT_100 and page.evaluate(SCROLL_PROBE) > 0
+                if scrolls:
+                    res["problems"].append("page scrolls up and down")
                 ok = not sideways and not res["problems"]
                 failed += 0 if ok else 1
                 status = "ok" if ok else "FAIL"
