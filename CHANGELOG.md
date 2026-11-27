@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.87.4 (2026-11-27)
+
+### Fixed
+
+- The ENGAGE tooltip on the sit-too-long card no longer promises the usual speed. The button starts a plain walk, the same as Engage.
+
 ## 1.87.3 (2026-11-27)
 
 ### Fixed

@@ -1,1 +1,0 @@
-- The ENGAGE tooltip on the sit-too-long card no longer promises the usual speed. The button starts a plain walk, the same as Engage.
