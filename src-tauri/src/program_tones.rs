@@ -254,6 +254,7 @@ mod tests {
             steps,
             repeat_every_minutes: None,
             program_seconds_remaining: None,
+            pass_note: None,
         }
     }
 

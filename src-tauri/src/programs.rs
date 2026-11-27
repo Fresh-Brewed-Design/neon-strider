@@ -438,6 +438,42 @@ pub struct ActiveProgram {
     /// program repeats or a step still to come has no fixed end. Holds while
     /// paused, as the step timer does.
     pub program_seconds_remaining: Option<u32>,
+    /// PASS (#428): the cycles passed during this rest, in Rust's words. None
+    /// once the next cycle begins, and when nothing was passed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub pass_note: Option<PassNote>,
+}
+
+/// What a PASS did, for the HUD's label slot and the Live program card.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
+pub struct PassNote {
+    /// e.g. `CYCLE 2 PASSED`.
+    pub label: String,
+    /// e.g. `Cycle 2 passed. Cycle 3 stays on schedule.`
+    pub sentence: String,
+}
+
+impl PassNote {
+    /// The note for cycles `first` to `last` passed (one when equal).
+    pub fn new(first: u32, last: u32) -> Self {
+        let (label, done) = if first == last {
+            (
+                format!("CYCLE {first} PASSED"),
+                format!("Cycle {first} passed."),
+            )
+        } else {
+            (
+                format!("CYCLES {first} TO {last} PASSED"),
+                format!("Cycles {first} to {last} passed."),
+            )
+        };
+        Self {
+            label,
+            sentence: format!("{done} Cycle {} stays on schedule.", last + 1),
+        }
+    }
 }
 
 /// What the treadmill was doing when the program took over.
@@ -497,6 +533,15 @@ pub struct ProgramRun {
     /// FIT_TO_TIME (#258): the whole minutes this run was fitted to, so a
     /// restored run fits the saved program again. None runs it as saved.
     pub fit_minutes: Option<u32>,
+    /// Wall-clock seconds since the current cycle was due (its start, or the
+    /// end of the rest before it): walking, paused and waiting for GO all
+    /// count. PASS (#428) times the next cycle from it, so the schedule holds
+    /// however long the cycle waited. Only counted while walking.
+    pub cycle_s: f64,
+    /// PASS: the first and last cycle passed during the current rest, for
+    /// `ActiveProgram::pass_note`. Cleared when the next cycle begins. Not
+    /// saved: after a restart the rest's own countdown says enough.
+    pub passed: Option<(u32, u32)>,
 }
 
 /// What the deck has reported since the run began holding the belt still: a
@@ -1399,6 +1444,8 @@ impl OrchestratorState {
             pulse_under_s: 0.0,
             pulse_held: false,
             fit_minutes: minutes,
+            cycle_s: 0.0,
+            passed: None,
         };
         self.set_program_intent_from(&run);
         self.program = Some(run);
@@ -1519,6 +1566,72 @@ impl OrchestratorState {
         Ok(())
     }
 
+    /// PASS (#428): sit out one cycle of a repeating program and keep its
+    /// schedule. While resting, the next cycle is passed: the rest runs one
+    /// more repeat. While walking (paused, waiting for GO or moving), the
+    /// cycle now is passed: the program rests until the next cycle's usual
+    /// time, one repeat after this one was due (`cycle_s`), passing any
+    /// further cycles whose time went by while it waited. The rest is the
+    /// same rest a cycle ends in (`enter_rest`), so a belt the program moved
+    /// goes back to what it did before; nothing here starts a belt, and when
+    /// the next cycle is due on a still belt it waits for GO as always. A
+    /// passed cycle walked nothing, so no session or history records it; the
+    /// cycle count moves past it so the numbers keep to the schedule.
+    pub fn pass_program(&mut self, now: Instant) -> Result<(), String> {
+        let still = self.belt_still(now);
+        let mut run = self
+            .program
+            .take()
+            .ok_or_else(|| "No program is running".to_string())?;
+        let Some(repeat_min) = run.program.repeat_every_minutes else {
+            self.program = Some(run);
+            return Err("PASS needs a program that repeats.".to_string());
+        };
+        let repeat_s = repeat_min as f64 * 60.0;
+        let walk_s = total_minutes(&run.program) as f64 * 60.0;
+        match run.phase {
+            ProgramPhase::Resting => {
+                let first = run.passed.map_or(run.cycle + 1, |(f, _)| f);
+                run.cycle += 1;
+                run.elapsed_s -= repeat_s;
+                run.rest_warned = false;
+                run.passed = Some((first, run.cycle));
+                log::info!("PASS: cycle {} passed during the rest", run.cycle);
+            }
+            ProgramPhase::Walking => {
+                // Whole repeats gone by since the cycle was due (a long wait
+                // for GO) are passed too, so the next cycle lands on the grid.
+                let behind = (run.cycle_s / repeat_s).floor().max(0.0);
+                let into = run.cycle_s - behind * repeat_s;
+                let first = run.cycle;
+                run.cycle += behind as u32;
+                // The rest lasts `repeat - walk`; starting it `into - walk`
+                // seconds in leaves `repeat - into`: the next cycle's time.
+                self.enter_rest(&mut run, into - walk_s, still, now);
+                run.passed = Some((first, run.cycle));
+                log::info!("PASS: cycles {}..={} passed", first, run.cycle);
+            }
+        }
+        self.program = Some(run);
+        Ok(())
+    }
+
+    /// A repeating program's cycle is over (its last step ended, or PASS):
+    /// rest `elapsed_s` seconds in, with the state from before the cycle put
+    /// back (`restore_previous`; a belt still now stays still).
+    fn enter_rest(&mut self, run: &mut ProgramRun, elapsed_s: f64, still: bool, now: Instant) {
+        run.phase = ProgramPhase::Resting;
+        run.step_index = 0;
+        run.target = self.step_intent(&run.program.steps[0]);
+        run.paused = false;
+        run.wait = None;
+        run.elapsed_s = elapsed_s;
+        run.rest_warned = false;
+        run.deck_start = DeckStartWatch::default();
+        self.restore_previous(run.previous, still, now);
+        log::info!("Resting after cycle {}", run.cycle);
+    }
+
     /// Move to the phase after the current one, carrying `leftover` seconds.
     /// None means the program finished (and the previous state was restored).
     /// `pressed`: SKIP, not the step timer. Without a press, a step that would
@@ -1562,16 +1675,7 @@ impl OrchestratorState {
                     log::debug!("Step {}", run.step_index + 1);
                     Some(run)
                 } else if run.program.repeat_every_minutes.is_some() {
-                    run.phase = ProgramPhase::Resting;
-                    run.step_index = 0;
-                    run.target = self.step_intent(&run.program.steps[0]);
-                    run.paused = false;
-                    run.wait = None;
-                    run.elapsed_s = leftover;
-                    run.rest_warned = false;
-                    run.deck_start = DeckStartWatch::default();
-                    self.restore_previous(run.previous, still, now);
-                    log::info!("Resting after cycle {}", run.cycle);
+                    self.enter_rest(&mut run, leftover, still, now);
                     Some(run)
                 } else {
                     self.restore_previous(run.previous, still, now);
@@ -1581,6 +1685,10 @@ impl OrchestratorState {
             }
             ProgramPhase::Resting => {
                 run.cycle += 1;
+                // The rest ran out `leftover` seconds ago: that is when the
+                // cycle was due.
+                run.cycle_s = leftover;
+                run.passed = None;
                 run.previous = self.capture_previous();
                 run.phase = ProgramPhase::Walking;
                 run.step_index = 0;
@@ -1664,6 +1772,9 @@ impl OrchestratorState {
 
         let dt = now.saturating_duration_since(run.last_tick).as_secs_f64();
         run.last_tick = now;
+        if run.phase == ProgramPhase::Walking {
+            run.cycle_s += dt;
+        }
 
         // Walk time only counts while the belt is actually running (not while
         // starting up, paused, or stopped), unless the step holds the belt
@@ -2068,6 +2179,10 @@ impl OrchestratorState {
                 self.heart_bpm.is_some(),
             )
             .filter(|_| pulse_to_bpm.is_none()),
+            pass_note: run
+                .passed
+                .filter(|_| run.phase == ProgramPhase::Resting)
+                .map(|(first, last)| PassNote::new(first, last)),
         })
     }
 
@@ -2248,6 +2363,10 @@ pub struct SavedRun {
     /// started as saved.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fit_minutes: Option<u32>,
+    /// `ProgramRun::cycle_s`; absent in runs saved before #428, which time a
+    /// PASS from the restore.
+    #[serde(default)]
+    pub cycle_s: f64,
 }
 
 /// What a saved run's shape is, apart from the ticking clock fields.
@@ -2299,6 +2418,7 @@ impl OrchestratorState {
             rest_warned: r.rest_warned,
             saved_at_ms: now_ms,
             fit_minutes: r.fit_minutes,
+            cycle_s: r.cycle_s,
         })
     }
 
@@ -2360,6 +2480,9 @@ impl OrchestratorState {
             pulse_under_s: 0.0,
             pulse_held: false,
             fit_minutes: saved.fit_minutes,
+            // The time the app was closed is wall-clock time too.
+            cycle_s: saved.cycle_s + age as f64 / 1000.0,
+            passed: None,
         };
         self.set_program_intent_from(&run);
         self.program = Some(run);
@@ -3805,6 +3928,201 @@ mod tests {
         assert!(s.end_program(true, t0 + secs(1801)));
         assert_eq!(manual(&s).speed, 0.0);
         assert_eq!(s.handshake_step, crate::protocol::HandshakeStep::Idle);
+    }
+
+    // ---- PASS (#428): sit out a cycle, keep the schedule ----
+
+    #[test]
+    fn pass_during_a_rest_moves_the_next_cycle_one_repeat_on() {
+        let t0 = Instant::now();
+        // Resting after cycle 1 (it walked 0 to 300 s); cycle 2 is due at 1800 s.
+        let mut s = workday_resting_on_a_still_belt(t0);
+        run_ticks(&mut s, t0, 300, 600);
+        s.pass_program(t0 + secs(600)).unwrap();
+        let a = s.active_program().unwrap();
+        assert_eq!((a.phase, a.cycle), (ProgramPhase::Resting, 2));
+        // Cycle 3 keeps its time: 3600 s, one repeat after cycle 2's.
+        assert_eq!(a.seconds_remaining, Some(3000));
+        let note = a.pass_note.expect("a pass note");
+        assert_eq!(note.label, "CYCLE 2 PASSED");
+        assert_eq!(note.sentence, "Cycle 2 passed. Cycle 3 stays on schedule.");
+        // Nothing moved: the belt stays still.
+        assert_eq!(manual(&s).speed, 0.0);
+        assert_eq!(s.handshake_step, crate::protocol::HandshakeStep::Idle);
+
+        // No warning at cycle 2's old time; one before cycle 3, which waits for GO.
+        let toasts = run_ticks(&mut s, t0, 600, 3600);
+        assert_eq!(
+            toasts,
+            vec![
+                (3570, "WORKDAY IN 30S".to_string()),
+                (3600, "REST COMPLETE // PRESS GO".to_string())
+            ]
+        );
+        let a = s.active_program().unwrap();
+        assert_eq!(
+            (a.phase, a.cycle, a.wait),
+            (ProgramPhase::Walking, 3, Some(ProgramWait::RestComplete))
+        );
+        assert_eq!(a.pass_note, None, "the note goes with the rest");
+        assert_eq!(s.program_intent.map(|i| i.speed), Some(0.0));
+    }
+
+    #[test]
+    fn pass_twice_in_a_rest_passes_two_cycles() {
+        let t0 = Instant::now();
+        let mut s = workday_resting_on_a_still_belt(t0);
+        s.pass_program(t0 + secs(300)).unwrap();
+        s.pass_program(t0 + secs(300)).unwrap();
+        let a = s.active_program().unwrap();
+        assert_eq!((a.cycle, a.seconds_remaining), (3, Some(1500 + 2 * 1800)));
+        assert_eq!(a.pass_note.unwrap().label, "CYCLES 2 TO 3 PASSED");
+    }
+
+    #[test]
+    fn pass_while_waiting_for_go_keeps_the_schedule_and_the_belt_still() {
+        let t0 = Instant::now();
+        let mut s = workday_resting_on_a_still_belt(t0);
+        // Cycle 2 was due at 1800 s; ten busy minutes go by with GO waiting.
+        run_ticks(&mut s, t0, 300, 2400);
+        assert_eq!(
+            s.active_program().unwrap().wait,
+            Some(ProgramWait::RestComplete)
+        );
+        s.pass_program(t0 + secs(2400)).unwrap();
+        let a = s.active_program().unwrap();
+        assert_eq!((a.phase, a.cycle, a.wait), (ProgramPhase::Resting, 2, None));
+        // Cycle 3 at 3600 s, not 25 minutes from the press.
+        assert_eq!(a.seconds_remaining, Some(1200));
+        assert_eq!(s.program_intent, None);
+        assert_eq!(manual(&s).speed, 0.0);
+
+        // Driven through the rest, nothing moves the belt.
+        let mut engine = ProtocolEngine::new();
+        engine.has_synced_reality = true;
+        s.awaiting_first_packet = false;
+        let sent = drive(&mut s, &mut engine, t0 + secs(2400), 60);
+        assert!(!moves_belt(&sent), "{sent:?}");
+
+        // Cycle 3 is due on a still belt: it waits for GO, as always.
+        let mut s = workday_resting_on_a_still_belt(t0);
+        run_ticks(&mut s, t0, 300, 2400);
+        s.pass_program(t0 + secs(2400)).unwrap();
+        run_ticks(&mut s, t0, 2400, 3600);
+        let a = s.active_program().unwrap();
+        assert_eq!(
+            (a.cycle, a.paused, a.wait),
+            (3, true, Some(ProgramWait::RestComplete))
+        );
+        assert!(s.hold_auto_start);
+        assert_eq!(s.handshake_step, crate::protocol::HandshakeStep::Idle);
+    }
+
+    #[test]
+    fn pass_after_a_long_wait_passes_every_cycle_whose_time_went_by() {
+        let t0 = Instant::now();
+        let mut s = workday_resting_on_a_still_belt(t0);
+        // Cycle 2 due at 1800 s, then a 3 h 10 min lunch with GO waiting.
+        let back = 1800 + 3 * 3600 + 600;
+        run_ticks(&mut s, t0, 300, back);
+        s.pass_program(t0 + secs(back)).unwrap();
+        let a = s.active_program().unwrap();
+        // Cycles 2 to 8 were due (1800 s, then every 1800 s up to 12600 s);
+        // cycle 9 keeps its time, 14400 s, 20 minutes on.
+        assert_eq!((a.phase, a.cycle), (ProgramPhase::Resting, 8));
+        assert_eq!(a.seconds_remaining, Some(1200));
+        assert_eq!(a.pass_note.unwrap().label, "CYCLES 2 TO 8 PASSED");
+    }
+
+    #[test]
+    fn pass_mid_walk_rests_until_the_next_cycle_and_puts_the_belt_back() {
+        // Walking at 2.0 km/h before the program: the rest walks at 2.0 too.
+        let mut s = state();
+        moving(&mut s, 2.0, 0);
+        let t0 = Instant::now();
+        s.run_program(2, t0).unwrap();
+        run_ticks(&mut s, t0, 0, 120);
+        s.pass_program(t0 + secs(120)).unwrap();
+        let a = s.active_program().unwrap();
+        assert_eq!((a.phase, a.cycle), (ProgramPhase::Resting, 1));
+        assert_eq!(a.seconds_remaining, Some(1680), "cycle 2 still at 1800 s");
+        assert_eq!(a.pass_note.unwrap().label, "CYCLE 1 PASSED");
+        assert_eq!(s.program_intent, None);
+        assert_eq!(manual(&s).speed, 2.0);
+        // Cycle 2 starts at its usual time, a speed change on the moving belt.
+        run_ticks(&mut s, t0, 120, 1800);
+        let a = s.active_program().unwrap();
+        assert_eq!((a.phase, a.cycle, a.wait), (ProgramPhase::Walking, 2, None));
+
+        // From a still belt the rest leaves it still, as a cycle's end does.
+        let mut s = state();
+        s.last_status = MachineStatus::Stopped;
+        s.run_program(2, t0).unwrap();
+        s.last_status = MachineStatus::Running;
+        run_ticks(&mut s, t0, 0, 60);
+        // HOLD, then PASS: the paused belt is not started.
+        s.pause_program(t0 + secs(60)).unwrap();
+        s.last_status = MachineStatus::Paused;
+        run_ticks(&mut s, t0, 60, 200);
+        s.pass_program(t0 + secs(200)).unwrap();
+        let a = s.active_program().unwrap();
+        assert_eq!(a.phase, ProgramPhase::Resting);
+        assert_eq!(
+            a.seconds_remaining,
+            Some(1600),
+            "the pause counts on the clock"
+        );
+        assert_eq!(manual(&s).speed, 0.0);
+        assert_eq!(s.handshake_step, crate::protocol::HandshakeStep::Idle);
+    }
+
+    #[test]
+    fn pass_is_refused_for_a_program_that_does_not_repeat() {
+        let mut s = state();
+        moving(&mut s, 3.0, 0);
+        let t0 = Instant::now();
+        s.run_program(1, t0).unwrap();
+        let before = s.active_program();
+        assert!(s.pass_program(t0 + secs(5)).is_err());
+        assert_eq!(s.active_program(), before, "the run is untouched");
+        let mut idle = state();
+        assert!(idle.pass_program(t0).is_err());
+    }
+
+    #[test]
+    fn pass_keeps_the_schedule_across_a_restart() {
+        let t0 = Instant::now();
+        let mut s = workday_resting_on_a_still_belt(t0);
+        // Waiting for GO 5 minutes past cycle 2's time, then saved.
+        run_ticks(&mut s, t0, 300, 2100);
+        let saved = saved_from(&s, 1_000_000);
+        assert!((saved.cycle_s - 300.0).abs() < 1.5, "{}", saved.cycle_s);
+        // Back a minute later: the minute closed counts toward the schedule.
+        let mut s = restart_with(&saved, 60_000, MachineStatus::Paused, 0.0, 0, t0);
+        s.pass_program(t0).unwrap();
+        let a = s.active_program().unwrap();
+        assert_eq!(a.seconds_remaining, Some(1800 - 360));
+        // A run saved before PASS existed loads with the clock at zero.
+        let json = r#"{"program_id":2,"phase":"walking","step_index":0,"cycle":1,"paused":false,"elapsed_s":12.0,"target":{"speed":3.0,"incline":5},"previous":{"status":"Running","moving":null},"rest_warned":false,"saved_at_ms":5}"#;
+        let old: SavedRun = serde_json::from_str(json).unwrap();
+        assert_eq!(old.cycle_s, 0.0);
+    }
+
+    #[test]
+    fn skip_in_a_rest_after_pass_still_starts_the_next_walk() {
+        // PASS leaves SKIP's meaning alone: SKIP in a rest is the press for
+        // the next walk.
+        let t0 = Instant::now();
+        let mut s = workday_resting_on_a_still_belt(t0);
+        s.pass_program(t0 + secs(300)).unwrap();
+        s.skip_program(t0 + secs(301)).unwrap();
+        let a = s.active_program().unwrap();
+        assert_eq!(
+            (a.phase, a.cycle, a.paused, a.wait),
+            (ProgramPhase::Walking, 3, false, None)
+        );
+        assert_eq!(a.pass_note, None);
+        assert_eq!(s.program_intent.map(|i| i.speed), Some(3.0));
     }
 
     #[test]
