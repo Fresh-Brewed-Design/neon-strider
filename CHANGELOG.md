@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.87.0 (2026-11-27)
+
+### New
+
+- DESK_SYNC on the History page: today's mark pulses on once, the moment today's walking first counts. It stays still when animation effects are off in Windows.
+
 ## 1.86.0 (2026-11-27)
 
 ### New
