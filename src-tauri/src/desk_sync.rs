@@ -18,6 +18,12 @@
 //! a session starting or ending, a session deleted); the snapshot only adds
 //! today's live distance.
 //!
+//! Today's light (`Light`, `DeskSync::today_lit`): the card pulses today's
+//! mark once when today first counts while the app runs. The dashboard is
+//! usually closed at that moment (it closes on blur), so Rust keeps the fact
+//! until the card has played it (`Command::DeskSyncLightShown`) or the day
+//! ends. A day already counted when the app starts never lights.
+//!
 //! WALL_CLOCK (`wall_clock.rs`) counts walked hours over the same window. It
 //! is cached here with the saved sessions it reads, and worked out again only
 //! after a refresh or when the local day rolls over, never per tick.
@@ -73,6 +79,9 @@ pub struct DeskSync {
     pub days: Vec<DeskDay>,
     /// Today is a desk day not walked on yet; it isn't counted.
     pub today_open: bool,
+    /// Today first counted while the app ran and the card hasn't played its
+    /// light switching on yet (`Command::DeskSyncLightShown`).
+    pub today_lit: bool,
 }
 
 // Pure logic.
@@ -147,7 +156,42 @@ pub fn compute(
         window: window as u32,
         days,
         today_open: !today_walked && desk.contains(&today),
+        today_lit: false,
     }
+}
+
+/// Today's light: whether today went from not counted to counted while the
+/// app ran, and whether the card has played that yet. Pure; fed by `snapshot`.
+#[derive(Debug, Default)]
+struct Light {
+    /// The day last seen and whether it counted then. None until the first
+    /// snapshot, so a day already counted at startup never lights.
+    seen: Option<(NaiveDate, bool)>,
+    /// The day whose light switched on, at most once per day.
+    lit: Option<NaiveDate>,
+    /// The card played `lit`'s light.
+    shown: bool,
+}
+
+impl Light {
+    /// Note today's state; true while today's light is on and not shown yet.
+    fn note(&mut self, today: NaiveDate, counted: bool) -> bool {
+        if counted && self.seen == Some((today, false)) && self.lit != Some(today) {
+            self.lit = Some(today);
+            self.shown = false;
+        }
+        self.seen = Some((today, counted));
+        counted && self.lit == Some(today) && !self.shown
+    }
+
+    fn shown(&mut self) {
+        self.shown = true;
+    }
+}
+
+/// Today is in the window, which `compute` does only once it is walked.
+fn today_counted(sync: &DeskSync, today: NaiveDate) -> bool {
+    sync.days.last().is_some_and(|d| d.date == day_key(today))
 }
 
 fn shift_back(date: NaiveDate, days: u64) -> NaiveDate {
@@ -172,6 +216,8 @@ struct State {
     failed_at: Option<Instant>,
     /// A write is in flight.
     writing: bool,
+    /// Today's light switching on (`DeskSync::today_lit`).
+    light: Light,
 }
 
 static STATE: Mutex<Option<State>> = Mutex::new(None);
@@ -277,11 +323,20 @@ pub fn note_input(app: &AppHandle, idle: Option<Duration>) {
 /// live session. No I/O.
 pub fn snapshot(today_m: f64) -> DeskSync {
     let today = local_date(now_ms(), &chrono::Local).unwrap_or_default();
-    let guard = lock();
-    let Some(st) = guard.as_ref() else {
+    let mut guard = lock();
+    let Some(st) = guard.as_mut() else {
         return DeskSync::default();
     };
-    compute(&st.desk, &st.walked, today, today_m > WALKED_MIN_M, WINDOW)
+    let mut sync = compute(&st.desk, &st.walked, today, today_m > WALKED_MIN_M, WINDOW);
+    sync.today_lit = st.light.note(today, today_counted(&sync, today));
+    sync
+}
+
+/// The card played today's light; it stays off for the rest of the day.
+pub fn light_shown() {
+    if let Some(st) = lock().as_mut() {
+        st.light.shown();
+    }
 }
 
 /// WALL_CLOCK for the snapshot, over DESK_SYNC's window of saved days. The
@@ -431,6 +486,55 @@ mod tests {
                 ("2026-11-18", true)
             ]
         );
+    }
+
+    #[test]
+    fn todays_light_switches_on_once_when_today_first_counts() {
+        let today = d("2026-11-18");
+        let mut light = Light::default();
+        // Not counted yet, then the walk passes 50 m: on until shown.
+        assert!(!light.note(today, false));
+        assert!(light.note(today, true));
+        assert!(light.note(today, true));
+        light.shown();
+        assert!(!light.note(today, true));
+        // Un-counted and counted again the same day (a walk deleted): no second light.
+        assert!(!light.note(today, false));
+        assert!(!light.note(today, true));
+        // The next day lights again, from not counted.
+        let next = d("2026-11-19");
+        assert!(!light.note(next, false));
+        assert!(light.note(next, true));
+    }
+
+    #[test]
+    fn todays_light_stays_off_when_today_counted_at_startup() {
+        let today = d("2026-11-18");
+        let mut light = Light::default();
+        assert!(!light.note(today, true));
+        assert!(!light.note(today, true));
+        // Counted yesterday when the day rolls over: today starts not counted.
+        let mut late = Light::default();
+        assert!(!late.note(d("2026-11-17"), false));
+        assert!(!late.note(today, true));
+    }
+
+    #[test]
+    fn a_lit_day_left_unshown_goes_dark_at_midnight() {
+        let mut light = Light::default();
+        light.note(d("2026-11-18"), false);
+        assert!(light.note(d("2026-11-18"), true));
+        assert!(!light.note(d("2026-11-19"), false));
+        assert!(!light.note(d("2026-11-19"), false));
+    }
+
+    #[test]
+    fn today_counts_once_it_is_in_the_window() {
+        let desk = set(&["2026-11-17", "2026-11-18"]);
+        let open = compute(&desk, &BTreeSet::new(), d("2026-11-18"), false, 14);
+        assert!(!today_counted(&open, d("2026-11-18")));
+        let done = compute(&desk, &BTreeSet::new(), d("2026-11-18"), true, 14);
+        assert!(today_counted(&done, d("2026-11-18")));
     }
 
     #[test]

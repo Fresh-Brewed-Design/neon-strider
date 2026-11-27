@@ -1,13 +1,14 @@
-// The persistent HUD cards. Unlike toasts, each stays until it is acted on.
+// The persistent HUD cards. Unlike toasts, each stays until it is acted on;
+// Rust names the one that shows (`hud_card`).
 
 import { useEffect, useState } from "react";
-import type { AppSnapshot, BlinkStep } from "../ipc";
-import { formatDuration } from "../format";
+import type { AppSnapshot, BlinkStep, HudCard } from "../ipc";
+import { formatDuration, mmss } from "../format";
 import { PLAIN } from "../names";
-import { formatChange } from "../dashboard/history/weekly";
+import { formatChange, formatDeskDays } from "../dashboard/history/weekly";
 import { describePlan } from "../dashboard/programs/format";
 import { startOf } from "../state/linkStatus";
-import { resumeWord } from "./status";
+import { deckAsleep, resumeWord, WAKE_FIRST, WAKE_FIRST_SUB } from "./status";
 import { HudNote } from "./HudNote";
 import { DumpName } from "./DumpName";
 import { SmallButton } from "./SmallButton";
@@ -70,7 +71,7 @@ export function WeeklyCard({ snapshot }: { snapshot: AppSnapshot }) {
           {change && <span className={`hud-weekly-change tone-${change.tone}`}>{change.text}</span>}
         </div>
         <span className="hud-sub">
-          {w.active_days} / 7 DAYS · {formatDuration(w.duration_s).toUpperCase()}
+          {formatDeskDays(w).toUpperCase()} · {formatDuration(w.duration_s).toUpperCase()}
         </span>
         <HudNote error={error} />
       </div>
@@ -85,7 +86,8 @@ function seatedLine(snapshot: AppSnapshot, programs: number): string | null {
   if (queued) return `${queued.name} starts when the treadmill is on.`;
   // Only an unlinked treadmill queues a program; one linked but asleep refuses every start.
   if (!snapshot.connection.connected && programs > 0) return "Treadmill off. Turn the treadmill on or queue a program.";
-  if (!snapshot.connection.connected || snapshot.deck.standby) return "Treadmill off. Turn the treadmill on to engage.";
+  if (!snapshot.connection.connected) return "Treadmill off. Turn the treadmill on to engage.";
+  if (snapshot.deck.standby) return WAKE_FIRST;
   return null;
 }
 
@@ -94,7 +96,9 @@ function seatedLine(snapshot: AppSnapshot, programs: number): string | null {
  * card: it stays until acted on. ENGAGE is the HUD's Engage (a plain walk), and
  * needs the treadmill on; a program button starts it now, or, with the
  * treadmill off, remembers it and starts it as soon as the treadmill connects
- * (Rust drops it after 15 minutes). SNOOZE brings it back in 15 minutes.
+ * (Rust drops it after 15 minutes). SNOOZE brings it back in 15 minutes, then
+ * 30, then 60. Left unanswered for a minute, it folds into the strip's
+ * ATROPHY_WARNING readout (`SeatedReadout`).
  */
 export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
   const { send, error } = useHudSend();
@@ -107,6 +111,8 @@ export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
   const answeredAt = snapshot.connection.start_result?.at_ms ?? 0;
   const ownFailure = pressedAt !== null && answeredAt >= pressedAt ? own.failure : null;
   const note = error ?? ownFailure;
+  // Linked but asleep: every button here is refused until the deck wakes, so each says so before the press.
+  const asleep = deckAsleep(snapshot);
   return (
     <div className="hud-toast hud-seated accent-yellow" role="alert">
       <div className="hud-toast-body">
@@ -116,15 +122,17 @@ export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
       </div>
       <button
         type="button"
-        className="hud-btn hud-seated-engage"
+        className={`hud-btn hud-seated-engage accent-cyan${asleep ? " is-asleep" : ""}`}
         disabled={!snapshot.connection.connected}
-        title="Start walking at the usual speed, like Engage."
+        title={asleep ? WAKE_FIRST : "Start walking at the usual speed, like Engage."}
         onClick={() => {
           setPressedAt(Date.now());
           void send({ type: "seated_engage" });
         }}
       >
         ENGAGE
+        {asleep && " "}
+        {asleep && <span className="hud-btn-sub">{WAKE_FIRST_SUB}</span>}
       </button>
       {programs.length > 0 && (
         <div className="hud-seated-programs">
@@ -132,12 +140,14 @@ export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
             <button
               key={p.id}
               type="button"
-              className={`hud-btn hud-btn-program${p.id === s.pending_program_id ? " is-queued" : ""}`}
+              className={`hud-btn hud-btn-program${p.id === s.pending_program_id ? " is-queued" : ""}${asleep ? " is-asleep" : ""}`}
               aria-pressed={p.id === s.pending_program_id}
-              title={describePlan(p)}
+              title={asleep ? `${p.name}: ${WAKE_FIRST}` : describePlan(p)}
               onClick={() => send({ type: "seated_start", id: p.id })}
             >
               {p.name}
+              {asleep && " "}
+              {asleep && <span className="hud-btn-sub">{WAKE_FIRST_SUB}</span>}
             </button>
           ))}
         </div>
@@ -145,7 +155,7 @@ export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
       {/* One line at a time: a failed press says more than the standing hint. */}
       {note ? <HudNote error={note} /> : line && <span className="hud-sub">{line}</span>}
       <div className="hud-seated-actions">
-        <SmallButton onClick={() => send({ type: "seated_snooze" })}>SNOOZE 15 MIN</SmallButton>
+        <SmallButton onClick={() => send({ type: "seated_snooze" })}>SNOOZE {s.snooze_minutes} MIN</SmallButton>
       </div>
     </div>
   );
@@ -154,8 +164,11 @@ export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
 /**
  * Eye break (OCULAR_IMPLANT): a quiet heads-up a minute ahead, then the
  * cooldown with its countdown and SKIP. A break set for a running program's
- * rest (`at_rest`) waits for it and pauses nothing. Otherwise a walking belt is
- * paused for it (with "Pause the belt" on); after the break, while that pause holds, the card asks
+ * rest (`at_rest`) waits for it and pauses nothing; one moved earlier to fit
+ * the rest (`moved_to_rest`) says so. A break due while the belt walks waits
+ * for the walk to end (`waiting`, DEFERRED, with the time left before the belt
+ * is paused for it); past that wait the belt is paused (with "Pause the belt"
+ * on). No tones while the microphone is in use (`silent`). After the break, while that pause holds, the card asks
  * GO or RE-JACK (the word for what the press resumes) or STAY STILL. Nothing here
  * starts the belt by itself. During the break the card shows the guided blink
  * step (`blink`: SHUTTER // CLOSE, SQUEEZE, OPEN). Rust counts the time and owns
@@ -188,7 +201,6 @@ export function EyeBreakCard({ snapshot }: { snapshot: AppSnapshot }) {
     );
   }
   const onBreak = e.phase === "break";
-  const walking = snapshot.deck.status === "Running";
   return (
     <div className="hud-toast hud-eyebreak accent-cyan" role="alert">
       {onBreak ? (
@@ -201,8 +213,16 @@ export function EyeBreakCard({ snapshot }: { snapshot: AppSnapshot }) {
             {e.blink ? BLINK_HINT[e.blink] : "Look away from the screen."}
             {e.holds_belt ? " The belt is paused." : ""}
           </span>
-          {/* END_TONE (eyeBreakTones.ts) plays as the break ends, only while tones are on. */}
-          {e.sound && <span className="hud-sub">Two rising tones end the break.</span>}
+          {/* END_TONE (eyeBreakTones.ts) plays as the break ends, only while tones are on and the mic is free. */}
+          {e.sound && !e.silent && <span className="hud-sub">Two rising tones end the break.</span>}
+          {e.sound && e.silent && <span className="hud-sub">No tones while the microphone is on.</span>}
+        </div>
+      ) : e.phase === "waiting" ? (
+        <div className="hud-toast-body">
+          <span className="hud-toast-message">OCULAR_IMPLANT // DEFERRED</span>
+          <span className="hud-plain">{PLAIN.OCULAR_IMPLANT}</span>
+          <span className="hud-sub">The break starts once the belt stops.</span>
+          <span className="hud-sub">The belt pauses for the break in {mmss(e.remaining_s)}.</span>
         </div>
       ) : (
         <div className="hud-toast-body">
@@ -211,10 +231,10 @@ export function EyeBreakCard({ snapshot }: { snapshot: AppSnapshot }) {
           <span className="hud-toast-message">IMPLANT COOLDOWN IN {e.remaining_s} S</span>
           <span className="hud-sub">
             Finish what you are typing, then look away.
-            {e.at_rest
-              ? " The break starts at the program's rest."
-              : e.pause_belt && walking
-                ? " The belt will pause."
+            {e.moved_to_rest
+              ? " The break moved earlier to fit the program's rest."
+              : e.at_rest
+                ? " The break starts at the program's rest."
                 : ""}
           </span>
         </div>
@@ -305,4 +325,24 @@ export function WalkAwayCard({ snapshot }: { snapshot: AppSnapshot }) {
       </div>
     </div>
   );
+}
+
+/** The one card Rust picked (`hud_card`), or nothing. */
+export function HudCardView({ card, snapshot }: { card: HudCard; snapshot: AppSnapshot }) {
+  switch (card) {
+    case "walk_away":
+      return <WalkAwayCard snapshot={snapshot} />;
+    case "eye_break":
+      return snapshot.eye_break.phase === "idle" ? null : <EyeBreakCard snapshot={snapshot} />;
+    case "seated":
+      return <SeatedCard snapshot={snapshot} />;
+    case "weekly":
+      return <WeeklyCard snapshot={snapshot} />;
+    case "maintenance":
+      return <MaintenanceCard snapshot={snapshot} />;
+    case "update":
+      return <UpdateCard snapshot={snapshot} />;
+    case "none":
+      return null;
+  }
 }

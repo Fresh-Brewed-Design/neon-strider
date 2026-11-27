@@ -227,6 +227,18 @@ impl fmt::Display for TargetSource {
     }
 }
 
+/// DUMP on the walk-away card: the walk ends where the walk-away began. The
+/// stop that follows saves the walk, then `persistence::db_cut_session` takes
+/// off the time the belt ran with nobody on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SessionCut {
+    pub session_id: i64,
+    /// Epoch ms where the walk now ends.
+    pub at_ms: i64,
+    /// Seconds the belt ran after it, until the walk-away pause.
+    pub empty_s: i64,
+}
+
 /// The session being recorded, as live totals.
 #[derive(Default)]
 pub struct SessionState {
@@ -353,6 +365,8 @@ pub struct OrchestratorState {
     pub paused_since: Option<Instant>,
     /// The long-pause save already happened for this pause.
     pub pause_saved: bool,
+    /// DUMP after a walk-away: where the session's final save cuts it.
+    pub session_cut: Option<SessionCut>,
     /// A stop is in flight: the stop is repeated, and the automatic start,
     /// pause and adoption logic held off, until the deck reports the belt at rest.
     pub stop_requested: bool,
@@ -502,6 +516,7 @@ impl Default for OrchestratorState {
             session_open_seq: 0,
             paused_since: None,
             pause_saved: false,
+            session_cut: None,
             stop_requested: false,
             tilt_multiplier: 1.0,
             incline_offset: 0.0,
@@ -986,6 +1001,8 @@ impl OrchestratorState {
 
     pub fn start_session(&mut self, session_id: i64) {
         let now = self.now();
+        // A cut was for the walk before.
+        self.session_cut = None;
         self.session = SessionState {
             active_session_id: Some(session_id),
             last_physics_update: Some(now),
@@ -1400,26 +1417,66 @@ impl OrchestratorState {
         // A checkpoint keeps the session live, and the snapshot adds the live
         // distance itself, so it must stay out of the cached daily base.
         let exclude = if end { None } else { Some(session_id) };
+        let cut = if end {
+            self.session_cut
+                .take()
+                .filter(|c| c.session_id == session_id)
+        } else {
+            None
+        };
         tauri::async_runtime::spawn_blocking(move || {
             if let Err(e) = persistence::db_update_session(&app_c, session_id, record) {
                 log::warn!("Session {} not saved: {}", session_id, e);
             }
+            // After the save, in the same order, so the cut has the last word.
+            let cut_totals = cut.and_then(|c| {
+                match persistence::db_cut_session(&app_c, c.session_id, c.at_ms, c.empty_s) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        log::warn!("Session {} not cut: {}", session_id, e);
+                        None
+                    }
+                }
+            });
             // After the write, so the day's total includes what was just saved.
             crate::snapshot::refresh_daily_base(&app_c, exclude);
+            if let Some(t) = cut_totals {
+                log::info!(
+                    "Session {} cut where the walk-away began: {} · {:.2} km",
+                    session_id,
+                    crate::util::format_duration(t.duration_s),
+                    t.distance_m / 1000.0
+                );
+                crate::snapshot::refresh_after_session_edit(&app_c);
+                crate::hud::toast(
+                    &app_c,
+                    serde_json::json!({
+                        "type": "STATUS",
+                        "message": session_saved_message(
+                            t.duration_s,
+                            t.distance_m,
+                            crate::snapshot::daily_total_with_live(0.0),
+                        ),
+                        "isActionable": true,
+                    }),
+                );
+            }
         });
 
-        crate::hud::toast(
-            app,
-            serde_json::json!({
-                "type": "STATUS",
-                "message": session_saved_message(
-                    self.session.duration_seconds,
-                    self.session.distance_meters,
-                    crate::snapshot::daily_total_with_live(self.session.distance_meters),
-                ),
-                "isActionable": true,
-            }),
-        );
+        if cut.is_none() {
+            crate::hud::toast(
+                app,
+                serde_json::json!({
+                    "type": "STATUS",
+                    "message": session_saved_message(
+                        self.session.duration_seconds,
+                        self.session.distance_meters,
+                        crate::snapshot::daily_total_with_live(self.session.distance_meters),
+                    ),
+                    "isActionable": true,
+                }),
+            );
+        }
 
         if end {
             self.stop_session();

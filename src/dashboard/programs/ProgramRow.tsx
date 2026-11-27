@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Pencil, Play, Trash2 } from "lucide-react";
+import { Copy, Pencil, Play, Trash2 } from "lucide-react";
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { dispatch, type Command, type FitToDeckOffer, type FitToTimeOption, type Program } from "../../ipc";
-import { GhostButton, NeonButton, Panel } from "../ui";
+import { GhostButton, Joined, NeonButton, Panel } from "../ui";
 import { cx, post } from "../util";
 import { FitToDeck } from "./FitToDeck";
 import { describePlan, describeProgram } from "./format";
@@ -27,6 +27,7 @@ export function ProgramRow({
   fitToDeck,
   fitToTime,
   onEdit,
+  onClone,
   onDelete,
 }: {
   program: Program;
@@ -37,6 +38,8 @@ export function ProgramRow({
   fitToDeck: FitToDeckOffer | null;
   fitToTime: FitToTimeOption | null;
   onEdit: () => void;
+  /** Opens the editor with a copy as a new program; nothing is saved until SAVE. */
+  onClone: () => void;
   /** Asks before deleting; `onConfirm` sends the delete. */
   onDelete: (onConfirm: () => void) => void;
 }) {
@@ -64,23 +67,35 @@ export function ProgramRow({
               </span>
             )}
           </div>
-          <div className="font-mono text-xs text-white/60">{describeProgram(p)}</div>
+          <Joined className="font-mono text-xs text-white/60" text={describeProgram(p)} />
           {p.note && <div className="text-xs leading-snug text-white/60">{p.note}</div>}
           <FitToDeck offer={fitToDeck} />
         </div>
         <div className="ml-auto flex max-w-full flex-wrap items-end justify-end gap-3">
-          <GhostButton aria-label={`Edit ${p.name}`} title={`Edit ${p.name}`} className="min-h-6 min-w-6" onClick={onEdit}>
-            <Pencil size={14} />
-          </GhostButton>
-          <GhostButton
-            aria-label={`Delete ${p.name}`}
-            title={`Delete ${p.name}`}
-            className="ml-2 min-h-6 min-w-6 hover:text-neon-magenta"
-            disabled={remove.pending}
-            onClick={() => onDelete(() => void remove.run(post({ type: "program_delete", id: p.id })))}
-          >
-            <Trash2 size={14} />
-          </GhostButton>
+          {/* One tight cluster, so three icons take little more room than two did and the
+              controls stay beside the text at 760 px. */}
+          <div className="flex items-end gap-0.5">
+            <GhostButton aria-label={`Edit ${p.name}`} title={`Edit ${p.name}`} className="min-h-6 min-w-6 px-1.5!" onClick={onEdit}>
+              <Pencil size={14} />
+            </GhostButton>
+            <GhostButton
+              aria-label={`Clone ${p.name}`}
+              title="Copy the program into the editor as a new one."
+              className="min-h-6 min-w-6 px-1.5!"
+              onClick={onClone}
+            >
+              <Copy size={14} />
+            </GhostButton>
+            <GhostButton
+              aria-label={`Delete ${p.name}`}
+              title={`Delete ${p.name}`}
+              className="min-h-6 min-w-6 px-1.5! hover:text-neon-magenta"
+              disabled={remove.pending}
+              onClick={() => onDelete(() => void remove.run(post({ type: "program_delete", id: p.id })))}
+            >
+              <Trash2 size={14} />
+            </GhostButton>
+          </div>
           {fitToTime && (
             <label className="flex shrink-0 flex-col gap-0.5">
               <span className="font-mono text-[11px] font-bold uppercase leading-none tracking-[0.2em] text-white/60">Length</span>

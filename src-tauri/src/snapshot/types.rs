@@ -54,6 +54,12 @@ pub struct AppSnapshot {
     /// How the HUD panel shows right now: in full, as a strip or not at all
     /// (`hud.idle_mode` while the belt is still; see `snapshot/stasis.rs`).
     pub hud_view: HudView,
+    /// A program's wait for GO holds the whole panel (its first 30 s,
+    /// `stasis::GO_HOLD`): the HUD keeps minify off meanwhile.
+    pub hud_go_hold: bool,
+    /// The one card the HUD shows now, picked by rank from the cards due
+    /// (`card_queue.rs`, #421). The HUD renders this one and no other.
+    pub hud_card: crate::snapshot::card_queue::HudCard,
     /// Displays the HUD can be placed on. Refreshed every few seconds, not per tick.
     pub hud_monitors: Vec<HudMonitor>,
 
@@ -728,7 +734,8 @@ pub enum Command {
     SeatedStart {
         id: u32,
     },
-    /// SNOOZE 15 MIN on the card: hide it for 15 minutes; the idle time is kept.
+    /// SNOOZE on the card: hide it for 15 minutes, 30 the second time, then 60
+    /// (`seated.snooze_minutes`); the idle time is kept.
     SeatedSnooze,
 
     // ---- Eye breaks (OCULAR_IMPLANT) ----
@@ -1023,6 +1030,11 @@ pub enum Command {
     OpenPermissionSettings {
         permission: crate::platform::PermissionKind,
     },
+
+    // ---- DESK_SYNC ----
+    /// History's DESK_SYNC card played today's light switching on
+    /// (`DeskSync::today_lit`), so no window plays it again today.
+    DeskSyncLightShown,
 }
 
 #[cfg(test)]

@@ -46,6 +46,7 @@ export type { HistoryStats } from "./bindings/HistoryStats";
 export type { HistoryTotals } from "./bindings/HistoryTotals";
 export type { HeartZone } from "./bindings/HeartZone";
 export type { HudAnchor } from "./bindings/HudAnchor";
+export type { HudCard } from "./bindings/HudCard";
 export type { HudConfig } from "./bindings/HudConfig";
 export type { HudCustom } from "./bindings/HudCustom";
 export type { HudIdleMode } from "./bindings/HudIdleMode";

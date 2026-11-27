@@ -5,7 +5,7 @@ import { ActionStatus, InlineAction } from "../../../components/ActionStatus";
 import { useAction, useBackendAction, type BackendAction } from "../../../components/useAction";
 import type { SavedFile, StravaSnapshot } from "../../../ipc";
 import { Hint, Label, NeonButton } from "../../ui";
-import { post } from "../../util";
+import { cx, post } from "../../util";
 import { INPUT_CLASS, Toggle } from "../fields";
 
 const HH_MM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -41,14 +41,20 @@ export function AutoSyncOptions({ strava }: { strava: StravaSnapshot }) {
           void toggles.run(post({ type: "strava_set_daily_rollup", enabled: v, shift_end: strava.shift_end }))
         }
       />
-      <label className="flex items-center justify-between gap-4">
+      {/* The time only matters to the rollup: while it is off the field is greyed out and can't be
+          changed, and it keeps the saved time for when it is switched back on. */}
+      <label
+        className={cx("flex items-center justify-between gap-4", !strava.daily_rollup && "opacity-40")}
+        title={strava.daily_rollup ? undefined : "Switch on Daily rollup to set its time."}
+      >
         <Label>Rollup time</Label>
         <input
           type="time"
           value={timeDraft ?? strava.shift_end}
+          disabled={!strava.daily_rollup}
           onChange={(e) => changeShiftEnd(e.target.value)}
           onBlur={() => setTimeDraft(null)}
-          className={INPUT_CLASS}
+          className={cx(INPUT_CLASS, "disabled:cursor-not-allowed")}
         />
       </label>
       <ActionStatus error={toggles.error} />
