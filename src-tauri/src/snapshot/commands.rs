@@ -307,6 +307,9 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         }
         Command::WalkawayResume => desk::walkaway_resume().await,
         Command::WalkawayEnd => desk::walkaway_end().await,
+        Command::WalkawayStepsSet { on } => {
+            blocking(move || walkaway::set_steps_presence(&app, on)).await
+        }
 
         // ---- LIGHTS_OUT ----
         Command::LightsOutSetConfig { enabled } => {

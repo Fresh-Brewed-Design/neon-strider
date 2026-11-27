@@ -48,4 +48,22 @@ describe("WalkAwayCard", () => {
     expect(screen.getByRole("button", { name: "GO" })).toBeInTheDocument();
     expect(screen.getByText(/Press GO when you are back\./)).toBeInTheDocument();
   });
+
+  it("says the deck's steps stopped when FOOTFALL warns or pauses", () => {
+    const s = structuredClone(mock);
+    s.walkaway = { ...s.walkaway, card: "warning", pause_in_s: 30, reason: "steps", steps_away_s: 45 };
+    const { unmount } = render(<WalkAwayCard snapshot={s} />);
+    expect(screen.getByText(/No steps on the deck and no input for 45 s/)).toBeInTheDocument();
+    unmount();
+    s.walkaway = { ...s.walkaway, card: "paused", reason: "steps" };
+    render(<WalkAwayCard snapshot={s} />);
+    expect(screen.getByText(/No steps on the deck and no keyboard or mouse input for 45 s\./)).toBeInTheDocument();
+  });
+
+  it("keeps the idle minutes on an idle warning", () => {
+    const s = structuredClone(mock);
+    s.walkaway = { ...s.walkaway, card: "warning", pause_in_s: 30, reason: "idle", idle_minutes: 10 };
+    render(<WalkAwayCard snapshot={s} />);
+    expect(screen.getByText(/No input for 10 minutes/)).toBeInTheDocument();
+  });
 });

@@ -7,6 +7,16 @@
 //!   (`WALK-AWAY // PAUSING IN 30s`, with STAY); any input or STAY cancels it,
 //!   and when the 30 seconds run out the belt pauses. The timeout is long and
 //!   the warning visible because watching a video while walking is normal.
+//! - **Steps** (Labs, off by default, `labs_walkaway_steps`): the deck's own
+//!   step counter (bytes 11 and 12 of its 0x51 status frame, never the steps
+//!   the app works out from belt distance and stride) counts as presence once
+//!   it is seen moving while the belt walks (`StepCounter`). A step counts as
+//!   input, and with the counter live, no step and no input for
+//!   `STEPS_AWAY_MS` starts the same warning, so an empty belt pauses about a
+//!   minute after the last step. A deck that sends no count, or one that
+//!   never moves, leaves walk-away as it was. Whether a deck counts feet or
+//!   works its count out from the belt is only known on the hardware, hence
+//!   the switch; `STEPS_HOLD_MAX_MS` keeps the idle warning in reach either way.
 //!
 //! The treadmill's pause is used, never stop, so the session (and a running
 //! program) carries on after RESUME. Nothing here ever resumes the belt by
@@ -31,6 +41,8 @@ use tauri::AppHandle;
 const KEY_LOCK_ENABLED: &str = "walkaway_lock_enabled";
 const KEY_IDLE_ENABLED: &str = "walkaway_idle_enabled";
 const KEY_IDLE_MINUTES: &str = "walkaway_idle_minutes";
+/// Labs: the deck's step count as presence. Off by default.
+const KEY_STEPS_PRESENCE: &str = "labs_walkaway_steps";
 
 /// Defaults and range: docs/research.md, Walk-away timings. DeskSection reads
 /// the range from `SettingLimits`.
@@ -48,6 +60,26 @@ const WARNING_MS: u64 = 30 * SECOND;
 /// As for eye breaks: about eight polls.
 const REISSUE_MS: u64 = 5 * SECOND;
 
+/// The deck's step counter counts as a sensor once it has moved this many
+/// times while the belt walked on this connection. One move can be the count
+/// resetting as a walk starts; three moves while walking is a counter that
+/// counts. A deck that always sends 0 (or one fixed value) never gets there,
+/// so its walk-away stays as it was.
+const STEPS_LIVE_MOVES: u32 = 3;
+/// With a live counter, no step and no keyboard or mouse input for this long
+/// while the belt walks starts the warning. A slow desk walk (about 1 km/h)
+/// still takes a step every second or two and the deck reports about twice a
+/// second, so 45 s without one is feet off the belt, not a slow stride. With
+/// the 30 s warning the belt pauses about 75 s after the last step instead of
+/// after the idle minutes. The HUD and Labs text quote it.
+pub(crate) const STEPS_AWAY_MS: u64 = 45 * SECOND;
+/// Steps alone hold the idle warning off for at most this long after the
+/// last keyboard or mouse input, STAY or the belt starting. If the deck's
+/// counter turns out to follow the belt instead of feet, an empty belt still
+/// warns within the hour. An hour covers a long video walked without
+/// touching the PC, the case the switch is for.
+const STEPS_HOLD_MAX_MS: u64 = 60 * MINUTE;
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -57,6 +89,8 @@ pub struct Config {
     pub lock_enabled: bool,
     pub idle_enabled: bool,
     pub idle_minutes: u32,
+    /// Labs: the deck's step count as presence (needs `idle_enabled`).
+    pub steps_presence: bool,
 }
 
 impl Default for Config {
@@ -65,17 +99,20 @@ impl Default for Config {
             lock_enabled: true,
             idle_enabled: true,
             idle_minutes: DEFAULT_IDLE_MINUTES,
+            steps_presence: false,
         }
     }
 }
 
-/// Why the belt was paused.
+/// Why the belt was paused, or why the warning is up.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 #[serde(rename_all = "snake_case")]
 #[ts(export, export_to = "../../src/ipc/bindings/")]
 pub enum WalkAwayReason {
     Lock,
     Idle,
+    /// Labs: the deck's live step count stopped, with no input either.
+    Steps,
 }
 
 /// Which HUD card shows.
@@ -101,8 +138,31 @@ pub struct WalkAwaySnapshot {
     pub card: WalkAwayCard,
     /// While `card` is `warning`: whole seconds left before the pause.
     pub pause_in_s: u32,
-    /// While `card` is `paused`: why.
+    /// While `card` is `warning` or `paused`: why.
     pub reason: Option<WalkAwayReason>,
+    /// Labs: the deck's step count counts as presence.
+    pub steps_presence: bool,
+    /// With `steps_presence` and a live count: seconds with no step and no
+    /// input before the warning (`STEPS_AWAY_MS`).
+    pub steps_away_s: u32,
+    /// The deck's step counter as walk-away sees it, for Diagnostics.
+    pub deck_steps: DeckStepsReading,
+}
+
+/// The deck's own step counter on this connection, switch on or off.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
+pub struct DeckStepsReading {
+    /// The count in the deck's latest status frame; none with no fresh frame
+    /// on this connection.
+    pub count: Option<u32>,
+    /// Times the count moved while the belt walked, on this connection.
+    pub moves: u32,
+    /// The count has moved enough to count as a sensor (`STEPS_LIVE_MOVES`).
+    pub live: bool,
+    /// While the belt walks: whole seconds since the count last moved (or
+    /// since the belt started, if later).
+    pub still_s: Option<u32>,
 }
 
 /// What the desk loop tells the machine each second.
@@ -120,6 +180,9 @@ pub struct Input {
     /// A call is going on (an app holds the microphone). People talk on calls
     /// without touching the PC, so the idle timer does not run.
     pub call_active: bool,
+    /// The step count in the deck's latest status frame on this connection,
+    /// raw; `None` with no fresh frame. Never the app's own derived steps.
+    pub deck_steps: Option<u16>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -133,7 +196,10 @@ enum Phase {
     #[default]
     Watching,
     /// The idle warning is up; the belt pauses at `pause_at_ms`.
-    Warning { pause_at_ms: u64 },
+    Warning {
+        pause_at_ms: u64,
+        reason: WalkAwayReason,
+    },
     Paused {
         reason: WalkAwayReason,
         /// When the pause was (last) sent.
@@ -153,6 +219,34 @@ enum Phase {
 // The state machine
 // ---------------------------------------------------------------------------
 
+/// The deck's step counter on this connection: its last value, when it last
+/// moved and how often it moved while the belt walked.
+#[derive(Debug, Default, Clone, Copy)]
+struct StepCounter {
+    last: Option<u16>,
+    moved_ms: Option<u64>,
+    moves: u32,
+}
+
+impl StepCounter {
+    /// One reading. Any change counts as a move (a reset or a wrap at 65535
+    /// is the counter working too); only moves while walking make it live.
+    fn observe(&mut self, now_ms: u64, count: Option<u16>, walking: bool) {
+        let Some(count) = count else { return };
+        if self.last.is_some_and(|prev| prev != count) {
+            self.moved_ms = Some(now_ms);
+            if walking {
+                self.moves = self.moves.saturating_add(1);
+            }
+        }
+        self.last = Some(count);
+    }
+
+    fn live(&self) -> bool {
+        self.moves >= STEPS_LIVE_MOVES
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct WalkAway {
     phase: Phase,
@@ -164,6 +258,12 @@ pub struct WalkAway {
     /// still locked from the lock that paused it: that lock has had its say,
     /// so it doesn't pause the belt again. Cleared on unlock.
     lock_spent: bool,
+    /// The deck's step counter, watched whether or not the switch is on.
+    steps: StepCounter,
+    /// This tick's step count was fresh.
+    steps_fresh: bool,
+    /// This tick the belt walked on a ready link.
+    walking_now: bool,
 }
 
 impl WalkAway {
@@ -183,6 +283,14 @@ impl WalkAway {
         if !input.locked {
             self.lock_spent = false;
         }
+        if input.connected {
+            self.steps.observe(now_ms, input.deck_steps, input.walking);
+        } else {
+            // A new connection may be another deck: watch it afresh.
+            self.steps = StepCounter::default();
+        }
+        self.steps_fresh = input.connected && input.deck_steps.is_some();
+        self.walking_now = input.connected && input.walking;
         if let Phase::Paused {
             reason,
             sent_ms,
@@ -251,19 +359,37 @@ impl WalkAway {
         // Idle since the latest of: the last input, STAY, the belt starting.
         // `None` (no input seen since launch) counts from the belt starting.
         let last_input = input.idle_ms.map(|i| now_ms.saturating_sub(i));
-        let active_at = [last_input, self.stay_ms, Some(walking_since)]
+        let human_at = [last_input, self.stay_ms, Some(walking_since)]
             .into_iter()
             .flatten()
             .max()
             .unwrap_or(now_ms);
-        let warn_at = active_at + cfg.idle_minutes as u64 * MINUTE;
+        // Labs: a live deck step count is presence too, and its stopping
+        // warns sooner; within `STEPS_HOLD_MAX_MS` of the last input only.
+        let steps_watch = cfg.steps_presence && self.steps_fresh && self.steps.live();
+        let hold_end = human_at + STEPS_HOLD_MAX_MS;
+        let (active_at, warn_at, reason) = if steps_watch && now_ms < hold_end {
+            let at = human_at.max(self.steps.moved_ms.unwrap_or(0));
+            (at, at + STEPS_AWAY_MS, WalkAwayReason::Steps)
+        } else {
+            let idle_warn = human_at + cfg.idle_minutes as u64 * MINUTE;
+            // Steps held the warning until the hour ran out: warn now, with
+            // the full 30 s, never a pause out of the blue.
+            let warn_at = if steps_watch {
+                idle_warn.max(hold_end)
+            } else {
+                idle_warn
+            };
+            (human_at, warn_at, WalkAwayReason::Idle)
+        };
         let pause_at = warn_at + WARNING_MS;
         if now_ms >= pause_at {
-            return self.pause(WalkAwayReason::Idle, now_ms, active_at);
+            return self.pause(reason, now_ms, active_at);
         }
         self.phase = if now_ms >= warn_at {
             Phase::Warning {
                 pause_at_ms: pause_at,
+                reason,
             }
         } else {
             Phase::Watching
@@ -291,7 +417,13 @@ impl WalkAway {
     /// The settings changed: a warning the new settings no longer allow goes.
     /// A paused card stays (the belt is still paused).
     pub fn reconfigure(&mut self, cfg: &Config) {
-        if !cfg.idle_enabled && matches!(self.phase, Phase::Warning { .. }) {
+        let stale = match self.phase {
+            Phase::Warning { reason, .. } => {
+                !cfg.idle_enabled || (reason == WalkAwayReason::Steps && !cfg.steps_presence)
+            }
+            _ => false,
+        };
+        if stale {
             self.phase = Phase::Watching;
         }
     }
@@ -307,7 +439,7 @@ impl WalkAway {
     /// Whole seconds until the pause while warning (rounded up), else 0.
     pub fn pause_in_s(&self, now_ms: u64) -> u32 {
         match self.phase {
-            Phase::Warning { pause_at_ms } => {
+            Phase::Warning { pause_at_ms, .. } => {
                 pause_at_ms.saturating_sub(now_ms).div_ceil(SECOND) as u32
             }
             _ => 0,
@@ -330,8 +462,25 @@ impl WalkAway {
 
     pub fn reason(&self) -> Option<WalkAwayReason> {
         match self.phase {
-            Phase::Paused { reason, .. } => Some(reason),
-            _ => None,
+            Phase::Paused { reason, .. } | Phase::Warning { reason, .. } => Some(reason),
+            Phase::Watching => None,
+        }
+    }
+
+    /// The deck's step counter for Diagnostics.
+    pub fn deck_steps(&self, now_ms: u64) -> DeckStepsReading {
+        let s = &self.steps;
+        DeckStepsReading {
+            count: s.last.filter(|_| self.steps_fresh).map(u32::from),
+            moves: s.moves,
+            live: s.live(),
+            still_s: self
+                .walking_since_ms
+                .filter(|_| self.walking_now)
+                .map(|since| {
+                    let from = s.moved_ms.unwrap_or(since).max(since);
+                    (now_ms.saturating_sub(from) / SECOND) as u32
+                }),
         }
     }
 }
@@ -356,7 +505,13 @@ pub fn with<R>(f: impl FnOnce(&mut Runtime) -> R) -> R {
 
 /// Build the config from raw stored values. Bad values fall back to the
 /// defaults (both on, 10 minutes).
-pub fn config_from_raw(lock: Option<&str>, idle: Option<&str>, minutes: Option<&str>) -> Config {
+/// The steps switch (`steps`) is off unless saved on.
+pub fn config_from_raw(
+    lock: Option<&str>,
+    idle: Option<&str>,
+    minutes: Option<&str>,
+    steps: Option<&str>,
+) -> Config {
     Config {
         lock_enabled: persistence::parse_setting(lock).unwrap_or(true),
         idle_enabled: persistence::parse_setting(idle).unwrap_or(true),
@@ -365,6 +520,7 @@ pub fn config_from_raw(lock: Option<&str>, idle: Option<&str>, minutes: Option<&
             MIN_IDLE_MINUTES..=MAX_IDLE_MINUTES,
             DEFAULT_IDLE_MINUTES,
         ),
+        steps_presence: persistence::parse_setting(steps).unwrap_or(false),
     }
 }
 
@@ -386,6 +542,7 @@ pub fn init(app: &AppHandle) {
         read(KEY_LOCK_ENABLED).as_deref(),
         read(KEY_IDLE_ENABLED).as_deref(),
         read(KEY_IDLE_MINUTES).as_deref(),
+        read(KEY_STEPS_PRESENCE).as_deref(),
     );
     with(|rt| rt.cfg = cfg);
 }
@@ -401,13 +558,25 @@ pub fn set_config(
     persistence::write_setting(app, KEY_LOCK_ENABLED, &lock_enabled.to_string())?;
     persistence::write_setting(app, KEY_IDLE_ENABLED, &idle_enabled.to_string())?;
     persistence::write_setting(app, KEY_IDLE_MINUTES, &idle_minutes.to_string())?;
-    let cfg = Config {
-        lock_enabled,
-        idle_enabled,
-        idle_minutes,
-    };
     with(|rt| {
-        rt.cfg = cfg;
+        rt.cfg = Config {
+            lock_enabled,
+            idle_enabled,
+            idle_minutes,
+            ..rt.cfg
+        };
+        let cfg = rt.cfg;
+        rt.machine.reconfigure(&cfg);
+    });
+    Ok(())
+}
+
+/// Labs: the deck's step count as presence on or off. Blocking (SQLite).
+pub fn set_steps_presence(app: &AppHandle, on: bool) -> Result<(), String> {
+    persistence::write_setting(app, KEY_STEPS_PRESENCE, &on.to_string())?;
+    with(|rt| {
+        rt.cfg.steps_presence = on;
+        let cfg = rt.cfg;
         rt.machine.reconfigure(&cfg);
     });
     Ok(())
@@ -422,6 +591,9 @@ pub fn snapshot(now_ms: u64) -> WalkAwaySnapshot {
         card: rt.machine.card(),
         pause_in_s: rt.machine.pause_in_s(now_ms),
         reason: rt.machine.reason(),
+        steps_presence: rt.cfg.steps_presence,
+        steps_away_s: (STEPS_AWAY_MS / SECOND) as u32,
+        deck_steps: rt.machine.deck_steps(now_ms),
     })
 }
 
@@ -443,6 +615,7 @@ mod tests {
             locked: false,
             idle_ms: Some(idle_ms),
             call_active: false,
+            deck_steps: None,
         }
     }
 
@@ -741,6 +914,7 @@ mod tests {
             lock_enabled: false,
             idle_enabled: false,
             idle_minutes: 10,
+            steps_presence: false,
         };
         let mut m = WalkAway::default();
         let locked = Input {
@@ -828,27 +1002,364 @@ mod tests {
 
     #[test]
     fn settings_parse_and_validate() {
-        assert_eq!(config_from_raw(None, None, None), Config::default());
+        assert_eq!(config_from_raw(None, None, None, None), Config::default());
         assert_eq!(
-            config_from_raw(Some("false"), Some("\"false\""), Some("25")),
+            config_from_raw(Some("false"), Some("\"false\""), Some("25"), Some("true")),
             Config {
                 lock_enabled: false,
                 idle_enabled: false,
-                idle_minutes: 25
+                idle_minutes: 25,
+                steps_presence: true,
             }
         );
         assert_eq!(
-            config_from_raw(None, None, Some("1")).idle_minutes,
+            config_from_raw(None, None, Some("1"), None).idle_minutes,
             DEFAULT_IDLE_MINUTES
         );
         assert_eq!(
-            config_from_raw(None, None, Some("31")).idle_minutes,
+            config_from_raw(None, None, Some("31"), None).idle_minutes,
             DEFAULT_IDLE_MINUTES
         );
-        assert!(config_from_raw(Some("junk"), None, None).lock_enabled);
+        assert!(config_from_raw(Some("junk"), None, None, None).lock_enabled);
+        assert!(!config_from_raw(None, None, None, Some("junk")).steps_presence);
+        assert!(!Config::default().steps_presence, "off by default");
         assert!(validate_minutes(1).is_err());
         assert!(validate_minutes(31).is_err());
         assert_eq!(validate_minutes(2), Ok(2));
         assert_eq!(validate_minutes(30), Ok(30));
+    }
+
+    // ---- Labs: the deck's step count as presence ----
+
+    /// A running 0x51 frame from the deck with `steps` in bytes 11 and 12,
+    /// framed and parsed the way `bluetooth.rs` reads one.
+    fn frame(steps: u16) -> Vec<u8> {
+        let mut body = vec![0x51, 3, 30, 0];
+        for v in [600u16, 500, 300, steps] {
+            body.extend_from_slice(&v.to_le_bytes());
+        }
+        body.extend_from_slice(&[0, 0]);
+        crate::protocol::raw_packet(&body).unwrap()
+    }
+
+    /// A short running frame with no counters, as some decks send.
+    fn short_frame() -> Vec<u8> {
+        crate::protocol::raw_packet(&[0x51, 3]).unwrap()
+    }
+
+    /// The step count walk-away gets from a frame (`None`: no fresh frame).
+    fn steps_of(frame: Option<Vec<u8>>) -> Option<u16> {
+        frame.map(|f| {
+            crate::protocol::parse_status(&f)
+                .expect("a status frame")
+                .steps
+        })
+    }
+
+    fn steps_cfg() -> Config {
+        Config {
+            steps_presence: true,
+            ..cfg()
+        }
+    }
+
+    /// One tick per second from `from` to `to`, the last input at `input_at`
+    /// and the deck's frame at each second from `deck`.
+    fn run_deck(
+        m: &mut WalkAway,
+        c: &Config,
+        from: u64,
+        to: u64,
+        input_at: u64,
+        deck: impl Fn(u64) -> Option<Vec<u8>>,
+    ) -> Vec<(u64, Effect)> {
+        let mut out = Vec::new();
+        let mut t = from;
+        while t < to {
+            let input = Input {
+                deck_steps: steps_of(deck(t)),
+                ..walking(t - input_at)
+            };
+            if let Some(e) = m.tick(c, t, &input) {
+                out.push((t, e));
+            }
+            t += SECOND;
+        }
+        out
+    }
+
+    /// A walker's steps: about one a second from `start`.
+    fn stepping(start: u64) -> impl Fn(u64) -> Option<Vec<u8>> {
+        move |t| Some(frame(((t - start) / SECOND) as u16))
+    }
+
+    #[test]
+    fn advancing_steps_hold_the_warning_off_through_a_video_walk() {
+        // 40 minutes of a video walk: no keyboard or mouse, feet moving.
+        let mut m = WalkAway::default();
+        let c = steps_cfg();
+        assert!(run_deck(&mut m, &c, T0, T0 + 40 * MINUTE, T0, stepping(T0)).is_empty());
+        assert_eq!(m.card(), WalkAwayCard::None);
+        let r = m.deck_steps(T0 + 40 * MINUTE - SECOND);
+        assert!(r.live);
+        assert_eq!(r.count, Some(40 * 60 - 1));
+        assert_eq!(r.still_s, Some(0));
+    }
+
+    #[test]
+    fn frozen_steps_warn_and_pause_sooner() {
+        let mut m = WalkAway::default();
+        let c = steps_cfg();
+        // Two minutes of walking, then the walker leaves: the count stops.
+        let left = T0 + 2 * MINUTE;
+        let deck = move |t: u64| Some(frame(((t.min(left) - T0) / SECOND) as u16));
+        let last_move = left;
+        let warn_at = last_move + STEPS_AWAY_MS;
+        assert!(run_deck(&mut m, &c, T0, warn_at, T0, deck).is_empty());
+        assert_eq!(m.card(), WalkAwayCard::None);
+        assert!(run_deck(&mut m, &c, warn_at, warn_at + SECOND, T0, deck).is_empty());
+        assert_eq!(m.card(), WalkAwayCard::Warning);
+        assert_eq!(m.reason(), Some(WalkAwayReason::Steps));
+        assert_eq!(m.pause_in_s(warn_at), 30);
+        let r = m.deck_steps(warn_at);
+        assert_eq!(r.still_s, Some((STEPS_AWAY_MS / SECOND) as u32));
+        let effects = run_deck(
+            &mut m,
+            &c,
+            warn_at + SECOND,
+            warn_at + WARNING_MS + SECOND,
+            T0,
+            deck,
+        );
+        assert_eq!(
+            effects,
+            vec![(warn_at + WARNING_MS, Effect::Pause(WalkAwayReason::Steps))]
+        );
+        assert_eq!(m.card(), WalkAwayCard::Paused);
+        // DUMP cuts the walk at the last step.
+        assert_eq!(m.empty_stretch(), Some((last_move, warn_at + WARNING_MS)));
+        // The same walk-away with the switch off warns only at 10 minutes.
+        let mut off = WalkAway::default();
+        let effects = run_deck(&mut off, &cfg(), T0, T0 + 10 * MINUTE, T0, deck);
+        assert!(effects.is_empty());
+        assert_eq!(off.card(), WalkAwayCard::None);
+    }
+
+    #[test]
+    fn steps_coming_back_cancel_the_warning() {
+        let mut m = WalkAway::default();
+        let c = steps_cfg();
+        let stop = T0 + MINUTE;
+        let back = stop + STEPS_AWAY_MS + 10 * SECOND;
+        let deck = move |t: u64| {
+            let n = if t < stop {
+                (t - T0) / SECOND
+            } else if t < back {
+                60
+            } else {
+                60 + (t - back) / SECOND + 1
+            };
+            Some(frame(n as u16))
+        };
+        run_deck(&mut m, &c, T0, back, T0, deck);
+        assert_eq!(m.card(), WalkAwayCard::Warning);
+        assert!(run_deck(&mut m, &c, back, back + 5 * MINUTE, T0, deck).is_empty());
+        assert_eq!(m.card(), WalkAwayCard::None);
+    }
+
+    #[test]
+    fn input_still_counts_while_the_steps_are_frozen() {
+        // Typing with the count frozen (standing on the side rails, say):
+        // the steps never pause a walker who is at the keyboard.
+        let mut m = WalkAway::default();
+        let c = steps_cfg();
+        let deck = |t: u64| Some(frame(((t.min(T0 + MINUTE) - T0) / SECOND) as u16));
+        let mut t = T0;
+        while t < T0 + 20 * MINUTE {
+            let input = Input {
+                deck_steps: steps_of(deck(t)),
+                // A key every 20 s.
+                ..walking((t - T0) % (20 * SECOND))
+            };
+            assert_eq!(m.tick(&c, t, &input), None);
+            assert_eq!(m.card(), WalkAwayCard::None, "{}", t - T0);
+            t += SECOND;
+        }
+    }
+
+    #[test]
+    fn absent_steps_leave_walk_away_as_it_was() {
+        // Short frames (no counters) and full frames that always say 0.
+        for deck in [
+            Box::new(|_: u64| Some(short_frame())) as Box<dyn Fn(u64) -> Option<Vec<u8>>>,
+            Box::new(|_: u64| Some(frame(0))),
+            Box::new(|_: u64| Some(frame(1234))),
+            Box::new(|_: u64| None),
+        ] {
+            let mut m = WalkAway::default();
+            let c = steps_cfg();
+            assert!(run_deck(&mut m, &c, T0, T0 + 10 * MINUTE, T0, &deck).is_empty());
+            assert_eq!(m.card(), WalkAwayCard::None);
+            run_deck(
+                &mut m,
+                &c,
+                T0 + 10 * MINUTE,
+                T0 + 10 * MINUTE + SECOND,
+                T0,
+                &deck,
+            );
+            assert_eq!(m.card(), WalkAwayCard::Warning);
+            assert_eq!(m.reason(), Some(WalkAwayReason::Idle));
+            assert!(!m.deck_steps(T0).live);
+        }
+    }
+
+    #[test]
+    fn a_count_that_moves_only_once_or_twice_is_not_a_sensor() {
+        // A reset as the walk starts, then nothing: not live, so no sooner
+        // warning either.
+        let mut m = WalkAway::default();
+        let c = steps_cfg();
+        let deck = |t: u64| {
+            Some(frame(if t < T0 + 5 * SECOND {
+                900
+            } else if t < T0 + 6 * SECOND {
+                0
+            } else {
+                1
+            }))
+        };
+        assert!(run_deck(&mut m, &c, T0, T0 + 10 * MINUTE, T0, deck).is_empty());
+        assert_eq!(m.card(), WalkAwayCard::None);
+        assert_eq!(m.deck_steps(T0).moves, 2);
+        assert!(!m.deck_steps(T0).live);
+    }
+
+    #[test]
+    fn switch_off_ignores_a_live_count() {
+        // Feet moving, no input: the warning comes at the idle minutes, as
+        // with no steps at all.
+        let mut m = WalkAway::default();
+        let c = cfg();
+        assert!(run_deck(&mut m, &c, T0, T0 + 10 * MINUTE, T0, stepping(T0)).is_empty());
+        assert_eq!(m.card(), WalkAwayCard::None);
+        run_deck(
+            &mut m,
+            &c,
+            T0 + 10 * MINUTE,
+            T0 + 10 * MINUTE + SECOND,
+            T0,
+            stepping(T0),
+        );
+        assert_eq!(m.card(), WalkAwayCard::Warning);
+        assert_eq!(m.reason(), Some(WalkAwayReason::Idle));
+        // The readout still shows the count moving, for the hardware check.
+        assert!(m.deck_steps(T0 + 10 * MINUTE).live);
+    }
+
+    #[test]
+    fn steps_hold_the_warning_off_for_an_hour_at_most() {
+        // A count that follows the belt instead of feet must not keep an
+        // empty belt going for ever.
+        let mut m = WalkAway::default();
+        let c = steps_cfg();
+        let hour = T0 + STEPS_HOLD_MAX_MS;
+        assert!(run_deck(&mut m, &c, T0, hour, T0, stepping(T0)).is_empty());
+        assert_eq!(m.card(), WalkAwayCard::None);
+        run_deck(&mut m, &c, hour, hour + SECOND, T0, stepping(T0));
+        assert_eq!(m.card(), WalkAwayCard::Warning);
+        assert_eq!(m.reason(), Some(WalkAwayReason::Idle));
+        // STAY gives the steps another hour.
+        m.stay(hour + SECOND);
+        assert!(run_deck(
+            &mut m,
+            &c,
+            hour + SECOND,
+            hour + 30 * MINUTE,
+            T0,
+            stepping(T0)
+        )
+        .is_empty());
+        assert_eq!(m.card(), WalkAwayCard::None);
+    }
+
+    #[test]
+    fn a_stalled_link_falls_back_to_the_idle_minutes() {
+        // Frames stop (no fresh count) after the count went live: a frozen
+        // reading from a stalled link is not a walker who left.
+        let mut m = WalkAway::default();
+        let c = steps_cfg();
+        let stall = T0 + MINUTE;
+        let deck = move |t: u64| (t < stall).then(|| frame(((t - T0) / SECOND) as u16));
+        assert!(run_deck(&mut m, &c, T0, T0 + 10 * MINUTE, T0, deck).is_empty());
+        assert_eq!(m.card(), WalkAwayCard::None);
+        assert_eq!(m.deck_steps(T0 + 5 * MINUTE).count, None);
+    }
+
+    #[test]
+    fn a_new_connection_watches_the_count_afresh() {
+        let mut m = WalkAway::default();
+        let c = steps_cfg();
+        run_deck(&mut m, &c, T0, T0 + MINUTE, T0, stepping(T0));
+        assert!(m.deck_steps(T0 + MINUTE).live);
+        let offline = Input {
+            connected: false,
+            walking: false,
+            ..walking(0)
+        };
+        m.tick(&c, T0 + MINUTE, &offline);
+        let r = m.deck_steps(T0 + MINUTE);
+        assert!(!r.live);
+        assert_eq!(r.count, None);
+        assert_eq!(r.still_s, None, "not walking");
+    }
+
+    #[test]
+    fn turning_steps_off_drops_a_steps_warning() {
+        let mut m = WalkAway::default();
+        let left = T0 + MINUTE;
+        let deck = move |t: u64| Some(frame(((t.min(left) - T0) / SECOND) as u16));
+        run_deck(
+            &mut m,
+            &steps_cfg(),
+            T0,
+            left + STEPS_AWAY_MS + SECOND,
+            T0,
+            deck,
+        );
+        assert_eq!(m.reason(), Some(WalkAwayReason::Steps));
+        m.reconfigure(&cfg());
+        assert_eq!(m.card(), WalkAwayCard::None);
+        // An idle warning stays when only the steps switch goes off.
+        let mut m = WalkAway::default();
+        run(&mut m, &steps_cfg(), T0, T0 + 10 * MINUTE + SECOND, T0);
+        assert_eq!(m.reason(), Some(WalkAwayReason::Idle));
+        m.reconfigure(&cfg());
+        assert_eq!(m.card(), WalkAwayCard::Warning);
+    }
+
+    #[test]
+    fn a_steps_pause_never_resumes_the_belt() {
+        let mut m = WalkAway::default();
+        let c = steps_cfg();
+        let left = T0 + MINUTE;
+        let deck = move |t: u64| Some(frame(((t.min(left) - T0) / SECOND) as u16));
+        let effects = run_deck(&mut m, &c, T0, left + 2 * MINUTE, T0, deck);
+        assert!(effects
+            .iter()
+            .all(|(_, e)| *e == Effect::Pause(WalkAwayReason::Steps)));
+        // The belt reports paused for an hour; the count even moves (the
+        // walker back on the deck): nothing but the card.
+        let paused = left + 2 * MINUTE;
+        for i in 0..3600 {
+            let t = paused + i * SECOND;
+            let input = Input {
+                walking: false,
+                deck_steps: Some(60 + i as u16),
+                ..walking(t - T0)
+            };
+            assert_eq!(m.tick(&c, t, &input), None);
+        }
+        assert_eq!(m.card(), WalkAwayCard::Paused);
     }
 }
