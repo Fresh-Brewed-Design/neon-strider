@@ -244,6 +244,10 @@ pub struct ConnectionSnapshot {
     /// How the last Engage went; a failure says what to do. None while one is
     /// pending, and cleared once the deck's status changes (it woke up).
     pub start_result: Option<crate::link::StartResult>,
+    /// Which press `start_pending` and `start_result` belong to: Engage, a
+    /// program's GO or the sit-too-long card's ENGAGE, so each shows under the
+    /// control that was pressed.
+    pub start_press: crate::link::StartPress,
     /// When the HUD asked the dashboard to open its connect dialog (epoch ms);
     /// the dashboard opens it once per new value.
     #[ts(type = "number | null")]

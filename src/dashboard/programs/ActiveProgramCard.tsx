@@ -1,6 +1,7 @@
 import { ChartNoAxesColumn, Pause, Play, SkipForward, Square } from "lucide-react";
 import { ActionStatus } from "../../components/ActionStatus";
-import { useAction } from "../../components/useAction";
+import { useAction, useBackendAction } from "../../components/useAction";
+import { isMoving, startOf } from "../../state/linkStatus";
 import { useAppSnapshot } from "../../state/useAppState";
 import { GhostButton, Joined, Label, Panel } from "../ui";
 import { cx, post } from "../util";
@@ -61,10 +62,16 @@ function ButtonSub({ children }: { children: string }) {
  */
 export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
   const s = useAppSnapshot();
-  // GO, Resume, Pause, Skip and End share one status line under the buttons.
+  // GO, Pause, Skip and End share one status line under the buttons. GO waits for the deck to
+  // answer like Engage: a start it made, and its failure, show here and not under Engage.
   const control = useAction();
+  const own = s ? startOf(s, "program_go") : null;
+  const go = useBackendAction(own?.result ?? null, own?.pending ?? false);
   const a = s?.active_program;
-  if (!a) return null;
+  if (!s || !a) return null;
+  const goWaiting = (go.pending || (own?.pending ?? false)) && !isMoving(s.deck);
+  const busy = control.pending || goWaiting;
+  const pressGo = () => void go.run(() => post({ type: "program_resume" })());
   // Waiting for GO: the next step would start a still belt, so nothing moves until GO.
   const wait = a.wait;
   const timeLeft = describeTimeLeft(a);
@@ -98,8 +105,8 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
         {wait ? (
           <button
             type="button"
-            disabled={control.pending}
-            onClick={() => void control.run(post({ type: "program_resume" }))}
+            disabled={busy}
+            onClick={pressGo}
             className="flex items-center gap-1.5 rounded bg-neon-yellow px-3 py-1.5 disabled:opacity-60 font-digital text-xs font-bold tracking-widest text-black shadow-[0_0_14px_rgba(255,243,0,0.6)] hover:shadow-[0_0_20px_rgba(255,243,0,0.9)]"
             title="Start the belt and the next walk"
           >
@@ -107,8 +114,8 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
           </button>
         ) : a.paused ? (
           <GhostButton
-            disabled={control.pending}
-            onClick={() => void control.run(post({ type: "program_resume" }))}
+            disabled={busy}
+            onClick={pressGo}
             className="flex items-center gap-1.5 text-neon-yellow"
             title="Resume the program."
           >
@@ -141,7 +148,11 @@ export function ActiveProgramCard({ stepMap }: { stepMap?: StepMapToggle }) {
           <Square size={14} /> End
         </GhostButton>
       </div>
-      <ActionStatus error={control.error} className="basis-full justify-end text-right" />
+      <ActionStatus
+        pending={goWaiting && "Waiting for the treadmill to start…"}
+        error={control.error ?? go.error ?? own?.failure}
+        className="basis-full justify-end text-right"
+      />
       {/* The step lines, with the Live page's view switch at their end, a row apart from the program's buttons. */}
       <div className="flex min-w-0 basis-full flex-wrap items-end justify-between gap-x-3 gap-y-1">
         <div className="min-w-0 flex-1 basis-48">

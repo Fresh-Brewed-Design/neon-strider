@@ -130,6 +130,26 @@ describe("HUD strip", () => {
     );
     expect(screen.getByRole("alert")).toHaveTextContent("The treadmill didn't respond.");
   });
+
+  // #403: the sit-too-long card's own ENGAGE shows its failure on the card, once.
+  it("leaves the card's own failed ENGAGE to the card while the card is up", () => {
+    const NO_ANSWER = "The treadmill didn't respond.";
+    const own = (card: AppSnapshot["hud_card"]) =>
+      still("strip", (s) => {
+        s.hud_card = card;
+        s.seated = { ...s.seated, show_card: card === "seated", seated_minutes: 63 };
+        s.connection.start_press = "seated_engage";
+        s.connection.start_result = { ok: false, message: NO_ANSWER, at_ms: 1 };
+      });
+    const { unmount } = show(own("seated"));
+    expect(screen.getAllByText(NO_ANSWER)).toHaveLength(1);
+    expect(screen.getByText(NO_ANSWER).closest(".hud-seated")).not.toBeNull();
+    unmount();
+    // The card gone (snoozed or folded): the panel says it.
+    show(own("none"));
+    expect(screen.getAllByText(NO_ANSWER)).toHaveLength(1);
+    expect(screen.getByText(NO_ANSWER).closest(".hud-seated")).toBeNull();
+  });
 });
 
 describe("engageLabel", () => {

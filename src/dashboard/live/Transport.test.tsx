@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { AppSnapshot } from "../../ipc";
+import type { AppSnapshot, StartPress } from "../../ipc";
 
 const { snapshot: mock } = await import("../../dev/mockBackend");
 const { Transport } = await import("./Transport");
@@ -43,6 +43,38 @@ describe("Transport belt buttons", () => {
     expect(dump.className).toContain("border-2");
     expect(dump.className).toContain("border-neon-magenta");
     expect(dump.querySelector(".bg-current")).not.toBeNull();
+  });
+
+  // #385: a start a program's GO (or the HUD's sit-too-long card) made shows under that control, so
+  // Engage never repeats it.
+  it("shows its own start failure but not one a program's GO or the HUD card made", () => {
+    const failed = (s: AppSnapshot, press: StartPress) => {
+      s.deck = { ...s.deck, status: "Stopped", speed_kmh: 0 };
+      s.connection = {
+        ...s.connection,
+        start_pending: false,
+        start_press: press,
+        start_result: { ok: false, message: "The treadmill didn't respond.", at_ms: 1 },
+      };
+    };
+    const own = show((s) => failed(s, "engage"));
+    expect(screen.getByText("The treadmill didn't respond.")).toBeInTheDocument();
+    own.unmount();
+    for (const press of ["program_go", "seated_engage"] as const) {
+      const other = show((s) => failed(s, press));
+      expect(screen.queryByText("The treadmill didn't respond.")).toBeNull();
+      other.unmount();
+    }
+  });
+
+  it("leaves the waiting line to GO while GO's start is in flight", () => {
+    show((s) => {
+      s.deck = { ...s.deck, status: "Paused", speed_kmh: 0 };
+      s.connection = { ...s.connection, start_pending: true, start_press: "program_go", start_result: null };
+    });
+    expect(screen.queryByText("Waiting for the treadmill to start…")).toBeNull();
+    // Still held, so a second start is never sent over GO's.
+    expect(screen.getByRole("button", { name: "Re-jack resume belt" })).toBeDisabled();
   });
 
   it("gives the offline line at least the belt buttons' height, so nothing under it jumps", () => {

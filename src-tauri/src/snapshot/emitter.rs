@@ -78,6 +78,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
     let guided_task = crate::guided_task::snapshot();
     let has_saved_device = crate::link::has_saved_device();
     let start_result = crate::link::start_result();
+    let start_press = crate::link::start_press();
     let connect_dialog_at_ms = crate::link::connect_dialog_at_ms();
 
     let (mut snapshot, deck_silent) = {
@@ -93,6 +94,7 @@ pub(super) async fn assemble(connected: bool, device_id: Option<String>) -> AppS
             last_error,
             start_pending: state.start_requested_at.is_some(),
             start_result,
+            start_press,
             connect_dialog_at_ms,
         };
         // A stopped session's leftover numbers are already in the saved totals.

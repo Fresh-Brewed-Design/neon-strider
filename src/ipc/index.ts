@@ -89,6 +89,7 @@ export type { ShortcutsSnapshot } from "./bindings/ShortcutsSnapshot";
 export type { ShortcutView } from "./bindings/ShortcutView";
 export type { SpeedDriftSnapshot } from "./bindings/SpeedDriftSnapshot";
 export type { SpeedDriftState } from "./bindings/SpeedDriftState";
+export type { StartPress } from "./bindings/StartPress";
 export type { StartResult } from "./bindings/StartResult";
 export type { StepKind } from "./bindings/StepKind";
 export type { StepKindSpot } from "./bindings/StepKindSpot";

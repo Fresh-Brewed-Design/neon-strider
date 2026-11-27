@@ -73,7 +73,7 @@ export const setProgramPaused = (paused: boolean) => {
   Object.assign(snapshot.deck, paused ? { status: "Paused", speed_kmh: 0 } : { status: "Running", speed_kmh: snapshot.active_program.speed_kmh });
 };
 
-const PROGRAM_SCENARIOS: Record<string, Partial<ActiveProgram>> = {
+export const PROGRAM_SCENARIOS: Record<string, Partial<ActiveProgram>> = {
   ready: { cycle: 4, paused: true, wait: "rest_complete", seconds_remaining: 300 },
   unanswered: { cycle: 4, paused: true, wait: "rest_complete", seconds_remaining: 300 },
   hold: {

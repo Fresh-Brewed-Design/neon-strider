@@ -82,7 +82,9 @@ export function HudApp() {
   // The panel's one note: a refused press first, then the start that failed,
   // then the deck's reply to a target (with Rust's plain words) on the whole panel.
   const pressNote = panel.error ?? relink.error ?? drag.error ?? minify.error;
-  const failed = snapshot ? startFailure(snapshot) : null;
+  // A start the sit-too-long card's ENGAGE made shows on that card while it is up, not here too.
+  const cardOwnsStart = card === "seated" && snapshot?.connection.start_press === "seated_engage";
+  const failed = snapshot && !cardOwnsStart ? startFailure(snapshot) : null;
   const deckNote = full && snapshot?.deck.target_note ? snapshot.deck : null;
   const note: PanelNote | null = pressNote
     ? { text: pressNote }

@@ -405,6 +405,10 @@ pub struct OrchestratorState {
     /// The last start went unanswered: stop re-sending it (auto-start and
     /// auto-resume) until the user asks again.
     pub start_blocked: bool,
+    /// The press a start armed now belongs to (`link::StartPress`): Engage,
+    /// except while a program's GO (`go_program`) or the sit-too-long card's
+    /// ENGAGE (`desk::engage`) runs.
+    pub start_press: crate::link::StartPress,
     /// When the engine last sent the deck a Start (the handshake's second
     /// half) that the deck hasn't answered yet: motion then is the app's own
     /// start, not one at the treadmill (`programs::watch_for_deck_start`).
@@ -530,6 +534,7 @@ impl Default for OrchestratorState {
             speed_drift: Default::default(),
             start_requested_at: None,
             start_blocked: false,
+            start_press: crate::link::StartPress::Engage,
             start_sent_at: None,
             unknown_status_code: None,
             unknown_status_logged: Vec::new(),
@@ -2164,7 +2169,7 @@ impl OrchestratorState {
         self.hold_auto_start = false;
         if !self.last_status.is_moving() {
             self.start_requested_at = Some(now);
-            crate::link::start_requested();
+            crate::link::start_requested(self.start_press);
         }
         true
     }
@@ -2190,7 +2195,7 @@ impl OrchestratorState {
         self.start_requested_at = None;
         self.start_blocked = true;
         self.handshake_step = HandshakeStep::Idle;
-        crate::link::start_refused(why);
+        crate::link::start_refused(why, self.start_press);
     }
 
     /// Follow up on an Engage: clear the watch once the deck reports Starting or

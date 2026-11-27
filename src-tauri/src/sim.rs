@@ -808,7 +808,7 @@ impl Rig {
     /// GO on the HUD or dashboard (`Command::ProgramResume`).
     pub(crate) fn go(&mut self) {
         self.state.set_test_now(self.t);
-        self.state.resume_program(self.t).unwrap();
+        self.state.go_program(self.t).unwrap();
     }
 
     /// Where `commands_since` starts counting.

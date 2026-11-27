@@ -59,7 +59,7 @@ export const seated: Scenario = {
     },
     seated_engage: () => {
       if (!snapshot.connection.connected) throw "The treadmill is offline";
-      if (snapshot.deck.standby) return refuseWhileStopping();
+      if (snapshot.deck.standby) return refuseWhileStopping("seated_engage");
       Object.assign(snapshot.seated, { show_card: false, pending_program_id: null });
       Object.assign(snapshot.deck, { status: "Running", speed_kmh: snapshot.deck.target_speed_kmh });
     },

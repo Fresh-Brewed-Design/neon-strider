@@ -383,6 +383,7 @@ mod tests {
             last_error: None,
             start_pending: false,
             start_result: None,
+            start_press: crate::link::StartPress::Engage,
             connect_dialog_at_ms: None,
             simulated: false,
         }

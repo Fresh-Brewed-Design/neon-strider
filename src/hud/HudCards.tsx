@@ -7,7 +7,7 @@ import { formatDuration, mmss } from "../format";
 import { PLAIN } from "../names";
 import { formatChange, formatDeskDays } from "../dashboard/history/weekly";
 import { describePlan } from "../dashboard/programs/format";
-import { startFailure } from "../state/linkStatus";
+import { startOf } from "../state/linkStatus";
 import { deckAsleep, resumeWord, WAKE_FIRST, WAKE_FIRST_SUB } from "./status";
 import { HudNote } from "./HudNote";
 import { DumpName } from "./DumpName";
@@ -105,7 +105,8 @@ export function SeatedCard({ snapshot }: { snapshot: AppSnapshot }) {
   const s = snapshot.seated;
   const programs = s.program_ids.flatMap((id) => snapshot.programs.find((p) => p.id === id) ?? []);
   const line = seatedLine(snapshot, programs.length);
-  const note = error ?? startFailure(snapshot);
+  // Only a start this card's own ENGAGE made: a failed Engage or GO elsewhere shows under that control.
+  const note = error ?? startOf(snapshot, "seated_engage").failure;
   // Linked but asleep: every button here is refused until the deck wakes, so each says so before the press.
   const asleep = deckAsleep(snapshot);
   return (

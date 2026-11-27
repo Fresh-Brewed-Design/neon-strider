@@ -1464,6 +1464,16 @@ impl OrchestratorState {
         Ok(())
     }
 
+    /// A program's GO pressed (`Command::ProgramResume`): resume it, with any
+    /// start it arms (its waiting line and result) belonging to GO, not Engage.
+    /// Engage on a paused program resumes it too, as Engage's own press.
+    pub fn go_program(&mut self, now: Instant) -> Result<(), String> {
+        self.start_press = crate::link::StartPress::ProgramGo;
+        let result = self.resume_program(now);
+        self.start_press = crate::link::StartPress::Engage;
+        result
+    }
+
     pub fn resume_program(&mut self, now: Instant) -> Result<(), String> {
         let run = self
             .program
@@ -2698,6 +2708,28 @@ mod tests {
         s.set_test_now(t0 + secs(10));
         s.resume_program(t0 + secs(10)).unwrap();
         assert_eq!(s.handshake_step, crate::protocol::HandshakeStep::Priming);
+    }
+
+    #[test]
+    fn go_arms_its_start_as_go_and_leaves_engage_as_engage() {
+        let mut s = state();
+        s.last_status = MachineStatus::Running;
+        let t0 = Instant::now();
+        s.run_program(1, t0).unwrap();
+        s.pause_program(t0 + secs(5)).unwrap();
+        s.last_status = MachineStatus::Paused;
+        s.start_requested_at = None;
+        s.set_test_now(t0 + secs(10));
+        s.go_program(t0 + secs(10)).unwrap();
+        // GO's start is watched like Engage's, and the next start is Engage's again.
+        assert!(s.start_requested_at.is_some());
+        assert_eq!(s.start_press, crate::link::StartPress::Engage);
+        // A GO the deck refuses at once still hands the press back.
+        s.pause_program(t0 + secs(20)).unwrap();
+        s.deck_standby = true;
+        s.go_program(t0 + secs(21)).unwrap();
+        assert!(s.start_blocked);
+        assert_eq!(s.start_press, crate::link::StartPress::Engage);
     }
 
     #[test]
