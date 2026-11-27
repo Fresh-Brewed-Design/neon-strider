@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.87.1 (2026-11-27)
+
+### Fixed
+
+- The Strava TCX preview now says when Copy could not reach the clipboard, and confirms when it worked.
+
 ## 1.87.0 (2026-11-27)
 
 ### New
