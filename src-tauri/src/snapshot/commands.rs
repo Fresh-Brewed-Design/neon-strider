@@ -213,6 +213,7 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             rollup_title,
             description,
         } => strava::set_templates(&app, title, rollup_title, description),
+        Command::StravaUploadToday => strava::upload_today(&app).await,
 
         // ---- Belt reminder (maintenance) ----
         Command::MaintenanceMarkServiced => {

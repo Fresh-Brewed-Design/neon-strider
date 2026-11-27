@@ -3,7 +3,7 @@
 
 use super::auth;
 use super::settings::{self, Prefs};
-use crate::snapshot::{StravaGear, StravaResult, StravaSnapshot};
+use crate::snapshot::{StravaGear, StravaResult, StravaSnapshot, StravaToday};
 use crate::strava_plan as plan;
 use crate::strava_status::{self as status, ActivityInputs, StravaHint, StravaIssue, StravaStep};
 use crate::strava_template::Templates;
@@ -46,6 +46,9 @@ pub(super) struct Live {
     pub gear_loading: bool,
     /// Shoe, mute and templates, as the next upload would use them.
     pub prefs: Prefs,
+    /// What DAILY_UPLINK would send, from the last read of today's walks;
+    /// None until the first read.
+    pub today: Option<StravaToday>,
 }
 
 impl Live {
@@ -89,6 +92,7 @@ static LIVE: Mutex<Live> = Mutex::new(Live {
     gear: Vec::new(),
     gear_loading: false,
     prefs: Prefs::DEFAULT,
+    today: None,
 });
 
 pub(super) fn live() -> MutexGuard<'static, Live> {
@@ -149,6 +153,7 @@ pub fn snapshot() -> StravaSnapshot {
         title_template: templates.title,
         rollup_title_template: templates.rollup_title,
         description_template: templates.description,
+        today: super::today::shown(l.connected, l.today.as_ref()),
     }
 }
 

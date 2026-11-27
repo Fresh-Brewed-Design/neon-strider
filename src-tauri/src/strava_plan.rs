@@ -262,6 +262,10 @@ impl MergedSession {
     }
 }
 
+/// The `strava_id` of a walk the user marked as on Strava after uploading its
+/// saved file by hand (no activity id is known).
+pub const MANUAL_STRAVA_ID: &str = "manual";
+
 pub fn is_uploaded(strava_id: &Option<String>) -> bool {
     strava_id.as_deref().is_some_and(|v| !v.is_empty())
 }
@@ -383,6 +387,131 @@ pub fn select_rollup_days(
         });
     }
     out
+}
+
+/// Why DAILY_UPLINK (upload today now) has nothing to send.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TodayBlock {
+    /// No walk started today.
+    NoWalks,
+    /// A walk of today is still running.
+    Running,
+    /// Every walk of today is already on Strava.
+    AllOnStrava,
+    /// What is left of today is under `MIN_WALK_DISTANCE_M`.
+    TooShort,
+}
+
+impl TodayBlock {
+    /// One sentence for the button's reason line.
+    pub fn sentence(self) -> &'static str {
+        match self {
+            TodayBlock::NoWalks => "No walks today yet.",
+            TodayBlock::Running => "A walk is running. Stop the belt to upload today.",
+            TodayBlock::AllOnStrava => "Today's walks are on Strava.",
+            TodayBlock::TooShort => "Today's walks are under 50 m.",
+        }
+    }
+}
+
+/// What DAILY_UPLINK would send now: today's walks not on Strava yet, joined
+/// as the daily rollup joins a day.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TodayPlan {
+    /// The sessions to send as one activity; None when `block` says why not.
+    pub rollup: Option<RollupDay>,
+    pub block: Option<TodayBlock>,
+    /// Distance of the sessions to send, metres.
+    pub distance_m: f64,
+    /// Activities from today already on Strava (uploaded one by one, by an
+    /// earlier press or marked by hand). They stay as they are: Strava cannot
+    /// add a walk to an activity already posted.
+    pub on_strava: usize,
+}
+
+/// Plan DAILY_UPLINK for `today` (local). Unlike the daily rollup it ignores
+/// the shift end, the auto-sync cutoff and the merge wait: the press is the
+/// user saying the day is done. It uses the rollup's rules otherwise: sessions
+/// count for the local day they started on, sessions already on Strava are
+/// never sent again, a running walk holds the day, and a junk day sends nothing.
+pub fn plan_today(
+    sessions: &[Session],
+    active: Option<i64>,
+    today: NaiveDate,
+    threshold_minutes: u32,
+) -> TodayPlan {
+    let todays: Vec<&Session> = sessions
+        .iter()
+        .filter(|s| local_day(s.start_time) == Some(today))
+        .collect();
+    // Walks marked by hand after Save for Strava all carry `MANUAL_STRAVA_ID`,
+    // so those count as walks, the rest by their activity id.
+    let marked: Vec<Session> = todays
+        .iter()
+        .filter(|s| s.strava_id.as_deref() == Some(MANUAL_STRAVA_ID))
+        .map(|s| (*s).clone())
+        .collect();
+    let on_strava = todays
+        .iter()
+        .filter(|s| is_uploaded(&s.strava_id))
+        .filter_map(|s| s.strava_id.as_deref())
+        .filter(|id| *id != MANUAL_STRAVA_ID)
+        .collect::<std::collections::BTreeSet<_>>()
+        .len()
+        + merge_sessions(&marked, threshold_minutes).len();
+    let mut pending: Vec<Session> = todays
+        .iter()
+        .filter(|s| !is_uploaded(&s.strava_id))
+        .map(|s| (*s).clone())
+        .collect();
+    pending.sort_by_key(|s| s.start_time);
+    let distance_m: f64 = pending.iter().map(|s| s.distance_meters).sum();
+
+    let blocked = |block| TodayPlan {
+        rollup: None,
+        block: Some(block),
+        distance_m: 0.0,
+        on_strava,
+    };
+    if pending.iter().any(|s| active.is_some() && s.id == active) {
+        return blocked(TodayBlock::Running);
+    }
+    if pending.is_empty() || (distance_m < MIN_WALK_DISTANCE_M && on_strava > 0) {
+        return blocked(if on_strava > 0 {
+            TodayBlock::AllOnStrava
+        } else {
+            TodayBlock::NoWalks
+        });
+    }
+    if distance_m < MIN_WALK_DISTANCE_M {
+        return blocked(TodayBlock::TooShort);
+    }
+    TodayPlan {
+        rollup: Some(RollupDay {
+            day: today,
+            walks: merge_sessions(&pending, threshold_minutes).len(),
+            ids: pending.iter().filter_map(|s| s.id).collect(),
+        }),
+        block: None,
+        distance_m,
+        on_strava,
+    }
+}
+
+/// The line under DAILY_UPLINK about today's activities already on Strava,
+/// when there is something new to send beside them.
+pub fn today_note(plan: &TodayPlan) -> Option<String> {
+    if plan.rollup.is_none() || plan.on_strava == 0 {
+        return None;
+    }
+    Some(if plan.on_strava == 1 {
+        "1 activity from today is already on Strava and stays separate.".to_string()
+    } else {
+        format!(
+            "{} activities from today are already on Strava and stay separate.",
+            plan.on_strava
+        )
+    })
 }
 
 // Building the activity.
@@ -1205,6 +1334,128 @@ mod tests {
         assert_eq!(
             select_rollup_days(&s, None, -1, six(), 10, at(10, 18, 30)).len(),
             1
+        );
+    }
+
+    // ---- DAILY_UPLINK (upload today now) ----------------------------------
+
+    fn nov(d: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(2026, 11, d).unwrap()
+    }
+
+    fn on_strava(mut s: Session, id: &str) -> Session {
+        s.strava_id = Some(id.into());
+        s
+    }
+
+    #[test]
+    fn today_joins_the_days_walks_before_the_shift_end() {
+        // 1 and 2 are a resumed walk, 3 another; 4 is yesterday's.
+        let s = [
+            walk_at(4, 11, 15, 0, 20),
+            walk_at(3, 12, 14, 0, 20),
+            walk_at(1, 12, 9, 0, 20),
+            walk_at(2, 12, 9, 25, 20),
+        ];
+        let p = plan_today(&s, None, nov(12), 10);
+        assert_eq!(p.block, None);
+        let day = p.rollup.as_ref().expect("ready");
+        assert_eq!(day.ids, vec![1, 2, 3]);
+        assert_eq!(day.walks, 2);
+        assert_eq!(day.day, nov(12));
+        assert_eq!(p.distance_m, 6000.0);
+        assert_eq!(p.on_strava, 0);
+        assert_eq!(today_note(&p), None);
+    }
+
+    #[test]
+    fn today_never_sends_a_walk_already_on_strava() {
+        // 1 went up by itself; 2 and 3 are new, 4 was marked by hand.
+        let s = [
+            on_strava(walk_at(1, 12, 9, 0, 20), "77"),
+            walk_at(2, 12, 11, 0, 20),
+            walk_at(3, 12, 14, 0, 20),
+            on_strava(walk_at(4, 12, 16, 0, 20), MANUAL_STRAVA_ID),
+        ];
+        let p = plan_today(&s, None, nov(12), 10);
+        assert_eq!(p.rollup.as_ref().unwrap().ids, vec![2, 3]);
+        assert_eq!(p.on_strava, 2);
+        assert_eq!(
+            today_note(&p).as_deref(),
+            Some("2 activities from today are already on Strava and stay separate.")
+        );
+    }
+
+    #[test]
+    fn today_a_second_press_sends_only_the_later_walks() {
+        // The first press put 1 and 2 up as activity 90.
+        let mut s = vec![
+            on_strava(walk_at(1, 12, 9, 0, 20), "90"),
+            on_strava(walk_at(2, 12, 11, 0, 20), "90"),
+        ];
+        let p = plan_today(&s, None, nov(12), 10);
+        assert_eq!(p.rollup, None);
+        assert_eq!(p.block, Some(TodayBlock::AllOnStrava));
+        assert_eq!(p.on_strava, 1);
+        assert_eq!(today_note(&p), None);
+
+        // A walk after the press goes up as its own activity.
+        s.push(walk_at(3, 12, 17, 0, 20));
+        let p = plan_today(&s, None, nov(12), 10);
+        assert_eq!(p.rollup.as_ref().unwrap().ids, vec![3]);
+        assert_eq!(p.rollup.as_ref().unwrap().walks, 1);
+        assert_eq!(
+            today_note(&p).as_deref(),
+            Some("1 activity from today is already on Strava and stays separate.")
+        );
+    }
+
+    #[test]
+    fn today_waits_for_a_running_walk_and_says_why_when_empty() {
+        let s = [walk_at(1, 12, 9, 0, 20), walk_at(2, 12, 14, 0, 5)];
+        let p = plan_today(&s, Some(2), nov(12), 10);
+        assert_eq!(p.block, Some(TodayBlock::Running));
+        assert_eq!(p.rollup, None);
+        // A live walk from yesterday does not hold today.
+        assert_eq!(plan_today(&s, Some(99), nov(12), 10).block, None);
+
+        assert_eq!(
+            plan_today(&s, None, nov(13), 10).block,
+            Some(TodayBlock::NoWalks)
+        );
+        assert_eq!(
+            plan_today(&[], None, nov(13), 10).block,
+            Some(TodayBlock::NoWalks)
+        );
+
+        let mut junk = walk_at(1, 12, 9, 0, 1);
+        junk.distance_meters = 20.0;
+        assert_eq!(
+            plan_today(std::slice::from_ref(&junk), None, nov(12), 10).block,
+            Some(TodayBlock::TooShort)
+        );
+        // Junk beside a walk already up: today is on Strava.
+        let s = [on_strava(walk_at(2, 12, 8, 0, 20), "5"), junk];
+        assert_eq!(
+            plan_today(&s, None, nov(12), 10).block,
+            Some(TodayBlock::AllOnStrava)
+        );
+    }
+
+    #[test]
+    fn today_is_named_with_the_rollup_title() {
+        let s = [walk_at(1, 12, 9, 0, 20), walk_at(2, 12, 14, 0, 20)];
+        let walks = plan_today(&s, None, nov(12), 10).rollup.unwrap().walks;
+        let data: Vec<(Session, Vec<Sample>)> = s.iter().map(|x| (x.clone(), Vec::new())).collect();
+        let plan = plan_activity(
+            &data,
+            Naming::Rollup { walks },
+            &Templates::from_stored(None, None, None),
+            None,
+        );
+        assert_eq!(
+            plan.name,
+            "NEON STRIDER // DAILY UPLINK \u{b7} 2 WALKS \u{b7} 4.00 KM"
         );
     }
 

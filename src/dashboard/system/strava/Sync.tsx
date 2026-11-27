@@ -4,6 +4,8 @@ import { FileDown, FolderOpen, Loader2, RefreshCw } from "lucide-react";
 import { ActionStatus, InlineAction } from "../../../components/ActionStatus";
 import { useAction, useBackendAction, type BackendAction } from "../../../components/useAction";
 import type { SavedFile, StravaSnapshot } from "../../../ipc";
+import { DailyUplink } from "../../DailyUplink";
+import { useDailyUplink } from "../../dailyUplinkText";
 import { Hint, Label, NeonButton } from "../../ui";
 import { cx, post } from "../../util";
 import { INPUT_CLASS, Toggle } from "../fields";
@@ -81,6 +83,7 @@ export function SyncActions({
 }) {
   const result = strava.last_result;
   const sync = useBackendAction(result, busy);
+  const uplink = useDailyUplink(strava);
   const save = useAction();
   const folder = useAction();
   const apiSettings = useAction();
@@ -93,7 +96,7 @@ export function SyncActions({
       done: (f) => `Saved ${f.file_name}. Drop the file on the open Strava page.`,
     });
 
-  const shownElsewhere = [connect.error, connect.done, sync.error, sync.done, save.error, save.done];
+  const shownElsewhere = [connect.error, connect.done, sync.error, sync.done, save.error, save.done, uplink.error, uplink.done];
   const showResult = result !== null && !shownElsewhere.includes(result.message) && !busy && !stalled;
   const needsSettings =
     activity.state === "paused" || (result !== null && !result.ok && result.hint === "open_api_settings");
@@ -129,6 +132,7 @@ export function SyncActions({
         </NeonButton>
         <Hint>Writes the latest walk to a file for Strava&apos;s upload page.</Hint>
         </div>
+        <DailyUplink strava={strava} action={uplink} />
       </div>
       {!connected && <Hint>Link a Strava account to use Sync now.</Hint>}
       {connected && !strava.auto_sync && (
@@ -155,7 +159,7 @@ export function SyncActions({
         </ActionStatus>
       ) : (
         <ActionStatus
-          pending={(busy || sync.pending) && !authorizing && (activityText ?? "Working…")}
+          pending={(busy || sync.pending) && !authorizing && !uplink.pending && (activityText ?? "Working…")}
           error={sync.error}
           done={sync.done}
         >

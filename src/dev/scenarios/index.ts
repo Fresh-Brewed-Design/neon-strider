@@ -41,6 +41,7 @@ import { speedSpark } from "./speedspark";
 import { stasis } from "./stasis";
 import { stasisClock } from "./stasisclock";
 import { strava } from "./strava";
+import { stravaToday } from "./stravatoday";
 import { strideFit } from "./stridefit";
 import { today } from "./today";
 import { traffic } from "./traffic";
@@ -91,6 +92,8 @@ export const SCENARIOS: Scenario[] = [
   easyStop,
   fitToTime,
   programTones,
+  // After strava and history: it reads the account and today's mock walks.
+  stravaToday,
   // After the scenarios that set the belt's speed: VELOCITY reads the trace's last point.
   speedSpark,
   // After every scenario that pauses the belt at load.

@@ -190,6 +190,7 @@ export const snapshot: AppSnapshot = {
     title_template: DEFAULT_TITLE,
     rollup_title_template: DEFAULT_ROLLUP_TITLE,
     description_template: DEFAULT_DESCRIPTION,
+    today: { walks: 0, distance_km: 0, on_strava: 1, blocked: "Today's walks are on Strava.", note: null },
   },
   maintenance: {
     last_service_ms: Date.now() - 38 * 86_400_000,

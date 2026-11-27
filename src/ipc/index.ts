@@ -99,6 +99,7 @@ export type { StravaGear } from "./bindings/StravaGear";
 export type { StravaHint } from "./bindings/StravaHint";
 export type { StravaResult } from "./bindings/StravaResult";
 export type { StravaSnapshot } from "./bindings/StravaSnapshot";
+export type { StravaToday } from "./bindings/StravaToday";
 export type { StravaStep } from "./bindings/StravaStep";
 export type { SweepMark } from "./bindings/SweepMark";
 export type { TemplateField } from "./bindings/TemplateField";

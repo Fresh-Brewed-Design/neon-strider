@@ -52,6 +52,11 @@ export function monthStart(now: Date, back = 0): number {
   return new Date(now.getFullYear(), now.getMonth() - back, 1).getTime();
 }
 
+/** The local day key of today, as `groupByDay` keys its groups. */
+export function todayKey(now = Date.now()): string {
+  return dayKey(now);
+}
+
 /** Consecutive sessions on the same local day, in the order given. */
 export function groupByDay(sessions: MergedSession[]): { key: string; heading: string; items: MergedSession[] }[] {
   const out: { key: string; heading: string; items: MergedSession[] }[] = [];

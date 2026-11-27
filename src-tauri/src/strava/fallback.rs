@@ -111,8 +111,9 @@ pub fn mark_on_strava(app: &AppHandle, session_ids: Vec<i64>) -> Result<(), Stri
         return Err("No sessions selected".to_string());
     }
     for id in &session_ids {
-        persistence::db_mark_uploaded(app, *id, "manual")?;
+        persistence::db_mark_uploaded(app, *id, plan::MANUAL_STRAVA_ID)?;
     }
+    super::today::refresh(app);
     let mut saved = settings::read_saved_ids(app);
     saved.retain(|id| !session_ids.contains(id));
     settings::write_saved_ids(app, &saved)?;

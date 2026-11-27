@@ -196,6 +196,24 @@ pub struct StravaSnapshot {
     pub title_template: String,
     pub rollup_title_template: String,
     pub description_template: String,
+    /// DAILY_UPLINK: today's walks not on Strava yet, to upload now as one activity.
+    pub today: StravaToday,
+}
+
+/// What DAILY_UPLINK (upload today as one activity) would send now.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
+pub struct StravaToday {
+    /// Walks of today not on Strava yet, joined as History joins them.
+    pub walks: u32,
+    /// Their distance.
+    pub distance_km: f64,
+    /// Activities from today already on Strava, which stay as they are.
+    pub on_strava: u32,
+    /// Why there is nothing to upload now, one sentence; None when ready.
+    pub blocked: Option<String>,
+    /// About today's activities already on Strava, when the press sends more beside them.
+    pub note: Option<String>,
 }
 
 /// Which uploads are hidden from the Strava home feed.
@@ -710,6 +728,9 @@ pub enum Command {
         rollup_title: String,
         description: String,
     },
+    /// DAILY_UPLINK: upload today's walks not on Strava yet as one activity now
+    /// (queued; see `strava.last_result`).
+    StravaUploadToday,
 
     // ---- Belt reminder (maintenance) ----
     /// The belt was just serviced.

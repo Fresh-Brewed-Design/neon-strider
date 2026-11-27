@@ -112,6 +112,12 @@ pub fn upload_manual(app: &AppHandle, session_ids: Vec<i64>) -> Result<(), Strin
                 live::set_upload_errors(&session_ids, &issue.message);
             }
         }
+        let app_c = app.clone();
+        let _ = super::blocking(move || {
+            super::today::refresh(&app_c);
+            Ok(())
+        })
+        .await;
     });
     Ok(())
 }
