@@ -140,6 +140,12 @@ enum Phase {
         sent_ms: u64,
         /// The deck has since reported the belt not walking.
         took: bool,
+        /// Where the walk-away began: the last sign of the user (input, STAY
+        /// or the belt starting) for an idle pause, the pause itself for a
+        /// lock. The belt ran empty from here to `paused_at_ms`.
+        away_since_ms: u64,
+        /// When the pause was first sent.
+        paused_at_ms: u64,
     },
 }
 
@@ -161,11 +167,13 @@ pub struct WalkAway {
 }
 
 impl WalkAway {
-    fn pause(&mut self, reason: WalkAwayReason, now_ms: u64) -> Option<Effect> {
+    fn pause(&mut self, reason: WalkAwayReason, now_ms: u64, away_since_ms: u64) -> Option<Effect> {
         self.phase = Phase::Paused {
             reason,
             sent_ms: now_ms,
             took: false,
+            away_since_ms: away_since_ms.min(now_ms),
+            paused_at_ms: now_ms,
         };
         Some(Effect::Pause(reason))
     }
@@ -179,6 +187,8 @@ impl WalkAway {
             reason,
             sent_ms,
             took,
+            away_since_ms,
+            paused_at_ms,
         } = self.phase
         {
             if !input.connected {
@@ -193,6 +203,8 @@ impl WalkAway {
                     reason,
                     sent_ms,
                     took: true,
+                    away_since_ms,
+                    paused_at_ms,
                 };
                 return None;
             }
@@ -208,7 +220,14 @@ impl WalkAway {
             }
             if now_ms.saturating_sub(sent_ms) >= REISSUE_MS {
                 log::info!("Walk-away: the belt is still moving; sending the pause again");
-                return self.pause(reason, now_ms);
+                self.phase = Phase::Paused {
+                    reason,
+                    sent_ms: now_ms,
+                    took: false,
+                    away_since_ms,
+                    paused_at_ms,
+                };
+                return Some(Effect::Pause(reason));
             }
             return None;
         }
@@ -221,7 +240,7 @@ impl WalkAway {
         let walking_since = *self.walking_since_ms.get_or_insert(now_ms);
 
         if cfg.lock_enabled && input.locked && !self.lock_spent {
-            return self.pause(WalkAwayReason::Lock, now_ms);
+            return self.pause(WalkAwayReason::Lock, now_ms, now_ms);
         }
 
         if !cfg.idle_enabled || input.call_active {
@@ -240,7 +259,7 @@ impl WalkAway {
         let warn_at = active_at + cfg.idle_minutes as u64 * MINUTE;
         let pause_at = warn_at + WARNING_MS;
         if now_ms >= pause_at {
-            return self.pause(WalkAwayReason::Idle, now_ms);
+            return self.pause(WalkAwayReason::Idle, now_ms, active_at);
         }
         self.phase = if now_ms >= warn_at {
             Phase::Warning {
@@ -292,6 +311,20 @@ impl WalkAway {
                 pause_at_ms.saturating_sub(now_ms).div_ceil(SECOND) as u32
             }
             _ => 0,
+        }
+    }
+
+    /// While the paused card shows: the stretch the belt ran with nobody on
+    /// it, from where the walk-away began to the pause (epoch ms). DUMP cuts
+    /// the walk there. None for a lock (it pauses at once) or no card.
+    pub fn empty_stretch(&self) -> Option<(u64, u64)> {
+        match self.phase {
+            Phase::Paused {
+                away_since_ms,
+                paused_at_ms,
+                ..
+            } if away_since_ms < paused_at_ms => Some((away_since_ms, paused_at_ms)),
+            _ => None,
         }
     }
 
@@ -449,6 +482,11 @@ mod tests {
         };
         assert_eq!(m.tick(&c, T0 + 2000, &still), None);
         assert_eq!(m.card(), WalkAwayCard::Paused);
+        assert_eq!(
+            m.empty_stretch(),
+            None,
+            "a lock pauses at once: nothing ran empty"
+        );
     }
 
     #[test]
@@ -527,6 +565,14 @@ mod tests {
         );
         assert_eq!(m.card(), WalkAwayCard::Paused);
         assert_eq!(m.reason(), Some(WalkAwayReason::Idle));
+        // The belt ran empty from the last input to the pause; a reissued
+        // pause keeps both ends.
+        let paused_at = T0 + 10 * MINUTE + WARNING_MS;
+        assert_eq!(m.empty_stretch(), Some((T0, paused_at)));
+        run(&mut m, &c, paused_at + SECOND, paused_at + 10 * SECOND, T0);
+        assert_eq!(m.empty_stretch(), Some((T0, paused_at)));
+        m.acknowledge(paused_at + 20 * SECOND);
+        assert_eq!(m.empty_stretch(), None, "gone with the card");
     }
 
     #[test]

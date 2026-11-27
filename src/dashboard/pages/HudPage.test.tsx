@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppSnapshot } from "../../ipc";
+import { joinedLine } from "../../test/joined";
 
 let current: AppSnapshot | null = null;
 vi.mock("../../state/useAppState", () => ({
@@ -41,10 +42,10 @@ describe("HUD page widget rows", () => {
     render(<HudPage />);
     // Pinned.
     // "HUD: VEL" never breaks between its words.
-    expect(screen.getByText("belt speed · HUD: VEL").textContent).toBe("belt speed · HUD:\u00a0VEL");
+    expect(screen.getByText(joinedLine("belt speed · HUD: VEL")).textContent).toBe("belt speed · HUD:\u00a0VEL");
     // Available.
-    expect(screen.getByText("incline · HUD: TILT")).toBeInTheDocument();
-    expect(screen.getByText("walk time · HUD: TIME")).toBeInTheDocument();
+    expect(screen.getByText(joinedLine("incline · HUD: TILT"))).toBeInTheDocument();
+    expect(screen.getByText(joinedLine("walk time · HUD: TIME"))).toBeInTheDocument();
     expect(screen.getByText("HUD: WALKED")).toBeInTheDocument();
   });
 });

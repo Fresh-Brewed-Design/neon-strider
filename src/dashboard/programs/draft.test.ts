@@ -9,6 +9,7 @@ import {
   pulseSummary,
   rustStepError,
   strideFitFlag,
+  toClone,
   toDraft,
   withZoneUnit,
   zoneSummary,
@@ -223,5 +224,46 @@ describe("rustStepError", () => {
   it("splits Rust's step error into its step and a sentence", () => {
     expect(rustStepError("Step 2: a zone needs a walking speed")).toEqual({ step: 2, text: "A zone needs a walking speed." });
     expect(rustStepError("Name is required")).toBeNull();
+  });
+});
+
+describe("toClone", () => {
+  const ZONED: Program = {
+    id: 9,
+    name: "Climb",
+    steps: [
+      { duration_minutes: 5, speed_kmh: 4.5, incline_pct: 0, kind: "warm_up" },
+      { duration_minutes: 4, speed_kmh: 6, incline_pct: 10, zone: { low_pct: 85, high_pct: 95 }, kind: "interval" },
+    ],
+    repeat_every_minutes: 30,
+    note: "Kept by Rust, not by a clone.",
+  };
+
+  it("is a new program with the same steps, zones and repeat", () => {
+    const d = toClone(ZONED);
+    expect(d.id).toBe(0);
+    const saved = fromDraft(d, 190);
+    expect(saved).toEqual({ ...ZONED, id: 0, name: "Climb // CLONE", note: undefined });
+    expect(typeof saved !== "string" && saved.steps).toEqual(ZONED.steps);
+    expect(d.repeat).toBe(true);
+    expect(d.repeatMinutes).toBe("30");
+  });
+
+  it("leaves the original alone", () => {
+    const before = structuredClone(ZONED);
+    toClone(ZONED);
+    expect(ZONED).toEqual(before);
+  });
+
+  it("keeps its editor apart from a New draft's", () => {
+    expect(toClone(ZONED).from).toBe(9);
+    expect(NEW_PROGRAM.from).toBeUndefined();
+  });
+
+  it("cuts a long name so the whole name fits Rust's limit", () => {
+    const d = toClone({ ...ZONED, name: "A".repeat(40) });
+    expect(d.name).toBe(`${"A".repeat(31)} // CLONE`);
+    expect(d.name).toHaveLength(40);
+    expect(toClone({ ...ZONED, name: `${"A".repeat(30)} ${"B".repeat(9)}` }).name).toBe(`${"A".repeat(30)} // CLONE`);
   });
 });

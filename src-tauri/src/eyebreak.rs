@@ -16,7 +16,10 @@
 //! when Tones is on.
 //!
 //! The belt: with "Pause the belt" on (the default once eye breaks are on), a
-//! break that starts while the belt is walking pauses it, the same pause as the
+//! break that comes due while the belt walks waits for the walk to end (a stop,
+//! a pause, a program's rest) and begins there, pausing nothing (`due_break`).
+//! It waits at most 10 minutes past its time, and never pauses a walk in its
+//! first 10 minutes. Past that cap it pauses the belt, the same pause as the
 //! HUD's (a running program pauses at its step, it doesn't end). The machine
 //! remembers that the pause is the break's own, and gives it up as soon as the
 //! user does something with the belt (GO, Engage, a start at the treadmill, a
@@ -29,11 +32,16 @@
 //! break fits into the moments a running program holds the belt still anyway
 //! (the rest between cycles, a 0 km/h step, or a wait for GO), so it doesn't
 //! interrupt a walk. At such a rest a break due within half an interval starts
-//! now. While a program walks, a break that comes due waits for the program's
+//! now, after the usual minute's heads-up, which says it was moved to fit the
+//! rest. While a program walks, a break that comes due waits for the program's
 //! next rest if that rest is at most half an interval (and never more than 10
 //! minutes) late; the heads-up says so. A rest out of reach, or a manual walk,
-//! gets the pause as before. A still program never starts the belt by itself
-//! (its next step waits for GO), so a break at a rest needs no pause of its own.
+//! waits for the end of the walk as above. A still program never starts the
+//! belt by itself (its next step waits for GO), so a break at a rest needs no
+//! pause of its own.
+//!
+//! Calls: while the microphone is in use (`calls::mic`), the HUD plays no tones
+//! (`silent`); the card shows as usual.
 //!
 //! "Screen use" is keyboard or mouse input in the last 5 minutes, with the
 //! session unlocked and the display on (`platform::display_off`). Being away
@@ -97,6 +105,15 @@ const REISSUE_MS: u64 = 5 * SECOND;
 /// A break never waits longer than this for a program's rest.
 /// Half the default 20 minute interval: a break moved further than that is a skipped break.
 const MAX_WAIT_FOR_REST_MS: u64 = 10 * MINUTE;
+/// A break due while the belt walks waits at most this long for the walk to
+/// end, then pauses it. Fresh Brewed Design, #423: 10 minutes.
+pub(crate) const MAX_WAIT_FOR_STOP_MS: u64 = 10 * MINUTE;
+/// A break never pauses a walk younger than this (#423).
+pub(crate) const WALK_GRACE_MS: u64 = 10 * MINUTE;
+/// After a restart, the walk and a waiting break carry on this long while the
+/// treadmill reconnects (#426). A reconnect takes seconds; a belt still
+/// unknown after a minute is treated as any belt the app can't see.
+const RESTART_CARRY_MS: u64 = MINUTE;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
@@ -137,6 +154,9 @@ pub enum EyeBreakPhase {
     /// The break is over and the belt it paused is still paused: RESUME or
     /// STAY STILL. Only in the snapshot; the machine itself is counting again.
     Complete,
+    /// The break is due but the belt walks: it begins once the walk ends, or
+    /// pauses the belt when `remaining_s` runs out.
+    Waiting,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, ts_rs::TS)]
@@ -158,8 +178,15 @@ pub struct EyeBreakSnapshot {
     /// Upcoming: the break is set for the program's next rest, so the belt
     /// won't be paused for it.
     pub at_rest: bool,
+    /// Upcoming at a rest: the break was moved earlier than its time to fit
+    /// the program's rest.
+    pub moved_to_rest: bool,
+    /// The microphone is in use (a call): the HUD plays no tones. The card
+    /// shows as usual.
+    pub silent: bool,
     pub phase: EyeBreakPhase,
-    /// Seconds until the break (upcoming) or until it ends (break).
+    /// Seconds until the break (upcoming), until it ends (break), or until the
+    /// belt is paused for it (waiting).
     pub remaining_s: u32,
     /// During a break: the step of the guided blink to do now.
     pub blink: Option<BlinkStep>,
@@ -216,6 +243,8 @@ pub struct Tick {
     /// How long that rest lasts or, at a rest (`Belt::Rest`), what is left of
     /// it. None: until a press (a wait for GO, an open-ended 0 km/h step).
     pub rest_len_ms: Option<u64>,
+    /// Some app uses the microphone (`calls::mic`): no tones.
+    pub mic_in_use: bool,
 }
 
 /// Which pause: the treadmill's own (a manual walk), or a program's (by id).
@@ -248,6 +277,38 @@ pub enum Effect {
     Pause(Hold),
 }
 
+/// What a break that is due does with the belt as it is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Due {
+    /// Begin now. The belt isn't walking (still, paused, at a rest, offline),
+    /// or "Pause the belt" is off, so the break never touches it.
+    Begin,
+    /// Wait for the walk to end. The belt is paused for the break in
+    /// `pause_in_ms` if it still walks then.
+    Wait { pause_in_ms: u64 },
+    /// Waited long enough: begin, and pause the walk.
+    Pause,
+}
+
+/// The deferral rule (#423). A break due while the belt walks waits for the
+/// walk to end, at most `MAX_WAIT_FOR_STOP_MS` past its time (`late_ms`), and
+/// never pauses a walk in its first `WALK_GRACE_MS` (`walk_ms`, how long the
+/// belt has walked without a stop or pause). Past both it pauses, as before.
+/// Pure; it never resumes anything.
+pub(crate) fn due_break(belt: Belt, pause_belt: bool, late_ms: u64, walk_ms: u64) -> Due {
+    if !pause_belt || !matches!(belt, Belt::Walking(_)) {
+        return Due::Begin;
+    }
+    let pause_in_ms = MAX_WAIT_FOR_STOP_MS
+        .saturating_sub(late_ms)
+        .max(WALK_GRACE_MS.saturating_sub(walk_ms));
+    if pause_in_ms == 0 {
+        Due::Pause
+    } else {
+        Due::Wait { pause_in_ms }
+    }
+}
+
 /// A pause the break made and still owns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Owned {
@@ -258,7 +319,7 @@ struct Owned {
     took: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct EyeBreak {
     active_ms: u64,
     break_ms: u64,
@@ -274,6 +335,17 @@ pub struct EyeBreak {
     next_ms: u64,
     /// The next break is set for the program's next rest.
     at_rest: bool,
+    /// Set for the rest earlier than its own time.
+    moved: bool,
+    /// At a rest, a break moved early to fit it: what is left of its heads-up.
+    moved_warn_ms: Option<u64>,
+    /// How long the belt has walked since it last stood or paused.
+    walk_ms: u64,
+    /// The microphone was in use at the last tick.
+    silent: bool,
+    /// After a restart (`restore`): how much longer `walk_ms` and a waiting
+    /// break carry on while the treadmill reconnects (the belt reads `Other`).
+    carry_ms: Option<u64>,
 }
 
 impl EyeBreak {
@@ -284,29 +356,34 @@ impl EyeBreak {
         self.break_ms = 0;
         self.phase = EyeBreakPhase::Idle;
         self.at_rest = false;
+        self.moved = false;
+        self.moved_warn_ms = None;
     }
 
-    /// When the next break comes, and whether it is set for a program's rest
-    /// (the next one, or the one the belt is in). A break waits for a rest at
-    /// most half an interval (and `MAX_WAIT_FOR_REST_MS`) past its time. It
-    /// comes early, by up to half an interval, to a rest that would be over
-    /// before the break ended at its own time. A rest that holds it anyway
-    /// leaves it on time.
-    fn plan(&self, cfg: &Config, interval: u64, input: &Tick) -> (u64, bool) {
+    /// When the next break comes, whether it is set for a program's rest (the
+    /// next one, or the one the belt is in), and whether that moves it earlier
+    /// than its own time. A break waits for a rest at most half an interval
+    /// (and `MAX_WAIT_FOR_REST_MS`) past its time, counting the time it is
+    /// already late. It comes early, by up to half an interval, to a rest that
+    /// would be over before the break ended at its own time. A rest that holds
+    /// it anyway leaves it on time.
+    fn plan(&self, cfg: &Config, interval: u64, input: &Tick) -> (u64, bool, bool) {
         let due_in = interval.saturating_sub(self.active_ms);
+        let late = self.active_ms.saturating_sub(interval);
         if !cfg.fit_rests {
-            return (due_in, false);
+            return (due_in, false, false);
         }
         let rest_in = match (input.belt, input.rest_in_ms) {
             (Belt::Rest, _) => 0,
             (Belt::Walking(Hold::Program(_)), Some(r)) => r,
-            _ => return (due_in, false),
+            _ => return (due_in, false, false),
         };
         // Moving a break by up to half an interval keeps the gaps between breaks within
         // 0.5 to 1.5 intervals.
         let half = interval / 2;
-        let fits = if rest_in >= due_in {
-            rest_in - due_in <= half.min(MAX_WAIT_FOR_REST_MS)
+        let early = rest_in < due_in;
+        let fits = if !early {
+            rest_in + late - due_in <= half.min(MAX_WAIT_FOR_REST_MS)
         } else {
             let ends_first = input
                 .rest_len_ms
@@ -314,9 +391,9 @@ impl EyeBreak {
             due_in - rest_in <= half && ends_first
         };
         if fits {
-            (rest_in, true)
+            (rest_in, true, early)
         } else {
-            (due_in, false)
+            (due_in, false, false)
         }
     }
 
@@ -325,6 +402,8 @@ impl EyeBreak {
         self.phase = EyeBreakPhase::Break;
         self.break_ms = 0;
         self.at_rest = false;
+        self.moved = false;
+        self.moved_warn_ms = None;
         self.blink_seq = self.blink_seq.wrapping_add(1);
         if let (true, None, Belt::Walking(hold)) = (cfg.pause_belt, self.owned, belt) {
             log::info!("Eye break: pausing the belt for the break");
@@ -374,9 +453,24 @@ impl EyeBreak {
         if !cfg.enabled {
             self.reset();
             self.owned = None;
+            self.silent = false;
             return None;
         }
         let effect = self.follow(now_ms, input.belt);
+        self.silent = input.mic_in_use;
+        // Just restarted, the treadmill still reconnecting: the walk and a
+        // break waiting for its end carry on as they were.
+        if let (Some(left), Belt::Other) = (self.carry_ms, input.belt) {
+            self.carry_ms = Some(left.saturating_sub(step)).filter(|l| *l > 0);
+            if self.carry_ms.is_some() {
+                return effect;
+            }
+        }
+        self.carry_ms = None;
+        self.walk_ms = match input.belt {
+            Belt::Walking(_) => self.walk_ms + dt,
+            _ => 0,
+        };
         let away = input.locked
             || input.display_off
             || step >= AWAY_MS
@@ -415,18 +509,62 @@ impl EyeBreak {
             // never starts unannounced right after a presentation ends.
             self.active_ms = self.active_ms.min(interval.saturating_sub(WARN_MS));
         }
-        let (next_ms, at_rest) = self.plan(cfg, interval, input);
+        let (mut next_ms, mut at_rest, mut moved) = self.plan(cfg, interval, input);
+        // Moved early into the rest the belt is at: the minute's heads-up
+        // first, as for any break, unless it was already given on the way in.
+        // Once given it holds while the belt stays still, even when the rest
+        // runs into a wait for GO, so a heads-up is never taken back.
+        let announced = self.moved_warn_ms.is_some() && input.belt == Belt::Rest;
+        if announced || (at_rest && moved && input.belt == Belt::Rest) {
+            (at_rest, moved) = (true, true);
+            self.moved_warn_ms = match self.moved_warn_ms {
+                _ if input.held => Some(WARN_MS),
+                Some(left) => Some(left.saturating_sub(dt)),
+                None if self.phase == EyeBreakPhase::Upcoming => None,
+                None => Some(WARN_MS),
+            };
+            next_ms = self.moved_warn_ms.unwrap_or(0);
+        } else {
+            self.moved_warn_ms = None;
+        }
         self.next_ms = next_ms;
         self.at_rest = at_rest;
+        self.moved = moved;
         // Set for a rest: it begins once the belt is at it. Never while held:
         // its card would not show, and a pause with no card is a surprise.
-        if next_ms == 0 && !input.held && (!at_rest || input.belt == Belt::Rest) {
-            if at_rest {
-                log::info!("Eye break: taking the break at the program's rest");
+        let due = next_ms == 0 && !input.held && (!at_rest || input.belt == Belt::Rest);
+        let late = self.active_ms.saturating_sub(interval);
+        match due.then(|| due_break(input.belt, cfg.pause_belt, late, self.walk_ms)) {
+            Some(Due::Begin) => {
+                if at_rest {
+                    log::info!("Eye break: taking the break at the program's rest");
+                } else if self.phase == EyeBreakPhase::Waiting {
+                    log::info!("Eye break: the walk ended; taking the break");
+                }
+                return self.begin(cfg, now_ms, input.belt).or(effect);
             }
-            return self.begin(cfg, now_ms, input.belt).or(effect);
+            Some(Due::Pause) => {
+                log::info!("Eye break: the walk went on past the wait; pausing for the break");
+                return self.begin(cfg, now_ms, input.belt).or(effect);
+            }
+            Some(Due::Wait { pause_in_ms }) => {
+                if self.phase != EyeBreakPhase::Waiting {
+                    log::info!("Eye break: due mid-walk; waiting for the walk to end");
+                }
+                self.phase = EyeBreakPhase::Waiting;
+                self.next_ms = pause_in_ms;
+                return effect;
+            }
+            None => {}
         }
-        self.phase = if next_ms <= WARN_MS {
+        // While a walk would make the break wait, the card comes at its time
+        // (waiting), not a minute ahead: the heads-up's "look away" would not hold.
+        let would_wait = !at_rest
+            && matches!(
+                due_break(input.belt, cfg.pause_belt, 0, self.walk_ms),
+                Due::Wait { .. }
+            );
+        self.phase = if next_ms <= WARN_MS && !would_wait {
             EyeBreakPhase::Upcoming
         } else {
             EyeBreakPhase::Idle
@@ -481,14 +619,55 @@ impl EyeBreak {
         (self.phase == EyeBreakPhase::Break).then(|| blink_step(self.break_ms))
     }
 
+    /// What a restart keeps (`desk_resume.rs`): the screen time counted
+    /// towards the next break. A break under way is not kept as such; its
+    /// count is already full, so it starts again after the restart.
+    pub fn kept(&self) -> Kept {
+        Kept {
+            active_ms: self.active_ms,
+            walk_ms: self.walk_ms,
+            waiting: self.phase == EyeBreakPhase::Waiting,
+            next_ms: self.next_ms,
+        }
+    }
+
+    /// Put back what a restart kept. A break waiting for the walk's end
+    /// waits on: its lateness against `MAX_WAIT_FOR_STOP_MS` is the count
+    /// past the interval, and the walk keeps its length for `WALK_GRACE_MS`,
+    /// held while the treadmill reconnects (`RESTART_CARRY_MS`).
+    pub fn restore(&mut self, kept: Kept) {
+        self.active_ms = kept.active_ms;
+        self.walk_ms = kept.walk_ms;
+        if kept.waiting {
+            self.phase = EyeBreakPhase::Waiting;
+            self.next_ms = kept.next_ms;
+        }
+        self.carry_ms = Some(RESTART_CARRY_MS);
+    }
+
     fn remaining_s(&self, cfg: &Config) -> u32 {
         let ms = match self.phase {
             EyeBreakPhase::Idle | EyeBreakPhase::Complete => return 0,
-            EyeBreakPhase::Upcoming => self.next_ms,
+            EyeBreakPhase::Upcoming | EyeBreakPhase::Waiting => self.next_ms,
             EyeBreakPhase::Break => (cfg.seconds as u64 * SECOND).saturating_sub(self.break_ms),
         };
         ms.div_ceil(SECOND) as u32
     }
+}
+
+/// The eye-break state a restart keeps.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Kept {
+    pub active_ms: u64,
+    /// How long the belt had walked since it last stood or paused.
+    #[serde(default)]
+    pub walk_ms: u64,
+    /// A break due mid-walk was waiting for the walk's end.
+    #[serde(default)]
+    pub waiting: bool,
+    /// While waiting: milliseconds until it pauses the walk.
+    #[serde(default)]
+    pub next_ms: u64,
 }
 
 // ---------------------------------------------------------------------------
@@ -605,6 +784,11 @@ pub(crate) fn snapshot_of(rt: &Runtime) -> EyeBreakSnapshot {
         at_rest: rt.cfg.enabled
             && rt.machine.phase == EyeBreakPhase::Upcoming
             && rt.machine.at_rest,
+        moved_to_rest: rt.cfg.enabled
+            && rt.machine.phase == EyeBreakPhase::Upcoming
+            && rt.machine.at_rest
+            && rt.machine.moved,
+        silent: rt.cfg.enabled && rt.machine.silent,
         phase: if rt.cfg.enabled {
             rt.machine.shown_phase()
         } else {
@@ -647,6 +831,7 @@ mod tests {
             belt: Belt::Other,
             rest_in_ms: None,
             rest_len_ms: None,
+            mic_in_use: false,
         }
     }
 
@@ -676,15 +861,17 @@ mod tests {
             belt: b,
             rest_in_ms: None,
             rest_len_ms: None,
+            mic_in_use: false,
         }
     }
 
     const WALK: Belt = Belt::Walking(Hold::Manual);
     const PAUSED: Belt = Belt::Paused(Hold::Manual);
 
-    /// Walking until the break starts at 1200 s; returns the effects.
+    /// Walking from the start: due at 1200 s, the break waits for the walk to
+    /// end until 1800 s, then starts there and pauses the belt. Returns the effects.
     fn walk_into_a_break(m: &mut EyeBreak, c: &Config) -> Vec<(u64, Effect)> {
-        let fx = run(m, c, 0, 1200, belt(WALK));
+        let fx = run(m, c, 0, 1800, belt(WALK));
         assert_eq!(m.phase(), EyeBreakPhase::Break);
         fx
     }
@@ -693,19 +880,19 @@ mod tests {
     fn a_break_pauses_a_walking_belt_once_and_shows_the_resume_card_after() {
         let (mut m, c) = (EyeBreak::default(), cfg());
         let fx = walk_into_a_break(&mut m, &c);
-        assert_eq!(fx, vec![(1200, Effect::Pause(Hold::Manual))]);
+        assert_eq!(fx, vec![(1800, Effect::Pause(Hold::Manual))]);
         assert!(m.holds_belt());
         // The deck takes a second to report the pause.
-        assert_eq!(run(&mut m, &c, 1201, 1202, away_with(WALK)), vec![]);
-        assert_eq!(run(&mut m, &c, 1203, 1289, away_with(PAUSED)), vec![]);
+        assert_eq!(run(&mut m, &c, 1801, 1802, away_with(WALK)), vec![]);
+        assert_eq!(run(&mut m, &c, 1803, 1889, away_with(PAUSED)), vec![]);
         assert_eq!(m.shown_phase(), EyeBreakPhase::Break);
         // The break runs out: the end tone, and the resume card.
-        assert_eq!(run(&mut m, &c, 1290, 1291, away_with(PAUSED)), vec![]);
+        assert_eq!(run(&mut m, &c, 1890, 1891, away_with(PAUSED)), vec![]);
         assert_eq!(m.end_seq, 1);
         assert_eq!(m.phase(), EyeBreakPhase::Idle);
         assert_eq!(m.shown_phase(), EyeBreakPhase::Complete);
         // It waits, sending nothing, for as long as the belt stays paused.
-        assert_eq!(run(&mut m, &c, 1292, 1800, belt(PAUSED)), vec![]);
+        assert_eq!(run(&mut m, &c, 1892, 2400, belt(PAUSED)), vec![]);
         assert_eq!(m.shown_phase(), EyeBreakPhase::Complete);
         // RESUME or STAY STILL lets go.
         assert!(m.release());
@@ -716,13 +903,13 @@ mod tests {
     #[test]
     fn a_program_is_paused_with_its_own_pause() {
         let (mut m, c) = (EyeBreak::default(), cfg());
-        let fx = run(&mut m, &c, 0, 1200, belt(Belt::Walking(Hold::Program(2))));
-        assert_eq!(fx, vec![(1200, Effect::Pause(Hold::Program(2)))]);
+        let fx = run(&mut m, &c, 0, 1800, belt(Belt::Walking(Hold::Program(2))));
+        assert_eq!(fx, vec![(1800, Effect::Pause(Hold::Program(2)))]);
         run(
             &mut m,
             &c,
-            1201,
-            1300,
+            1801,
+            1900,
             away_with(Belt::Paused(Hold::Program(2))),
         );
         assert_eq!(m.shown_phase(), EyeBreakPhase::Complete);
@@ -779,12 +966,12 @@ mod tests {
     fn a_pause_that_does_not_take_is_sent_again() {
         let (mut m, c) = (EyeBreak::default(), cfg());
         walk_into_a_break(&mut m, &c);
-        let fx = run(&mut m, &c, 1201, 1212, away_with(WALK));
+        let fx = run(&mut m, &c, 1801, 1812, away_with(WALK));
         assert_eq!(
             fx,
             vec![
-                (1205, Effect::Pause(Hold::Manual)),
-                (1210, Effect::Pause(Hold::Manual))
+                (1805, Effect::Pause(Hold::Manual)),
+                (1810, Effect::Pause(Hold::Manual))
             ]
         );
         assert!(m.holds_belt());
@@ -794,11 +981,11 @@ mod tests {
     fn resuming_by_hand_during_the_break_gives_the_pause_up() {
         let (mut m, c) = (EyeBreak::default(), cfg());
         walk_into_a_break(&mut m, &c);
-        run(&mut m, &c, 1201, 1210, away_with(PAUSED));
+        run(&mut m, &c, 1801, 1810, away_with(PAUSED));
         // Engage, GO or a start at the treadmill: the countdown, then walking.
-        run(&mut m, &c, 1211, 1213, away_with(Belt::Other));
+        run(&mut m, &c, 1811, 1813, away_with(Belt::Other));
         assert!(!m.holds_belt());
-        assert_eq!(run(&mut m, &c, 1214, 1300, away_with(WALK)), vec![]);
+        assert_eq!(run(&mut m, &c, 1814, 1900, away_with(WALK)), vec![]);
         // The break still ends with its tone, but no resume card.
         assert_eq!(m.end_seq, 1);
         assert_eq!(m.shown_phase(), EyeBreakPhase::Idle);
@@ -808,8 +995,8 @@ mod tests {
     fn walking_again_straight_from_the_pause_gives_it_up_too() {
         let (mut m, c) = (EyeBreak::default(), cfg());
         walk_into_a_break(&mut m, &c);
-        run(&mut m, &c, 1201, 1210, away_with(PAUSED));
-        assert_eq!(run(&mut m, &c, 1211, 1220, away_with(WALK)), vec![]);
+        run(&mut m, &c, 1801, 1810, away_with(PAUSED));
+        assert_eq!(run(&mut m, &c, 1811, 1820, away_with(WALK)), vec![]);
         assert!(!m.holds_belt());
     }
 
@@ -818,22 +1005,22 @@ mod tests {
         for after in [Belt::Other, Belt::Paused(Hold::Program(1))] {
             let (mut m, c) = (EyeBreak::default(), cfg());
             walk_into_a_break(&mut m, &c);
-            run(&mut m, &c, 1201, 1210, away_with(PAUSED));
-            run(&mut m, &c, 1211, 1300, away_with(after));
+            run(&mut m, &c, 1801, 1810, away_with(PAUSED));
+            run(&mut m, &c, 1811, 1900, away_with(after));
             assert!(!m.holds_belt(), "{:?}", after);
             assert_eq!(m.shown_phase(), EyeBreakPhase::Idle);
         }
         // A program ended with END leaves a manual pause: not the program's.
         let (mut m, c) = (EyeBreak::default(), cfg());
-        run(&mut m, &c, 0, 1200, belt(Belt::Walking(Hold::Program(2))));
+        run(&mut m, &c, 0, 1800, belt(Belt::Walking(Hold::Program(2))));
         run(
             &mut m,
             &c,
-            1201,
-            1210,
+            1801,
+            1810,
             away_with(Belt::Paused(Hold::Program(2))),
         );
-        run(&mut m, &c, 1211, 1212, away_with(PAUSED));
+        run(&mut m, &c, 1811, 1812, away_with(PAUSED));
         assert!(!m.holds_belt());
     }
 
@@ -841,11 +1028,11 @@ mod tests {
     fn skip_shows_the_resume_card_at_once_without_a_tone() {
         let (mut m, c) = (EyeBreak::default(), cfg());
         walk_into_a_break(&mut m, &c);
-        run(&mut m, &c, 1201, 1205, belt(PAUSED));
+        run(&mut m, &c, 1801, 1805, belt(PAUSED));
         m.skip();
         assert_eq!(m.shown_phase(), EyeBreakPhase::Complete);
         assert_eq!(m.end_seq, 0);
-        assert_eq!(run(&mut m, &c, 1206, 1400, belt(PAUSED)), vec![]);
+        assert_eq!(run(&mut m, &c, 1806, 2000, belt(PAUSED)), vec![]);
         assert_eq!(m.shown_phase(), EyeBreakPhase::Complete);
     }
 
@@ -857,7 +1044,7 @@ mod tests {
             locked: true,
             ..away_with(PAUSED)
         };
-        run(&mut m, &c, 1201, 1260, locked);
+        run(&mut m, &c, 1801, 1860, locked);
         assert_eq!(m.shown_phase(), EyeBreakPhase::Complete);
     }
 
@@ -866,7 +1053,7 @@ mod tests {
         let (mut m, mut c) = (EyeBreak::default(), cfg());
         walk_into_a_break(&mut m, &c);
         c.enabled = false;
-        assert_eq!(run(&mut m, &c, 1201, 1300, belt(PAUSED)), vec![]);
+        assert_eq!(run(&mut m, &c, 1801, 1900, belt(PAUSED)), vec![]);
         assert!(!m.holds_belt());
     }
 
@@ -875,7 +1062,7 @@ mod tests {
         let (mut m, c) = (EyeBreak::default(), cfg());
         walk_into_a_break(&mut m, &c);
         // The card is ignored through the next whole interval and break.
-        let fx = run(&mut m, &c, 1201, 2700, belt(PAUSED));
+        let fx = run(&mut m, &c, 1801, 3300, belt(PAUSED));
         assert_eq!(fx, vec![]);
         assert!(m.holds_belt());
     }
@@ -902,6 +1089,7 @@ mod tests {
             belt: Belt::Other,
             rest_in_ms: None,
             rest_len_ms: None,
+            mic_in_use: false,
         }
     }
 
@@ -985,6 +1173,7 @@ mod tests {
             belt: Belt::Other,
             rest_in_ms: None,
             rest_len_ms: None,
+            mic_in_use: false,
         };
         m.tick(&c, T0 + 1151 * SECOND, &locked);
         assert_eq!(m.phase(), EyeBreakPhase::Idle);
@@ -1004,13 +1193,35 @@ mod tests {
         assert!(effects.is_empty(), "the belt is never paused while held");
         assert_ne!(m.phase(), EyeBreakPhase::Break);
         assert_eq!(m.blink_seq(), 0);
-        // Once the hold ends the heads-up's minute is still ahead.
+        // Once the hold ends the minute is still ahead: no card yet while the
+        // walk goes on, then the break waits for the end of the walk.
         run(&mut m, &c, 1801, 1802, walking);
-        assert_eq!(m.phase(), EyeBreakPhase::Upcoming);
+        assert_eq!(m.phase(), EyeBreakPhase::Idle);
         let effects = run(&mut m, &c, 1803, 1870, walking);
+        assert_eq!(effects, vec![]);
+        assert_eq!(m.phase(), EyeBreakPhase::Waiting);
+        // Still: it begins at once. Its card had shown for a few seconds.
+        assert_eq!(run(&mut m, &c, 1871, 1871, belt(Belt::Other)), vec![]);
         assert_eq!(m.phase(), EyeBreakPhase::Break);
-        // The break's own pause, a whole heads-up after the hold ended.
-        assert!(effects.first().is_some_and(|(s, _)| *s >= 1801 + 59));
+        // Still at the screen while held: the heads-up comes a minute ahead.
+        let mut m = EyeBreak::default();
+        let still = belt(Belt::Other);
+        run(
+            &mut m,
+            &c,
+            0,
+            1800,
+            Tick {
+                held: true,
+                ..still
+            },
+        );
+        run(&mut m, &c, 1801, 1802, still);
+        assert_eq!(m.phase(), EyeBreakPhase::Upcoming);
+        run(&mut m, &c, 1803, 1859, still);
+        assert_eq!(m.phase(), EyeBreakPhase::Upcoming);
+        run(&mut m, &c, 1860, 1861, still);
+        assert_eq!(m.phase(), EyeBreakPhase::Break);
     }
 
     #[test]
@@ -1025,6 +1236,7 @@ mod tests {
             belt: Belt::Other,
             rest_in_ms: None,
             rest_len_ms: None,
+            mic_in_use: false,
         };
         m.tick(&c, T0 + 601 * SECOND, &paused);
         assert_eq!(m.active_ms, 0);
@@ -1121,11 +1333,14 @@ mod tests {
     }
 
     #[test]
-    fn a_rest_too_late_for_the_break_gets_the_pause_on_time() {
+    fn a_rest_too_late_for_the_break_gets_the_pause_at_the_ten_minute_cap() {
         let (mut m, c) = (EyeBreak::default(), cfg());
         // Half an interval is 600 s; this rest would be 700 s late.
-        let fx = run_by(&mut m, &c, 0, 1200, program_resting_at(1900, LONG));
-        assert_eq!(fx, vec![(1200, Effect::Pause(Hold::Program(2)))]);
+        let walk = program_resting_at(1900, LONG);
+        assert_eq!(run_by(&mut m, &c, 0, 1200, &walk), vec![]);
+        assert_eq!(m.phase(), EyeBreakPhase::Waiting);
+        let fx = run_by(&mut m, &c, 1201, 1800, &walk);
+        assert_eq!(fx, vec![(1800, Effect::Pause(Hold::Program(2)))]);
     }
 
     #[test]
@@ -1134,10 +1349,11 @@ mod tests {
             minutes: 60,
             ..cfg()
         };
-        // Due at 3600 s; a rest 11 minutes later is out of reach.
+        // Due at 3600 s; a rest 11 minutes later is out of reach, so the
+        // walk is paused at the cap, a minute before it.
         let mut m = EyeBreak::default();
-        let fx = run_by(&mut m, &c, 0, 3600, program_resting_at(3600 + 660, LONG));
-        assert_eq!(fx, vec![(3600, Effect::Pause(Hold::Program(2)))]);
+        let fx = run_by(&mut m, &c, 0, 4200, program_resting_at(3600 + 660, LONG));
+        assert_eq!(fx, vec![(4200, Effect::Pause(Hold::Program(2)))]);
         // Nine minutes is in reach.
         let mut m = EyeBreak::default();
         let fx = run_by(&mut m, &c, 0, 4200, program_resting_at(3600 + 540, LONG));
@@ -1188,14 +1404,24 @@ mod tests {
     }
 
     #[test]
-    fn with_fit_rests_off_a_break_pauses_a_program_on_time() {
+    fn with_fit_rests_off_a_break_waits_for_a_program_walk_like_any_walk() {
         let mut m = EyeBreak::default();
         let c = Config {
             fit_rests: false,
             ..cfg()
         };
-        let fx = run_by(&mut m, &c, 0, 1200, program_resting_at(1300, LONG));
-        assert_eq!(fx, vec![(1200, Effect::Pause(Hold::Program(2)))]);
+        // Due at 1200 s: it waits for the end of the walk, the rest at 1300 s,
+        // as for any walk, with no heads-up for a rest.
+        let walk = program_resting_at(1300, LONG);
+        run_by(&mut m, &c, 0, 1200, &walk);
+        assert_eq!(m.phase(), EyeBreakPhase::Waiting);
+        assert!(!m.at_rest);
+        assert_eq!(run_by(&mut m, &c, 1201, 1300, &walk), vec![]);
+        assert_eq!(m.phase(), EyeBreakPhase::Break);
+        // A rest past the cap: the pause at the cap.
+        let mut m = EyeBreak::default();
+        let fx = run_by(&mut m, &c, 0, 1800, program_resting_at(1900, LONG));
+        assert_eq!(fx, vec![(1800, Effect::Pause(Hold::Program(2)))]);
         // Nor does a short rest take one early.
         let mut m = EyeBreak::default();
         run_by(&mut m, &c, 0, 800, program_resting_at(700, SHORT));
@@ -1209,8 +1435,9 @@ mod tests {
             rest_in_ms: Some(100 * SECOND),
             ..belt(WALK)
         };
-        let fx = run_by(&mut m, &c, 0, 1200, walk);
-        assert_eq!(fx, vec![(1200, Effect::Pause(Hold::Manual))]);
+        let fx = run_by(&mut m, &c, 0, 1800, walk);
+        assert_eq!(fx, vec![(1800, Effect::Pause(Hold::Manual))]);
+        assert!(!m.at_rest);
     }
 
     #[test]
@@ -1238,6 +1465,247 @@ mod tests {
         m.tick(&c, T0 + 1151 * SECOND, &dark);
         assert_eq!(m.phase(), EyeBreakPhase::Idle);
         assert_eq!(m.active_ms, 0);
+    }
+
+    // -- #423: a break due mid-walk waits for the end of the walk -----------
+
+    const M: u64 = MINUTE;
+
+    /// The snapshot of one machine and config.
+    fn snap(m: &EyeBreak, c: &Config) -> EyeBreakSnapshot {
+        snapshot_of(&Runtime {
+            cfg: c.clone(),
+            machine: m.clone(),
+        })
+    }
+
+    #[test]
+    fn the_deferral_rule() {
+        let walk = Belt::Walking(Hold::Manual);
+        let prog = Belt::Walking(Hold::Program(3));
+        // Not walking: begin now, whatever the times.
+        for b in [Belt::Other, Belt::Rest, Belt::Paused(Hold::Manual)] {
+            assert_eq!(due_break(b, true, 0, 0), Due::Begin, "{:?}", b);
+        }
+        // "Pause the belt" off: the break never touches the belt, so no wait.
+        assert_eq!(due_break(walk, false, 0, 0), Due::Begin);
+        // Walking: wait, at most 10 minutes past the break's time.
+        assert_eq!(
+            due_break(walk, true, 0, 30 * M),
+            Due::Wait {
+                pause_in_ms: 10 * M
+            }
+        );
+        assert_eq!(
+            due_break(prog, true, 4 * M, 30 * M),
+            Due::Wait { pause_in_ms: 6 * M }
+        );
+        assert_eq!(due_break(walk, true, 10 * M, 30 * M), Due::Pause);
+        assert_eq!(due_break(prog, true, 11 * M, 30 * M), Due::Pause);
+        // Never a pause in a walk's first 10 minutes, however late.
+        assert_eq!(
+            due_break(walk, true, 12 * M, 9 * M),
+            Due::Wait { pause_in_ms: M }
+        );
+        assert_eq!(
+            due_break(walk, true, 10 * M, 0),
+            Due::Wait {
+                pause_in_ms: 10 * M
+            }
+        );
+        assert_eq!(due_break(walk, true, 10 * M, 10 * M), Due::Pause);
+    }
+
+    #[test]
+    fn a_break_due_mid_walk_waits_for_the_stop_and_pauses_nothing() {
+        let (mut m, c) = (EyeBreak::default(), cfg());
+        // Typing still, then a walk from 1100 s: no heads-up while walking.
+        run(&mut m, &c, 0, 1099, typing());
+        assert_eq!(run(&mut m, &c, 1100, 1199, belt(WALK)), vec![]);
+        assert_eq!(m.phase(), EyeBreakPhase::Idle, "no heads-up mid-walk");
+        // Due at 1200 s: the card says it waits, with the time to the pause.
+        assert_eq!(run(&mut m, &c, 1200, 1200, belt(WALK)), vec![]);
+        assert_eq!(m.shown_phase(), EyeBreakPhase::Waiting);
+        assert_eq!(snap(&m, &c).remaining_s, 600);
+        assert_eq!(run(&mut m, &c, 1201, 1440, belt(WALK)), vec![]);
+        assert_eq!(snap(&m, &c).remaining_s, 360);
+        assert_eq!(m.blink_seq(), 0, "no tones while it waits");
+        // The walk ends (a stop): the break begins, and nothing is paused.
+        assert_eq!(run(&mut m, &c, 1441, 1441, belt(Belt::Other)), vec![]);
+        assert_eq!(m.phase(), EyeBreakPhase::Break);
+        assert!(!m.holds_belt());
+        run(&mut m, &c, 1442, 1540, away_with(Belt::Other));
+        assert_eq!(m.end_seq, 1);
+        assert_eq!(m.shown_phase(), EyeBreakPhase::Idle, "no resume card");
+    }
+
+    #[test]
+    fn a_pause_at_the_treadmill_or_the_hud_ends_the_wait_too() {
+        let (mut m, c) = (EyeBreak::default(), cfg());
+        run(&mut m, &c, 0, 1300, belt(WALK));
+        assert_eq!(m.phase(), EyeBreakPhase::Waiting);
+        assert_eq!(run(&mut m, &c, 1301, 1301, belt(PAUSED)), vec![]);
+        assert_eq!(m.phase(), EyeBreakPhase::Break);
+        assert!(!m.holds_belt(), "the user's own pause, not the break's");
+        run(&mut m, &c, 1302, 1400, away_with(PAUSED));
+        assert_eq!(m.shown_phase(), EyeBreakPhase::Idle);
+    }
+
+    #[test]
+    fn a_break_still_waiting_at_the_cap_pauses_once_and_never_resumes() {
+        let (mut m, c) = (EyeBreak::default(), cfg());
+        // The walk started 9 s before the break's time (11:05:20 for 11:05:29).
+        run(&mut m, &c, 0, 1190, typing());
+        let fx = run(&mut m, &c, 1191, 1800, belt(WALK));
+        assert_eq!(fx, vec![(1800, Effect::Pause(Hold::Manual))]);
+        assert!(
+            m.walk_ms >= WALK_GRACE_MS,
+            "never in the walk's first 10 minutes"
+        );
+        assert_eq!(m.phase(), EyeBreakPhase::Break);
+        // The break ends; the belt stays paused for RE-JACK.
+        run(&mut m, &c, 1801, 1802, away_with(WALK));
+        assert_eq!(run(&mut m, &c, 1803, 2400, away_with(PAUSED)), vec![]);
+        assert_eq!(m.shown_phase(), EyeBreakPhase::Complete);
+    }
+
+    #[test]
+    fn skip_while_waiting_starts_the_count_again_and_pauses_nothing() {
+        let (mut m, c) = (EyeBreak::default(), cfg());
+        run(&mut m, &c, 0, 1500, belt(WALK));
+        assert_eq!(m.phase(), EyeBreakPhase::Waiting);
+        m.skip();
+        assert_eq!(m.shown_phase(), EyeBreakPhase::Idle);
+        assert_eq!(run(&mut m, &c, 1501, 2600, belt(WALK)), vec![]);
+        assert_eq!(m.phase(), EyeBreakPhase::Idle);
+    }
+
+    #[test]
+    fn looking_away_for_a_whole_break_while_it_waits_counts_as_the_break() {
+        let (mut m, c) = (EyeBreak::default(), cfg());
+        run(&mut m, &c, 0, 1300, belt(WALK));
+        assert_eq!(m.phase(), EyeBreakPhase::Waiting);
+        let gone = Tick {
+            idle_ms: Some(91 * SECOND),
+            ..belt(WALK)
+        };
+        assert_eq!(run(&mut m, &c, 1301, 1301, gone), vec![]);
+        assert_eq!(m.phase(), EyeBreakPhase::Idle);
+        assert_eq!(m.active_ms, 0);
+    }
+
+    #[test]
+    fn a_break_moved_early_into_a_rest_gets_the_heads_up_saying_so() {
+        let (mut m, c) = (EyeBreak::default(), cfg());
+        // At a 900 s rest from 0 s: at 600 s the break is 600 s away and the
+        // rest would be over first, so it moves early, with a heads-up.
+        let walk = program_resting_at(0, 900);
+        run_by(&mut m, &c, 0, 599, &walk);
+        assert_eq!(m.phase(), EyeBreakPhase::Idle);
+        run_by(&mut m, &c, 600, 600, &walk);
+        assert_eq!(m.phase(), EyeBreakPhase::Upcoming);
+        let s = snap(&m, &c);
+        assert!(s.at_rest && s.moved_to_rest, "{:?}", s);
+        assert_eq!(s.remaining_s, 60);
+        run_by(&mut m, &c, 601, 659, &walk);
+        assert_eq!(m.phase(), EyeBreakPhase::Upcoming);
+        assert_eq!(run_by(&mut m, &c, 660, 660, &walk), vec![]);
+        assert_eq!(m.phase(), EyeBreakPhase::Break);
+        assert!(!m.holds_belt());
+    }
+
+    #[test]
+    fn a_moved_heads_up_is_kept_when_the_rest_runs_into_a_wait_for_go() {
+        let (mut m, c) = (EyeBreak::default(), cfg());
+        // 14:32:29 in the simulated day: the rest has 105 s left.
+        let rest_left = |left: u64| Tick {
+            rest_len_ms: Some(left * SECOND),
+            ..belt(Belt::Rest)
+        };
+        run(&mut m, &c, 0, 599, typing());
+        run(&mut m, &c, 600, 600, rest_left(105));
+        assert_eq!(m.phase(), EyeBreakPhase::Upcoming);
+        assert!(m.moved);
+        run_by(&mut m, &c, 601, 704, |s| rest_left(705 - s));
+        assert_eq!(m.phase(), EyeBreakPhase::Break);
+        // Shorter: the rest is over 45 s into the heads-up, and the program
+        // waits for GO, an open-ended stillness.
+        let mut m = EyeBreak::default();
+        run(&mut m, &c, 0, 599, typing());
+        run(&mut m, &c, 600, 600, rest_left(45));
+        assert_eq!(m.phase(), EyeBreakPhase::Upcoming);
+        run_by(&mut m, &c, 601, 644, |s| rest_left(645 - s));
+        let go_wait = belt(Belt::Rest);
+        run(&mut m, &c, 645, 659, go_wait);
+        assert_eq!(m.phase(), EyeBreakPhase::Upcoming, "never taken back");
+        assert!(snap(&m, &c).moved_to_rest);
+        assert_eq!(run(&mut m, &c, 660, 660, go_wait), vec![]);
+        assert_eq!(m.phase(), EyeBreakPhase::Break);
+    }
+
+    #[test]
+    fn a_break_moved_early_on_the_way_to_a_rest_is_announced_once() {
+        let (mut m, c) = (EyeBreak::default(), cfg());
+        // The short rest at 700 s takes the break due at 1200 s early: the
+        // heads-up comes on the walk and says so; none again at the rest.
+        let walk = program_resting_at(700, SHORT);
+        run_by(&mut m, &c, 0, 645, &walk);
+        assert_eq!(m.phase(), EyeBreakPhase::Upcoming);
+        assert!(snap(&m, &c).moved_to_rest);
+        run_by(&mut m, &c, 646, 700, &walk);
+        assert_eq!(m.phase(), EyeBreakPhase::Break);
+    }
+
+    #[test]
+    fn a_wait_for_a_rest_counts_the_time_already_late() {
+        let c = Config {
+            minutes: 60,
+            ..cfg()
+        };
+        // Due at 3600 s mid-walk with the rest 15 minutes away: out of reach,
+        // so it waits for the stop. As the rest comes closer it must not come
+        // into reach: the wait stays capped at 10 minutes past the time.
+        let mut m = EyeBreak::default();
+        let fx = run_by(&mut m, &c, 0, 4200, program_resting_at(3600 + 900, LONG));
+        assert_eq!(fx, vec![(4200, Effect::Pause(Hold::Program(2)))]);
+    }
+
+    #[test]
+    fn with_pause_belt_off_a_walk_gets_its_break_on_time_as_before() {
+        let mut m = EyeBreak::default();
+        let c = Config {
+            pause_belt: false,
+            ..cfg()
+        };
+        run(&mut m, &c, 0, 1141, belt(WALK));
+        assert_eq!(m.phase(), EyeBreakPhase::Upcoming);
+        assert_eq!(run(&mut m, &c, 1142, 1200, belt(WALK)), vec![]);
+        assert_eq!(m.phase(), EyeBreakPhase::Break);
+    }
+
+    #[test]
+    fn the_microphone_in_use_silences_the_tones_but_not_the_card() {
+        let (mut m, c) = (EyeBreak::default(), cfg());
+        let call = Tick {
+            mic_in_use: true,
+            ..typing()
+        };
+        run(&mut m, &c, 0, 1200, call);
+        assert_eq!(m.phase(), EyeBreakPhase::Break);
+        let s = snap(&m, &c);
+        assert!(s.silent && s.sound, "the setting stays as it is");
+        assert_eq!(s.phase, EyeBreakPhase::Break);
+        // The counters still move; the HUD stays quiet for them.
+        let before = m.blink_seq();
+        let listening = Tick {
+            idle_ms: Some(10 * SECOND),
+            ..call
+        };
+        run(&mut m, &c, 1201, 1210, listening);
+        assert!(m.blink_seq() > before);
+        // The call ends: tones again.
+        run(&mut m, &c, 1211, 1211, away_with(Belt::Other));
+        assert!(!snap(&m, &c).silent);
     }
 
     #[test]

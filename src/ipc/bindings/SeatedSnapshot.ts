@@ -14,9 +14,18 @@ program_ids: Array<number>,
  */
 custom_programs: boolean, 
 /**
- * The HUD should show the card.
+ * The card is due. Which card the HUD shows is `hud_card`.
  */
 show_card: boolean, 
+/**
+ * Due, but shown once and left unanswered: the HUD shows the seated time
+ * on the strip instead of the card (`card_queue.rs`).
+ */
+folded: boolean, 
+/**
+ * What the card's SNOOZE snoozes for now, in minutes.
+ */
+snooze_minutes: number, 
 /**
  * Whole minutes idle (belt still); what the card says.
  */

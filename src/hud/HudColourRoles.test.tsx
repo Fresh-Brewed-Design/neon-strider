@@ -31,7 +31,7 @@ function walking(patch: (s: AppSnapshot) => void = () => {}): AppSnapshot {
 describe("HUD colour roles", () => {
   it("keeps STASIS cyan while the belt moves and gives DUMP its own style", () => {
     render(<Controls snapshot={walking()} send={async () => true} />);
-    const stasis = screen.getByRole("button", { name: "STASIS pause" });
+    const stasis = screen.getByRole("button", { name: "STASIS pause belt" });
     expect(stasis).toHaveClass("accent-cyan");
     expect(stasis).not.toHaveClass("accent-magenta");
     const dump = screen.getByRole("button", { name: "DUMP end walk" });
@@ -41,7 +41,7 @@ describe("HUD colour roles", () => {
 
   it("styles the running strip's DUMP the same", () => {
     render(<RunStripRow snapshot={walking()} send={async () => true} note={null} />);
-    expect(screen.getByRole("button", { name: "STASIS pause" })).toHaveClass("accent-cyan");
+    expect(screen.getByRole("button", { name: "STASIS pause belt" })).toHaveClass("accent-cyan");
     const dump = screen.getByRole("button", { name: "DUMP end walk" });
     expect(dump).toHaveClass("hud-btn-dump");
     expect(dump.querySelector(".hud-dump-glyph")).not.toBeNull();

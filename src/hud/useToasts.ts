@@ -3,7 +3,11 @@ import { listen } from "@tauri-apps/api/event";
 
 /** Payload of the `hud-update` event Rust emits. Hand-written: Rust builds it as plain JSON. */
 export interface ToastPayload {
-  type: "VELOCITY" | "ELEVATION" | "STATUS" | "AUTOMATION" | "STRAVA" | "CALL" | "LIGHTS_OUT" | "TRAY";
+  /**
+   * DECK and LINK say what the HUD header's status already says (the belt's state in the app's words,
+   * LINKED on a new connection), so they show only while no panel does (`HudApp`). STATUS is SESSION SAVED.
+   */
+  type: "VELOCITY" | "ELEVATION" | "STATUS" | "DECK" | "LINK" | "AUTOMATION" | "STRAVA" | "CALL" | "LIGHTS_OUT" | "TRAY";
   message?: string;
   value?: number;
   isActionable?: boolean;

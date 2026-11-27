@@ -13,7 +13,8 @@ function walkAt(kmh: number) {
 export const calls: Scenario = {
   apply() {
     if (params.has("call")) {
-      Object.assign(snapshot.calls, { mic_in_use: true, quiet_active: true });
+      // The belt walked at 3.5 km/h before the call.
+      Object.assign(snapshot.calls, { mic_in_use: true, quiet_active: true, call_back_kmh: snapshot.deck.target_speed_kmh });
       Object.assign(snapshot.deck, { speed_kmh: 2, raw_speed_kmh: 2.2, target_speed_kmh: 2 });
     }
     if (params.has("quietnow")) {
@@ -32,6 +33,11 @@ export const calls: Scenario = {
     // belt, only ever slower, and the second press puts the speed back.
     quiet_now: () => {
       const { calls: c, deck } = snapshot;
+      // During a call that holds the belt quiet, a press takes the hold over: nothing moves.
+      if (c.quiet_now_back_kmh === null && c.quiet_active && c.call_back_kmh !== null) {
+        Object.assign(c, { quiet_now: true, quiet_now_back_kmh: c.call_back_kmh, quiet_active: false, call_back_kmh: null });
+        return;
+      }
       if (c.quiet_now_back_kmh !== null) {
         if (deck.status !== "Running") throw "Quiet now puts the speed back once the belt runs.";
         walkAt(c.quiet_now_back_kmh);
