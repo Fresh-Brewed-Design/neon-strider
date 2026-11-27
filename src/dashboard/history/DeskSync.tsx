@@ -16,7 +16,8 @@ function dayTitle(date: string, walked: boolean): string {
 /** Walked days among the recent days the PC was used, from Rust's desk-day count. */
 export function DeskSyncPanel({ sync }: { sync: DeskSync }) {
   return (
-    <Panel className="flex flex-wrap items-center gap-2 p-3">
+    // A wide gap keeps the grey plain line under DESK_SYNC apart from the grey sentence beside it.
+    <Panel className="flex flex-wrap items-center gap-x-6 gap-y-2 p-3">
       <div className="shrink-0">
         <Label>DESK_SYNC</Label>
         <PlainLine text={PLAIN.DESK_SYNC} />

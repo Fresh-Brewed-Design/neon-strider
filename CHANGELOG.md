@@ -1,5 +1,62 @@
 # Changelog
 
+## 1.85.0 (2026-11-26)
+
+### Changed
+
+- While the treadmill is asleep, ENGAGE, GO, the sit-too-long card's buttons and a program's 30-second warning say "wake deck first" before you press.
+- The HUD strip shows a program's rest with the time to its next walk. An unanswered GO folds the HUD back to the strip after 30 seconds, with GO as the strip's main button. Toasts no longer repeat the belt and link states the HUD header already shows.
+
+## 1.84.1 (2026-11-26)
+
+### Fixed
+
+- A restart keeps the desk timers, LIGHTS_OUT leaves a program at rest alone and DUMP ends a walk where the walk-away began.
+- Week cards count desk days and compare km per desk day, so a day off the PC never counts against a week.
+
+## 1.84.0 (2026-11-26)
+
+### Changed
+
+- The HUD shows one card at a time, most urgent first. GO, RE-JACK or ENGAGE drops a waiting ATROPHY_WARNING because the belt is starting. Cards held during a presentation come back one by one after the presentation ends.
+- ATROPHY_WARNING shows once: left unanswered for a minute, the card folds into a yellow seated-time readout on the HUD. Snoozes in a row get longer: 15, 30, then 60 minutes.
+
+## 1.83.0 (2026-11-26)
+
+### Changed
+
+- An eye break that comes due while you walk now waits for the belt to stop. After 10 minutes of waiting the belt pauses for the break as before.
+- Eye breaks play no tones while the microphone is in use. A break moved earlier to fit a program rest now gets its heads-up.
+
+## 1.82.0 (2026-11-26)
+
+### Changed
+
+- With Install automatically on, updates install at most once a day with no UPDATE READY card on the HUD and never during a call or presentation.
+- What's new now waits until you open the dashboard yourself and keeps any notes you haven't read yet.
+
+## 1.81.0 (2026-11-26)
+
+### Changed
+
+- HUD buttons keep their place in every program state, in a top or a bottom corner. The header stays on screen at large text sizes.
+- QUIET lights up during a call and its line reads QUIET // DAMPED. Belt and program buttons say pause belt, pause program, resume belt or resume program. The status row's button reads RETRY NOW while RELINK counts down.
+
+## 1.80.0 (2026-11-26)
+
+### Changed
+
+- Live: while QUIET holds the belt, the header shows the quiet speed and the speed QUIET puts back. With no treadmill linked the last readings dim as on the HUD. The NO_CARRIER row is as tall as STASIS and DUMP, so the panels under the row stay put. STEP_MAP keeps a rest row on one line and shows three steps at large text sizes.
+- History: the time frame tabs sit on the totals, right over the session list they change. EXPORT CSV stays off until a walk is saved. DESK_SYNC's plain line sits apart from its sentence.
+- Strava's rollup time is greyed out while Daily rollup is off. Wrapped lines on Live, History, Programs and the HUD page never start or end with a lone dot.
+
+## 1.79.1 (2026-11-26)
+
+### Changed
+
+- Connect, delete, What's new and TCX preview dialogs now share one look.
+- The connect dialog's scan button reads "Scan again".
+
 ## 1.79.0 (2026-11-26)
 
 ### Changed

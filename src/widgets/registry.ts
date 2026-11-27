@@ -28,6 +28,8 @@ export interface StatWidget {
   target?: (s: AppSnapshot) => PulseTarget | null;
   /** A short line under the value; null shows none. */
   detail?: (s: AppSnapshot) => string | null;
+  /** The HUD keeps a zone line's room under the value while true, so a zone step coming or going moves nothing. */
+  reserveZone?: (s: AppSnapshot) => boolean;
 }
 
 /**
@@ -136,6 +138,8 @@ export const STAT_WIDGETS: StatWidget[] = [
     zone: (s) => s.heart_rate.zone,
     // And a pulse target only while a cool-down step that ends on heart rate runs.
     target: (s) => s.heart_rate.cool_down,
+    // A picked sensor is when a zone or target can show.
+    reserveZone: (s) => s.heart_rate.sensor !== null,
   },
 ];
 

@@ -42,7 +42,8 @@ describe("ActiveProgramCard T-MINUS", () => {
     current!.active_program = { ...current!.active_program!, paused: false, wait: null, program_seconds_remaining: 1390 };
     render(<ActiveProgramCard />);
     const line = screen.getByTestId("program-time-left");
-    expect(line.textContent?.startsWith(`T-MINUS 23:10${NBSP}· ENDS${NBSP}`)).toBe(true);
+    // The end time stays whole; the dot between the two goes where the line wraps (`Joined`).
+    expect(line.textContent?.startsWith(`T-MINUS 23:10 · ENDS${NBSP}`)).toBe(true);
     expect(screen.getByText(/cycle 3/)).toBeInTheDocument();
   });
 
@@ -73,7 +74,7 @@ describe("ActiveProgramCard buttons", () => {
     current!.active_program = { ...current!.active_program!, paused: true, wait: "rest_complete" };
     vi.mocked(invoke).mockRejectedValueOnce("No program is running");
     render(<ActiveProgramCard />);
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "GO" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "GO start belt" })));
     expect(vi.mocked(invoke)).toHaveBeenCalledWith("dispatch", { command: { type: "program_resume" } });
     expect(screen.getAllByRole("alert").map((n) => n.textContent)).toContain("No program is running");
   });
@@ -89,6 +90,8 @@ describe("ActiveProgramCard view switch", () => {
     expect(within(view).getByRole("button", { name: /stats/i })).toHaveAttribute("aria-pressed", "false");
     // HOLD, SKIP and END share a row; the switch is not in it.
     const hold = screen.getByRole("button", { name: /hold/i });
+    // Its plain words say it pauses the program, not the belt.
+    expect(hold).toHaveAccessibleName("HOLD pause program");
     expect(hold.parentElement!.contains(view)).toBe(false);
     expect(hold.parentElement).toContainElement(screen.getByRole("button", { name: /skip/i }));
 

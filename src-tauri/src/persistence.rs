@@ -1000,6 +1000,84 @@ fn migration_16_samples_session_time(tx: &Transaction) -> rusqlite::Result<()> {
     )
 }
 
+/// Migration 17: settings no code reads (#426). Older builds left them, and
+/// some sit next to the key that runs now under another name
+/// (`stravaDailyRollupEnabled` next to `strava_daily_rollup_enabled`,
+/// `shiftEndTime` next to `shift_end_time`, `sedentaryThresholdMinutes` next
+/// to `seated_minutes`, `sessionMergeThresholdMinutes` next to
+/// `session_merge_threshold_minutes`). The values that run now stay: only the
+/// unread keys go, and with them the old automation's rows in
+/// `automation_state`. The database is copied to `backups/` first, as before
+/// every migration.
+///
+/// Frozen: the keys are written out here, so the migration deletes the same
+/// keys whatever later builds read.
+fn migration_17_dead_settings(tx: &Transaction) -> rusqlite::Result<()> {
+    for key in DEAD_SETTINGS_V17 {
+        tx.execute("DELETE FROM settings WHERE key = ?1", params![key])?;
+    }
+    for key in OLD_AUTOMATION_STATE_V17 {
+        tx.execute("DELETE FROM automation_state WHERE key = ?1", params![key])?;
+    }
+    Ok(())
+}
+
+/// The settings keys migration 17 deletes: none is read by any code (Rust or
+/// the windows) at the time of the migration. `RETIRED_KEYS` are left to
+/// `save_config`, which deletes them already.
+const DEAD_SETTINGS_V17: [&str; 14] = [
+    // The old automation, which no code runs any more.
+    "automationEnabled",
+    "automationInterval",
+    "automationTargetIncline",
+    "automationTargetSpeed",
+    "automationWalkDuration",
+    // Read only inside the calibration points' JSON (a serde alias), never
+    // as a setting of its own.
+    "distanceScale",
+    // GROUND_TRUTH's Labs switch; the guided walk is always on now.
+    "labs_calibration_wizard",
+    "lastLinkType",
+    "sedentaryThresholdMinutes",
+    "sessionMergeThresholdMinutes",
+    "shiftEndTime",
+    "stepSource",
+    "stravaDailyRollupEnabled",
+    "stravaEnabled",
+];
+
+/// The old automation's runtime rows in `automation_state`.
+const OLD_AUTOMATION_STATE_V17: [&str; 7] = [
+    "active",
+    "interval",
+    "mode",
+    "nextEvent",
+    "targetIncline",
+    "targetSpeed",
+    "walkDuration",
+];
+
+/// Migration 18: the belt's own share of a walk (#426). DUMP after a
+/// walk-away cuts the walk where the walk-away began (`cut_session`), but the
+/// belt really ran those minutes: `belt_extra_meters` and
+/// `belt_extra_seconds` keep what was cut, so LIFETIME_ODOMETER and the
+/// belt-service count (`lifetime_totals`, `usage_since`) still add it. Zero
+/// for every walk not cut.
+fn migration_18_belt_extra(tx: &Transaction) -> rusqlite::Result<()> {
+    for (column, decl) in [
+        ("belt_extra_meters", "REAL DEFAULT 0"),
+        ("belt_extra_seconds", "INTEGER DEFAULT 0"),
+    ] {
+        if !has_column(tx, "sessions", column)? {
+            tx.execute_batch(&format!(
+                "ALTER TABLE sessions ADD COLUMN {} {}",
+                column, decl
+            ))?;
+        }
+    }
+    Ok(())
+}
+
 type Migration = fn(&Transaction) -> rusqlite::Result<()>;
 
 /// Append new migrations at the end; never reorder or edit a shipped one.
@@ -1021,6 +1099,8 @@ const MIGRATIONS: &[Migration] = &[
     migration_14_today_slots,
     migration_15_session_program,
     migration_16_samples_session_time,
+    migration_17_dead_settings,
+    migration_18_belt_extra,
 ];
 
 fn schema_version(conn: &Connection) -> rusqlite::Result<u32> {
@@ -1872,6 +1952,145 @@ pub async fn delete_session(app: tauri::AppHandle, id: i64) -> Result<(), String
     Ok(())
 }
 
+/// What a walk adds up to after `db_cut_session`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CutTotals {
+    pub duration_s: i64,
+    pub distance_m: f64,
+}
+
+/// End walk `id` at `at_ms`: DUMP after a walk-away, where the belt ran with
+/// nobody on it for its last `empty_s` seconds of running. The samples after
+/// `at_ms` go, distance and steps become the last kept sample's, the deck's
+/// time loses `empty_s`, calories and the raw distance shrink with the
+/// distance, the heart rate is worked out again from the samples left, and
+/// the walk ends at `at_ms`. So History, the totals and a Strava upload (TCX
+/// included) all see the same, shorter walk. The belt still ran: what was cut
+/// goes to `belt_extra_meters` and `belt_extra_seconds` (migration 18), which
+/// the odometer and the belt-service count add. `None` when `at_ms` is not
+/// inside the walk (nothing to cut).
+pub fn db_cut_session(
+    app: &tauri::AppHandle,
+    id: i64,
+    at_ms: i64,
+    empty_s: i64,
+) -> Result<Option<CutTotals>, String> {
+    with_conn(app, |conn| {
+        let tx = conn.transaction()?;
+        let out = cut_session(&tx, id, at_ms, empty_s)?;
+        tx.commit()?;
+        Ok(out)
+    })
+}
+
+/// `db_cut_session` inside a transaction.
+fn cut_session(
+    tx: &Connection,
+    id: i64,
+    at_ms: i64,
+    empty_s: i64,
+) -> rusqlite::Result<Option<CutTotals>> {
+    let row = tx
+        .query_row(
+            "SELECT start_time, end_time, duration_seconds, distance_meters,
+                    raw_distance_meters, calories
+             FROM sessions WHERE id = ?1",
+            params![id],
+            |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, Option<i64>>(2)?.unwrap_or(0),
+                    r.get::<_, Option<f64>>(3)?.unwrap_or(0.0),
+                    r.get::<_, Option<f64>>(4)?.unwrap_or(0.0),
+                    r.get::<_, Option<f64>>(5)?.unwrap_or(0.0),
+                ))
+            },
+        )
+        .ok();
+    let Some((start, end, duration, distance, raw_distance, calories)) = row else {
+        return Ok(None);
+    };
+    if at_ms <= start || at_ms >= end {
+        return Ok(None);
+    }
+    let (kept_m, kept_steps) = tx
+        .query_row(
+            "SELECT distance, steps FROM samples
+             WHERE session_id = ?1 AND timestamp <= ?2
+             ORDER BY timestamp DESC LIMIT 1",
+            params![id, at_ms],
+            |r| {
+                Ok((
+                    r.get::<_, Option<f64>>(0)?.unwrap_or(0.0),
+                    r.get::<_, Option<f64>>(1)?.unwrap_or(0.0),
+                ))
+            },
+        )
+        .unwrap_or((0.0, 0.0));
+    let kept_m = kept_m.clamp(0.0, distance.max(0.0));
+    let ratio = if distance > 0.0 {
+        kept_m / distance
+    } else {
+        1.0
+    };
+    let duration_s = (duration - empty_s.max(0)).max(0);
+    tx.execute(
+        "DELETE FROM samples WHERE session_id = ?1 AND timestamp > ?2",
+        params![id, at_ms],
+    )?;
+    let (avg_hr, max_hr) = tx.query_row(
+        "SELECT CAST(ROUND(AVG(heart_rate)) AS INTEGER), MAX(heart_rate)
+         FROM samples WHERE session_id = ?1",
+        params![id],
+        |r| Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, Option<i64>>(1)?)),
+    )?;
+    let per_hour = |m: f64| {
+        if duration_s > 0 {
+            m / duration_s as f64 * 3.6
+        } else {
+            0.0
+        }
+    };
+    let raw_m = raw_distance * ratio;
+    tx.execute(
+        "UPDATE sessions SET
+            end_time = ?2,
+            duration_seconds = ?3,
+            distance_meters = ?4,
+            raw_distance_meters = ?5,
+            calories = ?6,
+            steps = ?7,
+            raw_steps = ?7,
+            avg_speed = ?8,
+            raw_avg_speed = ?9,
+            avg_heart_rate = ?10,
+            max_heart_rate = ?11,
+            belt_extra_meters = COALESCE(belt_extra_meters, 0) + ?12,
+            belt_extra_seconds = COALESCE(belt_extra_seconds, 0) + ?13
+         WHERE id = ?1",
+        params![
+            id,
+            at_ms,
+            duration_s,
+            kept_m,
+            raw_m,
+            calories * ratio,
+            kept_steps,
+            per_hour(kept_m),
+            per_hour(raw_m),
+            avg_hr,
+            max_hr,
+            distance.max(0.0) - kept_m,
+            duration - duration_s
+        ],
+    )?;
+    Ok(Some(CutTotals {
+        duration_s,
+        distance_m: kept_m,
+    }))
+}
+
 /// Record the Strava activity id on a session (the "uploaded" marker).
 pub fn db_mark_uploaded(app: &tauri::AppHandle, id: i64, strava_id: &str) -> Result<(), String> {
     with_conn(app, |conn| {
@@ -1988,6 +2207,33 @@ pub fn delete_setting(app: &tauri::AppHandle, key: &str) -> Result<(), String> {
     })
 }
 
+/// Read one raw value from the `automation_state` table (runtime state kept
+/// across a restart, not a setting). None when the DB or key is missing.
+pub fn read_state(app: &tauri::AppHandle, key: &str) -> Option<String> {
+    with_conn(app, |conn| {
+        Ok(conn
+            .query_row(
+                "SELECT value FROM automation_state WHERE key = ?1",
+                params![key],
+                |row| row.get::<_, String>(0),
+            )
+            .ok())
+    })
+    .ok()
+    .flatten()
+}
+
+/// Upsert one raw value in the `automation_state` table.
+pub fn write_state(app: &tauri::AppHandle, key: &str, value: &str) -> Result<(), String> {
+    with_conn(app, |conn| {
+        conn.execute(
+            "INSERT OR REPLACE INTO automation_state (key, value) VALUES (?1, ?2)",
+            params![key, value],
+        )
+        .map(|_| ())
+    })
+}
+
 /// Upsert one raw value in the `settings` table (same shape set_db_setting writes).
 pub fn write_setting(app: &tauri::AppHandle, key: &str, value: &str) -> Result<(), String> {
     with_conn(app, |conn| {
@@ -2097,17 +2343,7 @@ pub fn daily_distance_m(app: &tauri::AppHandle, since: i64, exclude_id: Option<i
 /// ms), optionally skipping one session (the live one). The seconds are the
 /// deck's own timer, which runs while the belt does. For the maintenance reminder.
 pub fn usage_since(app: &tauri::AppHandle, since_ms: i64, exclude_id: Option<i64>) -> (f64, i64) {
-    with_conn(app, |conn| {
-        conn.query_row(
-            "SELECT COALESCE(SUM(distance_meters), 0.0),
-                    CAST(COALESCE(SUM(duration_seconds), 0) AS INTEGER)
-             FROM sessions
-             WHERE start_time >= ?1 AND (?2 IS NULL OR id != ?2)",
-            params![since_ms, exclude_id],
-            |row| Ok((row.get::<_, f64>(0)?, row.get::<_, i64>(1)?)),
-        )
-    })
-    .unwrap_or_else(|e| {
+    with_conn(app, |conn| usage_since_on(conn, since_ms, exclude_id)).unwrap_or_else(|e| {
         log::warn!("usage-since query failed: {}", e);
         (0.0, 0)
     })
@@ -2119,23 +2355,47 @@ pub fn lifetime_totals(
     app: &tauri::AppHandle,
     exclude_id: Option<i64>,
 ) -> Result<(f64, i64, Option<i64>), String> {
-    with_conn(app, |conn| {
-        conn.query_row(
-            "SELECT COALESCE(SUM(distance_meters), 0.0),
-                    CAST(COALESCE(SUM(duration_seconds), 0) AS INTEGER),
-                    MIN(start_time)
-             FROM sessions
-             WHERE ?1 IS NULL OR id != ?1",
-            params![exclude_id],
-            |row| {
-                Ok((
-                    row.get::<_, f64>(0)?,
-                    row.get::<_, i64>(1)?,
-                    row.get::<_, Option<i64>>(2)?,
-                ))
-            },
-        )
-    })
+    with_conn(app, |conn| lifetime_totals_on(conn, exclude_id))
+}
+
+/// `usage_since` on a connection. The belt's share a cut walk no longer
+/// counts (`belt_extra_*`) is added: the belt ran it.
+fn usage_since_on(
+    conn: &Connection,
+    since_ms: i64,
+    exclude_id: Option<i64>,
+) -> rusqlite::Result<(f64, i64)> {
+    conn.query_row(
+        "SELECT COALESCE(SUM(distance_meters + COALESCE(belt_extra_meters, 0)), 0.0),
+                CAST(COALESCE(SUM(duration_seconds + COALESCE(belt_extra_seconds, 0)), 0) AS INTEGER)
+         FROM sessions
+         WHERE start_time >= ?1 AND (?2 IS NULL OR id != ?2)",
+        params![since_ms, exclude_id],
+        |row| Ok((row.get::<_, f64>(0)?, row.get::<_, i64>(1)?)),
+    )
+}
+
+/// `lifetime_totals` on a connection, with the belt's share a cut walk no
+/// longer counts (`belt_extra_*`).
+fn lifetime_totals_on(
+    conn: &Connection,
+    exclude_id: Option<i64>,
+) -> rusqlite::Result<(f64, i64, Option<i64>)> {
+    conn.query_row(
+        "SELECT COALESCE(SUM(distance_meters + COALESCE(belt_extra_meters, 0)), 0.0),
+                CAST(COALESCE(SUM(duration_seconds + COALESCE(belt_extra_seconds, 0)), 0) AS INTEGER),
+                MIN(start_time)
+         FROM sessions
+         WHERE ?1 IS NULL OR id != ?1",
+        params![exclude_id],
+        |row| {
+            Ok((
+                row.get::<_, f64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, Option<i64>>(2)?,
+            ))
+        },
+    )
 }
 
 /// (start_time ms, distance_meters, duration_seconds, calories) of every session
@@ -3029,6 +3289,108 @@ mod db_tests {
             (row.avg_heart_rate, row.max_heart_rate),
             (Some(114), Some(131))
         );
+    }
+
+    /// The owner's database as of 2026-11-26: the unread keys go, the keys
+    /// that run keep their values, and the old automation's rows go.
+    #[test]
+    fn migration_17_deletes_the_unread_settings_and_keeps_the_ones_that_run() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate_through(&mut conn, 16);
+        let kept = [
+            ("strava_daily_rollup_enabled", "false"),
+            ("shift_end_time", "\"18:00\""),
+            ("seated_minutes", "30"),
+            ("maxSpeed", "4"),
+            ("minSpeed", "0.6"),
+            ("maxIncline", "6"),
+            ("tiltMultiplier", "1.5"),
+            ("inclineOffset", "5"),
+            ("focusStabilityEnabled", "true"),
+            ("neuralFloorPct", "90"),
+            ("neuralSensitivity", "medium"),
+            ("lastDeviceId", "F1:7C:19:92:55:E5"),
+            ("calibrationPoints", "[]"),
+            ("calibrationPoints:F17C199255E5", "[]"),
+        ];
+        for (k, v) in kept {
+            conn.put(k, v).unwrap();
+        }
+        for k in DEAD_SETTINGS_V17 {
+            conn.put(k, "1").unwrap();
+        }
+        for k in OLD_AUTOMATION_STATE_V17 {
+            conn.execute(
+                "INSERT INTO automation_state (key, value) VALUES (?1, '1')",
+                params![k],
+            )
+            .unwrap();
+        }
+        conn.execute(
+            "INSERT INTO automation_state (key, value) VALUES ('desk_timers', '{}')",
+            [],
+        )
+        .unwrap();
+        assert_eq!(migrate(&mut conn).unwrap(), latest());
+        for k in DEAD_SETTINGS_V17 {
+            assert_eq!(conn.get(k), None, "{k}");
+        }
+        for (k, v) in kept {
+            assert_eq!(conn.get(k).as_deref(), Some(v), "{k}");
+        }
+        let state: Vec<String> = conn
+            .prepare("SELECT key FROM automation_state")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(state, vec!["desk_timers".to_string()]);
+    }
+
+    /// Every key migration 17 deletes is unread: no source file of the app
+    /// (Rust or the windows) names it, outside the migration's own list.
+    #[test]
+    fn no_code_reads_a_key_migration_17_deletes() {
+        fn files(dir: &Path, out: &mut Vec<PathBuf>) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    if !path.ends_with("bindings") {
+                        files(&path, out);
+                    }
+                } else if path
+                    .extension()
+                    .is_some_and(|e| e == "rs" || e == "ts" || e == "tsx")
+                {
+                    out.push(path);
+                }
+            }
+        }
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut all = Vec::new();
+        files(&root.join("src"), &mut all);
+        files(&root.join("../src"), &mut all);
+        let this = root.join("src").join("persistence.rs");
+        // A calibration point's JSON field of the same name, not a setting.
+        let point_field = |key: &str, path: &Path| {
+            key == "distanceScale"
+                && (path.ends_with("protocol.rs") || path.ends_with("calibration.rs"))
+        };
+        for key in DEAD_SETTINGS_V17 {
+            let quoted = format!("\"{key}\"");
+            for path in &all {
+                if *path == this || point_field(key, path) {
+                    continue;
+                }
+                let text = std::fs::read_to_string(path).unwrap();
+                assert!(
+                    !text.contains(&quoted),
+                    "{key} is named in {}",
+                    path.display()
+                );
+            }
+        }
     }
 
     #[test]
@@ -4462,5 +4824,158 @@ mod settings_tests {
         assert!(midnight <= now_ms);
         // 25h tolerates a DST day.
         assert!(now_ms - midnight < 25 * 60 * 60 * 1000);
+    }
+
+    /// DUMP after a walk-away: 10 minutes walked, then 10 minutes the belt
+    /// ran empty before the pause, then 5 minutes paused. The cut keeps the
+    /// first 10 minutes only, samples and totals alike.
+    #[test]
+    fn a_cut_walk_ends_where_the_walk_away_began() {
+        let conn = memory_db();
+        let min = 60_000;
+        conn.execute(
+            "INSERT INTO sessions (id, start_time, end_time, duration_seconds, distance_meters,
+                raw_distance_meters, calories, steps, raw_steps)
+             VALUES (1, 0, ?1, 1200, 1333.0, 1300.0, 80.0, 2000.0, 2000.0)",
+            params![25 * min],
+        )
+        .unwrap();
+        // One sample a minute: 66.65 m and 100 steps each while running, with
+        // a heart rate only while he walked; still while paused.
+        for m in 1..=25i64 {
+            let running = m <= 20;
+            let walked = m <= 10;
+            let sample = Sample {
+                distance: (66.65 * m.min(20) as f64) as f32,
+                steps: (100 * m.min(20)) as f32,
+                speed: if running { 4.0 } else { 0.0 },
+                heart_rate: walked.then_some(100 + m as u16),
+                timestamp: None,
+                incline: 0.0,
+                raw_distance: 0.0,
+                raw_steps: 0.0,
+                raw_speed: 4.0,
+                key_presses: None,
+            };
+            insert_sample(&conn, 1, &sample, m * min).unwrap();
+        }
+        let out = cut_session(&conn, 1, 10 * min, 600).unwrap().unwrap();
+        assert_eq!(out.duration_s, 600);
+        assert!((out.distance_m - 666.5).abs() < 0.01, "{}", out.distance_m);
+
+        let samples = samples_of(&conn, 1).unwrap();
+        assert_eq!(samples.len(), 10, "only the walked minutes are left");
+        assert_eq!(samples.last().unwrap().timestamp, Some(10 * min));
+        let (end, dur, dist, raw, kcal, steps, avg, max, speed): (
+            i64,
+            i64,
+            f64,
+            f64,
+            f64,
+            f64,
+            Option<i64>,
+            Option<i64>,
+            f64,
+        ) = conn
+            .query_row(
+                "SELECT end_time, duration_seconds, distance_meters, raw_distance_meters,
+                        calories, steps, avg_heart_rate, max_heart_rate, avg_speed
+                 FROM sessions WHERE id = 1",
+                [],
+                |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                        r.get(6)?,
+                        r.get(7)?,
+                        r.get(8)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!((end, dur), (10 * min, 600));
+        assert!((dist - 666.5).abs() < 0.01);
+        assert!((raw - 650.0).abs() < 0.5, "{raw}");
+        assert!((kcal - 40.0).abs() < 0.1, "{kcal}");
+        assert_eq!(steps, 1000.0);
+        assert_eq!((avg, max), (Some(106), Some(110)));
+        assert!((speed - 666.5 / 600.0 * 3.6).abs() < 0.01);
+    }
+
+    /// The cut shortens the walk, not the belt: LIFETIME_ODOMETER and the
+    /// belt-service count still add the minutes the belt ran empty.
+    #[test]
+    fn a_cut_walk_lowers_the_walk_but_not_the_odometer_or_the_service_count() {
+        let conn = memory_db();
+        let min = 60_000;
+        conn.execute(
+            "INSERT INTO sessions (id, start_time, end_time, duration_seconds, distance_meters,
+                raw_distance_meters, calories, steps, raw_steps)
+             VALUES (1, 1000, ?1, 1200, 1333.0, 1300.0, 80.0, 2000.0, 2000.0)",
+            params![1000 + 25 * min],
+        )
+        .unwrap();
+        for m in 1..=20i64 {
+            let sample = Sample {
+                timestamp: None,
+                speed: 4.0,
+                incline: 0.0,
+                distance: (66.65 * m as f64) as f32,
+                raw_distance: 0.0,
+                steps: (100 * m) as f32,
+                raw_steps: 0.0,
+                raw_speed: 4.0,
+                heart_rate: None,
+                key_presses: None,
+            };
+            insert_sample(&conn, 1, &sample, 1000 + m * min).unwrap();
+        }
+        let odometer = lifetime_totals_on(&conn, None).unwrap();
+        let service = usage_since_on(&conn, 0, None).unwrap();
+        assert_eq!((odometer.0, odometer.1), (1333.0, 1200));
+
+        let walk = cut_session(&conn, 1, 1000 + 10 * min, 600)
+            .unwrap()
+            .unwrap();
+        assert_eq!(walk.duration_s, 600);
+        assert!((walk.distance_m - 666.5).abs() < 0.01);
+        // The walk itself is shorter wherever the walk is read...
+        let row = conn
+            .query_row(
+                "SELECT distance_meters, duration_seconds FROM sessions WHERE id = 1",
+                [],
+                |r| Ok((r.get::<_, f64>(0)?, r.get::<_, i64>(1)?)),
+            )
+            .unwrap();
+        assert!((row.0 - 666.5).abs() < 0.01);
+        assert_eq!(row.1, 600);
+        // ...but the belt's figures are those of the uncut run.
+        let after = lifetime_totals_on(&conn, None).unwrap();
+        assert!((after.0 - odometer.0).abs() < 0.01, "{after:?}");
+        assert_eq!(after.1, odometer.1);
+        let after = usage_since_on(&conn, 0, None).unwrap();
+        assert!((after.0 - service.0).abs() < 0.01, "{after:?}");
+        assert_eq!(after.1, service.1);
+    }
+
+    #[test]
+    fn a_cut_outside_the_walk_changes_nothing() {
+        let conn = memory_db();
+        conn.execute_batch(
+            "INSERT INTO sessions (id, start_time, end_time, duration_seconds, distance_meters)
+             VALUES (1, 1000, 5000, 4, 10.0);",
+        )
+        .unwrap();
+        assert_eq!(cut_session(&conn, 1, 5000, 1).unwrap(), None);
+        assert_eq!(cut_session(&conn, 1, 1000, 1).unwrap(), None);
+        assert_eq!(
+            cut_session(&conn, 2, 3000, 1).unwrap(),
+            None,
+            "no such walk"
+        );
     }
 }
