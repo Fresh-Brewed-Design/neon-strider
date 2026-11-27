@@ -1,0 +1,1 @@
+- The Strava TCX preview now says when Copy could not reach the clipboard, and confirms when it worked.

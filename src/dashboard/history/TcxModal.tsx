@@ -1,5 +1,6 @@
-import { useState } from "react";
 import { Check, Clipboard, FileText } from "lucide-react";
+import { ActionStatus } from "../../components/ActionStatus";
+import { useAction } from "../../components/useAction";
 import type { MergedSession } from "../../services/sessionMerge";
 import { GhostButton, Label } from "../ui";
 import { DialogFrame } from "../DialogFrame";
@@ -8,18 +9,21 @@ import { cx } from "../util";
 
 /** Read-only look at the TCX that would be uploaded, for checking distances before a Strava upload. */
 export function TcxModal({ session, tcx, onClose }: { session: MergedSession; tcx: string; onClose: () => void }) {
-  const [copied, setCopied] = useState(false);
+  const copyAction = useAction();
   const boxRef = useDialog(true, onClose);
 
-  const copy = () => {
-    navigator.clipboard
-      .writeText(tcx)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000); // long enough to see COPIED
-      })
-      .catch((e) => console.error("[history] copy failed", e));
-  };
+  const copy = () =>
+    copyAction.run(
+      async () => {
+        try {
+          await navigator.clipboard.writeText(tcx);
+        } catch (e) {
+          console.error("[history] copy failed", e);
+          throw new Error("The clipboard refused the TCX.");
+        }
+      },
+      { done: "TCX copied to the clipboard." },
+    );
 
   const start = new Date(session.start_time);
   const stats: [string, string][] = [
@@ -41,10 +45,17 @@ export function TcxModal({ session, tcx, onClose }: { session: MergedSession; tc
       z="z-[200]"
       onClose={onClose}
       headerActions={
-        <GhostButton onClick={copy} className={cx("flex items-center gap-1.5", copied && "text-emerald-400")}>
-          {copied ? <Check size={14} /> : <Clipboard size={14} />}
-          {copied ? "Copied" : "Copy"}
-        </GhostButton>
+        <div className="flex min-w-0 flex-col items-end gap-1">
+          <GhostButton
+            onClick={copy}
+            disabled={copyAction.pending}
+            className={cx("flex items-center gap-1.5", copyAction.done && "text-emerald-400")}
+          >
+            {copyAction.done ? <Check size={14} /> : <Clipboard size={14} />}
+            {copyAction.done ? "Copied" : "Copy"}
+          </GhostButton>
+          <ActionStatus error={copyAction.error} done={copyAction.done} className="max-w-[16rem] justify-end text-right" />
+        </div>
       }
       bodyClassName="flex flex-col"
     >
