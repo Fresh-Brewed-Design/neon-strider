@@ -173,7 +173,7 @@ const unbroken = (seconds: number) => formatDuration(seconds).replace(" ", " ")
 /** DAILY_QUOTA's target after DAILY_TOTAL's km, "/ 5.0", kept on one line; none while no target is set. */
 export function dailyOf(s: AppSnapshot): string | undefined {
   const target = s.daily_quota.target_km;
-  return target === null ? undefined : `/ ${target.toFixed(1)}`;
+  return target === null ? undefined : `/\u00a0${target.toFixed(1)}`;
 }
 
 /** Today's walking time beside DAILY_TOTAL's km, e.g. "2h 14m"; none before the first walk of the day. */
