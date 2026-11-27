@@ -283,7 +283,7 @@ export function WalkAwayCard({ snapshot }: { snapshot: AppSnapshot }) {
           <span className="hud-toast-message">WALK-AWAY // PAUSING IN {w.pause_in_s}s</span>
           <span className="hud-sub">
             {w.reason === "steps"
-              ? `No steps on the deck and no input for ${w.steps_away_s} s: move the mouse or press STAY to keep walking.`
+              ? `No steps on the deck and no input for ${w.steps_away_s}\u00a0s: move the mouse or press STAY to keep walking.`
               : `No input for ${w.idle_minutes} minutes: move the mouse or press STAY to keep walking.`}
           </span>
           <HudNote error={error} />
@@ -298,7 +298,7 @@ export function WalkAwayCard({ snapshot }: { snapshot: AppSnapshot }) {
     w.reason === "lock"
       ? `You locked the ${snapshot.platform.computer}.`
       : w.reason === "steps"
-        ? `No steps on the deck and no keyboard or mouse input for ${w.steps_away_s} s.`
+        ? `No steps on the deck and no keyboard or mouse input for ${w.steps_away_s}\u00a0s.`
         : `No keyboard or mouse input for ${w.idle_minutes} minutes.`;
   return (
     <div className="hud-toast hud-walkaway accent-yellow" role="alert">
