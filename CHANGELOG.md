@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.88.0 (2026-11-27)
+
+### New
+
+- Today's walking time shows next to the km on the TODAY tile, the HUD strip and the program map.
+
 ## 1.87.4 (2026-11-27)
 
 ### Fixed
