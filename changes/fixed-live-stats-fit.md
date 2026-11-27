@@ -1,2 +1,0 @@
-- Live no longer scrolls with a program running, paused or waiting for GO and the STATS view open.
-- The program card puts the step and the time left on one line. LIFETIME_ODOMETER no longer wraps its name.

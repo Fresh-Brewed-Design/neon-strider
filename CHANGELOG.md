@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.87.2 (2026-11-27)
+
+### Fixed
+
+- Live no longer scrolls with a program running, paused or waiting for GO and the STATS view open.
+- The program card puts the step and the time left on one line. LIFETIME_ODOMETER no longer wraps its name.
+
 ## 1.87.1 (2026-11-27)
 
 ### Fixed
