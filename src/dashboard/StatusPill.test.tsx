@@ -17,4 +17,9 @@ describe("StatusPill state icon", () => {
     const { container } = render(<StatusPill tone="ok" label="LINKED" />);
     expect(container.querySelectorAll("svg")).toHaveLength(1);
   });
+
+  it("wraps a long label instead of cutting it off", () => {
+    const { getByText } = render(<StatusPill tone="idle" label="HEART_LINK // NO_CARRIER" />);
+    expect(getByText("HEART_LINK // NO_CARRIER")).not.toHaveClass("truncate");
+  });
 });

@@ -170,12 +170,13 @@ export function SessionRow({
 
   return (
     <Panel className={cx("overflow-hidden", expanded && "border-neon-cyan/40")}>
-      <div className="flex items-center gap-1 pr-2">
+      {/* The Strava and delete controls drop under the totals when the row is narrow, never over them. */}
+      <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 pb-0.5 pr-2">
         <button
           type="button"
           aria-expanded={expanded}
           onClick={onToggle}
-          className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-white/[0.03]"
+          className="flex min-w-0 flex-[1_1_16rem] items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-white/[0.03]"
         >
           {expanded ? (
             <ChevronDown size={14} className="shrink-0 text-neon-cyan" />
@@ -200,7 +201,7 @@ export function SessionRow({
           )}
         </button>
 
-        <div className="flex shrink-0 items-center">
+        <div className="ml-auto flex shrink-0 items-center pl-3">
           {stravaLinked && (
             <GhostButton
               aria-label={uploadLabel}

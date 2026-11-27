@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { dayKey } from "../../format";
 import { Calendar } from "./Calendar";
+import { fittingMonths } from "./calendarMonths";
 
 describe("Calendar keyboard", () => {
   it("is one tab stop and arrow keys move by day and week", () => {
@@ -20,5 +21,22 @@ describe("Calendar keyboard", () => {
     expect(cells.filter((c) => c.tabIndex === 0)).toHaveLength(1);
     fireEvent.click(stop);
     expect(onSelect).toHaveBeenCalledWith(day(0));
+  });
+});
+
+describe("fittingMonths", () => {
+  const months = [
+    { name: "Dec", col: 0 },
+    { name: "Jan", col: 4 },
+    { name: "Feb", col: 8 },
+  ];
+  it("keeps every name when columns are wide", () => {
+    expect(fittingMonths(months, 10)).toEqual(months);
+  });
+  it("leaves out a name that would touch the one before it", () => {
+    expect(fittingMonths(months, 4.6).map((m) => m.name)).toEqual(["Dec", "Feb"]);
+  });
+  it("keeps every name before the width is known", () => {
+    expect(fittingMonths(months, 0)).toEqual(months);
   });
 });

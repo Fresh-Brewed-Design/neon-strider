@@ -1,6 +1,7 @@
-import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { cx } from "../util";
 import { dayKey, km } from "../../format";
+import { fittingMonths } from "./calendarMonths";
 
 /** A year of weeks: 52 plus the one in progress. */
 const WEEKS = 53;
@@ -52,6 +53,22 @@ export function Calendar({
   const cells = useRef<(HTMLButtonElement | null)[]>([]);
   const stop = Math.min(active ?? lastIndex, lastIndex);
 
+  // At large text sizes a column is only a few px wide, so a month name that would run into
+  // the one before it is left out (the grid under it still shows the weeks).
+  const monthRow = useRef<HTMLDivElement>(null);
+  const [colPx, setColPx] = useState(0);
+  useLayoutEffect(() => {
+    const el = monthRow.current;
+    if (!el) return;
+    const measure = () => setColPx(el.clientWidth / WEEKS);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const shownMonths = useMemo(() => fittingMonths(months, colPx), [months, colPx]);
+
   const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>, i: number) => {
     // Columns are weeks and rows are days, so left and right move a week and up and down a day.
     const step: Record<string, number> = { ArrowUp: -1, ArrowDown: 1, ArrowLeft: -7, ArrowRight: 7 };
@@ -68,8 +85,8 @@ export function Calendar({
 
   return (
     <div>
-      <div className="mb-1 grid gap-x-px" style={{ gridTemplateColumns: `repeat(${WEEKS}, minmax(0, 1fr))` }}>
-        {months.map((m) => (
+      <div ref={monthRow} className="mb-1 grid gap-x-px" style={{ gridTemplateColumns: `repeat(${WEEKS}, minmax(0, 1fr))` }}>
+        {shownMonths.map((m) => (
           <span
             key={m.col}
             className="whitespace-nowrap font-mono text-xs leading-none text-white/60"

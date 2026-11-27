@@ -1,0 +1,2 @@
+- History: at the largest Windows text sizes, session rows keep their totals and the upload and delete buttons apart, and the calendar skips month names that would touch.
+- System: status labels such as the heart rate link wrap instead of being cut off at the largest Windows text sizes.
