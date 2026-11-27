@@ -32,6 +32,8 @@ export interface StatWidget {
   panelDetail?: boolean;
   /** The HUD keeps a zone line's room under the value while true, so a zone step coming or going moves nothing. */
   reserveZone?: (s: AppSnapshot) => boolean;
+  /** The HUD keeps the spark chart's room under the value while it has none, so a chart coming or going moves nothing. */
+  reserveSpark?: boolean;
 }
 
 /**
@@ -51,6 +53,9 @@ export const STAT_WIDGETS: StatWidget[] = [
     // The belt's speed over the last 10 minutes; Rust sends none while that
     // window holds no walk, so there is no chart.
     spark: (s) => (s.speed_trace.length > 0 ? { points: s.speed_trace, minSpan: MIN_SPAN_KMH, zone: null } : null),
+    // The chart comes with the first walk and goes 10 minutes after the last,
+    // so the HUD cell keeps its room and the controls under it never move.
+    reserveSpark: true,
   },
   {
     id: "INCLINE",

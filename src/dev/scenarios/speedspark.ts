@@ -1,7 +1,8 @@
 // VELOCITY's speed trace (#362). ?speedspark=steady is ten minutes of a steady
 // 3.5 km/h walk, =dips the same walk with Neural flow easing off during a
 // typing burst and a call's quiet speed later, =gap a minute with the link
-// down and one reading in between.
+// down and one reading in between. With the belt paused (?program=paused or
+// ?deck=paused) the trace ends in the pause's 3:20 at 0 km/h.
 import { params, snapshot } from "../mockState";
 import type { Scenario } from "./types";
 
@@ -12,6 +13,9 @@ const POINTS = 120;
 const wobble = (i: number) => Math.sin(i * 0.5) * 0.04 + Math.sin(i * 0.13) * 0.03;
 
 const round = (kmh: number) => Math.round(kmh * 100) / 100;
+
+/** The paused preview's STASIS clock starts at 3:20: that many points at 0 km/h. */
+const PAUSED_POINTS = 200 / 5;
 
 function steady(): (number | null)[] {
   return Array.from({ length: POINTS }, (_, i) => round(3.5 + wobble(i)));
@@ -40,8 +44,12 @@ export const speedSpark: Scenario = {
     const shape = SHAPES[params.get("speedspark") ?? ""];
     if (!shape) return;
     const trace = shape();
+    if (snapshot.deck.status === "Paused") {
+      trace.fill(0, POINTS - PAUSED_POINTS);
+    } else {
+      const last = trace[trace.length - 1];
+      if (last !== null) snapshot.deck.speed_kmh = last;
+    }
     snapshot.speed_trace = trace;
-    const last = trace[trace.length - 1];
-    if (last !== null) snapshot.deck.speed_kmh = last;
   },
 };

@@ -48,4 +48,16 @@ describe("VELOCITY speed trace", () => {
     rerender(<StatCell id="VELOCITY" snapshot={withTrace([3.4, 3.5, 3.5])} />);
     expect(container.querySelector(".hud-stat [data-testid=sparkline]")).not.toBeNull();
   });
+
+  it("keeps the chart's room on the HUD before the first walk, so nothing under VEL moves", () => {
+    const { container, rerender } = render(<StatCell id="VELOCITY" snapshot={withTrace([])} />);
+    expect(container.querySelector("[data-testid=hud-spark-reserve]")).not.toBeNull();
+    rerender(<StatCell id="VELOCITY" snapshot={withTrace([3.4, 3.5, 3.5])} />);
+    expect(container.querySelector("[data-testid=hud-spark-reserve]")).toBeNull();
+  });
+
+  it("reserves no room under PULSE_RATE without a sensor", () => {
+    const { container } = render(<StatCell id="HEART_RATE" snapshot={{ ...snapshot, heart_rate: { ...snapshot.heart_rate, history: [] } }} />);
+    expect(container.querySelector("[data-testid=hud-spark-reserve]")).toBeNull();
+  });
 });
