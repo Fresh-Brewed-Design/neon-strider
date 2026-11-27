@@ -227,6 +227,18 @@ impl fmt::Display for TargetSource {
     }
 }
 
+/// DUMP on the walk-away card: the walk ends where the walk-away began. The
+/// stop that follows saves the walk, then `persistence::db_cut_session` takes
+/// off the time the belt ran with nobody on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SessionCut {
+    pub session_id: i64,
+    /// Epoch ms where the walk now ends.
+    pub at_ms: i64,
+    /// Seconds the belt ran after it, until the walk-away pause.
+    pub empty_s: i64,
+}
+
 /// The session being recorded, as live totals.
 #[derive(Default)]
 pub struct SessionState {
@@ -353,6 +365,8 @@ pub struct OrchestratorState {
     pub paused_since: Option<Instant>,
     /// The long-pause save already happened for this pause.
     pub pause_saved: bool,
+    /// DUMP after a walk-away: where the session's final save cuts it.
+    pub session_cut: Option<SessionCut>,
     /// A stop is in flight: the stop is repeated, and the automatic start,
     /// pause and adoption logic held off, until the deck reports the belt at rest.
     pub stop_requested: bool,
@@ -391,6 +405,10 @@ pub struct OrchestratorState {
     /// The last start went unanswered: stop re-sending it (auto-start and
     /// auto-resume) until the user asks again.
     pub start_blocked: bool,
+    /// The press a start armed now belongs to (`link::StartPress`): Engage,
+    /// except while a program's GO (`go_program`) or the sit-too-long card's
+    /// ENGAGE (`desk::engage`) runs.
+    pub start_press: crate::link::StartPress,
     /// When the engine last sent the deck a Start (the handshake's second
     /// half) that the deck hasn't answered yet: motion then is the app's own
     /// start, not one at the treadmill (`programs::watch_for_deck_start`).
@@ -499,6 +517,7 @@ impl Default for OrchestratorState {
             session_open_seq: 0,
             paused_since: None,
             pause_saved: false,
+            session_cut: None,
             stop_requested: false,
             tilt_multiplier: 1.0,
             incline_offset: 0.0,
@@ -515,6 +534,7 @@ impl Default for OrchestratorState {
             speed_drift: Default::default(),
             start_requested_at: None,
             start_blocked: false,
+            start_press: crate::link::StartPress::Engage,
             start_sent_at: None,
             unknown_status_code: None,
             unknown_status_logged: Vec::new(),
@@ -982,6 +1002,8 @@ impl OrchestratorState {
 
     pub fn start_session(&mut self, session_id: i64) {
         let now = self.now();
+        // A cut was for the walk before.
+        self.session_cut = None;
         self.session = SessionState {
             active_session_id: Some(session_id),
             last_physics_update: Some(now),
@@ -1049,6 +1071,16 @@ impl OrchestratorState {
         true
     }
 
+    /// How long the belt has been paused (the STASIS clock); `None` unless
+    /// the deck's last known status is Paused.
+    pub(crate) fn paused_for(&self) -> Option<Duration> {
+        if self.last_status != MachineStatus::Paused {
+            return None;
+        }
+        self.paused_since
+            .map(|since| self.now().saturating_duration_since(since))
+    }
+
     pub fn should_stop_session(&self) -> bool {
         self.session.active_session_id.is_some() && self.last_status == MachineStatus::Stopped
     }
@@ -1061,8 +1093,15 @@ impl OrchestratorState {
     pub(crate) fn take_status(&mut self, t: &protocol::Telemetry) {
         if t.status_known {
             self.last_status = t.status;
-            if t.status != MachineStatus::Paused {
+            if t.status == MachineStatus::Paused {
+                // From the first frame of the pause, session or not, so the
+                // STASIS clock and the long-pause save both count from it.
+                if self.paused_since.is_none() {
+                    self.paused_since = Some(self.now());
+                }
+            } else {
                 self.hand_epoch_before_pause = self.speed_hand_epoch;
+                self.paused_since = None;
             }
             self.unknown_status_code = None;
             self.deck_standby = t.status_code == protocol::STATUS_STANDBY;
@@ -1396,26 +1435,66 @@ impl OrchestratorState {
         // A checkpoint keeps the session live, and the snapshot adds the live
         // distance itself, so it must stay out of the cached daily base.
         let exclude = if end { None } else { Some(session_id) };
+        let cut = if end {
+            self.session_cut
+                .take()
+                .filter(|c| c.session_id == session_id)
+        } else {
+            None
+        };
         tauri::async_runtime::spawn_blocking(move || {
             if let Err(e) = persistence::db_update_session(&app_c, session_id, record) {
                 log::warn!("Session {} not saved: {}", session_id, e);
             }
+            // After the save, in the same order, so the cut has the last word.
+            let cut_totals = cut.and_then(|c| {
+                match persistence::db_cut_session(&app_c, c.session_id, c.at_ms, c.empty_s) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        log::warn!("Session {} not cut: {}", session_id, e);
+                        None
+                    }
+                }
+            });
             // After the write, so the day's total includes what was just saved.
             crate::snapshot::refresh_daily_base(&app_c, exclude);
+            if let Some(t) = cut_totals {
+                log::info!(
+                    "Session {} cut where the walk-away began: {} · {:.2} km",
+                    session_id,
+                    crate::util::format_duration(t.duration_s),
+                    t.distance_m / 1000.0
+                );
+                crate::snapshot::refresh_after_session_edit(&app_c);
+                crate::hud::toast(
+                    &app_c,
+                    serde_json::json!({
+                        "type": "STATUS",
+                        "message": session_saved_message(
+                            t.duration_s,
+                            t.distance_m,
+                            crate::snapshot::daily_total_with_live(0.0),
+                        ),
+                        "isActionable": true,
+                    }),
+                );
+            }
         });
 
-        crate::hud::toast(
-            app,
-            serde_json::json!({
-                "type": "STATUS",
-                "message": session_saved_message(
-                    self.session.duration_seconds,
-                    self.session.distance_meters,
-                    crate::snapshot::daily_total_with_live(self.session.distance_meters),
-                ),
-                "isActionable": true,
-            }),
-        );
+        if cut.is_none() {
+            crate::hud::toast(
+                app,
+                serde_json::json!({
+                    "type": "STATUS",
+                    "message": session_saved_message(
+                        self.session.duration_seconds,
+                        self.session.distance_meters,
+                        crate::snapshot::daily_total_with_live(self.session.distance_meters),
+                    ),
+                    "isActionable": true,
+                }),
+            );
+        }
 
         if end {
             self.stop_session();
@@ -2107,7 +2186,7 @@ impl OrchestratorState {
         self.hold_auto_start = false;
         if !self.last_status.is_moving() {
             self.start_requested_at = Some(now);
-            crate::link::start_requested();
+            crate::link::start_requested(self.start_press);
         }
         true
     }
@@ -2133,7 +2212,7 @@ impl OrchestratorState {
         self.start_requested_at = None;
         self.start_blocked = true;
         self.handshake_step = HandshakeStep::Idle;
-        crate::link::start_refused(why);
+        crate::link::start_refused(why, self.start_press);
     }
 
     /// Follow up on an Engage: clear the watch once the deck reports Starting or

@@ -314,9 +314,10 @@ const START_NO_RESPONSE: &str =
 pub const START_SPINNING_DOWN: &str = "Belt is still stopping. Press Engage once it stops.";
 
 /// Shown under Engage (and in the HUD) for a start asked for while the deck
-/// is in standby: it refuses every start, and the app can't wake it. It can't
-/// tell a screen timeout from a power-off, hence "off or asleep".
-pub const START_STANDBY: &str = "Treadmill is off or asleep. Switch it on, then press Engage.";
+/// is in standby: it refuses every start, and the app can't wake it. The same
+/// words the HUD's start buttons give before the press (`WAKE_FIRST` in
+/// `src/hud/status.ts`), and they name no button: the press may have been GO.
+pub const START_STANDBY: &str = "Wake the deck first at the treadmill or remote.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StartCheck {
@@ -349,6 +350,21 @@ pub struct StartResult {
     pub at_ms: i64,
 }
 
+/// Which press a start belongs to, so its waiting line and its result show
+/// under that control: a program's GO (`Command::ProgramResume`, from the
+/// program card, the HUD or the tray), the sit-too-long card's ENGAGE
+/// (`Command::SeatedEngage`), or Engage, which also covers every other start
+/// (a program run, SKIP, a speed set by hand).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export, export_to = "../../src/ipc/bindings/")]
+pub enum StartPress {
+    #[default]
+    Engage,
+    ProgramGo,
+    SeatedEngage,
+}
+
 // ---------------------------------------------------------------------------
 // Live state
 // ---------------------------------------------------------------------------
@@ -356,6 +372,8 @@ pub struct StartResult {
 #[derive(Default)]
 struct Live {
     start_result: Option<StartResult>,
+    /// The press the pending start or `start_result` belongs to.
+    start_press: StartPress,
     /// The last raw 0x51 status byte, for the change log.
     last_status_byte: Option<u8>,
     /// We have logged that frames stopped arriving.
@@ -377,6 +395,7 @@ struct Live {
 
 static LIVE: Mutex<Live> = Mutex::new(Live {
     start_result: None,
+    start_press: StartPress::Engage,
     last_status_byte: None,
     frames_quiet_logged: false,
     scanning: 0,
@@ -577,9 +596,27 @@ pub fn log_frame_flow() -> Option<Duration> {
     silent
 }
 
-/// An Engage was sent.
-pub fn start_requested() {
-    live().start_result = None;
+impl Live {
+    /// A start was sent for `press`: its result is not in yet.
+    fn note_start_requested(&mut self, press: StartPress) {
+        self.start_result = None;
+        self.start_press = press;
+    }
+
+    /// A start for `press` was refused before anything was sent.
+    fn note_start_refused(&mut self, message: &str, press: StartPress, at_ms: i64) {
+        self.start_press = press;
+        self.start_result = Some(StartResult {
+            ok: false,
+            message: message.to_string(),
+            at_ms,
+        });
+    }
+}
+
+/// A start was sent for `press`.
+pub fn start_requested(press: StartPress) {
+    live().note_start_requested(press);
 }
 
 pub fn start_succeeded() {
@@ -617,19 +654,20 @@ pub fn start_timed_out(status: crate::protocol::MachineStatus, unknown_code: Opt
     });
 }
 
-/// A start the deck can't take now was not sent: say why at once, where the
-/// Engage result shows.
-pub fn start_refused(message: &str) {
-    live().start_result = Some(StartResult {
-        ok: false,
-        message: message.to_string(),
-        at_ms: now_ms(),
-    });
+/// A start the deck can't take now was not sent: say why at once, under the
+/// control that `press` names.
+pub fn start_refused(message: &str, press: StartPress) {
+    live().note_start_refused(message, press, now_ms());
 }
 
 /// How the last Engage went (None while one is waiting, or before any).
 pub fn start_result() -> Option<StartResult> {
     live().start_result.clone()
+}
+
+/// Which press the pending start or the last result belongs to.
+pub fn start_press() -> StartPress {
+    live().start_press
 }
 
 // Watchdog reporting.
@@ -750,6 +788,25 @@ pub fn connect_dialog_at_ms() -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_start_result_keeps_the_press_it_belongs_to() {
+        let mut l = Live::default();
+        assert_eq!(l.start_press, StartPress::Engage);
+        l.note_start_requested(StartPress::ProgramGo);
+        assert_eq!(l.start_press, StartPress::ProgramGo);
+        assert!(l.start_result.is_none());
+        // A later Engage that is refused takes the result over.
+        l.note_start_refused(START_STANDBY, StartPress::Engage, 5);
+        assert_eq!(l.start_press, StartPress::Engage);
+        assert_eq!(l.start_result.as_ref().map(|r| r.ok), Some(false));
+        // A GO refused at once belongs to GO.
+        l.note_start_refused(START_SPINNING_DOWN, StartPress::ProgramGo, 6);
+        assert_eq!(l.start_press, StartPress::ProgramGo);
+        // The sit-too-long card's ENGAGE keeps its own.
+        l.note_start_refused(START_STANDBY, StartPress::SeatedEngage, 7);
+        assert_eq!(l.start_press, StartPress::SeatedEngage);
+    }
 
     #[test]
     fn only_a_closed_object_write_means_the_link_is_lost() {

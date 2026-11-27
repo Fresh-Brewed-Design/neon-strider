@@ -77,3 +77,35 @@ describe("Programs delete", () => {
     expect(within(row).getByRole("alert")).toHaveTextContent("Program is running");
   });
 });
+
+describe("Clone", () => {
+  it("opens the editor with a copy as a new program and saves nothing", () => {
+    show(() => undefined);
+    fireEvent.click(screen.getByRole("button", { name: "Clone Brisk" }));
+    expect(screen.getByText("New program")).toBeInTheDocument();
+    expect(screen.getByLabelText("Name")).toHaveValue("Brisk // CLONE");
+    expect(screen.getAllByDisplayValue("5.0")).toHaveLength(1);
+    expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "dispatch")).toHaveLength(0);
+  });
+
+  it("saves the copy as id 0 through program_save", async () => {
+    show(() => undefined);
+    fireEvent.click(screen.getByRole("button", { name: "Clone Brisk" }));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: /^save$/i })));
+    const saves = vi
+      .mocked(invoke)
+      .mock.calls.filter(([cmd]) => cmd === "dispatch")
+      .map(([, args]) => (args as { command: { type: string; program: { id: number; name: string } } }).command);
+    expect(saves).toHaveLength(1);
+    expect(saves[0].type).toBe("program_save");
+    expect(saves[0].program).toMatchObject({ id: 0, name: "Brisk // CLONE" });
+  });
+
+  it("does not leak into the New draft opened after it", () => {
+    show(() => undefined);
+    fireEvent.click(screen.getByRole("button", { name: "Clone Brisk" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Cancel" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    expect(screen.getByLabelText("Name")).toHaveValue("");
+  });
+});

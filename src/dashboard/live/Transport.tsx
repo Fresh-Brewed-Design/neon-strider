@@ -2,7 +2,7 @@ import { Loader2 } from "lucide-react";
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction, useBackendAction } from "../../components/useAction";
 import { dispatch, type AppSnapshot } from "../../ipc";
-import { isMoving, linkState, linkView, startFailure } from "../../state/linkStatus";
+import { isMoving, linkState, linkView, startOf } from "../../state/linkStatus";
 import { StatusPill } from "../StatusPill";
 import { NeonButton, Panel } from "../ui";
 import { cx, openLinkDialog } from "../util";
@@ -27,10 +27,14 @@ export function Transport({ s }: { s: AppSnapshot }) {
   const state = linkState(connection).state;
   const retry = useAction();
   const control = useAction();
-  // Engage waits for the deck to answer (Rust gives up after 8 s and says why).
-  const engage = useBackendAction(connection.start_result, connection.start_pending);
-  const failed = startFailure(s);
-  const waiting = engage.pending || (connection.start_pending && !moving);
+  // Engage waits for the deck to answer (Rust gives up after 8 s and says why). A start a
+  // program's GO made shows under that GO instead (`start_press`).
+  const own = startOf(s, "engage");
+  const engage = useBackendAction(own.result, own.pending);
+  const failed = own.failure;
+  const waiting = engage.pending || (own.pending && !moving);
+  // Any start in flight holds Engage, whichever control sent it.
+  const starting = waiting || (connection.start_pending && !moving);
   // On a paused program this button is its GO (Rust resumes the program).
   const programGo = !moving && s.active_program?.phase === "walking" && s.active_program.paused;
   const paused = deck.status === "Paused";
@@ -38,7 +42,9 @@ export function Transport({ s }: { s: AppSnapshot }) {
   if (!connection.connected) {
     const linking = state === "connecting" || state === "scanning";
     return (
-      <Panel className="flex flex-col gap-1 px-4 py-1.5">
+      // At least as tall as the ENGAGE / DUMP row (h-12), so the panels under it stay put when the
+      // treadmill links or drops.
+      <Panel className="flex min-h-12 flex-col justify-center gap-1 px-4 py-1.5">
         {/* The headline keeps 8rem beside the pill; with less room (a large Windows text size) it
             and the button wrap onto lines of their own. */}
         <div className="flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1">
@@ -72,7 +78,7 @@ export function Transport({ s }: { s: AppSnapshot }) {
       <div className="flex gap-3">
         <NeonButton
           className="flex h-12 flex-1 flex-col items-center justify-center text-sm"
-          disabled={control.pending || waiting}
+          disabled={control.pending || starting}
           onClick={() => void engage.run(() => dispatch({ type: "toggle_start" }))}
         >
           <span className="flex items-center gap-2">
@@ -80,7 +86,7 @@ export function Transport({ s }: { s: AppSnapshot }) {
             {moving ? "Stasis" : programGo ? "GO" : paused ? "Re-jack" : "Engage"}
           </span>{" "}
           <span className="font-mono text-[11px] font-normal normal-case leading-tight tracking-normal opacity-90">
-            {moving ? "pause" : programGo || paused ? "resume" : "start"}
+            {moving ? "pause belt" : programGo ? "resume program" : paused ? "resume belt" : "start"}
           </span>
         </NeonButton>
         <button

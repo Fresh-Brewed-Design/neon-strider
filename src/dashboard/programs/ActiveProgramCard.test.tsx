@@ -42,8 +42,17 @@ describe("ActiveProgramCard T-MINUS", () => {
     current!.active_program = { ...current!.active_program!, paused: false, wait: null, program_seconds_remaining: 1390 };
     render(<ActiveProgramCard />);
     const line = screen.getByTestId("program-time-left");
-    expect(line.textContent?.startsWith(`T-MINUS 23:10${NBSP}· ENDS${NBSP}`)).toBe(true);
+    // The end time stays whole; the dot between the two goes where the line wraps (`Joined`).
+    expect(line.textContent?.startsWith(`T-MINUS 23:10 · ENDS${NBSP}`)).toBe(true);
     expect(screen.getByText(/cycle 3/)).toBeInTheDocument();
+  });
+
+  it("shares a wrapping row with the step line, so a waiting card is no taller than a running one", () => {
+    current!.active_program = { ...current!.active_program!, paused: true, wait: "hold_complete", program_seconds_remaining: 420 };
+    render(<ActiveProgramCard />);
+    const row = screen.getByTestId("program-time-left").parentElement!;
+    expect(row).toHaveClass("flex", "flex-wrap");
+    expect(row.firstElementChild).toHaveTextContent(/cycle 3/);
   });
 
   it("shows only the time left while paused", () => {
@@ -73,7 +82,7 @@ describe("ActiveProgramCard buttons", () => {
     current!.active_program = { ...current!.active_program!, paused: true, wait: "rest_complete" };
     vi.mocked(invoke).mockRejectedValueOnce("No program is running");
     render(<ActiveProgramCard />);
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "GO" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "GO start belt" })));
     expect(vi.mocked(invoke)).toHaveBeenCalledWith("dispatch", { command: { type: "program_resume" } });
     expect(screen.getAllByRole("alert").map((n) => n.textContent)).toContain("No program is running");
   });
@@ -89,6 +98,8 @@ describe("ActiveProgramCard view switch", () => {
     expect(within(view).getByRole("button", { name: /stats/i })).toHaveAttribute("aria-pressed", "false");
     // HOLD, SKIP and END share a row; the switch is not in it.
     const hold = screen.getByRole("button", { name: /hold/i });
+    // Its plain words say it pauses the program, not the belt.
+    expect(hold).toHaveAccessibleName("HOLD pause program");
     expect(hold.parentElement!.contains(view)).toBe(false);
     expect(hold.parentElement).toContainElement(screen.getByRole("button", { name: /skip/i }));
 
@@ -101,5 +112,50 @@ describe("ActiveProgramCard view switch", () => {
   it("shows no switch on the Programs page", () => {
     render(<ActiveProgramCard />);
     expect(screen.queryByRole("group", { name: "Step map or stats" })).toBeNull();
+  });
+});
+
+// #385: GO waits for the deck like Engage, and its failure shows under GO.
+describe("ActiveProgramCard GO", () => {
+  const NO_ANSWER = "The treadmill didn't respond.";
+  const waiting = () => {
+    current!.active_program = { ...current!.active_program!, phase: "walking", paused: true, wait: "rest_complete" };
+    current!.deck = { ...current!.deck, status: "Paused", speed_kmh: 0 };
+  };
+
+  it("shows the deck's later failure under GO", async () => {
+    waiting();
+    const view = render(<ActiveProgramCard />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /GO/ }));
+    });
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith("dispatch", { command: { type: "program_resume" } });
+    // Rust takes the start: GO waits for the deck.
+    current = { ...current!, connection: { ...current!.connection, start_pending: true, start_press: "program_go", start_result: null } };
+    view.rerender(<ActiveProgramCard />);
+    expect(screen.getByText("Waiting for the treadmill to start…")).toBeInTheDocument();
+    // The deck never answers.
+    current = {
+      ...current!,
+      connection: {
+        ...current!.connection,
+        start_pending: false,
+        start_result: { ok: false, message: NO_ANSWER, at_ms: Date.now() + 1000 },
+      },
+    };
+    view.rerender(<ActiveProgramCard />);
+    expect(screen.getByText(NO_ANSWER)).toBeInTheDocument();
+  });
+
+  it("leaves an Engage failure to Engage", () => {
+    waiting();
+    current!.connection = {
+      ...current!.connection,
+      start_pending: false,
+      start_press: "engage",
+      start_result: { ok: false, message: NO_ANSWER, at_ms: 1 },
+    };
+    render(<ActiveProgramCard />);
+    expect(screen.queryByText(NO_ANSWER)).toBeNull();
   });
 });

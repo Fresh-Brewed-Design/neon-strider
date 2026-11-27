@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import { useAppSnapshot } from "../state/useAppState";
 import { statWidget } from "../widgets/registry";
-import { EyeBreakCard, MaintenanceCard, SeatedCard, UpdateCard, WalkAwayCard, WeeklyCard } from "./HudCards";
+import { HudCardView } from "./HudCards";
 import { useEyeBreakTones } from "./eyeBreakTones";
 import { useProgramTones } from "./programTones";
 import { HudHeader, type HeaderToggle } from "./HudHeader";
@@ -18,11 +18,13 @@ import { useLogoDrag, usePlacement } from "./useHudDrag";
 import { useHudSend } from "./useHudSend";
 import { useRelink } from "./useRelink";
 import { useToasts } from "./useToasts";
+import { useGrowsUp } from "./useGrowsUp";
 import "./hud.css";
 
 /**
  * The always-on-top overlay: the panel (header, pinned stats, modules), the
- * persistent cards, then transient toasts. Only this content takes the
+ * one card Rust picked (`hud_card`, ranked in `card_queue.rs`), then
+ * transient toasts. Only this content takes the
  * pointer; the rest of the window is click-through. While the belt is still,
  * the live stats dim, and Rust may ask for the panel as a strip or not at all,
  * and minified for the running strip (`hud_view`); the cards and toasts show
@@ -34,6 +36,8 @@ export function HudApp() {
   const contentRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const placement = usePlacement(snapshot?.hud);
+  // A panel that grows upward keeps the programs module's tallest height.
+  const growsUp = useGrowsUp(contentRef, placement.anchor, placement.custom !== null);
   const drag = useHudSend();
   const minify = useHudSend();
   // One sender for every control on the panel, so a refused press shows in the panel's one note.
@@ -49,30 +53,25 @@ export function HudApp() {
   const full = view === "full";
   const minified = view === "minified";
   const wait = snapshot?.active_program?.wait ?? null;
-  // A program waiting for GO keeps the whole panel (Rust ignores minify then).
-  const canMinify = full && !wait;
   // The program card's headline is the one prompt while it shows.
   const promptOnProgramCard = full && wait !== null && widgets.includes("PROGRAMS");
+  const hasPanel = snapshot !== null && widgets.length > 0 && view !== "hidden";
   // A toast is redundant while the panel already shows the same thing live
-  // (the running strip shows speed; the still strip shows neither).
+  // (the running strip shows speed; the still strip shows neither). The
+  // header shows the belt's state and the link in every view of the panel.
   const toasts = allToasts.filter(
     (t) =>
+      !(hasPanel && (t.type === "DECK" || t.type === "LINK")) &&
       !(full && t.type === "VELOCITY" && widgets.includes("VELOCITY")) &&
       !(minified && t.type === "VELOCITY") &&
       !(full && t.type === "ELEVATION" && widgets.includes("INCLINE")) &&
       !(promptOnProgramCard && t.type === "AUTOMATION" && t.message === waitHeadline(wait)),
   );
   const stats = widgets.filter((w) => statWidget(w) !== undefined);
-  const hasPanel = snapshot !== null && widgets.length > 0 && view !== "hidden";
-  // Rust holds the cards that can wait while presenting (`presenting.holding`).
-  const maintenanceDue = snapshot?.maintenance.hud_card ?? false;
-  const weeklyCard = snapshot?.weekly.show_card ?? false;
-  const seatedCard = snapshot?.seated.show_card ?? false;
-  const eyeBreakCard = (snapshot?.eye_break.phase ?? "idle") !== "idle";
-  const walkawayCard = (snapshot?.walkaway.card ?? "none") !== "none";
-  const updateCard = snapshot?.update.hud_card ?? false;
-  const hasContent =
-    hasPanel || toasts.length > 0 || maintenanceDue || weeklyCard || seatedCard || eyeBreakCard || walkawayCard || updateCard;
+  // One card at a time: Rust ranks the cards due, holds them while
+  // presenting and names the one to show.
+  const card = snapshot?.hud_card ?? "none";
+  const hasContent = hasPanel || toasts.length > 0 || card !== "none";
 
   useHitRegion(contentRef, hasContent);
 
@@ -83,7 +82,9 @@ export function HudApp() {
   // The panel's one note: a refused press first, then the start that failed,
   // then the deck's reply to a target (with Rust's plain words) on the whole panel.
   const pressNote = panel.error ?? relink.error ?? drag.error ?? minify.error;
-  const failed = snapshot ? startFailure(snapshot) : null;
+  // A start the sit-too-long card's ENGAGE made shows on that card while it is up, not here too.
+  const cardOwnsStart = card === "seated" && snapshot?.connection.start_press === "seated_engage";
+  const failed = snapshot && !cardOwnsStart ? startFailure(snapshot) : null;
   const deckNote = full && snapshot?.deck.target_note ? snapshot.deck : null;
   const note: PanelNote | null = pressNote
     ? { text: pressNote }
@@ -92,14 +93,17 @@ export function HudApp() {
       : deckNote?.target_note
         ? { text: deckNote.target_note, detail: deckNote.target_note_hint }
         : null;
-  // The size button sits in the header's corner in every view.
+  // The size button sits in the header's corner in every view. A program's
+  // first 30 s waiting for GO keep the whole panel (Rust ignores minify then,
+  // `hud_go_hold`), so the button stays in place but off until GO or the hold ends.
   const toggle: HeaderToggle | undefined =
     snapshot === null
       ? undefined
-      : canMinify
+      : full
         ? {
             kind: "minify",
-            title: hotkeyTitle("Shrink the HUD to a strip", snapshot.shortcuts),
+            disabled: snapshot.hud_go_hold,
+            title: snapshot.hud_go_hold ? "The whole HUD stays up for 30 seconds while a program waits for GO." : hotkeyTitle("Shrink the HUD to a strip", snapshot.shortcuts),
             onClick: () => void minify.send({ type: "hud_set_minified", minified: true }),
           }
         : minified
@@ -142,32 +146,30 @@ export function HudApp() {
               toggle={toggle}
               simulated={snapshot.connection.simulated}
             />
-            {full ? (
-              <>
-                {stats.length > 0 && (
-                  <div className="hud-stats">
-                    {stats.map((id) => (
-                      <StatCell key={id} id={id} snapshot={snapshot} />
-                    ))}
-                  </div>
-                )}
-                <StatusRow snapshot={snapshot} relink={relink} note={note} />
-                {widgets.includes("CONTROLS") && <Controls snapshot={snapshot} send={panel.send} />}
-                {widgets.includes("PROGRAMS") && <ProgramsModule snapshot={snapshot} send={panel.send} />}
-              </>
-            ) : minified ? (
-              <RunStripRow snapshot={snapshot} send={panel.send} note={note} />
-            ) : (
-              <StripRow snapshot={snapshot} send={panel.send} note={note} />
-            )}
+            {/* Everything under the header: it scrolls if the panel can't fit the screen (a large text size), so the header stays on it. */}
+            <div className="hud-body">
+              {full ? (
+                <>
+                  {stats.length > 0 && (
+                    <div className="hud-stats">
+                      {stats.map((id) => (
+                        <StatCell key={id} id={id} snapshot={snapshot} />
+                      ))}
+                    </div>
+                  )}
+                  <StatusRow snapshot={snapshot} relink={relink} note={note} />
+                  {widgets.includes("CONTROLS") && <Controls snapshot={snapshot} send={panel.send} />}
+                  {widgets.includes("PROGRAMS") && <ProgramsModule snapshot={snapshot} send={panel.send} reserve={growsUp} />}
+                </>
+              ) : minified ? (
+                <RunStripRow snapshot={snapshot} send={panel.send} note={note} />
+              ) : (
+                <StripRow snapshot={snapshot} send={panel.send} note={note} />
+              )}
+            </div>
           </section>
         )}
-        {walkawayCard && snapshot && <WalkAwayCard snapshot={snapshot} />}
-        {seatedCard && snapshot && <SeatedCard snapshot={snapshot} />}
-        {eyeBreakCard && snapshot && <EyeBreakCard snapshot={snapshot} />}
-        {maintenanceDue && snapshot && <MaintenanceCard snapshot={snapshot} />}
-        {weeklyCard && snapshot && <WeeklyCard snapshot={snapshot} />}
-        {updateCard && snapshot && <UpdateCard snapshot={snapshot} />}
+        {snapshot && <HudCardView card={card} snapshot={snapshot} />}
         {toasts.length > 0 && (
           <div className="hud-toasts">
             {toasts.map((t) => (

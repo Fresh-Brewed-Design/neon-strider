@@ -64,6 +64,7 @@ export function Axis({
   mark = null,
   spark = null,
   wheelHint,
+  status = null,
 }: {
   pin: { widget: HudWidget; pinned: boolean };
   /** Tooltip on the readout, where the mouse wheel nudges the value. */
@@ -88,7 +89,9 @@ export function Axis({
   note?: string | null;
   /** A labelled mark on the slider (STRIDE_FIT on speed). */
   mark?: SliderMark | null;
-  /** The reading's spark chart beside the title (VELOCITY's speed trace); null shows none. */
+  /** A short reading beside the pin in the title row (the STASIS clock on Velocity); the row keeps its height. */
+  status?: ReactNode;
+  /** The reading's spark chart in the title row (VELOCITY's speed trace); null shows none. */
   spark?: SparkData | null;
 }) {
   const [value, setDraft] = useDraft(target);
@@ -115,14 +118,24 @@ export function Axis({
       <div className="flex flex-col gap-2 p-3 @max-[14rem]:gap-1.5 @max-[14rem]:p-2">
         <div className="flex items-center justify-between gap-x-2">
           <Label>{title}</Label>
-          {/* Beside the title, so the chart costs the panel no height: Live fits 760x600. */}
-          {spark && <Sparkline data={spark} className={cx("block h-4 min-w-0 flex-1", TONE_TEXT[tone])} />}
-          <PinToggle widget={pin.widget} pinned={pin.pinned} />
+          {/* In the title row, a row the pin already makes 24 px tall, so the chart costs the panel
+              no height (Live fits 760x600). Same height and stroke as PULSE_RATE's chart. */}
+          {spark && <Sparkline data={spark} className={cx("block h-5 min-w-0 flex-1", TONE_TEXT[tone])} />}
+          <div className="flex min-w-0 items-center gap-x-2">
+            {status}
+            <PinToggle widget={pin.widget} pinned={pin.pinned} />
+          </div>
         </div>
 
         <div className="flex items-center gap-2 @max-[14rem]:gap-1">
           <Nudge label={`${title} down`} disabled={disabled} onClick={() => nudge(false)} icon={<Minus size={16} />} />
-          <div ref={wheel} title={wheelHint} className="flex min-w-0 flex-1 items-end justify-center gap-2 @max-[14rem]:gap-1">
+          {/* Disabled means no treadmill is linked: the reading is the last one it sent, so it
+              recedes as the HUD's readings do. */}
+          <div
+            ref={wheel}
+            title={wheelHint}
+            className={cx("flex min-w-0 flex-1 items-end justify-center gap-2 @max-[14rem]:gap-1", disabled && "opacity-45")}
+          >
             <SegmentedDisplay
               value={actual}
               length={2}

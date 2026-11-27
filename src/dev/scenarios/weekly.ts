@@ -9,11 +9,11 @@ export const weekly: Scenario = {
     const weeklyFlag = params.get("weekly");
     const WEEKLY_SCENARIOS: Record<string, Partial<WeeklySummary>> = {
       long: {
-        last_week: { ...snapshot.weekly.last_week, distance_km: 123.4, duration_s: 12 * 3600 + 5 * 60, active_days: 7, sessions: 21 },
+        last_week: { ...snapshot.weekly.last_week, distance_km: 123.4, duration_s: 12 * 3600 + 5 * 60, active_days: 7, desk_days: 7, sessions: 21 },
         distance_change: { pct: 1234, is_new: false },
       },
       new: {
-        week_before: { distance_km: 0, duration_s: 0, active_days: 0, sessions: 0, calories: 0, longest_day_km: 0 },
+        week_before: { distance_km: 0, duration_s: 0, active_days: 0, desk_days: 0, sessions: 0, calories: 0, longest_day_km: 0 },
         distance_change: { pct: null, is_new: true },
       },
       down: { distance_change: { pct: -23, is_new: false } },

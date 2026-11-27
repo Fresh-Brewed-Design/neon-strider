@@ -69,11 +69,12 @@ describe("Live page STEP_MAP", () => {
     current!.session.duration_s = 754;
     current!.session.distance_m = 1234;
     current!.session.daily_distance_m = 4560;
+    current!.session.daily_time_s = 8_040;
     render(<LivePage />);
     const readout = screen.getByRole("group", { name: "Walk stats" });
     expect(readout).toHaveTextContent("TIME 12:34");
     expect(readout).toHaveTextContent("DIST 1.23 KM");
-    expect(readout).toHaveTextContent("TODAY 4.56 KM");
+    expect(readout).toHaveTextContent("TODAY 4.56 KM · 2h 14m");
 
     fireEvent.click(screen.getByRole("button", { name: /stats/i }));
     expect(screen.queryByRole("group", { name: "Walk stats" })).not.toBeInTheDocument();
@@ -84,6 +85,20 @@ describe("Live page STEP_MAP", () => {
     render(<LivePage />);
     expect(screen.queryByRole("list", { name: "Program steps" })).not.toBeInTheDocument();
     expect(screen.getByText("DECK_CYCLES")).toBeInTheDocument();
+  });
+
+  it("shows today's walking time on the DAILY_TOTAL tile", () => {
+    current!.active_program = null;
+    current!.session.daily_distance_m = 6_200;
+    current!.session.daily_time_s = 8_040;
+    render(<LivePage />);
+    const tile = screen.getByText("DAILY_TOTAL").closest("[class*='@container']")!;
+    expect(tile).toHaveTextContent("6.20KM");
+    expect(tile).toHaveTextContent("2h 14m");
+    // The time can't break, so on a narrow tile it drops under the km; DESK TIME WALKED's line breaks inside instead.
+    expect(screen.getByText("2h 14m").parentElement).toHaveClass("flex-wrap");
+    const walked = screen.getByText("DESK TIME WALKED").closest("[class*='@container']")!;
+    expect(walked.querySelector(".flex-wrap")).toBeNull();
   });
 
   it("puts each stat's plain line under its codename", () => {
@@ -98,6 +113,67 @@ describe("Live page STEP_MAP", () => {
       const line = screen.getByText(plain);
       expect(line.previousElementSibling?.textContent).toBe(codename);
     }
+  });
+});
+
+describe("Live page offline", () => {
+  it("dims the last readings the treadmill sent, as the HUD does", () => {
+    current!.connection.connected = false;
+    current!.active_program = null;
+    render(<LivePage />);
+    for (const title of ["Scroll to change speed.", "Scroll to change incline."]) {
+      expect(screen.getByTitle(title)).toHaveClass("opacity-45");
+    }
+    expect(screen.getByText("DISPLACEMENT").closest(".hacker-panel")!.querySelector(".opacity-45")).not.toBeNull();
+  });
+
+  it("dims the walk stats beside STEP_MAP", () => {
+    current!.connection.connected = false;
+    render(<LivePage />);
+    expect(screen.getByRole("group", { name: "Walk stats" })).toHaveClass("opacity-45");
+  });
+
+  it("leaves the readings bright while linked", () => {
+    render(<LivePage />);
+    expect(screen.getByTitle("Scroll to change speed.")).not.toHaveClass("opacity-45");
+    expect(screen.getByRole("group", { name: "Walk stats" })).not.toHaveClass("opacity-45");
+  });
+});
+
+describe("Live page QUIET", () => {
+  it("shows the quiet speed and the speed QUIET puts back while it holds the belt", () => {
+    current!.calls = { ...current!.calls, quiet_kmh: 2, quiet_now: true, quiet_now_back_kmh: 3.5 };
+    render(<LivePage />);
+    const line = screen.getByText(/QUIET \/\/ DAMPED/).closest("[role='status']")!;
+    expect(line).toHaveTextContent("QUIET // DAMPED 2.0 km/h");
+    expect(line).toHaveTextContent("QUIET again puts 3.5 km/h back.");
+  });
+
+  it("shows nothing while QUIET is off", () => {
+    current!.calls = { ...current!.calls, quiet_now: false, quiet_now_back_kmh: null };
+    render(<LivePage />);
+    expect(screen.queryByText(/QUIET \/\/ DAMPED/)).not.toBeInTheDocument();
+  });
+});
+
+describe("Live page STASIS clock", () => {
+  it("shows how long the belt has been paused beside Velocity's pin, never on Re-jack", () => {
+    current!.deck = { ...current!.deck, status: "Paused", speed_kmh: 0, paused_for_s: 3909 };
+    current!.active_program = null;
+    render(<LivePage />);
+    const clock = screen.getByRole("status", { name: "STASIS 1h05" });
+    expect(clock).toHaveAttribute("title", "Time since the belt paused.");
+    // In Velocity's title row, beside its pin.
+    const row = clock.parentElement!;
+    expect(within(row).getByRole("button", { name: /HUD/ })).toBeInTheDocument();
+    expect(row.parentElement).toHaveTextContent(/^Velocity/);
+    expect(screen.getByRole("button", { name: "Re-jack resume belt" })).toBeInTheDocument();
+  });
+
+  it("shows nothing while the belt moves", () => {
+    current!.deck = { ...current!.deck, status: "Running", speed_kmh: 3, paused_for_s: null };
+    render(<LivePage />);
+    expect(screen.queryByTestId("live-stasis-clock")).toBeNull();
   });
 });
 

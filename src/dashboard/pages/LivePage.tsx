@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { stasisClock } from "../../format";
 import { dispatch, type AppSnapshot, type DeckSnapshot } from "../../ipc";
 import { linkView } from "../../state/linkStatus";
 import { snapToDeck, snapToLevel } from "../../state/deckSpeeds";
@@ -92,15 +93,65 @@ function headerNotice(s: AppSnapshot): ReactNode {
   );
 }
 
-/** The header's right side: the maintenance banner, with a warning under it when both show. */
+/** The quiet speed QUIET eases to: the quiet setting, never under the deck's slowest (as on the HUD). */
+function quietKmh(s: AppSnapshot): number {
+  return Math.max(s.calls.quiet_kmh, s.deck.min_speed_kmh);
+}
+
+/**
+ * QUIET // DAMPED while Quiet now (the HUD's QUIET or the tray's) holds the belt at the quiet speed,
+ * with the speed a second press puts back: the HUD's QUIET line, in the header so it costs no height.
+ */
+function quietNotice(s: AppSnapshot): ReactNode {
+  const { quiet_now, quiet_now_back_kmh: back } = s.calls;
+  if (!quiet_now || back === null) return null;
+  return (
+    // One line down to 150 % Windows text, so the program card's buttons stay above the fold.
+    <div
+      role="status"
+      title="QUIET is on the HUD and in the tray menu."
+      className="flex flex-wrap items-baseline justify-end gap-x-2 font-mono text-[11px] leading-snug text-neon-yellow"
+    >
+      <span className="whitespace-nowrap font-bold tracking-[0.08em]">QUIET // DAMPED {quietKmh(s).toFixed(1)} km/h</span>
+      <span>QUIET again puts {back.toFixed(1)} km/h back.</span>
+    </div>
+  );
+}
+
+/** The header's right side: the maintenance banner, then QUIET's hold and a warning under it. */
 function headerActions(s: AppSnapshot): ReactNode {
+  const quiet = quietNotice(s);
   const notice = headerNotice(s);
-  if (!s.maintenance?.due) return notice;
+  if (!s.maintenance?.due && !(quiet && notice)) return quiet ?? notice;
   return (
     <div className="flex flex-col items-end gap-0.5">
-      <MaintenanceBanner />
+      {s.maintenance?.due && <MaintenanceBanner />}
+      {quiet}
       {notice}
     </div>
+  );
+}
+
+/**
+ * The STASIS clock while the belt is paused: how long the pause has lasted (Rust's
+ * `deck.paused_for_s`, the HUD's STASIS line). It sits in Velocity's title row beside the pin, a
+ * row the pin already makes tall enough, so nothing moves and Re-jack keeps its plain line. Where
+ * the row is short of room (150 % Windows text) STASIS wraps onto a hidden line and the time stays.
+ */
+function stasisClockStatus(s: AppSnapshot): ReactNode {
+  const p = s.deck.paused_for_s;
+  if (!s.connection.connected || s.deck.status !== "Paused" || p === null) return null;
+  return (
+    <span
+      role="status"
+      data-testid="live-stasis-clock"
+      title="Time since the belt paused."
+      aria-label={`STASIS ${stasisClock(p)}`}
+      className="flex h-4 min-w-0 flex-row-reverse flex-wrap items-center gap-x-1.5 overflow-hidden whitespace-nowrap font-mono text-[11px] font-bold leading-4 text-neon-cyan"
+    >
+      <span className="tabular-nums tracking-[0.04em]">{stasisClock(p)}</span>
+      <span className="tracking-[0.15em]">STASIS</span>
+    </span>
   );
 }
 
@@ -155,7 +206,7 @@ export function LivePage({ onCalibrate }: { onCalibrate?: () => void } = {}) {
       {/* The controls fit the 760x600 popup without scrolling up to 150 % Windows text, even with
           the maintenance banner and a running program both showing: both banners sit in the
           header, and the calibration offer and the stats come after the controls. */}
-      <div className="flex min-h-full flex-col gap-2">
+      <div className="flex min-h-full flex-col gap-1.5">
         {/* Two columns while each gets 12rem, which keeps them side by side up to 150 % Windows
             text (each panel lays itself out narrower under 14rem); above that they stack. */}
         <div className="grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-3">
@@ -185,6 +236,7 @@ export function LivePage({ onCalibrate }: { onCalibrate?: () => void } = {}) {
             snap={(kmh) => snapToDeck(kmh, deck)}
             mark={strideFitMark(deck)}
             pin={{ widget: "VELOCITY", pinned: pinned.has("VELOCITY") }}
+            status={stasisClockStatus(s)}
             spark={statWidget("VELOCITY")?.spark?.(s) ?? null}
           />
           <Axis
@@ -224,23 +276,27 @@ export function LivePage({ onCalibrate }: { onCalibrate?: () => void } = {}) {
         {s.active_program && mapOpen ? (
           <StepMap a={s.active_program} readout={<WalkReadout s={s} />} />
         ) : (
-          // At most three tiles a row (each a third of the row, less the two 0.5rem gaps), as at
+          // At most three tiles a row (each a third of the row, less the two 0.375rem gaps), as at
           // 100 %; under 8.5rem a tile (DISPLACEMENT at 11 px and the pin) would not fit, so a large Windows
-          // text size gives fewer, wider tiles.
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(max(8.5rem,calc((100%_-_1rem)/3)),1fr))] gap-2">
+          // text size gives fewer, wider tiles. The tight spacing and the -mb-2 (12 px under the grid
+          // in place of the page's 20) keep three rows under a program card at 760x600.
+          <div className="-mb-2 grid grid-cols-[repeat(auto-fit,minmax(max(8.5rem,calc((100%_-_0.75rem)/3)),1fr))] gap-1.5">
             {stats.map((w) => {
               const { value, unit } = w.read(s);
               const spark = w.spark?.(s);
               const zone = w.zone?.(s);
               const target = w.target?.(s);
               const detail = w.detail?.(s);
+              // A detail with no space to break at (today's walking time) drops under the value when the tile is too narrow.
+              const unbreakable = detail != null && !detail.includes(" ");
               // PULSE_RATE with a sensor takes two tiles, so its chart sits
               // beside the bpm and the zone beside the name, and the page keeps
               // the height it has without one. It is the last stat, so its row
               // always has a free tile to take.
               return (
-                <Panel key={w.id} className={cx("@container flex flex-col px-3 py-1", spark && "col-span-2")}>
-                  <div className="flex items-start justify-between gap-1">
+                <Panel key={w.id} className={cx("@container flex flex-col px-3 py-[3px]", spark && "col-span-2")}>
+                  {/* With no readout beside the name, the pin sits snug so LIFETIME_ODOMETER keeps one line. */}
+                  <div className={cx("flex items-start justify-between", (zone || target) && "gap-1")}>
                     <div className="min-w-0">
                       <Label className={cx("block leading-tight", CODENAME_FIT)}>
                         <Codename text={w.codename} />
@@ -249,10 +305,13 @@ export function LivePage({ onCalibrate }: { onCalibrate?: () => void } = {}) {
                     </div>
                     {zone && <ZoneReadout zone={zone} />}
                     {target && <TargetReadout target={target} />}
-                    <PinToggle widget={w.id} pinned={pinned.has(w.id)} />
+                    <div className="-mr-1 shrink-0">
+                      <PinToggle widget={w.id} pinned={pinned.has(w.id)} />
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className={cx("shrink-0 font-digital text-base tracking-wider", TONE_TEXT[w.accent])}>
+                  {/* Offline, the reading is the treadmill's last one, dimmed as on the HUD. */}
+                  <div className={cx("flex items-center gap-x-3", unbreakable && "flex-wrap", offline && "opacity-45")}>
+                    <span className={cx("shrink-0 font-digital text-base leading-5 tracking-wider", TONE_TEXT[w.accent])}>
                       {value}
                       {unit && <span className="ml-1 font-mono text-xs text-white/60">{unit}</span>}
                     </span>

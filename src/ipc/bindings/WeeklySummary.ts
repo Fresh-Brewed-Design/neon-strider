@@ -17,7 +17,9 @@ last_week: WeekStats, week_before: WeekStats,
  */
 last_week_id: string, 
 /**
- * Last week's distance against the week before.
+ * Last week's distance per desk day against the week before's
+ * (`km_per_desk_day`), so days off the PC never lower it. The cards
+ * still show each week's total.
  */
 distance_change: Change, 
 /**

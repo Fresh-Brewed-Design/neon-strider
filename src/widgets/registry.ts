@@ -28,6 +28,10 @@ export interface StatWidget {
   target?: (s: AppSnapshot) => PulseTarget | null;
   /** A short line under the value; null shows none. */
   detail?: (s: AppSnapshot) => string | null;
+  /** False keeps `detail` off the HUD panel's stat cell, where its line would make every panel taller. */
+  panelDetail?: boolean;
+  /** The HUD keeps a zone line's room under the value while true, so a zone step coming or going moves nothing. */
+  reserveZone?: (s: AppSnapshot) => boolean;
 }
 
 /**
@@ -95,6 +99,9 @@ export const STAT_WIDGETS: StatWidget[] = [
     plain: PLAIN.DAILY_TOTAL,
     accent: "green",
     read: (s) => ({ value: km(s.session.daily_distance_m), unit: "KM" }),
+    // On the Live tile, the HUD strip and STEP_MAP's readout; the HUD panel keeps its height.
+    detail: (s) => todayTimeDetail(s),
+    panelDetail: false,
   },
   {
     id: "NEURAL",
@@ -144,8 +151,18 @@ export const STAT_WIDGETS: StatWidget[] = [
     zone: (s) => s.heart_rate.zone,
     // And a pulse target only while a cool-down step that ends on heart rate runs.
     target: (s) => s.heart_rate.cool_down,
+    // A picked sensor is when a zone or target can show.
+    reserveZone: (s) => s.heart_rate.sensor !== null,
   },
 ];
+
+/** A length of time that stays on one line: a non-breaking space inside it. */
+const unbroken = (seconds: number) => formatDuration(seconds).replace(" ", " ");
+
+/** Today's walking time beside DAILY_TOTAL's km, e.g. "2h 14m"; none before the first walk of the day. */
+export function todayTimeDetail(s: AppSnapshot): string | null {
+  return s.session.daily_time_s > 0 ? unbroken(s.session.daily_time_s) : null;
+}
 
 /** Today's walked share of active PC time; "--" until Rust has enough PC time to give one. */
 export function pcWalkShareReading(s: AppSnapshot): StatReading {
@@ -157,9 +174,8 @@ export function pcWalkShareReading(s: AppSnapshot): StatReading {
 export function pcWalkShareDetail(s: AppSnapshot): string | null {
   const { active_s, walked_s } = s.pc_walk_share;
   if (active_s <= 0) return null;
-  // Each duration stays on one line: a non-breaking space inside it, a plain one around "of".
-  const whole = (seconds: number) => formatDuration(seconds).replace(" ", "\u00a0");
-  return `${whole(walked_s)} of ${whole(active_s)}`;
+  // Each duration stays on one line, with a plain space around "of".
+  return `${unbroken(walked_s)} of ${unbroken(active_s)}`;
 }
 
 /** A stat's tooltip where only its short label shows: "DECK_CYCLES: walk time". */

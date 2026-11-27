@@ -12,7 +12,7 @@ import { useAction } from "../../components/useAction";
 import { useAppSnapshot } from "../../state/useAppState";
 import { shortcutLabel } from "../../hud/shortcutLabel";
 import { MODULE_WIDGETS, STAT_WIDGETS, widgetName } from "../../widgets/registry";
-import { Codename, GhostButton, Hint, Label, OptionPicker, Page, Panel, Waiting } from "../ui";
+import { Codename, GhostButton, Hint, Joined, Label, OptionPicker, Page, Panel, Waiting } from "../ui";
 import { cx, post } from "../util";
 
 const CORNERS: { anchor: HudAnchor; label: string; className: string }[] = [
@@ -208,7 +208,7 @@ function PinnedRow({ widgets, index: i }: { widgets: HudWidget[]; index: number 
           <span className="block font-mono text-xs font-bold uppercase tracking-[0.15em] text-neon-cyan [overflow-wrap:anywhere]">
             <Codename text={widgetName(id)} />
           </span>
-          <span className="block font-mono text-xs text-white/60">{rowLine(id)}</span>
+          <Joined className="font-mono text-xs text-white/60" text={rowLine(id)} />
         </span>
         <GhostButton aria-label="Move up" title="Move up" className="min-h-6 min-w-6" disabled={i === 0 || action.pending} onClick={() => move(-1)}>
           <ArrowUp size={14} />
@@ -247,7 +247,7 @@ function AvailableRow({ id, description }: { id: HudWidget; description: string 
           <span className="block font-mono text-xs font-bold uppercase tracking-[0.12em] text-white/80 [overflow-wrap:anywhere]">
             <Codename text={widgetName(id)} />
           </span>
-          <span className="block font-mono text-xs text-white/60">{description}</span>
+          <Joined className="font-mono text-xs text-white/60" text={description} />
         </span>
       </button>
       <ActionStatus pending={add.pending} error={add.error} />
