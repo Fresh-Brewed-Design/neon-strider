@@ -1,0 +1,1 @@
+- The HUD strip and running strip fit the window at every Windows text size, up to 225 %: no sideways scroll, ENGAGE and STASIS keep their whole words, and the program line hides whole lines instead of half of one.

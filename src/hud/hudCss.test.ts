@@ -257,3 +257,21 @@ describe("HUD controls stay put", () => {
     expect(rule(".hud-panel.is-offline .hud-stats")).toMatch(/opacity:\s*0\.45/);
   });
 });
+
+// At 225 % text size the strip's row is about 93px wide (#443).
+describe("HUD strips fit the narrowest row", () => {
+  it("lets ENGAGE shrink to the strip and wraps its plain line", () => {
+    expect(rule(".hud-strip .hud-btn-main")).toMatch(/flex:\s*0 1 auto/);
+    expect(rule(".hud-strip .hud-btn-main")).toMatch(/min-width:\s*min\(104px, 100%\)/);
+    expect(rule(".hud-strip .hud-btn-sub")).toMatch(/white-space:\s*normal/);
+  });
+
+  it("lets the running strip's STASIS shrink to the strip", () => {
+    expect(rule(".hud-run-strip .hud-btn-main")).toMatch(/min-width:\s*min\(max-content, 100%\)/);
+  });
+
+  it("gives the program line whole lines only", () => {
+    expect(rule(".hud-run-program")).toMatch(/gap:\s*0 8px/);
+    expect(rule(".hud-run-program .hud-label")).toMatch(/line-height:\s*calc\(1\.35 \* 12px\)/);
+  });
+});

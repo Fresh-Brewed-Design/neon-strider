@@ -579,9 +579,12 @@ body,
 .hud-seated-readout { flex: 0 1 auto; min-width: 0; }
 .hud-seated-readout .hud-label { color: var(--accent); overflow: hidden; text-overflow: ellipsis; }
 
+/* ENGAGE keeps its whole word, but never grows past the strip: at 225 % text size the strip's
+   row is about 93px wide, narrower than the 104px minimum and the widest plain line ("wake deck
+   first"), so the button shrinks to the row and its plain line wraps inside it (#443). */
 .hud-strip .hud-btn-main {
-  flex: 0 0 auto;
-  min-width: 104px;
+  flex: 0 1 auto;
+  min-width: min(104px, 100%);
   padding-left: 10px;
   padding-right: 10px;
 }
@@ -711,10 +714,13 @@ body,
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
+  /* No row gap, and the label on the sub's line height: every line is the same 1.35 x 12px, so
+     the box's height is whole lines and a line that doesn't fit is hidden whole, never half
+     cut (#443, 225 % text size, where the label and the name take the two lines). */
+  gap: 0 8px;
   min-width: 0;
 }
-.hud-run-program .hud-label { flex-shrink: 0; color: var(--accent); }
+.hud-run-program .hud-label { flex-shrink: 0; color: var(--accent); line-height: calc(1.35 * 12px); }
 /* Beside the label while its widest segment fits there, else under it. */
 .hud-run-program .hud-sub { flex: 1 1 12ch; line-height: 1.35; }
 /* Whole segments wrap, never mid-text; the dot of a segment that ends a line is hidden (HudStrip). */
@@ -726,7 +732,10 @@ body,
 /* 12px between STASIS and DUMP: STASIS gives up the 4px (side padding 10px to 8px), so the row
    wraps at the same text sizes as before. The note pop is out of flow and takes no gap. */
 .hud-run-strip .hud-strip-row { column-gap: 12px; }
-.hud-run-strip .hud-btn-main { flex: 1 1 auto; min-width: max-content; padding-left: 8px; padding-right: 8px; }
+.hud-run-strip .hud-btn-main { flex: 1 1 auto; min-width: min(max-content, 100%); padding-left: 8px; padding-right: 8px; }
+/* A plain line wraps inside its button where the strip is narrower than the line (#443); wrapping
+   is the only way the button fits the 93px row at 225 % text size without a smaller font. */
+.hud-strip .hud-btn-sub { white-space: normal; }
 .hud-run-strip .hud-btn-stop { flex-shrink: 0; }
 
 /* ---- Stats ---------------------------------------------------------- */
