@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { LinkTone, RelinkView } from "./status";
+import { CHIP_SIZERS, type LinkTone, type RelinkView } from "./status";
 import type { useLogoDrag } from "./useHudDrag";
 import { SCRAMBLE_LEAD, TITLE, scrambled } from "./titleScramble";
 
@@ -104,50 +104,63 @@ export function HudHeader({
 }) {
   return (
     <header className="hud-header">
-      <span className={`hud-led tone-${link.tone}`} />
-      <span
-        className={`hud-title is-draggable${dragging ? " is-dragging" : ""}`}
-        title="Drag to move the HUD. Double-click to put it back in its corner."
-        {...logo}
-      >
-        <HudTitle linkUp={linkUp} />
-      </span>
-      {/* The status and minify stay together; the SIM tag wraps above them. */}
-      <span className="hud-header-end">
-        {simulated && (
-          <span className="hud-sim-tag" title="Simulated treadmill (dev build)">
-            SIM
+      {/* One row that wraps by the header's width alone: the logo keeps one spacing and the chip one width in every state. */}
+      <div className="hud-header-row">
+        {/* The LED and the logo stay together: the logo wraps its words beside the LED rather than leave it alone on a line. */}
+        <span className="hud-header-brand">
+          <span className={`hud-led tone-${link.tone}`} />
+          <span
+            className={`hud-title is-draggable${dragging ? " is-dragging" : ""}`}
+            title="Drag to move the HUD. Double-click to put it back in its corner."
+            {...logo}
+          >
+            <HudTitle linkUp={linkUp} />
           </span>
-        )}
-        <span className="hud-header-live">
-          {relink?.clickable ? (
-            <button
-              type="button"
-              className={`hud-status hud-relink tone-${link.tone}`}
-              title={relink.title ?? undefined}
-              onClick={onRelink}
-            >
-              {link.text}
-            </button>
-          ) : (
-            <span className={`hud-status tone-${link.tone}`} title={relink?.title ?? undefined}>
-              {link.text}
+        </span>
+        {/* The status and minify stay together; the SIM tag wraps above them. */}
+        <span className="hud-header-end">
+          {simulated && (
+            <span className="hud-sim-tag" title="Simulated treadmill (dev build)">
+              SIM
             </span>
           )}
-          {toggle && (
-            <button
-              type="button"
-              className="hud-btn hud-btn-minify"
-              aria-label={toggle.kind === "minify" ? "Minify the HUD" : "Show the whole HUD"}
-              title={toggle.title}
-              disabled={toggle.disabled}
-              onClick={toggle.onClick}
-            >
-              <ToggleIcon kind={toggle.kind} />
-            </button>
-          )}
+          <span className="hud-header-live">
+            <span className="hud-status-slot">
+              {relink?.clickable ? (
+                <button
+                  type="button"
+                  className={`hud-status hud-relink tone-${link.tone}`}
+                  title={relink.title ?? undefined}
+                  onClick={onRelink}
+                >
+                  {link.text}
+                </button>
+              ) : (
+                <span className={`hud-status tone-${link.tone}`} title={relink?.title ?? undefined}>
+                  {link.text}
+                </span>
+              )}
+              {CHIP_SIZERS.map((w) => (
+                <span key={w.text} className={`hud-status hud-status-sizer is-${w.kind}${w.kind === "link" ? " hud-relink" : ""}`} aria-hidden="true">
+                  {w.text}
+                </span>
+              ))}
+            </span>
+            {toggle && (
+              <button
+                type="button"
+                className="hud-btn hud-btn-minify"
+                aria-label={toggle.kind === "minify" ? "Minify the HUD" : "Show the whole HUD"}
+                title={toggle.title}
+                disabled={toggle.disabled}
+                onClick={toggle.onClick}
+              >
+                <ToggleIcon kind={toggle.kind} />
+              </button>
+            )}
+          </span>
         </span>
-      </span>
+      </div>
     </header>
   );
 }

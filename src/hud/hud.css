@@ -159,24 +159,46 @@ body,
 
 .hud-header {
   flex-shrink: 0;
+  border-bottom: 1px solid var(--hud-line);
+  background: linear-gradient(90deg, rgba(0, 243, 255, 0.12), transparent 70%);
+}
+
+/* A status that can't fit beside the logo takes its own line, never an
+   ellipsis. Every piece keeps one size in every state (the logo one letter
+   spacing, the chip the cell of its widest word), so where the row wraps
+   depends on the header's width alone and the header keeps one height
+   whatever the chip reads (#420). */
+.hud-header-row {
   display: flex;
-  /* A status that can't fit beside the logo takes its own line, never an
-     ellipsis. */
   flex-wrap: wrap;
   justify-content: flex-end;
   align-items: center;
   gap: 6px 8px;
   padding: 7px 18px 7px 12px;
-  border-bottom: 1px solid var(--hud-line);
-  background: linear-gradient(90deg, rgba(0, 243, 255, 0.12), transparent 70%);
 }
 
+/* The LED and the logo, one piece: pushed left, the logo wraps NEON over
+   STRIDER when the row is narrower than both, and the LED sits by the first
+   line. */
+.hud-header-brand {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  margin-right: auto;
+}
+.hud-header-brand > .hud-led { flex-shrink: 0; margin-top: 3.5px; }
+
+/* One letter spacing in every state, so the logo is one width and the header
+   wraps the same whatever the chip reads (#420). 0.2em leaves room for the
+   chip's widest word and minify beside it at 100 % text size. Lines 14px
+   high, so the LED (7px, 3.5px down) is centred on the first. */
 .hud-title {
-  flex: 1;
   font-family: var(--hud-font-display);
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.28em;
+  letter-spacing: 0.2em;
+  line-height: 14px;
   color: var(--hud-dim);
 }
 
@@ -203,11 +225,6 @@ body,
   cursor: pointer;
   transition: background-color 120ms ease, box-shadow 120ms ease;
 }
-/* While the link is down or being made the logo and the link word close up
-   their letter spacing, so a word of up to 11 letters (NO_CARRIER,
-   LINKING 2/3, RELINK 12S) keeps the header one line at 100 % text size and
-   nothing under it moves. */
-.hud-header:has(.hud-led.tone-down, .hud-led.tone-warn) .hud-title { letter-spacing: 0.14em; }
 
 /* LINK UP (#374): once per connect the logo decodes, about 0.7 s. The real
    letters keep their place, only see-through, so the header never moves and
@@ -232,8 +249,11 @@ body,
   .hud-title-scramble { display: none; }
   .hud-title-text.is-decoding { color: inherit; }
 }
-.hud-header:has(.hud-led.tone-down, .hud-led.tone-warn) .hud-status { letter-spacing: 0.08em; }
-.hud-status.hud-relink { padding: 3px 4px; }
+/* While the link is down or being made the link word closes up its letter
+   spacing, so a word of up to 11 letters (NO_CARRIER, LINKING 2/3,
+   RELINK 12S) fits the chip's cell. */
+.hud-header:has(.hud-led.tone-down, .hud-led.tone-warn) .hud-status { letter-spacing: 0.04em; }
+.hud-status.hud-relink { padding: 3px; }
 
 .hud-relink:hover,
 .hud-relink:focus-visible {
@@ -558,29 +578,52 @@ body,
    a multi-word status may wrap between words, and when even one word plus
    the button is too wide the button wraps under the status rather than the
    word breaking or anything overflowing. */
+/* Minify keeps the right edge when it takes its own line (about 205 % text
+   size and up). The 14px row gap leaves 6px between the chip and minify
+   after their -4px margins. */
 .hud-header-live {
   display: inline-flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
-  gap: 6px 8px;
+  gap: 14px 6px;
   min-width: 0;
   max-width: 100%;
 }
-.hud-header-live > .hud-status {
+/* The chip's cell: the shown word over the widest words it takes, unseen
+   (CHIP_SIZERS in status.ts), so it is one width in every state. The word
+   stays on one line, at the cell's right, beside minify. */
+.hud-status-slot {
+  display: grid;
+  justify-items: end;
+  align-items: center;
   min-width: 0;
-  white-space: normal;
-  overflow-wrap: normal;
-  word-break: normal;
 }
+.hud-status-slot > .hud-status {
+  grid-area: 1 / 1;
+  white-space: nowrap;
+}
+/* Border-box like the relink button it stands for. */
+.hud-status-slot > .hud-status-sizer { box-sizing: border-box; visibility: hidden; pointer-events: none; }
+/* Each sizer at the spacing its words take when shown. */
+.hud-header .hud-status-slot > .hud-status-sizer.is-deck { letter-spacing: 0.18em; }
+.hud-header .hud-status-slot > .hud-status-sizer.is-link { letter-spacing: 0.04em; }
 .hud-header-end:has(.hud-btn-minify) { margin-right: -6px; }
 
 /* The link chip stays on one line up to 225 % text size (NO_CARRIER, RELINK 12S):
-   where the header leaves it under 120px, the letters close up and the button
-   pads less. The :has() outranks the link-down spacing above. */
+   where the header is under 150px (about 190 % text size and up), the letters
+   close up and the button pads less, sizers too. The :has() outranks the
+   spacings above. Under 170px (about 175 % and up) the row pads 8px a side,
+   so the logo keeps one line at 175 % and the chip's widest word and minify
+   share a line up to about 205 %; past that minify takes a line of its own
+   in every state. */
 .hud-header { container-type: inline-size; }
-@container (max-width: 120px) {
-  .hud-header:has(.hud-led) .hud-header-live > .hud-status { letter-spacing: 0; }
-  .hud-header:has(.hud-led) .hud-header-live > .hud-relink { padding: 3px 2px; }
+@container (max-width: 150px) {
+  .hud-header:has(.hud-led) .hud-status-slot > .hud-status { letter-spacing: 0; }
+  .hud-header:has(.hud-led) .hud-status-slot > .hud-relink { padding: 3px 2px; }
+}
+@container (max-width: 170px) {
+  .hud-header-row { padding-left: 8px; padding-right: 8px; }
 }
 
 /* The header's size button (minify on the panel, expand on the strips): small, after the link status. */
@@ -1310,8 +1353,7 @@ body,
 
 /* The logo is the drag handle. */
 .hud-title.is-draggable {
-  flex: 0 1 auto;
-  margin-right: auto;
+  min-width: 0;
   cursor: grab;
   touch-action: none;
 }

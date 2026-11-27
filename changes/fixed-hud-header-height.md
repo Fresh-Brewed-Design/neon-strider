@@ -1,0 +1,1 @@
+- The HUD header keeps one height whatever the link word reads, so the buttons under it stay put at large Windows text sizes.

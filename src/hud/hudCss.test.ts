@@ -131,12 +131,11 @@ describe("HUD header end group at 340 px", () => {
     expect(rule(".hud-header-end > .hud-sim-tag")).toMatch(/order:\s*1/);
     expect(rule(".hud-header-end > .hud-header-live")).toMatch(/order:\s*0/);
     // Status and minify share a line; the button may wrap under the status,
-    // and status words never break mid-word.
+    // at the right edge, and the status word stays on one line (#420).
     expect(rule(".hud-header-live")).toMatch(/flex-wrap:\s*wrap/);
-    const status = rule(".hud-header-live > .hud-status");
-    expect(status).toMatch(/white-space:\s*normal/);
-    expect(status).toMatch(/overflow-wrap:\s*normal/);
-    expect(status).toMatch(/word-break:\s*normal/);
+    expect(rule(".hud-header-live")).toMatch(/justify-content:\s*flex-end/);
+    const status = rule(".hud-status-slot > .hud-status");
+    expect(status).toMatch(/white-space:\s*nowrap/);
     expect(status).not.toMatch(/anywhere|break-all|break-word/);
     expect(end).toMatch(/min-width:\s*0/);
     expect(end).toMatch(/max-width:\s*100%/);
@@ -169,11 +168,37 @@ describe("HUD at rest", () => {
 
 // NO_CARRIER and RELINK 12S stay on one line up to 225 % text size (#392).
 describe("HUD link chip in a narrow header", () => {
-  it("closes up its letters and padding under 120px", () => {
+  it("closes up its letters and padding, sizers too, under 150px of header", () => {
     expect(css).toMatch(/\.hud-header\s*\{\s*container-type:\s*inline-size;\s*\}/);
-    const narrow = css.match(/@container \(max-width: 120px\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
-    expect(narrow).toMatch(/\.hud-header:has\(\.hud-led\) \.hud-header-live > \.hud-status\s*\{\s*letter-spacing:\s*0;/);
-    expect(narrow).toMatch(/\.hud-header:has\(\.hud-led\) \.hud-header-live > \.hud-relink\s*\{\s*padding:\s*3px 2px;/);
+    const narrow = css.match(/@container \(max-width: 150px\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
+    expect(narrow).toMatch(/\.hud-header:has\(\.hud-led\) \.hud-status-slot > \.hud-status\s*\{\s*letter-spacing:\s*0;/);
+    expect(narrow).toMatch(/\.hud-header:has\(\.hud-led\) \.hud-status-slot > \.hud-relink\s*\{\s*padding:\s*3px 2px;/);
+    const narrower = css.match(/@container \(max-width: 170px\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
+    expect(narrower).toMatch(/\.hud-header-row\s*\{\s*padding-left:\s*8px;\s*padding-right:\s*8px;/);
+  });
+});
+
+// The header wrapped by the status word at 175 % and up, moving every control under it (#420).
+describe("HUD header keeps one height whatever the chip reads", () => {
+  it("gives the logo one letter spacing in every state", () => {
+    expect(rule(".hud-title")).toMatch(/letter-spacing:\s*0\.2em/);
+    expect(css).not.toMatch(/tone-(down|warn)\)[^{]*\.hud-title\s*\{/);
+  });
+
+  it("lays the chip's word over its widest words, unseen, in one cell", () => {
+    expect(rule(".hud-status-slot")).toMatch(/display:\s*grid/);
+    expect(rule(".hud-status-slot > .hud-status")).toMatch(/grid-area:\s*1 \/ 1/);
+    const sizer = rule(".hud-status-slot > .hud-status-sizer");
+    expect(sizer).toMatch(/visibility:\s*hidden/);
+    expect(sizer).toMatch(/box-sizing:\s*border-box/);
+    // Each sizer at the spacing its words take when shown.
+    expect(rule(".hud-header .hud-status-slot > .hud-status-sizer.is-deck")).toMatch(/letter-spacing:\s*0\.18em/);
+    expect(rule(".hud-header .hud-status-slot > .hud-status-sizer.is-link")).toMatch(/letter-spacing:\s*0\.04em/);
+  });
+
+  it("keeps the LED with the logo, so neither takes a line alone", () => {
+    expect(rule(".hud-header-brand")).toMatch(/display:\s*inline-flex/);
+    expect(rule(".hud-header-row")).toMatch(/flex-wrap:\s*wrap/);
   });
 });
 
@@ -197,7 +222,7 @@ describe("HUD controls stay put", () => {
   });
 
   it("keeps the header one line while the link word is long", () => {
-    expect(css).toMatch(/\.hud-header:has\(\.hud-led\.tone-down, \.hud-led\.tone-warn\) \.hud-status \{ letter-spacing: 0\.08em; \}/);
+    expect(css).toMatch(/\.hud-header:has\(\.hud-led\.tone-down, \.hud-led\.tone-warn\) \.hud-status \{ letter-spacing: 0\.04em; \}/);
   });
 
   it("dims the readings while no treadmill is linked", () => {
