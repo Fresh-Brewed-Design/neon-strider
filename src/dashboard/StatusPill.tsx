@@ -54,7 +54,7 @@ export function StatusPill({
       )}
     >
       <Icon size={12} className={cx("shrink-0", tone === "working" && "animate-spin")} />
-      <span className={cx("truncate", labelClassName)}>{label}</span>
+      <span className={cx("min-w-0 break-words", labelClassName)}>{label}</span>
       {icon && toneIconClassName !== undefined && (
         <t.Icon size={12} aria-hidden className={cx("shrink-0", tone === "working" && "animate-spin", toneIconClassName)} />
       )}

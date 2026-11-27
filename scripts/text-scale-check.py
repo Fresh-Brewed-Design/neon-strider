@@ -9,7 +9,7 @@ Optional arguments: a base URL (default http://localhost:5192), a folder to save
 Each view is opened in the 760x600 dashboard preview with ?textscale=<n>, the page zoom
 WebView2 applies for that Windows text size (src/dev/textScale.ts). A view passes when the
 document doesn't scroll sideways, no text runs past the window or out of a box that hides
-its overflow, and no word wraps one letter per line.
+its overflow, no word wraps one letter per line, and no two elements' text overlap.
 It is not a project dependency, like scripts/screenshots.py.
 """
 import sys
@@ -48,6 +48,7 @@ PROBE = r"""() => {
   const out = { scrollWidth: doc.scrollWidth, clientWidth: vw, problems: [] };
   const walker = document.createTreeWalker(document.getElementById("root"), NodeFilter.SHOW_TEXT);
   const seen = new Set();
+  const lines = [];
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
     const text = n.textContent.trim();
     if (!text) continue;
@@ -67,6 +68,21 @@ PROBE = r"""() => {
     const left = Math.min(...rects.map((r) => r.left));
     const right = Math.max(...rects.map((r) => r.right));
     const label = text.slice(0, 40);
+    // Text on a floating layer (a sticky header or a toast) sits over scrolled content on purpose.
+    let floating = false;
+    for (let a = el; a && a !== document.body; a = a.parentElement) {
+      const s = getComputedStyle(a);
+      if ((s.position === "fixed" || s.position === "sticky") && !a.classList.contains("dash-root")) floating = true;
+    }
+    // Compared in the coordinates of the scrolling box that holds the text, so a header that
+    // stays put never counts as lying over content scrolled beneath it.
+    let box = null;
+    for (let a = el; a && a !== document.body && !box; a = a.parentElement) {
+      const oy = getComputedStyle(a).overflowY;
+      if ((oy === "auto" || oy === "scroll") && a.scrollHeight > a.clientHeight) box = a;
+    }
+    const dy = box ? box.scrollTop - box.getBoundingClientRect().top : 0;
+    if (!floating) for (const r of rects) lines.push({ el, label, box, r: { left: r.left, right: r.right, top: r.top + dy, bottom: r.bottom + dy, height: r.height } });
     const report = (kind) => {
       const key = kind + label;
       if (!seen.has(key)) { seen.add(key); out.problems.push(kind + ": " + label); }
@@ -81,8 +97,22 @@ PROBE = r"""() => {
     }
     // One letter per line: a word of 4+ letters spread over as many lines as it has letters / 2.
     const longest = Math.max(...text.split(/\s+/).map((w) => w.length));
-    const lines = new Set(rects.map((r) => Math.round(r.top))).size;
-    if (longest >= 4 && lines >= 3 && lines * 2 >= longest + text.split(/\s+/).length) report("letter per line");
+    const rows = new Set(rects.map((r) => Math.round(r.top))).size;
+    if (longest >= 4 && rows >= 3 && rows * 2 >= longest + text.split(/\s+/).length) report("letter per line");
+  }
+  // Overlap: lines of text from two different elements that share more than a quarter of the
+  // smaller line's height and more than 2 px of width (a History row's stats under its buttons).
+  for (let i = 0; i < lines.length; i++) {
+    for (let j = i + 1; j < lines.length; j++) {
+      const a = lines[i], b = lines[j];
+      if (a.box !== b.box || a.el === b.el || a.el.contains(b.el) || b.el.contains(a.el)) continue;
+      const w = Math.min(a.r.right, b.r.right) - Math.max(a.r.left, b.r.left);
+      const h = Math.min(a.r.bottom, b.r.bottom) - Math.max(a.r.top, b.r.top);
+      if (w > 2 && h > 0.25 * Math.min(a.r.height, b.r.height)) {
+        const key = "overlap" + a.label + b.label;
+        if (!seen.has(key)) { seen.add(key); out.problems.push("overlaps: " + a.label + " / " + b.label); }
+      }
+    }
   }
   return out;
 }"""
