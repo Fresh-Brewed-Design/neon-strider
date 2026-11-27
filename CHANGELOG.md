@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.86.0 (2026-11-27)
+
+### New
+
+- Programs has a Clone button beside Edit: it opens the editor with a copy of the program as a new one, named with // CLONE, and saves nothing until SAVE.
+
 ## 1.85.0 (2026-11-26)
 
 ### Changed

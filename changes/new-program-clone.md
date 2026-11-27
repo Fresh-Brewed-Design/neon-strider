@@ -1,1 +1,0 @@
-- Programs has a Clone button beside Edit: it opens the editor with a copy of the program as a new one, named with // CLONE, and saves nothing until SAVE.
