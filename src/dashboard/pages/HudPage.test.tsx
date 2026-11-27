@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppSnapshot } from "../../ipc";
+import { joinedLine } from "../../test/joined";
 
 let current: AppSnapshot | null = null;
 vi.mock("../../state/useAppState", () => ({
@@ -23,7 +24,7 @@ describe("HUD page minify shortcut", () => {
   it("names the minify shortcut and where to change it", () => {
     render(<HudPage />);
     expect(
-      screen.getByText("Alt+Insert shrinks the HUD to a strip and brings it back. Change it in System, ROUTINE, Shortcuts."),
+      screen.getByText("Alt+Insert shrinks the HUD to a strip and back. Change the key in System, CORE, Shortcuts."),
     ).toBeInTheDocument();
   });
 
@@ -31,7 +32,21 @@ describe("HUD page minify shortcut", () => {
     const minify = current!.shortcuts.list.find((v) => v.shortcut === "toggle_minified")!;
     minify.keys = [];
     render(<HudPage />);
-    expect(screen.getByText("Off. Change it in System, ROUTINE, Shortcuts.")).toBeInTheDocument();
+    expect(screen.getByText("The minify shortcut is off. Set a key in System, CORE, Shortcuts.")).toBeInTheDocument();
+  });
+});
+
+describe("HUD page widget rows", () => {
+  it("reads 'plain meaning · HUD: SHORT' in both lists", () => {
+    current!.hud.widgets = ["VELOCITY", "CONTROLS"];
+    render(<HudPage />);
+    // Pinned.
+    // "HUD: VEL" never breaks between its words.
+    expect(screen.getByText(joinedLine("belt speed · HUD: VEL")).textContent).toBe("belt speed · HUD:\u00a0VEL");
+    // Available.
+    expect(screen.getByText(joinedLine("incline · HUD: TILT"))).toBeInTheDocument();
+    expect(screen.getByText(joinedLine("walk time · HUD: TIME"))).toBeInTheDocument();
+    expect(screen.getByText("HUD: WALKED")).toBeInTheDocument();
   });
 });
 
@@ -63,5 +78,23 @@ describe("HUD page pickers with the keyboard", () => {
       { command: { type: "hud_set_idle_mode", mode: "strip" } },
       { command: { type: "hud_set_idle_mode", mode: "hidden" } },
     ]);
+  });
+});
+
+describe("HUD page status lines", () => {
+  it("shows a refused remove under the widget's own row", async () => {
+    render(<HudPage />);
+    vi.mocked(invoke).mockRejectedValueOnce("Treadmill not connected");
+    const remove = screen.getAllByRole("button", { name: "Remove" })[0];
+    await act(async () => fireEvent.click(remove));
+    expect(remove.closest("li")).toHaveTextContent("Treadmill not connected");
+  });
+
+  it("shows a refused corner under the corner picker", async () => {
+    render(<HudPage />);
+    vi.mocked(invoke).mockRejectedValueOnce("Treadmill not connected");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Top left" })));
+    expect(dispatched()).toEqual([{ command: { type: "hud_set_anchor", anchor: "top_left" } }]);
+    expect(screen.getByRole("alert")).toHaveTextContent("Treadmill not connected");
   });
 });

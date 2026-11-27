@@ -14,7 +14,7 @@ function pickHeartSensor(sensor: { id: string; name: string } | null) {
     Object.assign(h, {
       sensor: null,
       status: "off",
-      label: "OFFLINE",
+      label: "NO_CARRIER",
       message: "Scan for a heart rate sensor and pick your watch to show heart rate.",
       bpm: null,
     });

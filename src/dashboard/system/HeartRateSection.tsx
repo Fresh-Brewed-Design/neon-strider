@@ -1,7 +1,9 @@
 import { ActionStatus } from "../../components/ActionStatus";
 import { useAction } from "../../components/useAction";
 import { dispatch, SETTING_LIMITS } from "../../ipc";
+import { systemLabel } from "../../names";
 import { useAppSnapshot } from "../../state/useAppState";
+import { useTreadmillStore } from "../../store/treadmillStore";
 import { StatusPill } from "../StatusPill";
 import { GhostButton, Hint, NeonButton } from "../ui";
 import { NumberField, Section } from "./fields";
@@ -29,7 +31,7 @@ export function HeartRateSection() {
       id="sys-heart"
       title="Heart rate"
       description="Read your heart rate from a Bluetooth sensor such as a watch."
-      status={<StatusPill tone={tone} label={heartRatePill(heart)} title={heart.message} />}
+      status={<StatusPill tone={tone} label={heartRatePill(heart)} title={`${systemLabel("HEART_LINK")}. ${heart.message}`} />}
     >
       <div className="flex flex-col gap-2">
         {heart.sensor && (
@@ -37,11 +39,19 @@ export function HeartRateSection() {
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0 truncate font-mono text-xs text-white/85">
                 <span className="font-bold uppercase tracking-[0.12em]">{heart.sensor.name || "Heart rate sensor"}</span>
-                {heart.bpm !== null && <span className="ml-2 text-neon-magenta">{heart.bpm} BPM</span>}
+                {heart.bpm !== null && <span className="ml-2 text-neon-cyan">{heart.bpm} BPM</span>}
               </div>
               <GhostButton
                 disabled={pick.pending}
-                onClick={() => void pick.run(() => dispatch({ type: "heart_rate_forget" }))}
+                onClick={() =>
+                  useTreadmillStore.getState().confirm({
+                    title: "Forget heart rate sensor",
+                    message: `Neon Strider stops reading ${heart.sensor?.name || "the heart rate sensor"} until you pick a sensor again.`,
+                    confirmLabel: "Forget",
+                    tone: "danger",
+                    onConfirm: () => void pick.run(() => dispatch({ type: "heart_rate_forget" })),
+                  })
+                }
               >
                 Forget
               </GhostButton>

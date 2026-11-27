@@ -11,6 +11,7 @@ vi.mock("../../state/useAppState", () => ({
 
 const { snapshot: mock } = await import("../../dev/mockBackend");
 const { HeartRateSection } = await import("./HeartRateSection");
+const { useTreadmillStore } = await import("../../store/treadmillStore");
 
 const dispatched = () => vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "dispatch").map(([, a]) => a);
 
@@ -34,5 +35,22 @@ describe("System's max heart rate", () => {
     fireEvent.change(field, { target: { value: "182" } });
     await act(async () => fireEvent.blur(field));
     expect(dispatched()).toEqual([{ command: { type: "heart_rate_max_set", bpm: 182 } }]);
+  });
+});
+
+describe("System's heart rate sensor", () => {
+  it("asks before Forget drops the picked sensor", async () => {
+    current!.heart_rate = { ...current!.heart_rate, sensor: { id: "hr-1", name: "Forerunner 265" } };
+    render(<HeartRateSection />);
+    fireEvent.click(screen.getByRole("button", { name: "Forget" }));
+    expect(dispatched()).toEqual([]);
+    const ask = useTreadmillStore.getState().pendingConfirmation;
+    expect(ask).toMatchObject({
+      message: "Neon Strider stops reading Forerunner 265 until you pick a sensor again.",
+      confirmLabel: "Forget",
+      tone: "danger",
+    });
+    await act(async () => ask?.onConfirm());
+    expect(dispatched()).toEqual([{ command: { type: "heart_rate_forget" } }]);
   });
 });

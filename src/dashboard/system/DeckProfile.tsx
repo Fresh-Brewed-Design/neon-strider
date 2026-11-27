@@ -20,6 +20,8 @@ export function DeckProfile() {
   const ask = () =>
     useTreadmillStore.getState().confirm({
       title: "Forget DECK_PROFILE",
+      confirmLabel: "Forget",
+      tone: "danger",
       message: "The controls offer every speed and incline level again until the treadmill answers new targets.",
       onConfirm: () => void forget.run(() => dispatch({ type: "deck_profile_forget" })),
     });
@@ -40,8 +42,9 @@ export function DeckProfile() {
       <ActionStatus pending={forget.pending} error={forget.error && `Could not forget: ${forget.error}`} className="mt-1" />
       <div className="mt-3">
         <Toggle
-          label="LABS // DECK_SWEEP: Sweep the deck's speeds and incline levels"
-          description="DECK_SWEEP steps a moving belt through each unlearned speed up to Top speed, or each incline level up to Highest incline level, then back."
+          label="DECK_SWEEP: Sweep the deck's speeds and incline levels"
+          description="A moving belt steps through each speed and incline level not yet learned."
+          hint="The sweep goes up to Top speed and Highest incline level, then back."
           checked={profile.sweep_enabled}
           onChange={(on) => void toggle.run(() => dispatch({ type: "deck_profile_sweep_set", on }))}
         />
@@ -52,7 +55,7 @@ export function DeckProfile() {
         />
         {profile.sweep_enabled && (
           <>
-            <Hint className="mt-1">Stopping the belt, a new speed or incline, or a program ends DECK_SWEEP at once.</Hint>
+            <Hint className="mt-1">DECK_SWEEP ends at once when the belt stops or a speed, incline or program changes.</Hint>
             <div className="mt-2 flex flex-wrap items-center gap-3">
               {profile.sweep ? (
                 <>

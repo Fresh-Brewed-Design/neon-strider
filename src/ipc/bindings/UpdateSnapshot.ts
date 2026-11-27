@@ -37,4 +37,8 @@ last_result: UpdateResult | null, whats_new: WhatsNew | null,
 /**
  * Install an offered update by itself when the belt and the PC are idle.
  */
-auto_install: boolean, };
+auto_install: boolean, 
+/**
+ * Today's automatic install has happened; the next one waits for tomorrow.
+ */
+auto_installed_today: boolean, };

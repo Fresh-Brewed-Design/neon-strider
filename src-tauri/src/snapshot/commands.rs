@@ -132,7 +132,7 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             programs::persist_last_run(&app, Some(id))
         }
         Command::ProgramPause => ORCHESTRATOR.lock().await.pause_program(Instant::now()),
-        Command::ProgramResume => ORCHESTRATOR.lock().await.resume_program(Instant::now()),
+        Command::ProgramResume => ORCHESTRATOR.lock().await.go_program(Instant::now()),
         Command::ProgramSkip => ORCHESTRATOR.lock().await.skip_program(Instant::now()),
         Command::ProgramEnd => {
             ORCHESTRATOR.lock().await.end_program(true, Instant::now());
@@ -231,7 +231,7 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         // ---- Weekly summary ----
         Command::WeeklySummaryAck => blocking(move || weekly::acknowledge(&app)).await,
 
-        // ---- Idle nudge (STASIS_ALERT) ----
+        // ---- Idle nudge (ATROPHY_WARNING) ----
         Command::SeatedSetConfig {
             enabled,
             minutes,
@@ -551,6 +551,12 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
         }
         Command::OpenPermissionSettings { permission } => {
             crate::platform::open_permission_settings(permission)
+        }
+
+        // ---- DESK_SYNC ----
+        Command::DeskSyncLightShown => {
+            super::desk_sync::light_shown();
+            Ok(())
         }
     }
 }

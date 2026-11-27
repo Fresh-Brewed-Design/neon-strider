@@ -237,6 +237,8 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
         .on_menu_event(|app, event| {
             if event.id.as_ref() == snapshot::tray_menu::QUIT_ID {
                 log::info!("quitting...");
+                // Opened again soon, the desk timers carry on.
+                snapshot::desk_resume::save_now(app);
                 allow_exit();
                 app.exit(0);
             } else {

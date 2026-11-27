@@ -13,6 +13,7 @@ import type { FitToTimeOption } from "./FitToTimeOption";
 import type { GhostPodSnapshot } from "./GhostPodSnapshot";
 import type { GuidedTaskSnapshot } from "./GuidedTaskSnapshot";
 import type { HeartRateSnapshot } from "./HeartRateSnapshot";
+import type { HudCard } from "./HudCard";
 import type { HudConfig } from "./HudConfig";
 import type { HudMonitor } from "./HudMonitor";
 import type { HudView } from "./HudView";
@@ -71,6 +72,16 @@ speed_drift: SpeedDriftSnapshot, hud: HudConfig,
  * (`hud.idle_mode` while the belt is still; see `snapshot/stasis.rs`).
  */
 hud_view: HudView, 
+/**
+ * A program's wait for GO holds the whole panel (its first 30 s,
+ * `stasis::GO_HOLD`): the HUD keeps minify off meanwhile.
+ */
+hud_go_hold: boolean, 
+/**
+ * The one card the HUD shows now, picked by rank from the cards due
+ * (`card_queue.rs`, #421). The HUD renders this one and no other.
+ */
+hud_card: HudCard, 
 /**
  * Displays the HUD can be placed on. Refreshed every few seconds, not per tick.
  */

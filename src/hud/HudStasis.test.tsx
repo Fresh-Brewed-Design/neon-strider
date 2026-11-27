@@ -49,35 +49,89 @@ describe("HUD strip", () => {
     expect(screen.getByText("TODAY")).toBeInTheDocument();
     expect(screen.getByText("4.31")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Show the whole HUD" })).toHaveAttribute("title");
-    expect(screen.getByRole("button", { name: "ENGAGE" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "ENGAGE start" })).toBeEnabled();
     // The full panel's stats and controls are gone.
     expect(screen.queryByText("DUMP")).not.toBeInTheDocument();
     expect(container.querySelector(".hud-stats")).toBeNull();
+  });
+
+  it("shows today's walking time beside TODAY, and none before the first walk", () => {
+    show(still("strip", (s) => (s.session.daily_time_s = 8_040)));
+    expect(screen.getByTestId("hud-strip-time")).toHaveTextContent("2h 14m");
+    expect(screen.getByTestId("hud-strip-time").closest(".hud-strip-total")).toHaveTextContent("TODAY");
+  });
+
+  it("leaves the time out before the first walk of the day", () => {
+    show(still("strip", (s) => (s.session.daily_time_s = 0)));
+    expect(screen.getByText("TODAY")).toBeInTheDocument();
+    expect(screen.queryByTestId("hud-strip-time")).toBeNull();
+  });
+
+  it("keeps the time off the whole panel's TODAY cell, so the panel keeps its height", () => {
+    const { container } = show(still("full", (s) => (s.session.daily_time_s = 8_040)));
+    const cell = [...container.querySelectorAll(".hud-stat")].find((c) => c.querySelector(".hud-label")?.textContent === "TODAY")!;
+    expect(cell).toBeTruthy();
+    expect(cell).not.toHaveTextContent("2h 14m");
+    expect(cell.querySelector(".hud-stat-detail")).toBeNull();
+  });
+
+  it("shows a program's rest and its countdown in the total's place, Engage where it was", () => {
+    const { container } = show(
+      still("strip", (s) => {
+        s.active_program = { ...structuredClone(mock.active_program!), name: "Workday", phase: "resting", seconds_remaining: 1294, paused: false, wait: null };
+      }),
+    );
+    const rest = screen.getByTestId("hud-strip-rest");
+    expect(rest).toHaveTextContent("Workday // REST");
+    expect(rest).toHaveTextContent("21:34");
+    expect(rest).toHaveAttribute("title", "Workday · Rest · next walk in 21:34");
+    expect(screen.queryByText("TODAY")).not.toBeInTheDocument();
+    // The rest takes the total's cell, so the row keeps its shape and Engage its slot.
+    const row = container.querySelector(".hud-strip-row")!;
+    expect(Array.from(row.children).map((c) => c.className)).toEqual(["hud-strip-cell", "hud-btn hud-btn-main hud-btn-stack accent-cyan"]);
+    expect(screen.getByRole("button", { name: "ENGAGE start" })).toBeEnabled();
+  });
+
+  it("puts a program's rest before a folded ATROPHY_WARNING, and that before today's total", () => {
+    const rest = (s: AppSnapshot) =>
+      (s.active_program = { ...structuredClone(mock.active_program!), name: "Workday", phase: "resting", seconds_remaining: 1294, paused: false, wait: null });
+    const { unmount } = show(
+      still("strip", (s) => {
+        rest(s);
+        s.seated.folded = true;
+      }),
+    );
+    expect(screen.getByTestId("hud-strip-rest")).toBeInTheDocument();
+    expect(screen.queryByTestId("hud-seated-readout")).not.toBeInTheDocument();
+    unmount();
+    show(still("strip", (s) => (s.seated.folded = true)));
+    expect(screen.getByTestId("hud-seated-readout")).toBeInTheDocument();
+    expect(screen.queryByText("TODAY")).not.toBeInTheDocument();
   });
 
   it("expand and Engage each send one command", async () => {
     vi.mocked(invoke).mockClear();
     show(still("strip"));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Show the whole HUD" })));
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "ENGAGE" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "ENGAGE start" })));
     expect(dispatched()).toEqual([{ command: { type: "hud_expand" } }, { command: { type: "toggle_start" } }]);
   });
 
   it("labels Engage like the panel does", () => {
     show(still("strip", (s) => (s.deck.status = "Paused")));
-    expect(screen.getByRole("button", { name: "RE-JACK" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "RE-JACK resume belt" })).toBeInTheDocument();
   });
 
   it("reads WAKING… while a start is pending, disabled when offline", () => {
     const { unmount } = show(still("strip", (s) => (s.connection.start_pending = true)));
-    expect(screen.getByRole("button", { name: "WAKING…" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "WAKING… starting" })).toBeInTheDocument();
     unmount();
     show(
       still("strip", (s) =>
         Object.assign(s.connection, { connected: false, has_saved_device: true, link: { state: "reconnecting", attempt: 1, next_retry_s: 9 } }),
       ),
     );
-    expect(screen.getByRole("button", { name: "ENGAGE" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "ENGAGE start" })).toBeDisabled();
     // Offline, the link status is still the relink button.
     expect(screen.getByRole("button", { name: "RELINK 9S" })).toBeInTheDocument();
   });
@@ -86,7 +140,7 @@ describe("HUD strip", () => {
     vi.mocked(invoke).mockRejectedValueOnce("Treadmill not connected");
     vi.spyOn(console, "error").mockImplementationOnce(() => {});
     show(still("strip"));
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "ENGAGE" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "ENGAGE start" })));
     expect(screen.getByRole("alert")).toHaveTextContent("SYS // TREADMILL NOT CONNECTED");
   });
 
@@ -95,6 +149,26 @@ describe("HUD strip", () => {
       still("strip", (s) => (s.connection.start_result = { ok: false, message: "The treadmill didn't respond.", at_ms: 1 })),
     );
     expect(screen.getByRole("alert")).toHaveTextContent("The treadmill didn't respond.");
+  });
+
+  // #403: the sit-too-long card's own ENGAGE shows its failure on the card, once.
+  it("leaves the card's own failed ENGAGE to the card while the card is up", () => {
+    const NO_ANSWER = "The treadmill didn't respond.";
+    const own = (card: AppSnapshot["hud_card"]) =>
+      still("strip", (s) => {
+        s.hud_card = card;
+        s.seated = { ...s.seated, show_card: card === "seated", seated_minutes: 63 };
+        s.connection.start_press = "seated_engage";
+        s.connection.start_result = { ok: false, message: NO_ANSWER, at_ms: 1 };
+      });
+    const { unmount } = show(own("seated"));
+    expect(screen.getAllByText(NO_ANSWER)).toHaveLength(1);
+    expect(screen.getByText(NO_ANSWER).closest(".hud-seated")).not.toBeNull();
+    unmount();
+    // The card gone (snoozed or folded): the panel says it.
+    show(own("none"));
+    expect(screen.getAllByText(NO_ANSWER)).toHaveLength(1);
+    expect(screen.getByText(NO_ANSWER).closest(".hud-seated")).toBeNull();
   });
 });
 
@@ -120,7 +194,10 @@ describe("HUD hidden", () => {
 
   it("still shows a card that needs an answer, without the panel", () => {
     const { container } = show(
-      still("hidden", (s) => Object.assign(s.walkaway, { card: "paused", reason: "lock" })),
+      still("hidden", (s) => {
+        Object.assign(s.walkaway, { card: "paused", reason: "lock" });
+        s.hud_card = "walk_away";
+      }),
     );
     expect(container.querySelector(".hud-panel")).toBeNull();
     expect(container.querySelector(".hud-walkaway")).not.toBeNull();
@@ -156,8 +233,8 @@ describe("HUD minified", () => {
     expect(container.querySelector(".hud-run-segments")?.textContent).toBe("Workday · WALK · 04:12 left · cycle 3");
     expect(container.querySelectorAll(".hud-run-seg")).toHaveLength(4);
     expect(screen.getByRole("button", { name: "Show the whole HUD" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "STASIS" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "DUMP" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "STASIS pause belt" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "DUMP end walk" })).toBeEnabled();
     // The whole panel's stats, steppers and program buttons are gone, and so is minify.
     expect(container.querySelector(".hud-stats")).toBeNull();
     expect(screen.queryByText("TILT")).not.toBeInTheDocument();
@@ -221,8 +298,8 @@ describe("HUD minified", () => {
     vi.mocked(invoke).mockClear();
     show(minified());
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Show the whole HUD" })));
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "STASIS" })));
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "DUMP" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "STASIS pause belt" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "DUMP end walk" })));
     expect(dispatched()).toEqual([
       { command: { type: "hud_set_minified", minified: false } },
       { command: { type: "toggle_start" } },
@@ -234,12 +311,17 @@ describe("HUD minified", () => {
     vi.mocked(invoke).mockRejectedValueOnce("Treadmill not connected");
     vi.spyOn(console, "error").mockImplementationOnce(() => {});
     const { container } = show(minified());
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "DUMP" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "DUMP end walk" })));
     expect(container.querySelector(".hud-run-strip [role=alert]")).toHaveTextContent("SYS // TREADMILL NOT CONNECTED");
   });
 
   it("still shows a card that needs an answer", () => {
-    const { container } = show(minified((s) => Object.assign(s.walkaway, { card: "warning", pause_in_s: 20, reason: "idle" })));
+    const { container } = show(
+      minified((s) => {
+        Object.assign(s.walkaway, { card: "warning", pause_in_s: 20, reason: "idle" });
+        s.hud_card = "walk_away";
+      }),
+    );
     expect(container.querySelector(".hud-run-strip")).not.toBeNull();
     expect(container.querySelector(".hud-walkaway")).not.toBeNull();
   });
@@ -251,14 +333,44 @@ describe("HUD minified", () => {
     expect(dispatched()).toEqual([{ command: { type: "hud_set_minified", minified: true } }]);
   });
 
-  it("has no minify button while a program waits for GO (the panel stays whole)", () => {
+  it("keeps the minify button in its place but off for the first 30 s a program waits for GO (the panel stays whole)", () => {
     show(
       still("full", (s) => {
         s.deck.status = "Paused";
         s.active_program = { ...structuredClone(mock.active_program!), paused: true, wait: "rest_complete" };
+        s.hud_go_hold = true;
       }),
     );
-    expect(screen.queryByRole("button", { name: "Minify the HUD" })).not.toBeInTheDocument();
+    const minify = screen.getByRole("button", { name: "Minify the HUD" });
+    expect(minify).toBeDisabled();
+    expect(minify).toHaveAttribute("title", "The whole HUD stays up for 30 seconds while a program waits for GO.");
+  });
+
+  it("lets minify work again once an unanswered GO's hold is over", () => {
+    show(
+      still("full", (s) => {
+        s.deck.status = "Paused";
+        s.active_program = { ...structuredClone(mock.active_program!), paused: true, wait: "rest_complete" };
+        s.hud_go_hold = false;
+      }),
+    );
+    expect(screen.getByRole("button", { name: "Minify the HUD" })).toBeEnabled();
+  });
+
+  it("falls back to the strip with a yellow GO as its main button after the hold", async () => {
+    vi.mocked(invoke).mockClear();
+    show(
+      still("strip", (s) => {
+        s.deck.status = "Paused";
+        s.active_program = { ...structuredClone(mock.active_program!), paused: true, wait: "rest_complete" };
+      }),
+    );
+    const go = screen.getByRole("button", { name: "GO start belt" });
+    expect(go).toHaveClass("accent-yellow");
+    expect(go).toHaveAttribute("title", "Start the belt and carry on with the program.");
+    // The same one press as before: nothing starts the belt but GO.
+    await act(async () => fireEvent.click(go));
+    expect(dispatched()).toEqual([{ command: { type: "toggle_start" } }]);
   });
 });
 
@@ -284,6 +396,7 @@ function nothingRunning(eye: Partial<AppSnapshot["eye_break"]>): AppSnapshot {
   return still("hidden", (s) => {
     Object.assign(s.connection, { connected: false, has_saved_device: true, link: { state: "idle" } });
     s.eye_break = { ...s.eye_break, enabled: true, ...eye };
+    s.hud_card = "eye_break";
   });
 }
 

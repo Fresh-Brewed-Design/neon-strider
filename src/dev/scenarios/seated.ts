@@ -1,8 +1,11 @@
-// ?seated shows the idle-nudge HUD card (STASIS_ALERT). Variants, comma-separated: off (treadmill off,
+// ?seated shows the sit-too-long HUD card (ATROPHY_WARNING). Variants, comma-separated: off (treadmill off,
 // nothing picked yet), queued (treadmill off, second program remembered), long (long
 // program names, to check wrapping), none / one (no or one saved program), many (six
-// saved programs with long names; the card shows the first three).
+// saved programs with long names; the card shows the first three), folded (shown once
+// and left a minute: the seated time on the strip, #422), snoozed (two snoozes taken,
+// so the next is 60 MIN).
 import { params, snapshot } from "../mockState";
+import { foldSeated } from "../cardQueue";
 import { refuseWhileStopping } from "./engage";
 import { startProgram } from "./programs";
 import type { Scenario } from "./types";
@@ -28,6 +31,8 @@ export const seated: Scenario = {
           snapshot.programs[i].name = name;
         });
       }
+      if (seatedFlags.has("folded")) foldSeated();
+      if (seatedFlags.has("snoozed")) snapshot.seated.snooze_minutes = 60;
       if (seatedFlags.has("none")) snapshot.programs = [];
       if (seatedFlags.has("one")) snapshot.programs = snapshot.programs.slice(0, 1);
       if (seatedFlags.has("many")) {
@@ -54,10 +59,16 @@ export const seated: Scenario = {
     },
     seated_engage: () => {
       if (!snapshot.connection.connected) throw "The treadmill is offline";
-      if (snapshot.deck.standby) return refuseWhileStopping();
+      if (snapshot.deck.standby) return refuseWhileStopping("seated_engage");
       Object.assign(snapshot.seated, { show_card: false, pending_program_id: null });
       Object.assign(snapshot.deck, { status: "Running", speed_kmh: snapshot.deck.target_speed_kmh });
     },
-    seated_snooze: () => Object.assign(snapshot.seated, { show_card: false, pending_program_id: null }),
+    seated_snooze: () =>
+      Object.assign(snapshot.seated, {
+        show_card: false,
+        pending_program_id: null,
+        // Rust's 15, 30, then 60.
+        snooze_minutes: Math.min(snapshot.seated.snooze_minutes * 2, 60),
+      }),
   },
 };

@@ -8,8 +8,11 @@
 //!   and plain-English error text;
 //! - the auto-install rule (`auto_install`, pure): an offered update installs
 //!   by itself only when the belt has been still, with no program, for 10
-//!   minutes and the PC has had no input for 5, checked again right before the
-//!   installer runs;
+//!   minutes, the PC has had no input for 5, and the microphone (a call) and
+//!   presenting have been quiet for 5; at most once a local calendar day, and
+//!   with the newest version (a fresh check first). Checked again right before
+//!   the installer runs. With it on there is no HUD card and "What's new"
+//!   waits for the dashboard to be opened by hand;
 //! - the runtime: checks (30 s after startup, then hourly, or on demand), the
 //!   install (download and verify through `tauri-plugin-updater`, save the
 //!   running program, run the NSIS installer in passive mode, which restarts
@@ -35,6 +38,9 @@ const KEY_DISMISSED: &str = "update_dismissed";
 const KEY_HUD_SEEN: &str = "update_hud_seen";
 const KEY_WHATS_NEW: &str = "update_whats_new";
 const KEY_AUTO_INSTALL: &str = "update_auto_install";
+/// The local date ("YYYY-MM-DD") of the last automatic install, so the next
+/// one waits for another day, across the restart the install causes.
+const KEY_AUTO_DAY: &str = "update_auto_day";
 
 const RELEASES_API: &str = "https://api.github.com/repos/Fresh-Brewed-Design/neon-strider/releases";
 const USER_AGENT: &str = "neon-strider-updater";
@@ -63,6 +69,13 @@ const AUTO_BELT_STILL_MS: u64 = 10 * MINUTE_MS;
 /// ...and for this long without keyboard or mouse input on the PC.
 /// The same 5 minutes that counts as PC use elsewhere (`seated::ACTIVE_WINDOW_MS`).
 const AUTO_PC_IDLE_MS: u64 = 5 * MINUTE_MS;
+/// ...and for this long with the microphone free (no call) and nothing presenting.
+/// A call app can let go of the mic for a moment (mute, device switch); 5 minutes
+/// of quiet means the call is over, and matches the PC idle wait.
+const AUTO_CALL_QUIET_MS: u64 = 5 * MINUTE_MS;
+/// The offer must come from a check this recent when it installs by itself;
+/// an older one is checked again first, so the newest version goes in.
+const AUTO_FRESH_OFFER_MS: u64 = 5 * MINUTE_MS;
 /// After an automatic install fails, the next automatic try waits this long.
 /// As for a failed check: hourly, so a broken download doesn't retry in a loop.
 const AUTO_RETRY_MS: u64 = 60 * MINUTE_MS;
@@ -162,6 +175,8 @@ pub struct UpdateSnapshot {
     pub whats_new: Option<WhatsNew>,
     /// Install an offered update by itself when the belt and the PC are idle.
     pub auto_install: bool,
+    /// Today's automatic install has happened; the next one waits for tomorrow.
+    pub auto_installed_today: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -331,6 +346,31 @@ impl BeltWatch {
     }
 }
 
+/// When something was last seen (the microphone in use, presenting). App start
+/// counts as seen, so the quiet time runs from startup at the earliest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SeenWatch {
+    last_seen_ms: u64,
+}
+
+impl SeenWatch {
+    pub fn new(started_ms: u64) -> Self {
+        Self {
+            last_seen_ms: started_ms,
+        }
+    }
+
+    pub fn observe(&mut self, now_ms: u64, seen: bool) {
+        if seen {
+            self.last_seen_ms = now_ms;
+        }
+    }
+
+    pub fn quiet_for_ms(&self, now_ms: u64) -> u64 {
+        now_ms.saturating_sub(self.last_seen_ms)
+    }
+}
+
 /// Everything the auto-install decision depends on.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AutoInput {
@@ -349,6 +389,12 @@ pub struct AutoInput {
     pub pc_idle_ms: Option<u64>,
     /// Since the last automatic install failed.
     pub since_auto_failure_ms: Option<u64>,
+    /// Since another app last used the microphone (a call).
+    pub mic_quiet_ms: u64,
+    /// Since Windows last said the user is presenting or full screen.
+    pub presenting_quiet_ms: u64,
+    /// An automatic install already ran on today's local date.
+    pub installed_today: bool,
 }
 
 /// What auto-install does now; `Wait` says why, for the log.
@@ -359,8 +405,9 @@ pub enum AutoInstall {
 }
 
 /// Install by itself only when it's on, an update is offered and not put off,
-/// the belt has been still with no program for 10 minutes, and the PC has had
-/// no input for 5. Called on every scheduler tick and again right before the
+/// none ran today, the belt has been still with no program for 10 minutes,
+/// the microphone and presenting have been quiet for 5, and the PC has had no
+/// input for 5. Called on every scheduler tick and again right before the
 /// installer runs.
 pub fn auto_install(i: AutoInput) -> AutoInstall {
     use AutoInstall::Wait;
@@ -376,8 +423,17 @@ pub fn auto_install(i: AutoInput) -> AutoInstall {
     if i.dismissed {
         return Wait("put off with Not now");
     }
+    if i.installed_today {
+        return Wait("one automatic install a day, and today's has run");
+    }
     if i.since_auto_failure_ms.is_some_and(|t| t < AUTO_RETRY_MS) {
         return Wait("the last automatic install failed less than an hour ago");
+    }
+    if i.mic_quiet_ms < AUTO_CALL_QUIET_MS {
+        return Wait("the microphone was in use in the last 5 minutes");
+    }
+    if i.presenting_quiet_ms < AUTO_CALL_QUIET_MS {
+        return Wait("presenting or full screen in the last 5 minutes");
     }
     if i.belt_busy || i.belt_still_ms < AUTO_BELT_STILL_MS {
         return Wait("the belt or a program was active in the last 10 minutes");
@@ -387,6 +443,37 @@ pub fn auto_install(i: AutoInput) -> AutoInstall {
         Some(t) if t < AUTO_PC_IDLE_MS => Wait("the PC was used in the last 5 minutes"),
         Some(_) => AutoInstall::Install,
     }
+}
+
+/// The saved day of the last automatic install is `today` (both "YYYY-MM-DD").
+pub fn auto_installed_on(saved_day: Option<&str>, today: &str) -> bool {
+    saved_day.is_some_and(|d| d == today)
+}
+
+/// The offer comes from a check recent enough to install by itself: a
+/// successful one in the last 5 minutes. Otherwise check again first, so a
+/// release that landed since the last hourly check is the one installed.
+pub fn offer_fresh(now_ms: u64, last: Option<LastCheck>) -> bool {
+    last.is_some_and(|c| c.ok && now_ms.saturating_sub(c.at_ms) < AUTO_FRESH_OFFER_MS)
+}
+
+/// The notes to save before installing: the new ones, then any "What's new"
+/// still unread (the dashboard wasn't opened since the last update), so no
+/// version's notes are lost when two installs come before it is read.
+pub fn notes_with_unread(notes: &str, unread: Option<&WhatsNew>) -> String {
+    match unread {
+        Some(w) if !w.notes.trim().is_empty() && !notes.contains(w.notes.trim()) => {
+            format!("{}\n\n{}", notes.trim_end(), w.notes.trim())
+        }
+        _ => notes.to_string(),
+    }
+}
+
+/// The HUD's UPDATE READY card: an offer not put off and not yet seen, and
+/// only with "Install automatically" off. With it on, the update goes in by
+/// itself and the dot (System nav, tray) is the only sign.
+pub fn show_hud_card(available: bool, dismissed: bool, seen: bool, auto_install: bool) -> bool {
+    available && !dismissed && !seen && !auto_install
 }
 
 /// "Not now" for one version, remembered in settings.
@@ -422,14 +509,22 @@ pub struct SavedWhatsNew {
 pub enum WhatsNewOnLaunch {
     /// Nothing saved, or it doesn't belong to this version: forget it.
     Drop,
-    /// Show it; `open` also opens the dashboard (only right after the install).
+    /// Show it; `open` also opens the dashboard (only right after the install,
+    /// and only with "Install automatically" off: on, it waits for the
+    /// dashboard to be opened by hand).
     Show { open: bool },
 }
 
-pub fn whats_new_on_launch(saved: &SavedWhatsNew, running: &str, now_ms: u64) -> WhatsNewOnLaunch {
+pub fn whats_new_on_launch(
+    saved: &SavedWhatsNew,
+    running: &str,
+    now_ms: u64,
+    auto_install: bool,
+) -> WhatsNewOnLaunch {
     match (parse_version(&saved.version), parse_version(running)) {
         (Some(a), Some(b)) if a == b => WhatsNewOnLaunch::Show {
-            open: now_ms.saturating_sub(saved.saved_at_ms) < WHATS_NEW_OPEN_WITHIN_MS,
+            open: !auto_install
+                && now_ms.saturating_sub(saved.saved_at_ms) < WHATS_NEW_OPEN_WITHIN_MS,
         },
         _ => WhatsNewOnLaunch::Drop,
     }
@@ -500,6 +595,10 @@ struct Runtime {
     whats_new: Option<WhatsNew>,
     auto_install: bool,
     belt: BeltWatch,
+    mic: SeenWatch,
+    presenting: SeenWatch,
+    /// The local date of the last automatic install (`KEY_AUTO_DAY`).
+    auto_day: Option<String>,
     /// The last auto-install decision, so the log gets each change once.
     last_auto: Option<AutoInstall>,
     auto_failed_ms: Option<u64>,
@@ -544,10 +643,11 @@ pub fn init(app: &AppHandle) {
     let auto_install =
         persistence::parse_setting(persistence::read_setting(app, KEY_AUTO_INSTALL).as_deref())
             .unwrap_or(true);
+    let auto_day = persistence::read_setting(app, KEY_AUTO_DAY).filter(|s| !s.is_empty());
 
     let mut open_dashboard = false;
     let whats_new = match saved {
-        Some(saved) => match whats_new_on_launch(&saved, &running, now()) {
+        Some(saved) => match whats_new_on_launch(&saved, &running, now(), auto_install) {
             WhatsNewOnLaunch::Show { open } => {
                 log::info!("Updated to v{}; showing what's new", running);
                 open_dashboard = open;
@@ -573,6 +673,9 @@ pub fn init(app: &AppHandle) {
         rt.current_version = running;
         rt.started_ms = now();
         rt.belt = BeltWatch::new(rt.started_ms);
+        rt.mic = SeenWatch::new(rt.started_ms);
+        rt.presenting = SeenWatch::new(rt.started_ms);
+        rt.auto_day = auto_day;
         rt.auto_install = auto_install;
         rt.dismissed = dismissed;
         rt.hud_seen = hud_seen;
@@ -597,6 +700,16 @@ pub fn spawn(app: AppHandle) {
                 check(&app, false).await;
             }
             if auto_decide(belt_now().await) == AutoInstall::Install {
+                // Take the newest version: an offer from an older check is
+                // checked again first, then the rule asked once more.
+                let fresh = with(|rt| offer_fresh(now(), rt.last_check));
+                if !fresh {
+                    log::info!("Auto-install: checking for a newer version first");
+                    check(&app, false).await;
+                    if auto_decide(belt_now().await) != AutoInstall::Install {
+                        continue;
+                    }
+                }
                 if let Err(e) = start_install(&app, true) {
                     log::info!("Auto-install didn't start: {}", e);
                 }
@@ -621,30 +734,51 @@ fn pc_idle_ms() -> Option<u64> {
     crate::platform::input_idle_for().map(|d| d.as_millis() as u64)
 }
 
+/// Today's local date, as `KEY_AUTO_DAY` stores it.
+fn local_today() -> String {
+    chrono::Local::now().format("%Y-%m-%d").to_string()
+}
+
+/// Record the belt, the microphone and presenting for the rule.
+fn observe_desk(rt: &mut Runtime, now_ms: u64, belt: BeltNow) {
+    rt.belt.observe(now_ms, belt);
+    rt.mic
+        .observe(now_ms, crate::snapshot::calls::mic::in_use_now());
+    rt.presenting
+        .observe(now_ms, crate::snapshot::presenting::presenting_now());
+}
+
+/// The rule's input for the moment, from what the runtime has seen.
+fn auto_input(rt: &Runtime, now_ms: u64, belt: BeltNow, pc_idle_ms: Option<u64>) -> AutoInput {
+    let version = rt.offer.as_ref().map(|o| o.version.as_str());
+    AutoInput {
+        enabled: rt.auto_install,
+        offered: rt.pending.is_some()
+            && matches!(
+                rt.status,
+                UpdateStatus::Available { .. } | UpdateStatus::Failed { .. }
+            ),
+        dismissed: version.is_some_and(|v| dismissal_active(rt.dismissed.as_ref(), v, now_ms)),
+        updater_busy: busy(&rt.status),
+        belt_busy: belt.busy(),
+        belt_still_ms: rt.belt.still_for_ms(now_ms),
+        pc_idle_ms,
+        since_auto_failure_ms: rt.auto_failed_ms.map(|t| now_ms.saturating_sub(t)),
+        mic_quiet_ms: rt.mic.quiet_for_ms(now_ms),
+        presenting_quiet_ms: rt.presenting.quiet_for_ms(now_ms),
+        installed_today: auto_installed_on(rt.auto_day.as_deref(), &local_today()),
+    }
+}
+
 /// Record the belt, then decide whether to install by itself now. Each new
 /// decision is logged once.
 fn auto_decide(belt: BeltNow) -> AutoInstall {
     let pc_idle_ms = pc_idle_ms();
     with(|rt| {
         let now_ms = now();
-        rt.belt.observe(now_ms, belt);
+        observe_desk(rt, now_ms, belt);
         let version = rt.offer.as_ref().map(|o| o.version.clone());
-        let decision = auto_install(AutoInput {
-            enabled: rt.auto_install,
-            offered: rt.pending.is_some()
-                && matches!(
-                    rt.status,
-                    UpdateStatus::Available { .. } | UpdateStatus::Failed { .. }
-                ),
-            dismissed: version
-                .as_deref()
-                .is_some_and(|v| dismissal_active(rt.dismissed.as_ref(), v, now_ms)),
-            updater_busy: busy(&rt.status),
-            belt_busy: belt.busy(),
-            belt_still_ms: rt.belt.still_for_ms(now_ms),
-            pc_idle_ms,
-            since_auto_failure_ms: rt.auto_failed_ms.map(|t| now_ms.saturating_sub(t)),
-        });
+        let decision = auto_install(auto_input(rt, now_ms, belt, pc_idle_ms));
         log_auto(rt, decision, version.as_deref(), pc_idle_ms);
         decision
     })
@@ -836,17 +970,14 @@ async fn still_idle_for_auto(app: &AppHandle) -> bool {
     let pc_idle_ms = pc_idle_ms();
     let decision = with(|rt| {
         let now_ms = now();
-        rt.belt.observe(now_ms, belt);
+        observe_desk(rt, now_ms, belt);
         auto_install(AutoInput {
-            enabled: rt.auto_install,
             offered: true,
             dismissed: false,
             // This install is the updater's own work.
             updater_busy: false,
-            belt_busy: belt.busy(),
-            belt_still_ms: rt.belt.still_for_ms(now_ms),
-            pc_idle_ms,
             since_auto_failure_ms: None,
+            ..auto_input(rt, now_ms, belt, pc_idle_ms)
         })
     });
     if let AutoInstall::Wait(why) = decision {
@@ -877,6 +1008,9 @@ async fn save_running_program(app: &AppHandle) {
     let app = app.clone();
     let _ = crate::util::blocking(move || {
         crate::programs::persist_active_run(&app, run, &mut None);
+        // And the desk timers, so the seated time and the eye-break count
+        // carry on after the restart.
+        crate::snapshot::desk_resume::save_now(&app);
         Ok(())
     })
     .await;
@@ -893,7 +1027,7 @@ pub fn install(app: &AppHandle) -> Result<(), String> {
 /// `auto`: started by the idle rule, not a button. It records no button
 /// result, and checks the belt and the PC once more before the installer runs.
 fn start_install(app: &AppHandle, auto: bool) -> Result<(), String> {
-    let (update, offer) = with(|rt| {
+    let (update, offer, unread) = with(|rt| {
         if busy(&rt.status) {
             return Err("An update is already being installed.".to_string());
         }
@@ -902,7 +1036,7 @@ fn start_install(app: &AppHandle, auto: bool) -> Result<(), String> {
         match (update, offer) {
             (Some(u), Some(o)) => {
                 rt.status = UpdateStatus::Downloading { percent: Some(0) };
-                Ok((u, o))
+                Ok((u, o, rt.whats_new.clone()))
             }
             _ => Err("No update to install. Check for updates first.".to_string()),
         }
@@ -912,7 +1046,7 @@ fn start_install(app: &AppHandle, auto: bool) -> Result<(), String> {
     tauri::async_runtime::spawn(async move {
         let saved = SavedWhatsNew {
             version: offer.version.clone(),
-            notes: offer.notes.clone(),
+            notes: notes_with_unread(&offer.notes, unread.as_ref()),
             saved_at_ms: now(),
         };
         if let Ok(json) = serde_json::to_string(&saved) {
@@ -955,6 +1089,8 @@ fn start_install(app: &AppHandle, auto: bool) -> Result<(), String> {
         if auto && !still_idle_for_auto(&app).await {
             return;
         }
+        // Today's one automatic install, remembered across the restart.
+        let day_before = auto.then(|| mark_auto_day(&app, Some(local_today())));
         // On Windows this starts the installer, which exits the app and opens
         // the new version. On macOS it puts the new app in place of this one
         // and returns, so the app opens it itself.
@@ -966,11 +1102,27 @@ fn start_install(app: &AppHandle, auto: bool) -> Result<(), String> {
             }
             Err(e) => {
                 let _ = persistence::delete_setting(&app, KEY_WHATS_NEW);
+                // The installer never ran, so today's install is still to come.
+                if let Some(before) = day_before {
+                    mark_auto_day(&app, before);
+                }
                 fail_install(describe(&e), auto);
             }
         }
     });
     Ok(())
+}
+
+/// Set (or clear) the day of the last automatic install; returns the one before.
+fn mark_auto_day(app: &AppHandle, day: Option<String>) -> Option<String> {
+    let saved = match &day {
+        Some(d) => persistence::write_setting(app, KEY_AUTO_DAY, d),
+        None => persistence::delete_setting(app, KEY_AUTO_DAY),
+    };
+    if let Err(e) = saved {
+        log::warn!("Could not save the automatic install day: {}", e);
+    }
+    with(|rt| std::mem::replace(&mut rt.auto_day, day))
 }
 
 /// "Not now": hide the offer (badge and HUD card) for this version for a day. The Updates section still shows it.
@@ -991,8 +1143,8 @@ pub fn dismiss(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// INSTALL or LATER on the HUD card: the card has been seen for this version.
-/// INSTALL (`open`) opens the dashboard on the notes rather than installing.
+/// NOTES or LATER on the HUD card: the card has been seen for this version.
+/// NOTES (`open`) opens the dashboard on the notes rather than installing.
 pub fn hud_card(app: &AppHandle, open: bool) -> Result<(), String> {
     let version = with(|rt| rt.offer.as_ref().map(|o| o.version.clone()));
     if let Some(version) = version {
@@ -1030,8 +1182,8 @@ pub fn snapshot(now_ms: u64) -> UpdateSnapshot {
         let version = rt.offer.as_ref().map(|o| o.version.as_str());
         let dismissed = version.is_some_and(|v| dismissal_active(rt.dismissed.as_ref(), v, now_ms));
         let available = matches!(rt.status, UpdateStatus::Available { .. });
-        let hud_card =
-            available && !dismissed && version.is_some_and(|v| rt.hud_seen.as_deref() != Some(v));
+        let seen = version.is_none_or(|v| rt.hud_seen.as_deref() == Some(v));
+        let hud_card = show_hud_card(available, dismissed, seen, rt.auto_install);
         UpdateSnapshot {
             current_version: rt.current_version.clone(),
             status: rt.status.clone(),
@@ -1045,6 +1197,7 @@ pub fn snapshot(now_ms: u64) -> UpdateSnapshot {
             last_result: rt.last_result.clone(),
             whats_new: rt.whats_new.clone(),
             auto_install: rt.auto_install,
+            auto_installed_today: auto_installed_on(rt.auto_day.as_deref(), &local_today()),
         }
     })
 }
@@ -1215,7 +1368,119 @@ mod tests {
             belt_still_ms: AUTO_BELT_STILL_MS,
             pc_idle_ms: Some(AUTO_PC_IDLE_MS),
             since_auto_failure_ms: None,
+            mic_quiet_ms: AUTO_CALL_QUIET_MS,
+            presenting_quiet_ms: AUTO_CALL_QUIET_MS,
+            installed_today: false,
         }
+    }
+
+    #[test]
+    fn auto_install_never_runs_on_a_call_or_while_presenting() {
+        let on_call = AutoInput {
+            mic_quiet_ms: 0,
+            ..idle()
+        };
+        assert_eq!(
+            auto_install(on_call),
+            AutoInstall::Wait("the microphone was in use in the last 5 minutes")
+        );
+        // A call app letting go of the mic for a moment is still the call.
+        let just_ended = AutoInput {
+            mic_quiet_ms: AUTO_CALL_QUIET_MS - 1,
+            ..idle()
+        };
+        assert!(matches!(auto_install(just_ended), AutoInstall::Wait(_)));
+        let presenting = AutoInput {
+            presenting_quiet_ms: 0,
+            ..idle()
+        };
+        assert_eq!(
+            auto_install(presenting),
+            AutoInstall::Wait("presenting or full screen in the last 5 minutes")
+        );
+        let after_presenting = AutoInput {
+            presenting_quiet_ms: AUTO_CALL_QUIET_MS - 1,
+            ..idle()
+        };
+        assert!(matches!(
+            auto_install(after_presenting),
+            AutoInstall::Wait(_)
+        ));
+    }
+
+    #[test]
+    fn the_mic_and_presenting_count_from_startup_and_from_the_last_moment_seen() {
+        let start = 1_000_000;
+        let mut w = SeenWatch::new(start);
+        w.observe(start + 1_000, false);
+        assert_eq!(w.quiet_for_ms(start + 60_000), 60_000);
+        w.observe(start + 100_000, true);
+        w.observe(start + 105_000, false);
+        assert_eq!(w.quiet_for_ms(start + 105_000), 5_000);
+        assert_eq!(
+            w.quiet_for_ms(start + 100_000 + AUTO_CALL_QUIET_MS),
+            AUTO_CALL_QUIET_MS
+        );
+    }
+
+    #[test]
+    fn at_most_one_automatic_install_a_local_day() {
+        let done = AutoInput {
+            installed_today: true,
+            ..idle()
+        };
+        assert_eq!(
+            auto_install(done),
+            AutoInstall::Wait("one automatic install a day, and today's has run")
+        );
+        assert!(auto_installed_on(Some("2026-11-26"), "2026-11-26"));
+        // The next local day may install again; none saved means none yet.
+        assert!(!auto_installed_on(Some("2026-11-26"), "2026-11-27"));
+        assert!(!auto_installed_on(None, "2026-11-26"));
+    }
+
+    #[test]
+    fn an_automatic_install_takes_the_newest_version_from_a_fresh_check() {
+        let at_ms = 10 * DAY_MS;
+        let ok = Some(LastCheck { at_ms, ok: true });
+        assert!(offer_fresh(at_ms, ok));
+        assert!(offer_fresh(at_ms + AUTO_FRESH_OFFER_MS - 1, ok));
+        // An hour-old offer is checked again before it installs.
+        assert!(!offer_fresh(at_ms + AUTO_FRESH_OFFER_MS, ok));
+        assert!(!offer_fresh(at_ms, Some(LastCheck { at_ms, ok: false })));
+        assert!(!offer_fresh(at_ms, None));
+    }
+
+    #[test]
+    fn unread_whats_new_is_kept_below_the_next_versions_notes() {
+        let unread = WhatsNew {
+            version: "1.3.0".to_string(),
+            notes: "## v1.3.0\n\n- Three".to_string(),
+        };
+        assert_eq!(
+            notes_with_unread("## v1.4.0\n\n- Four", Some(&unread)),
+            "## v1.4.0\n\n- Four\n\n## v1.3.0\n\n- Three"
+        );
+        assert_eq!(notes_with_unread("## v1.4.0", None), "## v1.4.0");
+        // Already in the new notes (or empty): not added twice.
+        assert_eq!(
+            notes_with_unread("## v1.4.0\n\n## v1.3.0\n\n- Three", Some(&unread)),
+            "## v1.4.0\n\n## v1.3.0\n\n- Three"
+        );
+        let empty = WhatsNew {
+            notes: " ".to_string(),
+            ..unread
+        };
+        assert_eq!(notes_with_unread("## v1.4.0", Some(&empty)), "## v1.4.0");
+    }
+
+    #[test]
+    fn the_hud_card_shows_only_with_auto_install_off() {
+        assert!(show_hud_card(true, false, false, false));
+        assert!(!show_hud_card(true, false, false, true));
+        assert!(!show_hud_card(true, true, false, false));
+        assert!(!show_hud_card(true, false, true, false));
+        assert!(!show_hud_card(false, false, false, false));
     }
 
     #[test]
@@ -1381,22 +1646,35 @@ mod tests {
             saved_at_ms: 1_000,
         };
         assert_eq!(
-            whats_new_on_launch(&saved, "1.3.0", 1_000 + 60_000),
+            whats_new_on_launch(&saved, "1.3.0", 1_000 + 60_000, false),
             WhatsNewOnLaunch::Show { open: true }
         );
         // A later launch still shows it (until read), without opening the dashboard.
         assert_eq!(
-            whats_new_on_launch(&saved, "v1.3.0", 1_000 + WHATS_NEW_OPEN_WITHIN_MS),
+            whats_new_on_launch(&saved, "v1.3.0", 1_000 + WHATS_NEW_OPEN_WITHIN_MS, false),
             WhatsNewOnLaunch::Show { open: false }
         );
         // The install didn't happen (still the old version), or a later one did.
         assert_eq!(
-            whats_new_on_launch(&saved, "1.2.0", 2_000),
+            whats_new_on_launch(&saved, "1.2.0", 2_000, false),
             WhatsNewOnLaunch::Drop
         );
         assert_eq!(
-            whats_new_on_launch(&saved, "1.4.0", 2_000),
+            whats_new_on_launch(&saved, "1.4.0", 2_000, false),
             WhatsNewOnLaunch::Drop
+        );
+    }
+
+    #[test]
+    fn with_auto_install_on_whats_new_waits_for_the_dashboard_to_be_opened() {
+        let saved = SavedWhatsNew {
+            version: "1.3.0".to_string(),
+            notes: "## v1.3.0".to_string(),
+            saved_at_ms: 1_000,
+        };
+        assert_eq!(
+            whats_new_on_launch(&saved, "1.3.0", 1_000 + 60_000, true),
+            WhatsNewOnLaunch::Show { open: false }
         );
     }
 
@@ -1484,6 +1762,12 @@ mod tests {
         let s = snapshot(10_000);
         assert!(s.hud_card);
         assert!(!s.dismissed);
+        // Installing automatically: no card, the dot alone says it waits.
+        with(|rt| rt.auto_install = true);
+        let s = snapshot(10_000);
+        assert!(!s.hud_card);
+        assert!(s.dot);
+        with(|rt| rt.auto_install = false);
 
         with(|rt| rt.hud_seen = Some("1.3.0".to_string()));
         assert!(!snapshot(10_000).hud_card);

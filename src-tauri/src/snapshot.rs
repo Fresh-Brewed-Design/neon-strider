@@ -11,15 +11,19 @@
 //! - `emitter`: collecting the snapshot and pushing it to the windows
 //!
 //! The feature modules that contribute a part of the snapshot or act on it
-//! (calls, desk, desk_sync, eyebreak, hud_drag, lights_out, maintenance, odometer, pc_walk_share, presenting,
+//! (calls, card_queue, desk, desk_sync, eyebreak, hud_drag, lights_out, maintenance, odometer, pc_walk_share, presenting,
 //! program_tones, seated, tray, tray_menu,
 //! walkaway, wall_clock, weekly) are declared here rather than in `lib.rs`, so this module owns
 //! their wiring.
 
 #[path = "calls.rs"]
 pub mod calls;
+#[path = "card_queue.rs"]
+pub mod card_queue;
 #[path = "desk.rs"]
 pub mod desk;
+#[path = "desk_resume.rs"]
+pub mod desk_resume;
 #[path = "desk_sync.rs"]
 pub mod desk_sync;
 #[path = "eyebreak.rs"]
@@ -83,9 +87,24 @@ use tauri::AppHandle;
 
 pub const EVENT_APP_STATE: &str = "app-state";
 
-/// Today's saved distance, excluding the live session, and whether the live
-/// session started today (so its distance counts); see `refresh_daily_base`.
-static DAILY_BASE: Mutex<(f64, bool)> = Mutex::new((0.0, false));
+/// Today's saved distance and walking time, excluding the live session, and
+/// whether the live session started today (so it counts); see `refresh_daily_base`.
+static DAILY_BASE: Mutex<DailyBase> = Mutex::new(DailyBase {
+    m: 0.0,
+    s: 0,
+    live_counts_today: false,
+});
+
+/// Today's saved totals, read from SQLite after each save.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DailyBase {
+    /// Metres walked in today's saved sessions, the live one left out.
+    pub m: f64,
+    /// Seconds walked in today's saved sessions, the live one left out.
+    pub s: u64,
+    /// The live session started today, so its distance and time count.
+    pub live_counts_today: bool,
+}
 
 /// Everything `build_snapshot` needs besides the engine state. The cached
 /// parts (daily base, maintenance, weekly, odometer) are read before the call.
@@ -93,12 +112,10 @@ pub struct SnapshotParts {
     pub connection: ConnectionSnapshot,
     pub hud: HudConfig,
     pub hud_monitors: Vec<HudMonitor>,
-    /// Today's saved distance EXCLUDING the active session; the live session
-    /// distance is added by `build_snapshot`.
-    pub daily_base_m: f64,
-    /// The live session started today, so `build_snapshot` adds its distance.
-    /// A session belongs to the day it started, as in the saved base.
-    pub live_counts_today: bool,
+    /// Today's saved distance and time EXCLUDING the active session; the live
+    /// session's are added by `build_snapshot` when it started today (a
+    /// session belongs to the day it started, as in the saved base).
+    pub daily: DailyBase,
     pub max_incline_level: u8,
     pub strava: StravaSnapshot,
     pub maintenance: MaintenanceSnapshot,
@@ -151,6 +168,7 @@ fn deck_snapshot(state: &OrchestratorState, max_incline_level: u8) -> DeckSnapsh
         incline_offset_pct: state.incline_offset,
         incline_pct_per_level: state.tilt_multiplier,
         target_note: state.current_target_note(),
+        target_note_hint: state.current_target_note_hint(),
         speed_steps: state
             .deck_speeds()
             .into_iter()
@@ -190,27 +208,26 @@ fn profile_snapshot(state: &OrchestratorState) -> DeckProfileSnapshot {
     }
 }
 
-fn session_snapshot(
-    state: &OrchestratorState,
-    daily_base_m: f64,
-    live_counts_today: bool,
-) -> SessionSnapshot {
-    // After a stop the engine keeps the last distance in `session` until the
-    // next session starts, but by then it is already in the saved base. Only
-    // count the live distance while a session is actually open, and only if
-    // it started today (one that started yesterday belongs to yesterday).
-    let live_m = if state.session.active_session_id.is_some() && live_counts_today {
-        state.session.distance_meters
+fn session_snapshot(state: &OrchestratorState, daily: DailyBase) -> SessionSnapshot {
+    // After a stop the engine keeps the last distance and time in `session`
+    // until the next session starts, but by then they are already in the saved
+    // base. Only count the live walk while a session is actually open, and only
+    // if it started today (one that started yesterday belongs to yesterday).
+    let live = state.session.active_session_id.is_some() && daily.live_counts_today;
+    let duration_s = state.session.duration_seconds.max(0) as u64;
+    let (live_m, live_s) = if live {
+        (state.session.distance_meters, duration_s)
     } else {
-        0.0
+        (0.0, 0)
     };
     SessionSnapshot {
         active_id: state.session.active_session_id,
-        duration_s: state.session.duration_seconds.max(0) as u64,
+        duration_s,
         distance_m: state.session.distance_meters,
         steps: state.session.steps.max(0.0).round() as u64,
         calories: state.session.calories,
-        daily_distance_m: daily_base_m + live_m,
+        daily_distance_m: daily.m + live_m,
+        daily_time_s: daily.s + live_s,
     }
 }
 
@@ -241,13 +258,13 @@ fn neural_snapshot(state: &OrchestratorState) -> NeuralSnapshot {
 
 /// Build a snapshot from state. Pure (no Tauri, no locks, no I/O) so it can be
 /// unit-tested. `speed_drift`, `desk_sync`, `wall_clock`, `pc_walk_share`, `today_timeline`, `walkaway`, `update`, `traffic`, `lights_out`, `presenting`, `ghost_pod`,
-/// `calibration`, `guided_task`, `program_tones` and `hud_view` are left at their defaults: they depend on the clock or shared
+/// `calibration`, `guided_task`, `program_tones`, `hud_view`, `hud_go_hold` and `hud_card` are left at their defaults: they depend on the clock or shared
 /// state, so the emitter fills them in.
 pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSnapshot {
     let deck = deck_snapshot(state, parts.max_incline_level);
     AppSnapshot {
         connection: parts.connection,
-        session: session_snapshot(state, parts.daily_base_m, parts.live_counts_today),
+        session: session_snapshot(state, parts.daily),
         programs: state.programs.clone(),
         active_program: state.active_program(),
         fit_to_deck: state.fit_to_deck_offers(deck.stride_fit_kmh),
@@ -259,6 +276,8 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         speed_drift: crate::speed_drift::SpeedDriftSnapshot::default(),
         hud: parts.hud,
         hud_view: HudView::Full,
+        hud_go_hold: false,
+        hud_card: card_queue::HudCard::None,
         hud_monitors: parts.hud_monitors,
         strava: parts.strava,
         maintenance: parts.maintenance,
@@ -288,17 +307,31 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
     }
 }
 
-/// Re-read today's saved distance from SQLite, excluding `exclude` (the live
-/// session, whose distance the snapshot adds itself only if it started today).
+/// Re-read today's saved distance and time from SQLite, excluding `exclude`
+/// (the live session, which the snapshot adds itself only if it started today).
 /// Blocking; call it from a blocking context. Never called per snapshot tick.
 pub fn refresh_daily_base(app: &AppHandle, exclude: Option<i64>) {
     let midnight = persistence::local_midnight_ms(chrono::Local::now());
-    let v = persistence::daily_distance_m(app, midnight, exclude);
-    let live_counts = match exclude {
+    let (m, s) = persistence::daily_totals(app, midnight, exclude);
+    let live_counts_today = match exclude {
         Some(id) => started_today(persistence::session_start_ms(app, id), midnight),
         None => false,
     };
-    *DAILY_BASE.lock().unwrap_or_else(|e| e.into_inner()) = (v, live_counts);
+    *DAILY_BASE.lock().unwrap_or_else(|e| e.into_inner()) = DailyBase {
+        m,
+        s: s.max(0) as u64,
+        live_counts_today,
+    };
+}
+
+/// A saved walk changed (cut after a walk-away): re-read every cached total
+/// that sums saved walks. Blocking.
+pub fn refresh_after_session_edit(app: &AppHandle) {
+    weekly::refresh(app, None);
+    desk_sync::refresh(app, None);
+    crate::typing_speed::refresh(app);
+    odometer::refresh_current(app);
+    maintenance::refresh(app, None);
 }
 
 /// A session started at or after local midnight belongs to today, the same
@@ -307,9 +340,9 @@ fn started_today(start_ms: Option<i64>, midnight_ms: i64) -> bool {
     start_ms.is_none_or(|s| s >= midnight_ms)
 }
 
-/// (today's saved distance excluding the live session, whether the live
-/// session counts toward today).
-fn daily_base() -> (f64, bool) {
+/// Today's saved totals excluding the live session, and whether the live
+/// session counts toward today.
+fn daily_base() -> DailyBase {
     *DAILY_BASE.lock().unwrap_or_else(|e| e.into_inner())
 }
 
@@ -317,8 +350,8 @@ fn daily_base() -> (f64, bool) {
 /// `live_m` metres: the cached base plus the live distance, which counts only
 /// when the session started today. Reads the cache, never the database.
 pub fn daily_total_with_live(live_m: f64) -> f64 {
-    let (base, live_counts_today) = daily_base();
-    total_with_live(base, live_counts_today, live_m)
+    let base = daily_base();
+    total_with_live(base.m, base.live_counts_today, live_m)
 }
 
 fn total_with_live(base_m: f64, live_counts_today: bool, live_m: f64) -> f64 {
@@ -369,6 +402,7 @@ mod tests {
             last_error: None,
             start_pending: false,
             start_result: None,
+            start_press: crate::link::StartPress::Engage,
             connect_dialog_at_ms: None,
             simulated: false,
         }
@@ -432,14 +466,22 @@ mod tests {
         max_incline: u8,
         live_counts_today: bool,
     ) -> AppSnapshot {
+        let daily = DailyBase {
+            m: base,
+            s: 0,
+            live_counts_today,
+        };
+        snap_daily(state, daily, max_incline)
+    }
+
+    fn snap_daily(state: &OrchestratorState, daily: DailyBase, max_incline: u8) -> AppSnapshot {
         build_snapshot(
             state,
             SnapshotParts {
                 connection: conn(),
                 hud: HudConfig::default(),
                 hud_monitors: Vec::new(),
-                daily_base_m: base,
-                live_counts_today,
+                daily,
                 max_incline_level: max_incline,
                 strava: strava_snap(),
                 maintenance: maint_snap(),
@@ -633,6 +675,45 @@ mod tests {
         assert_eq!(
             snap_live(&state, 400.0, 15, false).session.daily_distance_m,
             400.0
+        );
+    }
+
+    /// Today's walking time is the saved seconds plus the live walk's, by the
+    /// same day rule as the distance.
+    #[test]
+    fn daily_time_adds_the_live_session_started_today() {
+        let mut state = OrchestratorState::default();
+        state.session.duration_seconds = 900;
+        state.session.distance_meters = 1200.0;
+        let base = |live_counts_today| DailyBase {
+            m: 5000.0,
+            s: 4800,
+            live_counts_today,
+        };
+
+        // No open session: the last walk's time is already in the saved base.
+        assert_eq!(
+            snap_daily(&state, base(true), 15).session.daily_time_s,
+            4800
+        );
+
+        state.session.active_session_id = Some(7);
+        let live = snap_daily(&state, base(true), 15).session;
+        assert_eq!(live.daily_time_s, 5700);
+        assert_eq!(live.daily_distance_m, 6200.0);
+        assert_eq!(live.duration_s, 900);
+
+        // Started before midnight and still going: all of it stays yesterday's.
+        let past_midnight = snap_daily(&state, base(false), 15).session;
+        assert_eq!(past_midnight.daily_time_s, 4800);
+        assert_eq!(past_midnight.daily_distance_m, 5000.0);
+        assert_eq!(past_midnight.duration_s, 900, "the walk still shows");
+
+        // A deck timer that reads below zero adds nothing.
+        state.session.duration_seconds = -5;
+        assert_eq!(
+            snap_daily(&state, base(true), 15).session.daily_time_s,
+            4800
         );
     }
 

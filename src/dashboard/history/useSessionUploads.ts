@@ -66,8 +66,8 @@ export function useSessionUploads(onUploaded: () => void) {
       setUpload(row, "error");
       setNote(row, { ok: false, text });
     };
-    if (!stravaConnected) return fail("Strava is not linked. Connect it on the System page.");
-    if (pending.current) return fail("Another upload is still running. Try again when it finishes.");
+    if (!stravaConnected) return fail("Connect Strava on the System page to upload.");
+    if (pending.current) return fail("Wait for the running upload to finish, then try again.");
     pending.current = { row, baseline: getAppSnapshot()?.strava.last_result?.at_ms ?? null };
     setNote(row, { ok: true, text: "" });
     setUpload(row, "uploading");

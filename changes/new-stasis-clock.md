@@ -1,1 +1,1 @@
-- While the belt is paused, the HUD status reads STASIS with a clock counting up (STASIS 3:20), and the Live page shows the same clock under Re-jack, so you can see how long a pause has lasted.
+- While the belt is paused, a STASIS clock counts how long the pause has lasted. The HUD shows the clock in its status row or strip. The Live page shows the clock beside Velocity's pin.

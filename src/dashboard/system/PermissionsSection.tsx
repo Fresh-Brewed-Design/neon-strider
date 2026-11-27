@@ -71,7 +71,7 @@ export function PermissionsSection() {
     <Section
       id="sys-permissions"
       title="Permissions"
-      description="What macOS lets Neon Strider use. Each is asked for the first time the app needs it."
+      description="macOS asks for each permission the first time Neon Strider needs it."
     >
       {permissions.map((p) => (
         <PermissionRow key={p.kind} permission={p} />
@@ -92,8 +92,8 @@ export function InputMonitoringNote() {
     <div className="flex flex-wrap items-start justify-between gap-2 rounded border border-neon-yellow/30 bg-neon-yellow/5 px-3 py-2">
       <Hint className="min-w-0 flex-1 text-neon-yellow/90">
         {state === "denied"
-          ? "macOS isn't letting Neon Strider count key presses. Allow it in Input Monitoring; until then nothing is counted."
-          : "macOS asks to allow Input Monitoring the first time key presses are counted. Until then nothing is counted."}
+          ? "macOS blocks key press counting until Neon Strider is allowed in Input Monitoring."
+          : "Key presses are not counted until Input Monitoring is allowed in the macOS prompt."}
       </Hint>
       <OpenSettingsButton kind="input_monitoring" />
     </div>

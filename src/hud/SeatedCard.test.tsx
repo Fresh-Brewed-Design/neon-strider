@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AppSnapshot } from "../ipc";
+import type { AppSnapshot, StartPress } from "../ipc";
 
 const { snapshot: mock } = await import("../dev/mockBackend");
 const { SeatedCard } = await import("./HudCards");
@@ -23,9 +23,12 @@ const buttons = () => screen.getAllByRole("button").map((b) => b.textContent);
 beforeEach(() => vi.mocked(invoke).mockClear());
 
 describe("SeatedCard", () => {
-  it("says the belt has been idle, never that you are sitting", () => {
+  it("says the belt has been idle; only the plain line under ATROPHY_WARNING names sitting", () => {
     const { container } = render(<SeatedCard snapshot={seated()} />);
     expect(screen.getByText("63 MIN IDLE")).toBeInTheDocument();
+    expect(screen.getByText("ATROPHY_WARNING")).toBeInTheDocument();
+    // The card's name and its plain line are Fresh Brewed Design's (#392).
+    screen.getByText("sit-too-long reminder").remove();
     expect(container.textContent).not.toMatch(/seat|sitting|\bsit\b|\bsat\b/i);
   });
 
@@ -60,13 +63,13 @@ describe("SeatedCard", () => {
   it("with the treadmill off, ENGAGE waits and the line says why; programs can still be queued", () => {
     render(<SeatedCard snapshot={seated(offline)} />);
     expect(screen.getByRole("button", { name: "ENGAGE" })).toBeDisabled();
-    expect(screen.getByText("Treadmill off. Switch it on, or queue a program.")).toBeInTheDocument();
+    expect(screen.getByText("Treadmill off. Turn the treadmill on or queue a program.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: mock.programs[0].name })).toBeEnabled();
   });
 
   it("with the treadmill off and no programs, says to switch it on", () => {
     render(<SeatedCard snapshot={seated((x) => (offline(x), (x.seated.program_ids = [])))} />);
-    expect(screen.getByText("Treadmill off. Switch it on to engage.")).toBeInTheDocument();
+    expect(screen.getByText("Treadmill off. Turn the treadmill on to engage.")).toBeInTheDocument();
   });
 
   it("says nothing extra while linked", () => {
@@ -81,26 +84,41 @@ describe("SeatedCard", () => {
     expect(screen.getByText(`${s.programs[1].name} starts when the treadmill is on.`)).toBeInTheDocument();
   });
 
-  it("shows a refused start (deck asleep) right under the buttons", () => {
-    const message = "Treadmill is off or asleep. Switch it on, then press Engage.";
+  it("shows its own refused start (deck asleep) right under the buttons", () => {
+    const message = "Wake the deck first at the treadmill or remote.";
     render(
       <SeatedCard
         snapshot={seated((x) => {
           x.deck.standby = true;
+          x.connection.start_press = "seated_engage";
           x.connection.start_result = { ok: false, message, at_ms: 1 };
         })}
       />,
     );
     const card = screen.getAllByRole("alert")[0];
     expect(within(card).getByText(message)).toBeInTheDocument();
-    // The refusal replaces the standing hint rather than repeating it.
-    expect(screen.queryByText("Treadmill off. Switch it on to engage.")).not.toBeInTheDocument();
+    // The refusal is the standing hint's own sentence, shown once.
+    expect(within(card).getAllByText(message)).toHaveLength(1);
   });
 
-  it("says the deck is off while it sleeps, before any press", () => {
-    render(<SeatedCard snapshot={seated((x) => (x.deck.standby = true))} />);
-    expect(screen.getByText("Treadmill off. Switch it on to engage.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "ENGAGE" })).toBeEnabled();
+  it("says the deck must be woken first on every start button while it sleeps, before any press", async () => {
+    const s = seated((x) => (x.deck.standby = true));
+    render(<SeatedCard snapshot={s} />);
+    expect(screen.getByText("Wake the deck first at the treadmill or remote.")).toBeInTheDocument();
+    const engage = screen.getByRole("button", { name: "ENGAGE wake deck first" });
+    expect(engage).toBeEnabled();
+    for (const id of s.seated.program_ids) {
+      const name = s.programs.find((p) => p.id === id)!.name;
+      expect(screen.getByRole("button", { name: `${name} wake deck first` })).toBeEnabled();
+    }
+    // The press sends what it always does; Rust refuses it with the same words.
+    await act(async () => fireEvent.click(engage));
+    expect(dispatched()).toEqual([{ command: { type: "seated_engage" } }]);
+  });
+
+  it("shows no wake line while the deck is awake", () => {
+    render(<SeatedCard snapshot={seated()} />);
+    expect(screen.queryByText("wake deck first")).not.toBeInTheDocument();
   });
 
   it("shows a rejected ENGAGE inside the card", async () => {
@@ -109,5 +127,28 @@ describe("SeatedCard", () => {
     render(<SeatedCard snapshot={seated()} />);
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "ENGAGE" })));
     expect(screen.getByText("SYS // THE TREADMILL IS OFFLINE")).toBeInTheDocument();
+  });
+
+  // #403: the card shows only a start its own ENGAGE made (`start_press`), never one from elsewhere.
+  describe("a failed start", () => {
+    const failed = (press: StartPress) => (s: AppSnapshot) => {
+      s.connection.start_press = press;
+      s.connection.start_result = { ok: false, message: "No answer from the belt", at_ms: 1 };
+    };
+
+    it("does not show a GO failure", () => {
+      render(<SeatedCard snapshot={seated(failed("program_go"))} />);
+      expect(screen.queryByText(/No answer/)).not.toBeInTheDocument();
+    });
+
+    it("does not show an Engage failure from the dashboard or the panel", () => {
+      render(<SeatedCard snapshot={seated(failed("engage"))} />);
+      expect(screen.queryByText(/No answer/)).not.toBeInTheDocument();
+    });
+
+    it("shows the failure of its own ENGAGE", () => {
+      render(<SeatedCard snapshot={seated(failed("seated_engage"))} />);
+      expect(screen.getByText(/No answer/)).toBeInTheDocument();
+    });
   });
 });

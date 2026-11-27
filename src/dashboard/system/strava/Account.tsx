@@ -3,6 +3,7 @@ import { ExternalLink, Loader2, ShieldCheck } from "lucide-react";
 import { ActionStatus, InlineAction } from "../../../components/ActionStatus";
 import { useAction, type BackendAction } from "../../../components/useAction";
 import { dispatch, type StravaSnapshot } from "../../../ipc";
+import { useTreadmillStore } from "../../../store/treadmillStore";
 import { GhostButton, Label, NeonButton } from "../../ui";
 import { post } from "../../util";
 import { INPUT_CLASS } from "../fields";
@@ -70,7 +71,6 @@ export function Credentials({ strava }: { strava: StravaSnapshot }) {
       </div>
       <div className="flex items-center gap-2">
         <NeonButton
-          tone="magenta"
           disabled={!canSave || credentials.pending}
           onClick={() => void save()}
           className="flex items-center gap-2 px-4 py-2"
@@ -112,14 +112,22 @@ export function Account({
     const needsReconnect = result !== null && !result.ok && result.hint === "reconnect";
     return (
       <div className="flex flex-col gap-1">
-        <div className="flex flex-wrap items-center justify-between gap-x-3 rounded border border-neon-magenta/30 bg-neon-magenta/5 px-3 py-2">
-          <span className="flex min-w-0 items-center gap-2 font-mono text-xs font-bold uppercase tracking-[0.12em] text-neon-magenta">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 rounded border border-neon-cyan/30 bg-neon-cyan/5 px-3 py-2">
+          <span className="flex min-w-0 items-center gap-2 font-mono text-xs font-bold uppercase tracking-[0.12em] text-neon-cyan">
             <ShieldCheck size={14} className="shrink-0" />
             <span className="min-w-0 [overflow-wrap:anywhere]">Account linked{strava.athlete_name ? ` · ${strava.athlete_name}` : ""}</span>
           </span>
           <GhostButton
             disabled={disconnect.pending}
-            onClick={() => void disconnect.run(post({ type: "strava_disconnect" }))}
+            onClick={() =>
+              useTreadmillStore.getState().confirm({
+                title: "Disconnect Strava",
+                message: "Walks stop uploading to Strava until you connect again.",
+                confirmLabel: "Disconnect",
+                tone: "danger",
+                onConfirm: () => void disconnect.run(post({ type: "strava_disconnect" })),
+              })
+            }
           >
             {disconnect.pending ? "Disconnecting…" : "Disconnect"}
           </GhostButton>
@@ -141,7 +149,6 @@ export function Account({
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center gap-3">
         <NeonButton
-          tone="magenta"
           disabled={!strava.has_credentials || connect.pending || authorizing}
           onClick={startConnect}
           className="flex items-center gap-2 px-4 py-2"

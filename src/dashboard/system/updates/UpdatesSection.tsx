@@ -6,7 +6,7 @@ import { useTreadmillStore } from "../../../store/treadmillStore";
 import { GhostButton, Hint, Label, NeonButton } from "../../ui";
 import { Section, Toggle } from "../fields";
 import { Markdown } from "./Markdown";
-import { formatPublished, installConfirmText, installProgress, updateBusy } from "./updates";
+import { autoInstallTag, formatPublished, installConfirmText, installProgress, updateBusy } from "./updates";
 
 function formatChecked(ms: number | null): string {
   if (ms === null) return "not yet";
@@ -34,6 +34,7 @@ export function UpdatesSection() {
   const busy = updateBusy(u);
   const offer = u.offer;
   const progress = installProgress(u);
+  const autoTag = autoInstallTag(u);
   const published = formatPublished(offer?.published ?? null);
   // A background check's failure: shown here, quietly, when no button owns it.
   const backgroundFailure = u.status.state === "failed" && !check.error && !install.error ? u.status.message : null;
@@ -43,6 +44,7 @@ export function UpdatesSection() {
     useTreadmillStore.getState().confirm({
       title: `Install v${offer.version}`,
       ...installConfirmText(s, offer.version),
+      confirmLabel: "Install",
       onConfirm: () => void install.run(() => dispatch({ type: "update_install" })),
     });
   };
@@ -55,7 +57,7 @@ export function UpdatesSection() {
       status={
         <span className="shrink-0 font-mono text-xs font-bold uppercase tracking-[0.18em] text-white/60">
           {offer && u.status.state !== "up_to_date" ? (
-            <span className="text-neon-magenta">UPDATE READY // v{offer.version}</span>
+            <span className="text-neon-cyan">UPDATE READY // v{offer.version}</span>
           ) : (
             <>BUILD // v{u.current_version}</>
           )}
@@ -82,7 +84,7 @@ export function UpdatesSection() {
       <div>
         <Toggle
           label="Install automatically"
-          description={`Only after the belt is still for 10 minutes and the ${s?.platform.computer ?? "PC"} idle for 5.`}
+          description={`At most once a day, never on a call or while presenting, after the belt is still for 10 minutes and the ${s?.platform.computer ?? "PC"} idle for 5.`}
           checked={u.auto_install}
           onChange={(on) => void autoToggle.run(() => dispatch({ type: "update_auto_install", on }))}
         />
@@ -90,9 +92,9 @@ export function UpdatesSection() {
       </div>
 
       {offer && (
-        <div className="flex flex-col gap-2 rounded border border-neon-magenta/30 bg-neon-magenta/5 p-3">
+        <div className="flex flex-col gap-2 rounded border border-neon-cyan/30 bg-neon-cyan/5 p-3">
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-            <span className="font-digital text-xs font-bold tracking-[0.15em] text-neon-magenta">
+            <span className="font-digital text-xs font-bold tracking-[0.15em] text-neon-cyan">
               v{offer.version} // AVAILABLE
             </span>
             {published && <Label className="tracking-[0.12em]">Released {published}</Label>}
@@ -102,7 +104,7 @@ export function UpdatesSection() {
             <Markdown text={offer.notes} />
           </div>
           <div className="flex flex-wrap items-center gap-2 pt-1">
-            <NeonButton tone="magenta" className="px-4 py-2" disabled={busy} onClick={startInstall}>
+            <NeonButton className="px-4 py-2" disabled={busy} onClick={startInstall}>
               Install
             </NeonButton>
             {!u.dismissed && (
@@ -111,9 +113,9 @@ export function UpdatesSection() {
               </GhostButton>
             )}
             {u.dismissed && <Hint>Update put off for a day.</Hint>}
-            {!u.dismissed && u.auto_install && !busy && (
+            {autoTag && (
               <span className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-neon-cyan/80">
-                Installs when idle
+                {autoTag}
               </span>
             )}
           </div>

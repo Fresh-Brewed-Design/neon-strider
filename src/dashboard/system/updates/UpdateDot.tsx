@@ -6,7 +6,7 @@
 export function UpdateDot({ className = "" }: { className?: string }) {
   return (
     <span
-      className={`h-2 w-2 shrink-0 rounded-full bg-neon-magenta shadow-[0_0_6px_#ff00ff] ${className}`}
+      className={`h-2 w-2 shrink-0 rounded-full bg-neon-cyan shadow-[0_0_6px_#00f3ff] ${className}`}
       role="img"
       aria-label="Update available"
       title="Update available"

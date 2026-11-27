@@ -5,7 +5,8 @@
 // ?reject makes every command fail.
 import { mockIPC } from "@tauri-apps/api/mocks";
 import type { Command } from "../ipc";
-import { PREVIEW_CONFIG, hudView, params, publish, snapshot, updateDot } from "./mockState";
+import { applyCardQueue } from "./cardQueue";
+import { PREVIEW_CONFIG, goHeld, hudView, params, publish, snapshot, updateDot } from "./mockState";
 import { SCENARIOS } from "./scenarios";
 import type { CommandHandlers, Query } from "./scenarios/types";
 
@@ -23,6 +24,8 @@ const COMMANDS: CommandHandlers = Object.assign({}, ...SCENARIOS.map((s) => s.co
 const QUERIES: Record<string, Query> = {
   get_snapshot: () => {
     snapshot.hud_view = hudView();
+    snapshot.hud_go_hold = goHeld();
+    applyCardQueue(snapshot);
     snapshot.update.dot = updateDot();
     // A copy, as Rust's is: the window keeps what it got, so it must not change underneath it.
     return structuredClone(snapshot);
@@ -44,8 +47,10 @@ export function installMockBackend() {
   for (const scenario of SCENARIOS) scenario.install?.();
   setInterval(() => {
     const ticked = SCENARIOS.map((s) => s.tick?.() ?? false);
-    const viewChanged = hudView() !== snapshot.hud_view;
-    if (ticked.includes(true) || viewChanged) publish();
+    const viewChanged = hudView() !== snapshot.hud_view || goHeld() !== snapshot.hud_go_hold;
+    const before = { card: snapshot.hud_card, folded: snapshot.seated.folded };
+    const cardChanged = applyCardQueue(snapshot) !== before.card || snapshot.seated.folded !== before.folded;
+    if (ticked.includes(true) || viewChanged || cardChanged) publish();
   }, 1000);
   mockIPC((cmd, payload) => QUERIES[cmd]?.((payload ?? {}) as Record<string, unknown>) ?? null, { shouldMockEvents: true });
 }

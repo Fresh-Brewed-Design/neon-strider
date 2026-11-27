@@ -1,7 +1,10 @@
-import { AnimatePresence, motion } from "framer-motion";
-import { Bluetooth, BluetoothOff, Link2, Loader2, RefreshCw, SearchX, X } from "lucide-react";
+import { AnimatePresence } from "framer-motion";
+import { Bluetooth, BluetoothOff, Link2, Loader2, RefreshCw, SearchX } from "lucide-react";
 import { ActionStatus } from "../../components/ActionStatus";
+import { PLAIN } from "../../names";
 import { useAppSnapshot } from "../../state/useAppState";
+import { DialogButtons, DialogCancelButton, DialogConfirmButton, DialogFrame } from "../DialogFrame";
+import { useDialog } from "../useDialog";
 
 export interface BleDevice {
   id: string;
@@ -31,7 +34,10 @@ interface BleDiscoveryModalProps {
   onConnect: (id: string) => void;
 }
 
-/** The scan-and-connect dialog: found treadmills, each with its own linking state and error. */
+/**
+ * The scan-and-connect dialog: found treadmills, each with its own linking
+ * state and error. Escape closes it, like Close and a click outside.
+ */
 export function BleDiscoveryModal({
   show,
   onClose,
@@ -47,39 +53,30 @@ export function BleDiscoveryModal({
 }: BleDiscoveryModalProps) {
   const busy = isScanning || connectingId !== null;
   const settings = useAppSnapshot()?.platform.settings ?? "Windows settings";
+  const boxRef = useDialog(show, onClose);
   return (
     <AnimatePresence>
       {show && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="absolute inset-0 bg-black/80 backdrop-blur-md"
-          />
-
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="relative w-full max-w-md bg-[#0a0a0a] border border-neon-cyan/30 rounded-2xl overflow-hidden shadow-[0_0_50px_rgba(0,243,255,0.15)]"
-          >
-            <div className="flex justify-between items-center p-4 border-b border-white/5 bg-white/5">
-              <div className="flex items-center gap-2">
-                <Bluetooth className="text-neon-cyan" size={18} />
-                <h2 className="text-xs font-black uppercase tracking-[0.2em]">Hardware_Link</h2>
-              </div>
-              <button
-                onClick={onClose}
-                aria-label="Close"
-                className="p-1 hover:bg-white/10 rounded transition-colors"
-              >
-                <X size={18} className="text-white/60" />
-              </button>
-            </div>
-
-            <div className="p-4 max-h-[60vh] overflow-y-auto flex flex-col gap-2">
+        <DialogFrame
+          key="ble-discovery"
+          boxRef={boxRef}
+          titleId="ble-discovery-title"
+          icon={Bluetooth}
+          title="HARDWARE_LINK"
+          subline={PLAIN.HARDWARE_LINK}
+          onClose={onClose}
+          onBackdrop={onClose}
+          bodyClassName="max-h-[60vh] flex flex-col gap-2 p-4"
+          footer={
+            <DialogButtons>
+              <DialogCancelButton onClick={onClose}>Cancel</DialogCancelButton>
+              <DialogConfirmButton onClick={onScan} disabled={busy}>
+                <RefreshCw size={14} className={isScanning ? "animate-spin" : ""} />
+                Scan again
+              </DialogConfirmButton>
+            </DialogButtons>
+          }
+        >
               {devices.length === 0 ? (
                 <div className="py-10 flex flex-col items-center justify-center gap-3 text-center" role="status">
                   <div className="w-12 h-12 rounded-full border border-dashed border-white/10 flex items-center justify-center">
@@ -103,7 +100,7 @@ export function BleDiscoveryModal({
                   ) : isScanning ? (
                     <div className="flex flex-col gap-1">
                       <p className="text-[11px] font-bold text-neon-yellow uppercase tracking-widest">Scanning for treadmills…</p>
-                      <p className="text-xs text-white/60">This takes about 5 seconds.</p>
+                      <p className="text-xs text-white/60">Scanning takes about 5 seconds.</p>
                     </div>
                   ) : scanError ? (
                     <div className="flex flex-col gap-1">
@@ -131,7 +128,7 @@ export function BleDiscoveryModal({
                         className="w-full p-4 bg-white/5 border border-white/5 rounded-xl hover:bg-neon-cyan/10 hover:border-neon-cyan/30 transition-all flex justify-between items-center group disabled:cursor-default disabled:hover:bg-white/5 disabled:hover:border-white/5"
                       >
                         <div className="flex flex-col items-start gap-1 min-w-0">
-                          <span className="text-xs font-black uppercase tracking-wider">{device.name || 'Unknown Device'}</span>
+                          <span className="font-digital text-xs font-bold uppercase tracking-[0.12em]">{device.name || 'Unknown Device'}</span>
                           <span className="text-xs font-mono text-white/60 truncate max-w-[200px]">{device.id}</span>
                         </div>
                         {linking ? (
@@ -143,7 +140,7 @@ export function BleDiscoveryModal({
                         )}
                       </button>
                       <ActionStatus
-                        pending={linking ? "Linking to the treadmill. This can take up to 20 seconds." : null}
+                        pending={linking ? "Linking to the treadmill takes up to 20 seconds." : null}
                         error={failure}
                         className="px-1"
                       >
@@ -162,27 +159,7 @@ export function BleDiscoveryModal({
                 })
               )}
               {devices.length > 0 && scanError && <ActionStatus error={scanError} className="px-1" />}
-            </div>
-
-            <div className="p-4 bg-black/40 border-t border-white/5">
-              <button
-                onClick={onScan}
-                disabled={busy}
-                className={`w-full py-3 rounded-xl font-black text-[11px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 border ${busy
-                                        ? 'border-neon-magenta/50 text-neon-magenta/50 cursor-wait'
-                                        : 'border-neon-cyan text-neon-cyan hover:bg-neon-cyan/20 active:scale-[0.98]'
-                                    }`}
-              >
-                <RefreshCw size={14} className={isScanning ? 'animate-spin' : ''} />
-                {isScanning ? 'Scanning_Signals...' : scanError || scanned && devices.length === 0 ? 'Scan_Again' : 'Refresh_Scan'}
-              </button>
-            </div>
-
-            <div className="absolute top-0 right-0 w-16 h-16 pointer-events-none overflow-hidden">
-              <div className="absolute top-[-32px] right-[-32px] w-16 h-16 bg-neon-cyan/10 rotate-45 border border-neon-cyan/20" />
-            </div>
-          </motion.div>
-        </div>
+        </DialogFrame>
       )}
     </AnimatePresence>
   );

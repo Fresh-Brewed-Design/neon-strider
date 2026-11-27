@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { snapshot as previewSnapshot } from "../dev/mockBackend";
 import type { AppSnapshot } from "../ipc";
 import { startFailure } from "../state/linkStatus";
-import { linkLabel, relinkKey, relinkView } from "./status";
+import { linkLabel, relinkKey, relinkView, stasisClockOf } from "./status";
 
 function snap(patch: { deck?: Partial<AppSnapshot["deck"]>; connection?: Partial<AppSnapshot["connection"]> } = {}) {
   const base: AppSnapshot = structuredClone(previewSnapshot);
@@ -22,14 +22,8 @@ describe("linkLabel", () => {
     expect(linkLabel(snap({ deck: { status: "Stopping" } }))).toEqual({ text: "SPIN-DOWN", tone: "idle" });
   });
 
-  it("counts the pause up beside STASIS, m:ss then hours and minutes", () => {
-    const paused = (paused_for_s: number) => linkLabel(snap({ deck: { status: "Paused", paused_for_s } }));
-    expect(paused(0)).toEqual({ text: "STASIS", tone: "idle", clock: "0:00" });
-    expect(paused(200)).toEqual({ text: "STASIS", tone: "idle", clock: "3:20" });
-    expect(paused(3599)).toEqual({ text: "STASIS", tone: "idle", clock: "59:59" });
-    expect(paused(3909)).toEqual({ text: "STASIS", tone: "idle", clock: "1h05" });
-    // A clock left over from a pause never shows once the belt moves.
-    expect(linkLabel(snap({ deck: { status: "Running", paused_for_s: 12 } }))).toEqual({ text: "RUNNING", tone: "live" });
+  it("keeps the header's word bare while the STASIS clock counts", () => {
+    expect(linkLabel(snap({ deck: { status: "Paused", paused_for_s: 3909 } }))).toEqual({ text: "STASIS", tone: "idle" });
   });
 
   it("does not claim STANDBY for a status byte it doesn't know", () => {
@@ -45,7 +39,7 @@ describe("linkLabel", () => {
 
   it("shows the link problem when offline", () => {
     const offline = snap({ connection: { connected: false, link: { state: "idle" } } });
-    expect(linkLabel(offline)).toEqual({ text: "LINK DOWN", tone: "down" });
+    expect(linkLabel(offline)).toEqual({ text: "NO_CARRIER", tone: "down" });
   });
 });
 
@@ -131,5 +125,22 @@ describe("relinkView", () => {
     const later = down({ state: "reconnecting", attempt: 2, next_retry_s: 8 });
     expect(relinkKey(later)).toBe(relinkKey(reconnecting));
     expect(relinkKey(down({ state: "connecting", attempt: 1, of: 3 }))).not.toBe(relinkKey(reconnecting));
+  });
+});
+
+describe("stasisClockOf", () => {
+  it("counts the pause up, m:ss then hours and minutes", () => {
+    const paused = (paused_for_s: number) => stasisClockOf(snap({ deck: { status: "Paused", paused_for_s } }));
+    expect(paused(0)).toBe("0:00");
+    expect(paused(200)).toBe("3:20");
+    expect(paused(3599)).toBe("59:59");
+    expect(paused(3909)).toBe("1h05");
+  });
+
+  it("shows nothing unless the linked belt is paused", () => {
+    // A clock left over from a pause never shows once the belt moves.
+    expect(stasisClockOf(snap({ deck: { status: "Running", paused_for_s: 12 } }))).toBeNull();
+    expect(stasisClockOf(snap({ deck: { status: "Paused", paused_for_s: null } }))).toBeNull();
+    expect(stasisClockOf(snap({ deck: { status: "Paused", paused_for_s: 12 }, connection: { connected: false } }))).toBeNull();
   });
 });

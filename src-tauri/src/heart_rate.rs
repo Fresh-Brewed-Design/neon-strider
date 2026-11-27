@@ -350,7 +350,7 @@ pub fn describe_failure(step: Step, raw: &str) -> Failure {
 /// The status word, in the deck's voice.
 pub fn status_label(status: HeartStatus) -> &'static str {
     match status {
-        HeartStatus::Off => "OFFLINE",
+        HeartStatus::Off => "NO_CARRIER",
         HeartStatus::Searching => "SEEKING",
         HeartStatus::Waiting => "WAITING",
         HeartStatus::Connected => "LINKED",

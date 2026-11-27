@@ -17,8 +17,16 @@ import { TodayPanel } from "../history/Today";
 import { monthName, useHistoryWalks } from "../history/useHistoryWalks";
 import { useSessionUploads } from "../history/useSessionUploads";
 import { WallClockPanel } from "../history/WallClock";
-import { GhostButton, Label, OptionPicker, Page, Panel } from "../ui";
+import { GhostButton, Label, NeonButton, OptionPicker, Page, Panel } from "../ui";
 import { cx } from "../util";
+
+/** What each time frame's totals are called. */
+const TOTALS_HEADING: Record<Range, string> = {
+  "7d": "Last 7 days",
+  "30d": "Last 30 days",
+  "1y": "Past year",
+  all: "All time",
+};
 
 /** Until the first snapshot: one constant, so it never reads as a change. */
 const NO_IDS: number[] = [];
@@ -66,6 +74,8 @@ export function HistoryPage() {
     const n = session.mergedIds.length;
     confirm({
       title: "Delete session",
+      confirmLabel: "Delete",
+      tone: "danger",
       message: `Delete ${n > 1 ? `${n} joined records` : "the session"} from the local archive? Deleted sessions can't be restored.`,
       onConfirm: async () => {
         try {
@@ -85,38 +95,46 @@ export function HistoryPage() {
       done: (path) => `Exported sessions to ${path}`,
     });
 
+  // Nothing was ever recorded: the page leads with that, and the cards of zeros stay out.
+  const nothingYet = sessions !== null && sessions.length === 0 && stats !== null && stats.oldest_start_ms == null && !loadError;
+  const totalsHeading = day ? new Date(`${day}T00:00:00`).toLocaleDateString() : (TOTALS_HEADING[range] ?? "");
   const rangeLabel = day ? new Date(`${day}T00:00:00`).toLocaleDateString() : RANGES.find((r) => r.id === range)?.label;
+
+  // The time frame tabs change the totals and the session list, so they sit on the totals, right
+  // over the list; the weeks, DESK_SYNC, WALL_CLOCK and the calendar never change with them.
+  const picker = (
+    <OptionPicker
+      label="Time frame"
+      className="flex flex-wrap overflow-hidden rounded border border-white/10"
+      options={RANGES.map((r) => ({ value: r.id, label: r.label }))}
+      value={day ? null : range}
+      onChange={(next) => {
+        setRange(next);
+        setDay(null);
+      }}
+      optionClassName={(active) =>
+        cx(
+          "px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.12em] transition-colors",
+          active ? "bg-neon-cyan/15 text-neon-cyan" : "text-white/60 hover:bg-white/5 hover:text-white",
+        )
+      }
+    />
+  );
 
   return (
     <Page
       codename="SESSION_ARCHIVE"
       title="History"
       actions={
-        <>
-          <GhostButton
-            onClick={exportCsv}
-            disabled={exportAction.pending}
-            title="Export every saved session to a CSV file in Downloads, regardless of the time frame selected"
-          >
-            {exportAction.pending ? "Exporting…" : "Export CSV"}
-          </GhostButton>
-          <OptionPicker
-            label="Time frame"
-            className="flex flex-wrap overflow-hidden rounded border border-white/10"
-            options={RANGES.map((r) => ({ value: r.id, label: r.label }))}
-            value={day ? null : range}
-            onChange={(next) => {
-              setRange(next);
-              setDay(null);
-            }}
-            optionClassName={(active) =>
-              cx(
-                "px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.12em] transition-colors",
-                active ? "bg-neon-cyan/15 text-neon-cyan" : "text-white/60 hover:bg-white/5 hover:text-white",
-              )
-            }
-          />
-        </>
+        <NeonButton
+          className="h-7 px-3"
+          onClick={exportCsv}
+          // With no walks saved there is nothing to export.
+          disabled={exportAction.pending || nothingYet}
+          title={nothingYet ? "No walks to export yet." : "Saves every session to a CSV file in Downloads, whatever time frame shows"}
+        >
+          {exportAction.pending ? "Exporting…" : "Export CSV"}
+        </NeonButton>
       }
     >
       <div className="flex flex-col gap-3">
@@ -125,50 +143,51 @@ export function HistoryPage() {
           error={exportAction.error && `Could not export sessions: ${exportAction.error}`}
           done={exportAction.done}
         />
-        {weekly && <WeeklyPanel weekly={weekly} />}
-        {deskSync && <DeskSyncPanel sync={deskSync} />}
+        {nothingYet && (
+          <Panel className="p-4 text-center" >
+            <p className="font-mono text-xs text-white/80" data-testid="history-empty">
+              No walks yet. ENGAGE on Live or run a program to record one.
+            </p>
+          </Panel>
+        )}
+        {weekly && !nothingYet && <WeeklyPanel weekly={weekly} />}
+        {deskSync && (!nothingYet || deskSync.desk_days > 0) && <DeskSyncPanel sync={deskSync} />}
         {todayTimeline && <TodayPanel timeline={todayTimeline} />}
-        {wallClock && <WallClockPanel clock={wallClock} />}
-        {stats && (
-          <TotalsPanel
-            meters={stats.totals.meters}
-            seconds={stats.totals.seconds}
-            kcal={stats.totals.kcal}
-            count={stats.totals.sessions}
-          />
+        {wallClock && (!nothingYet || wallClock.desk_days > 0) && <WallClockPanel clock={wallClock} />}
+
+        {!nothingYet && (
+          <Panel className="p-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3">
+              <Label>Past year</Label>
+              <span className="font-mono text-xs text-white/60">Click a day to show only its sessions</span>
+            </div>
+            <Calendar metersByDay={byDay} selected={day} onSelect={setDay} />
+          </Panel>
         )}
 
-        <Panel className="p-3">
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3">
-            <Label>Past year</Label>
-            <span className="font-mono text-xs text-white/60">Click a day to show only its sessions</span>
-          </div>
-          <Calendar metersByDay={byDay} selected={day} onSelect={setDay} />
-        </Panel>
+        {!nothingYet && <TotalsPanel heading={totalsHeading} totals={stats?.totals ?? null} picker={picker} />}
 
-        <div className="flex flex-wrap items-center justify-between gap-x-3">
+        {!nothingYet && (
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
           <Label>Sessions · {rangeLabel}</Label>
           {day && (
             <button
               type="button"
               onClick={() => setDay(null)}
-              className="font-mono text-[11px] text-neon-magenta hover:underline"
+              className="font-mono text-[11px] text-neon-cyan hover:underline"
             >
               Clear day filter
             </button>
           )}
         </div>
+        )}
 
         {loadError ? (
           <p className="py-6 text-center font-mono text-xs text-red-400">Could not load sessions: {loadError}</p>
         ) : !sessions || walks.dayLoading ? (
           <p className="py-6 text-center font-mono text-xs text-white/60">Loading sessions…</p>
-        ) : groups.length === 0 ? (
-          <p className="py-6 text-center font-mono text-xs text-white/60">
-            {sessions.length === 0 && stats?.oldest_start_ms == null
-              ? "No sessions recorded yet. Every walk shows up in History."
-              : "No sessions in this time frame."}
-          </p>
+        ) : nothingYet ? null : groups.length === 0 ? (
+          <p className="py-6 text-center font-mono text-xs text-white/60">No sessions in the chosen time frame.</p>
         ) : (
           groups.map((g) => (
             <section key={g.key} className="flex flex-col gap-1.5">

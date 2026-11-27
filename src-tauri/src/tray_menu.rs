@@ -252,10 +252,10 @@ fn link_label(link: &LinkState) -> String {
         LinkState::Scanning => "SCANNING".into(),
         LinkState::Connecting { attempt, of } => format!("LINKING {attempt}/{of}"),
         LinkState::Reconnecting { next_retry_s, .. } => format!("RELINK {next_retry_s}S"),
-        LinkState::AdapterUnavailable => "BT OFFLINE".into(),
-        LinkState::Failed { .. } => "LINK FAILED".into(),
+        LinkState::AdapterUnavailable => "BT OFF".into(),
+        LinkState::Failed { .. } => "NO_CARRIER".into(),
         LinkState::NoData { .. } => "NO SIGNAL".into(),
-        LinkState::Idle | LinkState::Connected => "LINK DOWN".into(),
+        LinkState::Idle | LinkState::Connected => "NO_CARRIER".into(),
     }
 }
 
@@ -893,8 +893,8 @@ mod tests {
                 ..disconnected()
             })
         };
-        assert_eq!(down(LinkState::Idle), "LINK DOWN");
-        assert_eq!(down(LinkState::AdapterUnavailable), "BT OFFLINE");
+        assert_eq!(down(LinkState::Idle), "NO_CARRIER");
+        assert_eq!(down(LinkState::AdapterUnavailable), "BT OFF");
         assert_eq!(
             down(LinkState::Connecting { attempt: 1, of: 3 }),
             "LINKING 1/3"

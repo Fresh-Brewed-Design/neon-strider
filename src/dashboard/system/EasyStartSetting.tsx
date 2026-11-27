@@ -15,7 +15,7 @@ export function EasyStartSetting() {
         label="Easy start"
         checked={s.easy_start.enabled}
         onChange={(on) => void action.run(() => dispatch({ type: "easy_start_set", on }))}
-        description="Every belt start begins at the slowest speed and eases up to the target speed over 30 s."
+        description="Belt starts ease up from the slowest speed over 30 s."
         hint="Pausing, stopping or setting a speed by hand ends the ease at once."
       />
       <ActionStatus pending={action.pending} error={action.error} className="mt-1" />

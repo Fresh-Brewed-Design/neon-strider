@@ -227,6 +227,18 @@ impl fmt::Display for TargetSource {
     }
 }
 
+/// DUMP on the walk-away card: the walk ends where the walk-away began. The
+/// stop that follows saves the walk, then `persistence::db_cut_session` takes
+/// off the time the belt ran with nobody on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SessionCut {
+    pub session_id: i64,
+    /// Epoch ms where the walk now ends.
+    pub at_ms: i64,
+    /// Seconds the belt ran after it, until the walk-away pause.
+    pub empty_s: i64,
+}
+
 /// The session being recorded, as live totals.
 #[derive(Default)]
 pub struct SessionState {
@@ -291,6 +303,9 @@ pub struct OrchestratorState {
     /// What the deck did with the last target when it was not what we asked:
     /// plain words and when, for the windows to show for a while.
     pub(crate) target_note: Option<(String, Instant)>,
+    /// The plain reason under `target_note` and what to do, from what the
+    /// engine knew when the deck answered (`deck_note_hint`).
+    pub(crate) target_note_hint: Option<String>,
     /// The last target packet changed the speed byte (not only the incline):
     /// a nack on it can be filed against that speed.
     pub(crate) target_speed_changed: bool,
@@ -350,6 +365,8 @@ pub struct OrchestratorState {
     pub paused_since: Option<Instant>,
     /// The long-pause save already happened for this pause.
     pub pause_saved: bool,
+    /// DUMP after a walk-away: where the session's final save cuts it.
+    pub session_cut: Option<SessionCut>,
     /// A stop is in flight: the stop is repeated, and the automatic start,
     /// pause and adoption logic held off, until the deck reports the belt at rest.
     pub stop_requested: bool,
@@ -388,6 +405,10 @@ pub struct OrchestratorState {
     /// The last start went unanswered: stop re-sending it (auto-start and
     /// auto-resume) until the user asks again.
     pub start_blocked: bool,
+    /// The press a start armed now belongs to (`link::StartPress`): Engage,
+    /// except while a program's GO (`go_program`) or the sit-too-long card's
+    /// ENGAGE (`desk::engage`) runs.
+    pub start_press: crate::link::StartPress,
     /// When the engine last sent the deck a Start (the handshake's second
     /// half) that the deck hasn't answered yet: motion then is the app's own
     /// start, not one at the treadmill (`programs::watch_for_deck_start`).
@@ -496,6 +517,7 @@ impl Default for OrchestratorState {
             session_open_seq: 0,
             paused_since: None,
             pause_saved: false,
+            session_cut: None,
             stop_requested: false,
             tilt_multiplier: 1.0,
             incline_offset: 0.0,
@@ -512,11 +534,13 @@ impl Default for OrchestratorState {
             speed_drift: Default::default(),
             start_requested_at: None,
             start_blocked: false,
+            start_press: crate::link::StartPress::Engage,
             start_sent_at: None,
             unknown_status_code: None,
             unknown_status_logged: Vec::new(),
             target_pending: None,
             target_note: None,
+            target_note_hint: None,
             target_speed_changed: false,
             target_incline_changed: false,
             deck_profile: Default::default(),
@@ -978,6 +1002,8 @@ impl OrchestratorState {
 
     pub fn start_session(&mut self, session_id: i64) {
         let now = self.now();
+        // A cut was for the walk before.
+        self.session_cut = None;
         self.session = SessionState {
             active_session_id: Some(session_id),
             last_physics_update: Some(now),
@@ -1409,26 +1435,66 @@ impl OrchestratorState {
         // A checkpoint keeps the session live, and the snapshot adds the live
         // distance itself, so it must stay out of the cached daily base.
         let exclude = if end { None } else { Some(session_id) };
+        let cut = if end {
+            self.session_cut
+                .take()
+                .filter(|c| c.session_id == session_id)
+        } else {
+            None
+        };
         tauri::async_runtime::spawn_blocking(move || {
             if let Err(e) = persistence::db_update_session(&app_c, session_id, record) {
                 log::warn!("Session {} not saved: {}", session_id, e);
             }
+            // After the save, in the same order, so the cut has the last word.
+            let cut_totals = cut.and_then(|c| {
+                match persistence::db_cut_session(&app_c, c.session_id, c.at_ms, c.empty_s) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        log::warn!("Session {} not cut: {}", session_id, e);
+                        None
+                    }
+                }
+            });
             // After the write, so the day's total includes what was just saved.
             crate::snapshot::refresh_daily_base(&app_c, exclude);
+            if let Some(t) = cut_totals {
+                log::info!(
+                    "Session {} cut where the walk-away began: {} · {:.2} km",
+                    session_id,
+                    crate::util::format_duration(t.duration_s),
+                    t.distance_m / 1000.0
+                );
+                crate::snapshot::refresh_after_session_edit(&app_c);
+                crate::hud::toast(
+                    &app_c,
+                    serde_json::json!({
+                        "type": "STATUS",
+                        "message": session_saved_message(
+                            t.duration_s,
+                            t.distance_m,
+                            crate::snapshot::daily_total_with_live(0.0),
+                        ),
+                        "isActionable": true,
+                    }),
+                );
+            }
         });
 
-        crate::hud::toast(
-            app,
-            serde_json::json!({
-                "type": "STATUS",
-                "message": session_saved_message(
-                    self.session.duration_seconds,
-                    self.session.distance_meters,
-                    crate::snapshot::daily_total_with_live(self.session.distance_meters),
-                ),
-                "isActionable": true,
-            }),
-        );
+        if cut.is_none() {
+            crate::hud::toast(
+                app,
+                serde_json::json!({
+                    "type": "STATUS",
+                    "message": session_saved_message(
+                        self.session.duration_seconds,
+                        self.session.distance_meters,
+                        crate::snapshot::daily_total_with_live(self.session.distance_meters),
+                    ),
+                    "isActionable": true,
+                }),
+            );
+        }
 
         if end {
             self.stop_session();
@@ -1794,10 +1860,98 @@ impl OrchestratorState {
             }
             protocol::DeckReply::TargetEcho { .. } => None,
         };
+        self.target_note_hint = note
+            .as_ref()
+            .map(|_| self.deck_note_hint(asked_speed, asked_incline, reply));
         match note {
             Some(n) => self.target_note = Some((n, now)),
             // The deck took it as asked: an older complaint is stale.
             None => self.target_note = None,
+        }
+    }
+
+    /// The plain words under a DECK_REFUSED or DECK_ADJUSTED note: what the
+    /// deck did and, where the engine knows one, the limit it met. Called
+    /// after `learn_deck_reply`, so a limit just learned counts.
+    fn deck_note_hint(
+        &self,
+        asked_speed: u8,
+        asked_incline: u8,
+        reply: protocol::DeckReply,
+    ) -> String {
+        let kmh = |b: u8| self.to_physical_speed(b as f32 / 10.0);
+        let tilt = |level: u8| self.incline_pct(level);
+        let top_speed = self.deck_profile.ceiling();
+        let top_level = self.deck_profile.incline_ceiling();
+        match reply {
+            protocol::DeckReply::Nack if self.target_speed_changed => {
+                let next = match top_speed.filter(|c| asked_speed > *c) {
+                    Some(c) => format!("The treadmill's top speed is {:.1} km/h.", kmh(c)),
+                    None => "Pick another speed.".to_string(),
+                };
+                format!(
+                    "The treadmill turned down {:.1} km/h. {next}",
+                    kmh(asked_speed)
+                )
+            }
+            protocol::DeckReply::Nack if self.target_incline_changed => {
+                let next = match top_level.filter(|c| asked_incline > *c) {
+                    Some(c) => format!("The treadmill's top tilt is {:.1} %.", tilt(c)),
+                    None => "Pick another tilt.".to_string(),
+                };
+                format!(
+                    "The treadmill turned down tilt {:.1} %. {next}",
+                    tilt(asked_incline)
+                )
+            }
+            protocol::DeckReply::Nack => {
+                "The treadmill turned down the new target. Pick another speed or tilt.".to_string()
+            }
+            protocol::DeckReply::TargetEcho { speed, incline } => {
+                let speed_moved = speed != asked_speed;
+                let incline_moved = incline != asked_incline;
+                let took = if speed_moved && incline_moved {
+                    format!(
+                        "The treadmill took {:.1} km/h and tilt {:.1} % in place of the targets sent.",
+                        kmh(speed),
+                        tilt(incline)
+                    )
+                } else if speed_moved {
+                    format!(
+                        "The treadmill took {:.1} km/h in place of {:.1} km/h.",
+                        kmh(speed),
+                        kmh(asked_speed)
+                    )
+                } else {
+                    format!(
+                        "The treadmill took tilt {:.1} % in place of {:.1} %.",
+                        tilt(incline),
+                        tilt(asked_incline)
+                    )
+                };
+                let limit = if speed_moved && top_speed == Some(speed) {
+                    Some(format!(
+                        "{:.1} km/h is the treadmill's top speed.",
+                        kmh(speed)
+                    ))
+                } else if speed_moved && self.deck_profile.floor() == Some(speed) {
+                    Some(format!(
+                        "{:.1} km/h is the treadmill's slowest speed.",
+                        kmh(speed)
+                    ))
+                } else if incline_moved && !speed_moved && top_level == Some(incline) {
+                    Some(format!(
+                        "Tilt {:.1} % is the treadmill's top tilt.",
+                        tilt(incline)
+                    ))
+                } else {
+                    None
+                };
+                match limit {
+                    Some(l) => format!("{took} {l}"),
+                    None => took,
+                }
+            }
         }
     }
 
@@ -1935,6 +2089,12 @@ impl OrchestratorState {
         (self.now().saturating_duration_since(*at) < TARGET_NOTE_SHOWN).then(|| note.clone())
     }
 
+    /// The plain words under the note on the last target, while the note shows.
+    pub fn current_target_note_hint(&self) -> Option<String> {
+        self.current_target_note()?;
+        self.target_note_hint.clone()
+    }
+
     pub fn reset_connection(&mut self) {
         self.awaiting_first_packet = true;
         self.session_evaluated_on_connect = false;
@@ -1951,6 +2111,7 @@ impl OrchestratorState {
         self.unknown_status_code = None;
         self.target_pending = None;
         self.target_note = None;
+        self.target_note_hint = None;
         self.deck_standby = false;
         self.last_handshake_tx = None;
         self.deck_set_speed = None;
@@ -2025,7 +2186,7 @@ impl OrchestratorState {
         self.hold_auto_start = false;
         if !self.last_status.is_moving() {
             self.start_requested_at = Some(now);
-            crate::link::start_requested();
+            crate::link::start_requested(self.start_press);
         }
         true
     }
@@ -2051,7 +2212,7 @@ impl OrchestratorState {
         self.start_requested_at = None;
         self.start_blocked = true;
         self.handshake_step = HandshakeStep::Idle;
-        crate::link::start_refused(why);
+        crate::link::start_refused(why, self.start_press);
     }
 
     /// Follow up on an Engage: clear the watch once the deck reports Starting or

@@ -1,5 +1,6 @@
 import { formatClock, formatDuration, km, lifetimeKm } from "../format";
 import type { AppSnapshot, HudWidget, PulseTarget, ZoneBand } from "../ipc";
+import { PLAIN } from "../names";
 import type { SparkData } from "./spark";
 
 export type Accent = "cyan" | "magenta" | "yellow" | "green";
@@ -13,8 +14,10 @@ export interface StatWidget {
   id: HudWidget;
   /** Short label shown on the HUD. */
   label: string;
-  /** Themed long label shown on the dashboard card. */
+  /** The stat's one name: the Live tile's title and the HUD page's row. */
   codename: string;
+  /** The plain meaning, the small grey line under the codename; none where the codename is already plain. */
+  plain?: string;
   accent: Accent;
   read: (s: AppSnapshot) => StatReading;
   /** A spark chart under the value, drawn from the snapshot; null shows none. */
@@ -25,6 +28,10 @@ export interface StatWidget {
   target?: (s: AppSnapshot) => PulseTarget | null;
   /** A short line under the value; null shows none. */
   detail?: (s: AppSnapshot) => string | null;
+  /** False keeps `detail` off the HUD panel's stat cell, where its line would make every panel taller. */
+  panelDetail?: boolean;
+  /** The HUD keeps a zone line's room under the value while true, so a zone step coming or going moves nothing. */
+  reserveZone?: (s: AppSnapshot) => boolean;
 }
 
 /**
@@ -37,14 +44,16 @@ export const STAT_WIDGETS: StatWidget[] = [
   {
     id: "VELOCITY",
     label: "VEL",
-    codename: "PHYS_VELOCITY",
+    codename: "VELOCITY",
+    plain: PLAIN.VELOCITY,
     accent: "cyan",
     read: (s) => ({ value: s.deck.speed_kmh.toFixed(1), unit: "KM/H" }),
   },
   {
     id: "INCLINE",
     label: "TILT",
-    codename: "ALTITUDE_BIAS",
+    codename: "TILT",
+    plain: PLAIN.TILT,
     accent: "magenta",
     read: (s) => ({ value: s.deck.incline_pct.toFixed(1), unit: "%" }),
   },
@@ -52,6 +61,7 @@ export const STAT_WIDGETS: StatWidget[] = [
     id: "TIMER",
     label: "TIME",
     codename: "DECK_CYCLES",
+    plain: PLAIN.DECK_CYCLES,
     accent: "cyan",
     read: (s) => ({ value: formatClock(s.session.duration_s) }),
   },
@@ -59,6 +69,7 @@ export const STAT_WIDGETS: StatWidget[] = [
     id: "DISTANCE",
     label: "DIST",
     codename: "DISPLACEMENT",
+    plain: PLAIN.DISPLACEMENT,
     accent: "cyan",
     read: (s) => ({ value: km(s.session.distance_m), unit: "KM" }),
   },
@@ -66,6 +77,7 @@ export const STAT_WIDGETS: StatWidget[] = [
     id: "STEPS",
     label: "STEPS",
     codename: "LOCOMOTION_INC",
+    plain: PLAIN.LOCOMOTION_INC,
     accent: "cyan",
     read: (s) => ({ value: s.session.steps.toString() }),
   },
@@ -73,6 +85,7 @@ export const STAT_WIDGETS: StatWidget[] = [
     id: "CALORIES",
     label: "BURN",
     codename: "METABOLIC_BURN",
+    plain: PLAIN.METABOLIC_BURN,
     accent: "cyan",
     read: (s) => ({ value: Math.round(s.session.calories).toString(), unit: "KCAL" }),
   },
@@ -80,13 +93,18 @@ export const STAT_WIDGETS: StatWidget[] = [
     id: "DAILY",
     label: "TODAY",
     codename: "DAILY_TOTAL",
+    plain: PLAIN.DAILY_TOTAL,
     accent: "green",
     read: (s) => ({ value: km(s.session.daily_distance_m), unit: "KM" }),
+    // On the Live tile, the HUD strip and STEP_MAP's readout; the HUD panel keeps its height.
+    detail: (s) => todayTimeDetail(s),
+    panelDetail: false,
   },
   {
     id: "NEURAL",
     label: "FLOW",
     codename: "NEURAL_FLUIDITY",
+    plain: PLAIN.NEURAL_FLUIDITY,
     accent: "yellow",
     read: (s) => ({ value: Math.round(s.neural.factor * 100).toString(), unit: "%" }),
   },
@@ -94,6 +112,7 @@ export const STAT_WIDGETS: StatWidget[] = [
     id: "ODOMETER",
     label: "ODO",
     codename: "LIFETIME_ODOMETER",
+    plain: PLAIN.LIFETIME_ODOMETER,
     accent: "yellow",
     // Whole km at 1000 and up, so the HUD cell never outgrows its column.
     read: (s) => ({ value: lifetimeKm(s.odometer.distance_km), unit: "KM" }),
@@ -111,7 +130,8 @@ export const STAT_WIDGETS: StatWidget[] = [
     id: "HEART_RATE",
     label: "HR",
     codename: "PULSE_RATE",
-    accent: "magenta",
+    plain: PLAIN.PULSE_RATE,
+    accent: "cyan",
     // "--" until a sensor is picked and sending.
     read: (s) => ({ value: s.heart_rate.bpm === null ? "--" : s.heart_rate.bpm.toString(), unit: "BPM" }),
     // Rust sends no history while no sensor is picked: no chart.
@@ -123,8 +143,18 @@ export const STAT_WIDGETS: StatWidget[] = [
     zone: (s) => s.heart_rate.zone,
     // And a pulse target only while a cool-down step that ends on heart rate runs.
     target: (s) => s.heart_rate.cool_down,
+    // A picked sensor is when a zone or target can show.
+    reserveZone: (s) => s.heart_rate.sensor !== null,
   },
 ];
+
+/** A length of time that stays on one line: a non-breaking space inside it. */
+const unbroken = (seconds: number) => formatDuration(seconds).replace(" ", " ");
+
+/** Today's walking time beside DAILY_TOTAL's km, e.g. "2h 14m"; none before the first walk of the day. */
+export function todayTimeDetail(s: AppSnapshot): string | null {
+  return s.session.daily_time_s > 0 ? unbroken(s.session.daily_time_s) : null;
+}
 
 /** Today's walked share of active PC time; "--" until Rust has enough PC time to give one. */
 export function pcWalkShareReading(s: AppSnapshot): StatReading {
@@ -136,9 +166,13 @@ export function pcWalkShareReading(s: AppSnapshot): StatReading {
 export function pcWalkShareDetail(s: AppSnapshot): string | null {
   const { active_s, walked_s } = s.pc_walk_share;
   if (active_s <= 0) return null;
-  // Each duration stays on one line: a non-breaking space inside it, a plain one around "of".
-  const whole = (seconds: number) => formatDuration(seconds).replace(" ", "\u00a0");
-  return `${whole(walked_s)} of ${whole(active_s)}`;
+  // Each duration stays on one line, with a plain space around "of".
+  return `${unbroken(walked_s)} of ${unbroken(active_s)}`;
+}
+
+/** A stat's tooltip where only its short label shows: "DECK_CYCLES: walk time". */
+export function statTitle(w: StatWidget): string {
+  return w.plain ? `${w.codename}: ${w.plain}` : w.codename;
 }
 
 const BY_ID = new Map(STAT_WIDGETS.map((w) => [w.id, w]));

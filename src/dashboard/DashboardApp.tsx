@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState, type ComponentType } from "react";
 import { Activity, History, LayoutDashboard, ListChecks, Pin, PinOff, Settings2 } from "lucide-react";
 import { toast, Toaster } from "sonner";
+import { ActionStatus } from "../components/ActionStatus";
+import { useAction } from "../components/useAction";
 import { subscribeAppSnapshot, useAppState } from "../state/useAppState";
 import { useTreadmillStore } from "../store/treadmillStore";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { GuidedPinMarker } from "./guided/GuidedPinMarker";
+import { leavePage } from "./leavePage";
 import { LinkControl } from "./link/LinkControl";
 import { readPref, writePref } from "./localPrefs";
-import { cx, send } from "./util";
+import { cx, post } from "./util";
 import { LivePage } from "./pages/LivePage";
 import { ProgramsPage } from "./pages/ProgramsPage";
 import { HistoryPage } from "./pages/HistoryPage";
@@ -62,6 +65,7 @@ function BackgroundToasts() {
 /** The tray popup: a nav rail on the left, the chosen page on the right. */
 export function DashboardApp() {
   const pinned = useAppState((s) => s.hud.dashboard_pinned) ?? false;
+  const pin = useAction();
   const [page, setPage] = useState<PageId>(readPage);
   const Current = PAGES.find((p) => p.id === page)?.Page ?? LivePage;
 
@@ -71,6 +75,11 @@ export function DashboardApp() {
     setPage(id);
     writePref(PAGE_KEY, id);
   };
+  const openCalibration = () =>
+    leavePage(() => {
+      openPage("system");
+      showSystemSection("sys-calibration");
+    });
 
   // ECHO's "Open in Programs" on a History row: show the Programs page, where the editor opens it.
   useEffect(
@@ -83,16 +92,18 @@ export function DashboardApp() {
     [],
   );
 
-  // INSTALL on the HUD's update card: open System, CORE, Updates on the notes, once per request.
+  // NOTES on the HUD's update card: open System, CORE, Updates on the notes, once per request.
   useEffect(
     () =>
       subscribeAppSnapshot((s) => {
         const at = s.update.show_notes_at_ms;
         if (at === null || String(at) === readPref(NOTES_SHOWN_KEY)) return;
         writePref(NOTES_SHOWN_KEY, String(at));
-        writePref(PAGE_KEY, "system");
-        setPage("system");
-        showSystemSection("sys-updates");
+        leavePage(() => {
+          writePref(PAGE_KEY, "system");
+          setPage("system");
+          showSystemSection("sys-updates");
+        });
       }),
     [],
   );
@@ -121,10 +132,12 @@ export function DashboardApp() {
                   type="button"
                   aria-current={active ? "page" : undefined}
                   title={label}
-                  onClick={() => {
-                    useTreadmillStore.getState().clearProgramRequest();
-                    openPage(id);
-                  }}
+                  onClick={() =>
+                    leavePage(() => {
+                      useTreadmillStore.getState().clearProgramRequest();
+                      openPage(id);
+                    })
+                  }
                   className={cx(
                     "dash-rail-item relative flex w-full items-center gap-3 rounded px-3 py-2.5 text-left transition-colors",
                     active ? "bg-neon-cyan/10 text-neon-cyan" : "text-white/55 hover:bg-white/5 hover:text-white",
@@ -146,7 +159,9 @@ export function DashboardApp() {
           </div>
           <button
             type="button"
-            onClick={() => send({ type: "dashboard_set_pinned", pinned: !pinned })}
+            aria-pressed={pinned}
+            disabled={pin.pending}
+            onClick={() => void pin.run(post({ type: "dashboard_set_pinned", pinned: !pinned }))}
             title={pinned ? "Close the dashboard when it loses focus" : "Keep the dashboard open when it loses focus"}
             className={cx(
               "dash-rail-item flex w-full items-center gap-2 rounded px-2.5 py-2 text-left transition-colors hover:bg-white/5",
@@ -158,6 +173,10 @@ export function DashboardApp() {
               {pinned ? "Pinned" : "Pin open"}
             </span>
           </button>
+          {/* The icon-only rail has no room for a sentence: there the line shows beside it, under the page. */}
+          <div className="dash-wide-only empty:hidden">
+            <ActionStatus error={pin.error} className="px-1" />
+          </div>
           <LinkControl />
         </div>
       </nav>
@@ -167,16 +186,13 @@ export function DashboardApp() {
         <div className="dash-compact-only shrink-0 px-3 pt-2">
           <GuidedPinMarker />
         </div>
-        {page !== "system" && (
-          <CalibrateOffer
-            onCalibrate={() => {
-              openPage("system");
-              showSystemSection("sys-calibration");
-            }}
-          />
-        )}
-        <div className="min-h-0 flex-1">
-          <Current />
+        {/* The first-connect calibration offer heads every page but System, where calibration
+            lives, and Live, which shows it under the controls so they never move. */}
+        {page !== "system" && page !== "live" && <CalibrateOffer className="mx-5 mt-4" onCalibrate={openCalibration} />}
+        <div className="min-h-0 flex-1">{page === "live" ? <LivePage onCalibrate={openCalibration} /> : <Current />}</div>
+        {/* With the rail at icons only, a refused pin shows at the page's foot, beside the pin button. */}
+        <div className="dash-compact-only shrink-0 px-3 pb-2">
+          <ActionStatus error={pin.error} />
         </div>
       </main>
 

@@ -8,7 +8,13 @@ duration_s: number,
 /**
  * Days with at least one session over 50 m.
  */
-active_days: number, sessions: number, calories: number, 
+active_days: number, 
+/**
+ * Desk days in the week, as DESK_SYNC counts them: days the PC was used
+ * (`desk_days`) plus every day walked. Today counts once walked, so a
+ * day off the PC, or the day still under way, never counts against him.
+ */
+desk_days: number, sessions: number, calories: number, 
 /**
  * The most distance covered on any one day.
  */

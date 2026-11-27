@@ -93,7 +93,7 @@ function older(before: number) {
 }
 export const lastId = sessions[sessions.length - 1]?.id ?? 0;
 
-const EMPTY_WEEK = { distance_km: 0, duration_s: 0, active_days: 0, sessions: 0, calories: 0, longest_day_km: 0 };
+const EMPTY_WEEK = { distance_km: 0, duration_s: 0, active_days: 0, desk_days: 0, sessions: 0, calories: 0, longest_day_km: 0 };
 
 export const history: Scenario = {
   apply() {
