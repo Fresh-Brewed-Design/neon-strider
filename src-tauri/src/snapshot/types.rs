@@ -22,6 +22,12 @@ pub struct AppSnapshot {
     pub connection: ConnectionSnapshot,
     pub deck: DeckSnapshot,
     pub session: SessionSnapshot,
+    /// VELOCITY's spark chart (#362, `speed_trace.rs`): the belt's speed in
+    /// km/h over the last 10 minutes, one point per 5 s, oldest first, always
+    /// a full window; `None` is a step with the link down or no walk open.
+    /// Empty while the window holds no speed, so there is no chart. Hot: it
+    /// moves every 5 s while walking.
+    pub speed_trace: Vec<Option<f32>>,
 
     // ---- Programs ----
     pub programs: Vec<Program>,
@@ -54,6 +60,12 @@ pub struct AppSnapshot {
     /// How the HUD panel shows right now: in full, as a strip or not at all
     /// (`hud.idle_mode` while the belt is still; see `snapshot/stasis.rs`).
     pub hud_view: HudView,
+    /// A program's wait for GO holds the whole panel (its first 30 s,
+    /// `stasis::GO_HOLD`): the HUD keeps minify off meanwhile.
+    pub hud_go_hold: bool,
+    /// The one card the HUD shows now, picked by rank from the cards due
+    /// (`card_queue.rs`, #421). The HUD renders this one and no other.
+    pub hud_card: crate::snapshot::card_queue::HudCard,
     /// Displays the HUD can be placed on. Refreshed every few seconds, not per tick.
     pub hud_monitors: Vec<HudMonitor>,
 
@@ -238,6 +250,10 @@ pub struct ConnectionSnapshot {
     /// How the last Engage went; a failure says what to do. None while one is
     /// pending, and cleared once the deck's status changes (it woke up).
     pub start_result: Option<crate::link::StartResult>,
+    /// Which press `start_pending` and `start_result` belong to: Engage, a
+    /// program's GO or the sit-too-long card's ENGAGE, so each shows under the
+    /// control that was pressed.
+    pub start_press: crate::link::StartPress,
     /// When the HUD asked the dashboard to open its connect dialog (epoch ms);
     /// the dashboard opens it once per new value.
     #[ts(type = "number | null")]
@@ -301,6 +317,10 @@ pub struct DeckSnapshot {
     /// or from a program (`stride_fit::above`). False while it is unset. A
     /// hint only; nothing changes the speed.
     pub above_stride_fit: bool,
+    /// The STASIS clock: whole seconds since the belt paused, counted from
+    /// the first paused frame. None unless the deck reports Paused; it
+    /// clears on resume and on stop. Only shown.
+    pub paused_for_s: Option<u32>,
 }
 
 /// One speed the deck runs, or has not been asked yet.
@@ -353,6 +373,10 @@ pub struct SessionSnapshot {
     pub calories: f32,
     /// Today's saved sessions plus the live one.
     pub daily_distance_m: f64,
+    /// Seconds walked today, from the same sessions as `daily_distance_m`
+    /// (a walk counts toward the day it started).
+    #[ts(type = "number")]
+    pub daily_time_s: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS)]
@@ -725,7 +749,8 @@ pub enum Command {
     SeatedStart {
         id: u32,
     },
-    /// SNOOZE 15 MIN on the card: hide it for 15 minutes; the idle time is kept.
+    /// SNOOZE on the card: hide it for 15 minutes, 30 the second time, then 60
+    /// (`seated.snooze_minutes`); the idle time is kept.
     SeatedSnooze,
 
     // ---- Eye breaks (OCULAR_IMPLANT) ----
@@ -1020,6 +1045,11 @@ pub enum Command {
     OpenPermissionSettings {
         permission: crate::platform::PermissionKind,
     },
+
+    // ---- DESK_SYNC ----
+    /// History's DESK_SYNC card played today's light switching on
+    /// (`DeskSync::today_lit`), so no window plays it again today.
+    DeskSyncLightShown,
 }
 
 #[cfg(test)]

@@ -1,0 +1,1 @@
+- VELOCITY shows a spark chart of the belt's speed over the last 10 minutes, under VEL on the HUD and in the Velocity title row on the Live page.

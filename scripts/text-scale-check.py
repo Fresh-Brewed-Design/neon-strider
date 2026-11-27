@@ -35,7 +35,7 @@ VIEWS = [
     ("hud", "HUD", "", None),
     ("system", "System", "", "tab:DECK"),
     ("system-links", "System", "", "tab:LINKS"),
-    ("system-routine", "System", "", "tab:ROUTINE"),
+    ("system-routine", "System", "", "tab:AUTOMATION"),
     ("system-core", "System", "update=available", "tab:CORE"),
     ("system-calibration", "System", "calwizard=guidedone", "tab:DECK"),
 ]
@@ -58,6 +58,8 @@ PROBE = r"""() => {
     let hiddenLabel = false;
     for (let a = el; a && !hiddenLabel; a = a.parentElement) hiddenLabel = getComputedStyle(a).clipPath.startsWith("inset(50%");
     if (hiddenLabel) continue;
+    // A separator that would open a wrapped line is clipped on purpose (Joined in src/dashboard/ui.tsx).
+    if (el.hasAttribute("data-joined-sep")) continue;
     const range = document.createRange();
     range.selectNodeContents(n);
     const rects = [...range.getClientRects()].filter((r) => r.width > 0);

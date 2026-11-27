@@ -13,6 +13,7 @@ import type { FitToTimeOption } from "./FitToTimeOption";
 import type { GhostPodSnapshot } from "./GhostPodSnapshot";
 import type { GuidedTaskSnapshot } from "./GuidedTaskSnapshot";
 import type { HeartRateSnapshot } from "./HeartRateSnapshot";
+import type { HudCard } from "./HudCard";
 import type { HudConfig } from "./HudConfig";
 import type { HudMonitor } from "./HudMonitor";
 import type { HudView } from "./HudView";
@@ -38,7 +39,15 @@ import type { WalkAwaySnapshot } from "./WalkAwaySnapshot";
 import type { WallClock } from "./WallClock";
 import type { WeeklySummary } from "./WeeklySummary";
 
-export type AppSnapshot = { connection: ConnectionSnapshot, deck: DeckSnapshot, session: SessionSnapshot, programs: Array<Program>, active_program: ActiveProgram | null, 
+export type AppSnapshot = { connection: ConnectionSnapshot, deck: DeckSnapshot, session: SessionSnapshot, 
+/**
+ * VELOCITY's spark chart (#362, `speed_trace.rs`): the belt's speed in
+ * km/h over the last 10 minutes, one point per 5 s, oldest first, always
+ * a full window; `None` is a step with the link down or no walk open.
+ * Empty while the window holds no speed, so there is no chart. Hot: it
+ * moves every 5 s while walking.
+ */
+speed_trace: Array<number | null>, programs: Array<Program>, active_program: ActiveProgram | null, 
 /**
  * FIT_TO_DECK (#225): the seeded programs that may trade speed above
  * STRIDE_FIT for incline, with Rust's words for the card and the
@@ -71,6 +80,16 @@ speed_drift: SpeedDriftSnapshot, hud: HudConfig,
  * (`hud.idle_mode` while the belt is still; see `snapshot/stasis.rs`).
  */
 hud_view: HudView, 
+/**
+ * A program's wait for GO holds the whole panel (its first 30 s,
+ * `stasis::GO_HOLD`): the HUD keeps minify off meanwhile.
+ */
+hud_go_hold: boolean, 
+/**
+ * The one card the HUD shows now, picked by rank from the cards due
+ * (`card_queue.rs`, #421). The HUD renders this one and no other.
+ */
+hud_card: HudCard, 
 /**
  * Displays the HUD can be placed on. Refreshed every few seconds, not per tick.
  */

@@ -4,7 +4,7 @@ import type { Program } from "../../ipc";
 import { useAppSnapshot } from "../../state/useAppState";
 import { useTreadmillStore } from "../../store/treadmillStore";
 import { ActiveProgramCard } from "../programs/ActiveProgramCard";
-import { NEW_PROGRAM, toDraft, type Draft } from "../programs/draft";
+import { NEW_PROGRAM, toClone, toDraft, type Draft } from "../programs/draft";
 import { ProgramEditor } from "../programs/ProgramEditor";
 import { ProgramRow } from "../programs/ProgramRow";
 import { NeonButton, Page, Panel, Waiting } from "../ui";
@@ -72,7 +72,7 @@ export function ProgramsPage() {
         <ActiveProgramCard />
 
         {editing ? (
-          <ProgramEditor key={editing.id} initial={editing} onDone={closeEditor} />
+          <ProgramEditor key={`${editing.id}:${editing.from ?? 0}`} initial={editing} onDone={closeEditor} />
         ) : s.programs.length === 0 ? (
           <Panel className="flex flex-col items-center gap-3 p-6 text-center">
             <div className="flex flex-col gap-1 font-mono text-xs text-white/55" data-testid="programs-empty">
@@ -102,6 +102,7 @@ export function ProgramsPage() {
                     fitToDeck={s.fit_to_deck.find((o) => o.program_id === p.id) ?? null}
                     fitToTime={s.fit_to_time.find((o) => o.program_id === p.id) ?? null}
                     onEdit={() => setPicked(toDraft(p))}
+                    onClone={() => setPicked(toClone(p))}
                     onDelete={(onConfirm) => remove(p, onConfirm)}
                   />
                 </li>

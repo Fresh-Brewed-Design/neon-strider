@@ -1,4 +1,5 @@
 import type { AppSnapshot, ConnectionSnapshot } from "../ipc";
+import { stasisClock } from "../format";
 import { PLAIN } from "../names";
 import { isMoving, linkState, linkView } from "../state/linkStatus";
 
@@ -29,6 +30,17 @@ export function linkLabel(s: AppSnapshot): { text: string; tone: LinkTone } {
     default:
       return { text: "STANDBY", tone: "idle" };
   }
+}
+
+/**
+ * The STASIS clock while the belt is paused ("3:20", "1h05"): Rust's count of
+ * the pause (`deck.paused_for_s`). Null while the belt isn't paused. Only
+ * shown, in a place of its own: the panel's status row, the strip's stat slot
+ * and the running strip's program line, never on a button.
+ */
+export function stasisClockOf(s: AppSnapshot): string | null {
+  const p = s.deck.paused_for_s;
+  return s.connection.connected && s.deck.status === "Paused" && p !== null ? stasisClock(p) : null;
 }
 
 /** What the header's link label does when clicked. */
@@ -77,6 +89,29 @@ export function resumeWord(snapshot: AppSnapshot): "GO" | "RE-JACK" {
   return a?.phase === "walking" && a.paused ? "GO" : "RE-JACK";
 }
 
+/** The plain line on every start button (ENGAGE, GO, the sit-too-long card's) while the deck is asleep. */
+export const WAKE_FIRST_SUB = "wake deck first";
+
+/**
+ * The one sentence for a deck that is asleep or off: the start buttons' tooltip before a press, the
+ * sit-too-long card's line, and Rust's refusal after one (`link::START_STANDBY`, the same words).
+ */
+export const WAKE_FIRST = "Wake the deck first at the treadmill or remote.";
+
+/**
+ * The deck is linked but asleep or off (standby): it refuses every start and the app can't wake it,
+ * so a start button says so before the press. A press still sends what it always does.
+ */
+export function deckAsleep(snapshot: AppSnapshot): boolean {
+  return snapshot.connection.connected && snapshot.deck.standby && !isMoving(snapshot.deck);
+}
+
+/** Every word the main button takes (`engageLabel`), so it keeps one size in every state. */
+export const ENGAGE_WORDS = ["ENGAGE", "STASIS", "RE-JACK", "GO", "WAKING…"] as const;
+
+/** Every plain line under the main button (`engageSub`), so it keeps one size in every state. */
+export const ENGAGE_SUBS = ["start", "pause belt", "resume belt", "resume program", "start belt", "starting", WAKE_FIRST_SUB] as const;
+
 /** The main button's word, the same on the panel and the strip. */
 export function engageLabel(snapshot: AppSnapshot): string {
   const { deck, connection } = snapshot;
@@ -91,10 +126,13 @@ export function engageLabel(snapshot: AppSnapshot): string {
 /** What the main button does, in plain words: the small line under its codename. */
 export function engageSub(snapshot: AppSnapshot): string {
   const { deck, connection } = snapshot;
-  if (isMoving(deck)) return "pause";
+  if (isMoving(deck)) return "pause belt";
   if (connection.start_pending) return "starting";
-  const a = snapshot.active_program;
-  return deck.status === "Paused" || (a?.phase === "walking" && a.paused) ? "resume" : "start";
+  if (deckAsleep(snapshot)) return WAKE_FIRST_SUB;
+  // On a paused program the main button is its GO: it resumes the program, and
+  // after a wait for GO it starts the belt (the program card's GO says the same).
+  if (resumeWord(snapshot) === "GO") return snapshot.active_program?.wait ? "start belt" : "resume program";
+  return deck.status === "Paused" ? "resume belt" : "start";
 }
 
 /** The main button's tooltip, the same words as `engageSub` in a sentence. */
@@ -102,8 +140,9 @@ export function engageTitle(snapshot: AppSnapshot): string {
   const { deck, connection } = snapshot;
   if (isMoving(deck)) return "Pause the belt.";
   if (connection.start_pending) return "Waiting for the treadmill to start.";
+  if (deckAsleep(snapshot)) return WAKE_FIRST;
   const a = snapshot.active_program;
-  if (a?.phase === "walking" && a.paused) return "Resume the program.";
+  if (a?.phase === "walking" && a.paused) return a.wait ? "Start the belt and carry on with the program." : "Resume the program.";
   return deck.status === "Paused" ? "Resume the belt." : "Start the belt.";
 }
 
@@ -142,4 +181,16 @@ export function offlineText(connection: AppSnapshot["connection"]): string {
     default:
       return connection.has_saved_device ? OFFLINE : "No treadmill saved yet.";
   }
+}
+
+/**
+ * Who holds the belt at the quiet speed, and the speed that comes back after:
+ * Quiet now (pressed on the HUD or in the tray, `calls.quiet_now`), or a call
+ * (`calls.quiet_active`). Null while neither does.
+ */
+export function quietHold(snapshot: AppSnapshot): { by: "press" | "call"; back: number } | null {
+  const c = snapshot.calls;
+  if (c.quiet_now && c.quiet_now_back_kmh !== null) return { by: "press", back: c.quiet_now_back_kmh };
+  if (c.quiet_active && c.call_back_kmh !== null) return { by: "call", back: c.call_back_kmh };
+  return null;
 }

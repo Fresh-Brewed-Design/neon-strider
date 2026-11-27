@@ -4,6 +4,7 @@
 import { emit } from "@tauri-apps/api/event";
 import type { AppSnapshot, DeskSync, WallClock } from "../ipc";
 import type { RustConfig } from "../services/controlOrchestrator";
+import { applyCardQueue } from "./cardQueue";
 
 // Same defaults as src-tauri/src/strava_template.rs.
 export const DEFAULT_TITLE = "NEON STRIDER // {distance_km} KM UPLINK";
@@ -25,7 +26,7 @@ function mockDeskSync(): DeskSync {
     }
     d.setDate(d.getDate() - 1);
   }
-  return { walked: days.filter((x) => x.walked).length, desk_days: days.length, window: 14, days, today_open: false };
+  return { walked: days.filter((x) => x.walked).length, desk_days: days.length, window: 14, days, today_open: false, today_lit: false };
 }
 
 /**
@@ -48,6 +49,7 @@ export const snapshot: AppSnapshot = {
     last_error: null,
     start_pending: false,
     start_result: null,
+    start_press: "engage",
     connect_dialog_at_ms: null,
     simulated: false,
   },
@@ -74,6 +76,7 @@ export const snapshot: AppSnapshot = {
     incline_steps: [],
     stride_fit_kmh: null,
     above_stride_fit: false,
+    paused_for_s: null,
     profile: {
       learned: 0,
       floor_kmh: null,
@@ -88,7 +91,9 @@ export const snapshot: AppSnapshot = {
       sweep_enabled: false,
     },
   },
-  session: { active_id: 1, duration_s: 1934, distance_m: 1720, steps: 2412, calories: 103, daily_distance_m: 4310 },
+  session: { active_id: 1, duration_s: 1934, distance_m: 1720, steps: 2412, calories: 103, daily_distance_m: 4310, daily_time_s: 4740 },
+  // No VELOCITY chart unless ?speedspark asks for one.
+  speed_trace: [],
   programs: [
     { id: 1, name: "Post-meal", steps: [{ duration_minutes: 10, speed_kmh: 4, incline_pct: 5, kind: "walk" }], repeat_every_minutes: null, note: "Walking soon after a meal blunts the rise in blood sugar." },
     { id: 2, name: "Workday", steps: [{ duration_minutes: 5, speed_kmh: 3, incline_pct: 5, kind: "walk" }], repeat_every_minutes: 30, note: "Five easy minutes every half hour keep the body online." },
@@ -152,6 +157,8 @@ export const snapshot: AppSnapshot = {
     minified: false,
   },
   hud_view: "full",
+  hud_go_hold: false,
+  hud_card: "none",
   hud_monitors: [
     { name: "\\\\.\\DISPLAY1", label: "Display 1 · 1920×1080", is_primary: true, active: true, width: 1920, height: 1080 },
     { name: "\\\\.\\DISPLAY2", label: "Display 2 · 2560×1440", is_primary: false, active: false, width: 2560, height: 1440 },
@@ -198,9 +205,9 @@ export const snapshot: AppSnapshot = {
     progress: 0.42,
   },
   weekly: {
-    this_week: { distance_km: 12.4, duration_s: 11_460, active_days: 3, sessions: 4, calories: 740, longest_day_km: 5.1 },
-    last_week: { distance_km: 31.6, duration_s: 29_700, active_days: 5, sessions: 9, calories: 1_890, longest_day_km: 8.2 },
-    week_before: { distance_km: 28.2, duration_s: 26_100, active_days: 4, sessions: 7, calories: 1_650, longest_day_km: 7.4 },
+    this_week: { distance_km: 12.4, duration_s: 11_460, active_days: 3, desk_days: 3, sessions: 4, calories: 740, longest_day_km: 5.1 },
+    last_week: { distance_km: 31.6, duration_s: 29_700, active_days: 5, desk_days: 5, sessions: 9, calories: 1_890, longest_day_km: 8.2 },
+    week_before: { distance_km: 28.2, duration_s: 26_100, active_days: 4, desk_days: 5, sessions: 7, calories: 1_650, longest_day_km: 7.4 },
     last_week_id: "2026-W45",
     distance_change: { pct: 12, is_new: false },
     show_card: false,
@@ -213,6 +220,8 @@ export const snapshot: AppSnapshot = {
     program_ids: [1, 2, 3],
     custom_programs: false,
     show_card: false,
+    folded: false,
+    snooze_minutes: 15,
     seated_minutes: 60,
     pending_program_id: null,
   },
@@ -225,13 +234,15 @@ export const snapshot: AppSnapshot = {
     fit_rests: true,
     holds_belt: false,
     at_rest: false,
+    moved_to_rest: false,
+    silent: false,
     phase: "idle",
     remaining_s: 0,
     blink: null,
     blink_seq: 0,
     end_seq: 0,
   },
-  calls: { enabled: true, quiet_kmh: 2, mic_in_use: false, quiet_active: false, quiet_now: false, quiet_now_back_kmh: null },
+  calls: { enabled: true, quiet_kmh: 2, mic_in_use: false, quiet_active: false, quiet_now: false, quiet_now_back_kmh: null, call_back_kmh: null },
   odometer: { distance_km: 412.6, belt_hours: 138.2, since_ms: Date.UTC(2026, 2, 12) },
   walkaway: { lock_enabled: true, idle_enabled: true, idle_minutes: 10, card: "none", pause_in_s: 0, reason: null },
   lights_out: { enabled: false },
@@ -251,6 +262,7 @@ export const snapshot: AppSnapshot = {
     last_result: null,
     whats_new: null,
     auto_install: true,
+    auto_installed_today: false,
   },
   traffic: { recording: false, file_path: null, file_name: null, packets: 0, bytes: 0, elapsed_s: 0, stop_reason: null },
   // Same limits as src-tauri/src/calibration.rs.
@@ -339,17 +351,35 @@ export const PREVIEW_CONFIG: RustConfig = {
 /** Send the current snapshot to every listener, as Rust's `app-state` event does. */
 export function publish() {
   snapshot.hud_view = hudView();
+  snapshot.hud_go_hold = goHeld();
+  applyCardQueue(snapshot);
   snapshot.update.dot = updateDot();
   void emit("app-state", { full: true, ...structuredClone(snapshot) });
 }
 
 // The HUD during stasis, as `snapshot/stasis.rs` decides it: the whole panel
-// while the belt moves, for 10 s after it stops, while a program waits for GO,
-// and after expand until the belt next moves. Minified, the running strip
-// takes the whole panel's place (a program waiting for GO still gets it).
+// while the belt moves, for 10 s after it stops, for the first 30 s a program
+// waits for GO, and after expand until the belt next moves. Minified, the
+// running strip takes the whole panel's place (a program's first 30 s waiting
+// for GO still gets it). A wait past its 30 s shows the strip even when hidden.
 const STASIS_GRACE_MS = 10_000;
+const GO_HOLD_MS = 30_000;
 let lastMovingAt: number | null = null;
 let hudExpanded = false;
+/** When the current wait for GO began; `?program=unanswered` starts it 31 s ago. */
+let goSince: number | null = null;
+export function startGoWait(agoMs: number) {
+  goSince = Date.now() - agoMs;
+}
+/** The GO prompt holds the whole panel (`stasis::go_held`). */
+export function goHeld(): boolean {
+  if (!snapshot.active_program?.wait) {
+    goSince = null;
+    return false;
+  }
+  goSince ??= Date.now();
+  return Date.now() - goSince < GO_HOLD_MS;
+}
 export function hudView(): AppSnapshot["hud_view"] {
   const moving = snapshot.connection.connected && (snapshot.deck.status === "Running" || snapshot.deck.status === "Starting");
   if (moving) {
@@ -359,9 +389,9 @@ export function hudView(): AppSnapshot["hud_view"] {
   const mode = snapshot.hud.idle_mode;
   const a = snapshot.active_program;
   const inGrace = lastMovingAt !== null && Date.now() - lastMovingAt < STASIS_GRACE_MS;
-  if (a?.wait) return "full";
+  if (goHeld()) return "full";
   if (moving || mode === "full" || hudExpanded || inGrace) return snapshot.hud.minified ? "minified" : "full";
-  return mode;
+  return a?.wait && mode === "hidden" ? "strip" : mode;
 }
 
 /** The strip's expand button: the whole panel until the belt next moves. */

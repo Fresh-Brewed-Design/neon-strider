@@ -41,6 +41,21 @@ describe("HEART_RATE widget", () => {
   });
 });
 
+describe("DAILY widget", () => {
+  const withToday = (daily_time_s: number) => ({ ...snapshot, session: { ...snapshot.session, daily_time_s } });
+
+  it("shows today's walking time beside the km, on one line", () => {
+    const w = statWidget("DAILY");
+    expect(w?.detail?.(withToday(8_040))).toBe("2h 14m");
+    expect(w?.detail?.(withToday(39_540))).toBe("10h 59m");
+    expect(w?.detail?.(withToday(1_500))).toBe("25m");
+  });
+
+  it("shows no time before the first walk of the day", () => {
+    expect(statWidget("DAILY")?.detail?.(withToday(0))).toBeNull();
+  });
+});
+
 describe("PC_WALK_SHARE widget", () => {
   const withShare = (active_s: number, walked_s: number, share_pct: number | null) => ({
     ...snapshot,

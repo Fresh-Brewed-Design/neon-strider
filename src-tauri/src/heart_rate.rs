@@ -11,13 +11,14 @@
 //!
 //! The PULSE_RATE spark chart reads `history` (`heart_rate/history.rs`): a
 //! rolling 10 minutes of readings, and `zone`, the running step's heart rate
-//! zone in bpm.
+//! zone in bpm. VELOCITY's speed trace (`speed_trace.rs`) reuses the same
+//! window for the belt's speed.
 //!
 //! It only reads. Nothing here sends to the treadmill, so a heart rate can
 //! never start or move the belt.
 
 #[path = "heart_rate/history.rs"]
-mod history;
+pub(crate) mod history;
 #[path = "heart_rate/worker.rs"]
 mod worker;
 

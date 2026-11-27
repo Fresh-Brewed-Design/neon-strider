@@ -36,8 +36,8 @@ function show(options: FitToTimeOption[]) {
 }
 
 const runButton = (name: string) => {
-  const row = screen.getByLabelText(`Edit ${name}`).closest("div")!;
-  return row.querySelector("button:last-of-type") as HTMLButtonElement;
+  const row = screen.getByLabelText(`Edit ${name}`).closest("div")!.parentElement!;
+  return row.querySelector(":scope > button:last-of-type") as HTMLButtonElement;
 };
 
 beforeEach(() => vi.mocked(invoke).mockClear());

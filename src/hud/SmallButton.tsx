@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Swap } from "./Swap";
 
 /** The HUD's small text button on cards, toasts and the program row. */
 export function SmallButton({
@@ -6,7 +7,9 @@ export function SmallButton({
   children,
   className,
   sub,
+  subs,
   title,
+  tight,
   disabled = false,
 }: {
   onClick: () => void;
@@ -15,6 +18,10 @@ export function SmallButton({
   className?: string;
   /** A plain lowercase line under the name, for a button whose codename needs explaining. */
   sub?: string;
+  /** Every line `sub` takes in turn: they share one cell, so the button keeps one size. */
+  subs?: readonly string[];
+  /** Lines of `subs` set a size smaller, so a longer one keeps the button's size (`Swap`). */
+  tight?: readonly string[];
   title?: string;
   disabled?: boolean;
 }) {
@@ -23,7 +30,7 @@ export function SmallButton({
     <button type="button" className={cls} title={title} disabled={disabled} onClick={onClick}>
       {children}
       {sub && " "}
-      {sub && <span className="hud-btn-sub">{sub}</span>}
+      {sub && (subs ? <Swap className="hud-btn-sub" shown={sub} all={subs} tight={tight} /> : <span className="hud-btn-sub">{sub}</span>)}
     </button>
   );
 }

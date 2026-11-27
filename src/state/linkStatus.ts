@@ -1,7 +1,7 @@
 // How the treadmill link is described: one view per link state, for the rail,
 // the Live page and the HUD header.
 
-import type { AppSnapshot, ConnectionSnapshot, DeckSnapshot, LinkState } from "../ipc";
+import type { AppSnapshot, ConnectionSnapshot, DeckSnapshot, LinkState, StartPress } from "../ipc";
 import { PLAIN } from "../names";
 
 /** One vocabulary for how things are going: cyan ok, yellow working or needs a look, red a problem. */
@@ -122,8 +122,22 @@ export function linkView(c: ConnectionSnapshot, settings = "Windows settings"): 
 /** The belt is turning or spinning up. */
 export const isMoving = (deck: DeckSnapshot) => deck.status === "Running" || deck.status === "Starting";
 
-/** The last Engage went unanswered, while the belt is still not moving. */
+/** The last start went unanswered or was refused, while the belt is still not moving. */
 export function startFailure(s: AppSnapshot): string | null {
   const r = s.connection.start_result;
   return r && !r.ok && !isMoving(s.deck) ? r.message : null;
+}
+
+/**
+ * The start Rust says `press` made (Engage, or a program's GO): whether it is waiting, its
+ * result for `useBackendAction`, and its failure while the belt is still not moving. Each
+ * control shows only its own start, so a failure shows once, under the control pressed.
+ */
+export function startOf(s: AppSnapshot, press: StartPress) {
+  const own = s.connection.start_press === press;
+  return {
+    pending: own && s.connection.start_pending,
+    result: own ? s.connection.start_result : null,
+    failure: own ? startFailure(s) : null,
+  };
 }

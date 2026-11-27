@@ -37,7 +37,9 @@ import { programTones } from "./programtones";
 import { seated } from "./seated";
 import { shortcuts } from "./shortcuts";
 import { speedDrift } from "./speeddrift";
+import { speedSpark } from "./speedspark";
 import { stasis } from "./stasis";
+import { stasisClock } from "./stasisclock";
 import { strava } from "./strava";
 import { strideFit } from "./stridefit";
 import { today } from "./today";
@@ -89,6 +91,10 @@ export const SCENARIOS: Scenario[] = [
   easyStop,
   fitToTime,
   programTones,
+  // After the scenarios that set the belt's speed: VELOCITY reads the trace's last point.
+  speedSpark,
+  // After every scenario that pauses the belt at load.
+  stasisClock,
   // After link and programs: it replays their connect and step changes.
   hudMotion,
   // After platform: the keys follow ?mac.

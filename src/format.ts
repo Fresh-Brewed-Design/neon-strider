@@ -25,6 +25,17 @@ export function mmss(totalSeconds: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+/**
+ * The STASIS clock: how long the belt has been paused, m:ss under an hour,
+ * then hours and minutes ("1h05"). Seconds drop from an hour up, so the clock
+ * is never wider than "59:59" wherever it shows.
+ */
+export function stasisClock(totalSeconds: number): string {
+  const t = Math.max(0, Math.floor(totalSeconds));
+  if (t < 3600) return mmss(t);
+  return `${Math.floor(t / 3600)}h${String(Math.floor((t % 3600) / 60)).padStart(2, "0")}`;
+}
+
 /** A length of time in words: "1h 05m", "12m" or "40s". */
 export function formatDuration(seconds: number): string {
   const total = Math.max(0, Math.round(seconds));

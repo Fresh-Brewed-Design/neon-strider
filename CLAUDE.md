@@ -60,9 +60,16 @@ it as the same session, and a running program carries on at the same step, its t
 the time the app was closed. Background check failures only show in System -> Updates.
 With "Install automatically" on (default, `update_auto_install`), the scheduler (5 s tick) installs an
 offered update by itself only when the belt has been still with no program (walking, resting,
-paused or waiting for GO), start or countdown/stopping for 10 minutes and the PC has had no input
-for 5 (`platform::input_idle_for`); `auto_install` is the pure rule, and it runs again right
-before the installer starts.
+paused or waiting for GO), start or countdown/stopping for 10 minutes, the PC has had no input
+for 5 (`platform::input_idle_for`), and no app has used the microphone (`calls::mic`, a call) and
+Windows hasn't said presenting (`presenting::presenting_now`, whatever the hold-cards switch) for 5;
+at most once a local calendar day (`update_auto_day`, saved right before the installer runs, so it
+survives the restart); an offer from a check over 5 minutes old is checked again first, so the
+newest version goes in. `auto_install` is the pure rule, and it runs again right before the
+installer starts. While it's on there is no HUD UPDATE READY card (`show_hud_card`; the dot on
+System and the tray icon is the only sign) and "What's new" never opens the dashboard by itself:
+it shows the next time the dashboard is opened, with any still-unread notes kept below the new
+ones (`notes_with_unread`). Switched off, the card and the self-opening "What's new" work as before.
 The installer is per-user NSIS; "launch at login" (`get/set_launch_at_login`, through `platform`: the autostart plugin on Windows, an SMAppService Login Item on macOS) and single-instance are Rust plugins.
 `traffic.rs` is the Diagnostics traffic recorder: while switched on (`traffic_record`, off at every
 start) `bluetooth.rs` hands it every packet written and every notification received, and it appends
@@ -209,23 +216,25 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?anchor=top_left` (or any corner): the HUD's corner
 - `?autoinstall=off`: "Install automatically" switched off (with `?update=...`)
 - `?blink=squeeze|open`: the guided blink step during an eye-break cooldown (CLOSE by default)
-- `?call`: on a call, the belt held at the quiet speed (the HUD preview also shows the toast)
+- `?call`: on a call, the belt held at the quiet speed, 3.5 km/h back after it (QUIET lit and its QUIET // DAMPED line; the HUD preview also shows the toast)
 - `?caloffer`: a connected treadmill with no calibration, so the first-connect "Calibrate this treadmill" card shows (outside System; on Live under the controls)
 - `?calwizard`: GROUND_TRUTH with a 280 cm belt loop, two saved points and the top speed question; `=belt` the BELT_LOOP step, `=tapping|dropped` a tap run five passes in or with a dropped tap and a restart note, `=measured` the plain-words result with the point already saved (UNDO, TAP AGAIN), `=sweep|sweeprun` RUN ALL between speeds or tapping, `=oldpoint` a point stored below the factor limit, `=targets` an added 3.5 km/h and a stored 14.0 km/h outside the range, `=steps` GAIT_SYNC tapping footsteps after a measured run, `=stepsaved` the stride measured and saved by itself, with UNDO, `=guiderun` the guided walk from 0.6 to 5.0 km/h tapping at 5.0, `=guidecheck` both ends saved and the midpoint check up next, `=guidesplit` the check 3.2 % off and split, `=guidedone` the walk done with its summary, `=guideskip` both ends saved on a deck that skips 2.8 km/h, so the check moved to 2.7, `=guideran` the 2.8 check the deck ran at 2.9 (chip, line and note show 2.9), `=aside` START FRESH with the two points set aside (POINTS_ASIDE, RESTORE, KEEP NEW), `=asidedone` the new walk done with the old set still aside
 - `?connect=fail`: connecting from the connect dialog fails
 - `?custom`: the HUD sits where it was dragged
 - `?daily=12.34`: today's km (DAILY_TOTAL)
+- `?dailytime=659`: today's walking time beside DAILY_TOTAL, in minutes (659 is 10h 59m)
 - `?deck=paused`: with `?stasis=...`, the belt is paused (Engage reads RE-JACK)
 - `?decknote=refused|adjusted`: the HUD note after the deck refuses or changes a target
 - `?deckprofile`: DECK_PROFILE learned (floor 0.6, ceiling 4.0, 1.5 skipped, top incline level 12, level 7 skipped; Diagnostics shows FORGET); `=sweep` with the LABS // DECK_SWEEP switch on and a speed sweep running, `=inclinesweep` an incline sweep running, `=sweepon` the switch on with no sweep running
-- `?desksync=open|new|few`: History's DESK_SYNC card
+- `?desksync=open|new|few|counted`: History's DESK_SYNC card; `=counted` today open, then 3 s after load today counts and its light pulses on
 - `?distance=12.34`: this walk's km (DIST)
 - `?due`: the belt reminder well past its interval
 - `?easystart=off`: Easy start switched off in System -> Treadmill (every belt start runs straight to its target)
 - `?easystop=on|easing`: Easy stop switched on in System -> Treadmill; `=easing` a manual walk easing down after DUMP, 12 s before the Stop (EASY STOP on the HUD, DUMP reads "stop now")
 - `?echo=short`: ECHO on a History walk is refused as too short, with Rust's message
+- `?engage=go`: the deck's screen is off with a program waiting for GO (`?program=ready` unless another is given), so the last GO's failure shows under GO, not Engage, and GO waits and fails there
 - `?engage=timeout`: the deck's screen is off, so Engage waits and fails
-- `?eyebreak=upcoming|rest|break|still|resume`: the OCULAR_IMPLANT cards: heads-up, heads-up set for a program rest, cooldown with the belt paused or left alone, RE-JACK card
+- `?eyebreak=upcoming|rest|moved|waiting|break|still|silent|resume`: the OCULAR_IMPLANT cards: heads-up, heads-up set for a program rest, heads-up for a break moved earlier to fit the rest (with `?program=resting`), DEFERRED (due mid-walk, waiting for the belt to stop, 8:12 before the pause), cooldown with the belt paused or left alone, cooldown during a call (no tones), RE-JACK card
 - `?ghostpod=advertising|connected|error`: System -> Labs GHOST_POD
 - `?ghostpower=waiting|linked`: GHOST_POD's power switch on, with no watch or a watch reading 135 W
 - `?guided`: a guided task (GROUND_TRUTH) holding the dashboard open and on top, with UNPIN
@@ -252,21 +261,23 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?offline`: no treadmill saved yet
 - `?onemonitor`: a single display
 - `?pcwalk`: the WALKED stat pinned on the HUD at 38 % (2h 10m of 5h 40m); `=early` 6 minutes of PC time (`--`), `=long` 10h 05m of 11h 50m, `=none` no PC time today
-- `?presenting`: Windows says a presentation or full-screen app is in front, so the HUD holds its non-urgent cards (with `?seated`, `?eyebreak=upcoming`, `?weekly`, `?due` or `?update=available`) and shows PRESENTING // CARDS HELD; `=off` the switch off in System -> Desk
-- `?program=ready|hold|still|resting|paused|interval`: a program waiting for GO after a rest, after a 0 km/h step (its steps have no kind), or after a reconnect found the belt still; mid-rest; paused by the user; or Interval walk on its 3rd brisk round (`INTERVAL 3/5`, `T-MINUS 17:08`); each shows STEP_MAP on the Live page and the next step on the HUD
+- `?presenting`: Windows says a presentation or full-screen app is in front, so the HUD holds its non-urgent cards (with `?seated`, `?eyebreak=upcoming`, `?weekly`, `?due` or `?update=available&autoinstall=off`) and shows PRESENTING // CARDS HELD; `=off` the switch off in System -> Desk
+- `?program=ready|hold|still|resting|paused|interval|unanswered`: a program waiting for GO after a rest, after a 0 km/h step (its steps have no kind), or after a reconnect found the belt still; mid-rest; paused by the user; or Interval walk on its 3rd brisk round (`INTERVAL 3/5`, `T-MINUS 17:08`); `unanswered` is `ready` past its 30 s hold (the strip, GO its main button); each shows STEP_MAP on the Live page and the next step on the HUD
 - `?programtones`: Program tones switched on (System, Desk); 3 s after load a cue fires: `=step` (or no value) the running program moves to its next step, `=wait` it waits for GO after a rest, `=speedup` its next, faster step starts in 5 s; SKIP fires the step cue while the belt runs
-- `?quietnow`: Quiet now holds the belt at the 2.0 km/h quiet speed (the HUD's QUIET lit, its QUIET // HOLD line, the tray's END QUIET); `=slow` the belt already at 1.8 km/h, so QUIET changes nothing and the HUD says why
+- `?quietnow`: Quiet now holds the belt at the 2.0 km/h quiet speed (the HUD's QUIET lit, its QUIET // DAMPED line, the tray's END QUIET); `=slow` the belt already at 1.8 km/h, so QUIET changes nothing and the HUD says why
 - `?reconnect`: the Strava login needs a fresh grant
 - `?reject`: every command fails
 - `?saved`: a walk saved for a manual Strava upload
 - `?savefail`: saving a walk for Strava fails
 - `?scan=empty|error|bt-off`: the connect dialog's Bluetooth scan
-- `?seated`: the sit-too-long card (ATROPHY_WARNING); comma-separated variants `off`, `queued`, `long`, `none`, `one`, `many`
+- `?seated`: the sit-too-long card (ATROPHY_WARNING); comma-separated variants `off`, `queued`, `long`, `none`, `one`, `many`, `folded` (the card folded into the strip's seated-time readout), `snoozed` (two snoozes taken, so SNOOZE 60 MIN)
 - `?shortcuts=changed|taken`: System -> Shortcuts with Start or pause moved to Ctrl+Alt+S (RESET shows), or on a Mac (with `?mac`) ⌃⌥P held by another app
 - `?sim`: the SIM tag
 - `?speeddrift=drifting|held|waiting|outside|ended`: System -> Speed drift on (3.2 to 3.8 km/h, every 5 minutes) on a manual walk: setting the belt at 3.6 km/h (the HUD's SPEED DRIFT line), holding while Neural flow eases off, counting to the first change, the speed set outside the band, or ended by a speed set by hand; `?speeddrift` alone is the switch on with the belt still
+- `?speedspark=steady|dips|gap`: VELOCITY's speed trace under VEL on the HUD and in Velocity's title row on the Live page: a steady 3.5 km/h walk, Neural flow easing off and then a call's quiet speed, or a minute with the link down; with the belt paused (`?program=paused`, `?deck=paused`) it ends in 3:20 at 0 km/h
+- `?stasisclock=3909`: with the belt paused (`?program=paused`, or `?deck=paused` with `?stasis=...`), the STASIS clock starts at that many seconds instead of 3:20
 - `?stasis=strip|hidden`: "When the belt is still" set to that, with the belt stopped
-- `?status=9|countdown|stopping|standby`: an unknown status byte, the 3-2-1, the belt winding down, or the deck asleep
+- `?status=9|countdown|stopping|standby`: an unknown status byte, the 3-2-1, the belt winding down, or the deck asleep (with `?program=...` the program stays and its GO is refused under GO)
 - `?stepsweep`: the running program moves to its next step 3 s after load and every 6 s after, so the HUD scanline sweeps with the step's name; with `?program=interval` Interval walk's names (WARM_UP, INTERVAL 3/5)
 - `?strava=authorizing|uploading|processing|checking|backoff|error|paused`: each Strava state
 - `?stridefit=4.5`: STRIDE_FIT set to 4.5 km/h in System, Calibration, so the program editor flags Brisk's 5.0 km/h step and Interval walk's 6.0 km/h steps; the belt runs at 5.0 km/h, so the Live speed slider shows the FIT mark and the HUD its ABOVE STRIDE_FIT line; Programs offers FIT_TO_DECK on Brisk, VO2 max and Interval walk
@@ -275,7 +286,7 @@ there. URL flags pick scenarios (one per line, sorted by flag name; add a new fl
 - `?today=early|long`: History's Today timeline for 08:02 to 14:25 with a walk after lunch; `=early` 20 minutes in, `=long` 06:40 to 21:30
 - `?traffic=recording|saved`: the Diagnostics traffic recorder
 - `?typingspeed`: System -> Labs typing by speed on, with a table of five speed bands from 12 walks; `=empty` on with no walks counted yet
-- `?update=available|downloading|failed|whatsnew`: auto-update states
+- `?update=available|downloading|failed|tomorrow|whatsnew`: auto-update states (`=tomorrow` on offer after today's automatic install; the HUD's UPDATE READY card needs `?autoinstall=off`)
 - `?walkaway=warning|paused|idle`: the walk-away cards (RE-JACK and DUMP on the paused one)
 - `?weekly`: the last-week HUD card; `=long|new|down` variants
 - `?wallclock=new|late|none`: History's WALL_CLOCK card with no desk days, a walk at 21:00 widening the row, or desk days with no walks

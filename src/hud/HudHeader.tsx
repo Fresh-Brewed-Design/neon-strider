@@ -8,6 +8,8 @@ export interface HeaderToggle {
   kind: "minify" | "expand";
   onClick: () => void;
   title: string;
+  /** Shown but off: a program waiting for GO keeps the whole panel. */
+  disabled?: boolean;
 }
 
 /** Four corners pointing in (minify) or out (expand). */
@@ -84,7 +86,7 @@ export function HudHeader({
   onRelink: () => void;
   logo: ReturnType<typeof useLogoDrag>;
   dragging: boolean;
-  /** Minify or expand; omitted while the panel can do neither (a program waiting for GO). */
+  /** Minify or expand; omitted while the panel has no size to change to (hidden). */
   toggle?: HeaderToggle;
   /** The linked deck is the dev builds' simulated treadmill. */
   simulated?: boolean;
@@ -129,6 +131,7 @@ export function HudHeader({
               className="hud-btn hud-btn-minify"
               aria-label={toggle.kind === "minify" ? "Minify the HUD" : "Show the whole HUD"}
               title={toggle.title}
+              disabled={toggle.disabled}
               onClick={toggle.onClick}
             >
               <ToggleIcon kind={toggle.kind} />
