@@ -7,6 +7,7 @@ import { systemLabel } from "../../names";
 import { GhostButton, Hint, Label } from "../ui";
 import { cx } from "../util";
 import { NumberField, Section, Toggle } from "./fields";
+import { DailyQuotaSetting } from "./DailyQuotaSetting";
 import { LightsOutSetting } from "./LightsOutSetting";
 import { PresentingSetting } from "./PresentingSetting";
 import { ProgramTonesSetting } from "./ProgramTonesSetting";
@@ -293,6 +294,10 @@ export function DeskSection() {
           </div>
         </>
       )}
+
+      <div className="border-t border-white/10" />
+
+      <DailyQuotaSetting />
 
       <div className="border-t border-white/10" />
 

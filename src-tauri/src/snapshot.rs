@@ -259,7 +259,7 @@ fn neural_snapshot(state: &OrchestratorState) -> NeuralSnapshot {
 }
 
 /// Build a snapshot from state. Pure (no Tauri, no locks, no I/O) so it can be
-/// unit-tested. `speed_drift`, `desk_sync`, `wall_clock`, `pc_walk_share`, `today_timeline`, `speed_trace`, `walkaway`, `update`, `traffic`, `lights_out`, `presenting`, `ghost_pod`,
+/// unit-tested. `speed_drift`, `desk_sync`, `daily_quota`, `wall_clock`, `pc_walk_share`, `today_timeline`, `speed_trace`, `walkaway`, `update`, `traffic`, `lights_out`, `presenting`, `ghost_pod`,
 /// `calibration`, `guided_task`, `program_tones`, `hud_view`, `hud_go_hold` and `hud_card` are left at their defaults: they depend on the clock or shared
 /// state, so the emitter fills them in.
 pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSnapshot {
@@ -291,6 +291,7 @@ pub fn build_snapshot(state: &OrchestratorState, parts: SnapshotParts) -> AppSna
         eye_break: parts.eye_break,
         calls: parts.calls,
         odometer: parts.odometer,
+        daily_quota: crate::daily_quota::DailyQuotaSnapshot::default(),
         walkaway: WalkAwaySnapshot::default(),
         update: crate::update::UpdateSnapshot::default(),
         traffic: crate::traffic::TrafficSnapshot::default(),

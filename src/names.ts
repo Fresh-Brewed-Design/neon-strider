@@ -23,6 +23,7 @@ export const PLAIN = {
   HEART_LINK: "heart sensor",
   STRIDE_FIT: "stride limit",
   ATROPHY_WARNING: "sit-too-long reminder",
+  DAILY_QUOTA: "daily km target",
   NO_CARRIER: "treadmill offline",
 } as const;
 

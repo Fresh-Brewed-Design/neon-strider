@@ -16,6 +16,7 @@ use tauri::{
 pub mod backup;
 pub mod bluetooth;
 pub mod calibration;
+pub mod daily_quota;
 mod dashboard;
 pub mod deck_profile;
 pub mod defaults;

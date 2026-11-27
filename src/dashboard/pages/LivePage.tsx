@@ -5,6 +5,7 @@ import { linkView } from "../../state/linkStatus";
 import { snapToDeck, snapToLevel } from "../../state/deckSpeeds";
 import { useAppSnapshot } from "../../state/useAppState";
 import { STAT_WIDGETS, statWidget } from "../../widgets/registry";
+import { QuotaBar } from "../../widgets/QuotaBar";
 import { Sparkline } from "../../widgets/Sparkline";
 import { Axis } from "../live/Axis";
 import { PinToggle } from "../live/PinToggle";
@@ -282,11 +283,12 @@ export function LivePage({ onCalibrate }: { onCalibrate?: () => void } = {}) {
           // in place of the page's 20) keep three rows under a program card at 760x600.
           <div className="-mb-2 grid grid-cols-[repeat(auto-fit,minmax(max(8.5rem,calc((100%_-_0.75rem)/3)),1fr))] gap-1.5">
             {stats.map((w) => {
-              const { value, unit } = w.read(s);
+              const { value, of, unit } = w.read(s);
               const spark = w.spark?.(s);
               const zone = w.zone?.(s);
               const target = w.target?.(s);
               const detail = w.detail?.(s);
+              const quota = w.quota?.(s);
               // A detail with no space to break at (today's walking time) drops under the value when the tile is too narrow.
               const unbreakable = detail != null && !detail.includes(" ");
               // PULSE_RATE with a sensor takes two tiles, so its chart sits
@@ -313,11 +315,16 @@ export function LivePage({ onCalibrate }: { onCalibrate?: () => void } = {}) {
                   <div className={cx("flex items-center gap-x-3", unbreakable && "flex-wrap", offline && "opacity-45")}>
                     <span className={cx("shrink-0 font-digital text-base leading-5 tracking-wider", TONE_TEXT[w.accent])}>
                       {value}
+                      {of && <span className="ml-1 font-mono text-xs text-white/60">{of}</span>}
                       {unit && <span className="ml-1 font-mono text-xs text-white/60">{unit}</span>}
                     </span>
                     {spark && <Sparkline data={spark} className={cx("block h-5 min-w-0 flex-1", TONE_TEXT[w.accent])} />}
                     {detail && <span className="min-w-0 font-mono text-xs leading-none text-white/60">{detail}</span>}
                   </div>
+                  {/* Out of the flow at the tile's foot, so a target set or cleared moves nothing. */}
+                  {quota && (
+                    <QuotaBar quota={quota} className={cx("absolute inset-x-3 -bottom-px h-0.5 overflow-hidden rounded-full", TONE_TEXT[w.accent], offline && "opacity-45")} />
+                  )}
                 </Panel>
               );
             })}

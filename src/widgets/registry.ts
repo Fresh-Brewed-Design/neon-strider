@@ -1,5 +1,5 @@
 import { formatClock, formatDuration, km, lifetimeKm } from "../format";
-import type { AppSnapshot, HudWidget, PulseTarget, ZoneBand } from "../ipc";
+import type { AppSnapshot, DailyQuotaSnapshot, HudWidget, PulseTarget, ZoneBand } from "../ipc";
 import { PLAIN } from "../names";
 import { MIN_SPAN_BPM, MIN_SPAN_KMH, type SparkData } from "./spark";
 
@@ -7,6 +7,8 @@ export type Accent = "cyan" | "magenta" | "yellow" | "green";
 
 export interface StatReading {
   value: string;
+  /** The target the value counts towards, shown between value and unit: "/ 5.0" (DAILY_QUOTA). */
+  of?: string;
   unit?: string;
 }
 
@@ -26,6 +28,8 @@ export interface StatWidget {
   zone?: (s: AppSnapshot) => ZoneBand | null;
   /** A cool-down step's pulse target beside the value, with Rust's word for where the pulse is; null shows none. */
   target?: (s: AppSnapshot) => PulseTarget | null;
+  /** DAILY_QUOTA's bar at the foot of the cell, with Rust's share; null shows none. */
+  quota?: (s: AppSnapshot) => DailyQuotaSnapshot | null;
   /** A short line under the value; null shows none. */
   detail?: (s: AppSnapshot) => string | null;
   /** False keeps `detail` off the HUD panel's stat cell, where its line would make every panel taller. */
@@ -103,7 +107,9 @@ export const STAT_WIDGETS: StatWidget[] = [
     codename: "DAILY_TOTAL",
     plain: PLAIN.DAILY_TOTAL,
     accent: "green",
-    read: (s) => ({ value: km(s.session.daily_distance_m), unit: "KM" }),
+    read: (s) => ({ value: km(s.session.daily_distance_m), of: dailyOf(s), unit: "KM" }),
+    // DAILY_QUOTA's bar, only while a daily target is set.
+    quota: (s) => (s.daily_quota.target_km === null ? null : s.daily_quota),
     // On the Live tile, the HUD strip and STEP_MAP's readout; the HUD panel keeps its height.
     detail: (s) => todayTimeDetail(s),
     panelDetail: false,
@@ -163,6 +169,12 @@ export const STAT_WIDGETS: StatWidget[] = [
 
 /** A length of time that stays on one line: a non-breaking space inside it. */
 const unbroken = (seconds: number) => formatDuration(seconds).replace(" ", " ");
+
+/** DAILY_QUOTA's target after DAILY_TOTAL's km, "/ 5.0", kept on one line; none while no target is set. */
+export function dailyOf(s: AppSnapshot): string | undefined {
+  const target = s.daily_quota.target_km;
+  return target === null ? undefined : `/\u00a0${target.toFixed(1)}`;
+}
 
 /** Today's walking time beside DAILY_TOTAL's km, e.g. "2h 14m"; none before the first walk of the day. */
 export function todayTimeDetail(s: AppSnapshot): string | null {

@@ -26,6 +26,7 @@ export type { CheckVerdict } from "./bindings/CheckVerdict";
 export type { Change } from "./bindings/Change";
 export type { Command } from "./bindings/Command";
 export type { ConnectionSnapshot } from "./bindings/ConnectionSnapshot";
+export type { DailyQuotaSnapshot } from "./bindings/DailyQuotaSnapshot";
 export type { DeckProfileSnapshot } from "./bindings/DeckProfileSnapshot";
 export type { DeckSnapshot } from "./bindings/DeckSnapshot";
 export type { DeckSpeedStep } from "./bindings/DeckSpeedStep";

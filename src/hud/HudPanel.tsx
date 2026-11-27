@@ -3,6 +3,7 @@ import type { ActiveProgram, AppSnapshot, Command, HudWidget, PulseTarget, ZoneB
 import { describeActive, describePlan, describeTimeLeft, waitHeadline } from "../dashboard/programs/format";
 import { nextStepLine } from "../dashboard/programs/stepMap";
 import { statWidget } from "../widgets/registry";
+import { QuotaBar } from "../widgets/QuotaBar";
 import { Sparkline } from "../widgets/Sparkline";
 import { targetAccent, targetRange, ZONE_ACCENT, zoneRange } from "../widgets/zone";
 import { NotePop, type PanelNote } from "./HudNote";
@@ -20,17 +21,20 @@ type Send = (c: Command) => Promise<boolean>;
 export function StatCell({ id, snapshot }: { id: HudWidget; snapshot: AppSnapshot }) {
   const def = statWidget(id);
   if (!def) return null;
-  const { value, unit } = def.read(snapshot);
+  const { value, of, unit } = def.read(snapshot);
   const spark = def.spark?.(snapshot);
   const zone = def.zone?.(snapshot);
   const target = def.target?.(snapshot);
   const hasDetail = def.detail !== undefined && def.panelDetail !== false;
   const detail = hasDetail ? def.detail?.(snapshot) : null;
+  const quota = def.quota?.(snapshot);
   return (
     <div className={`hud-stat accent-${def.accent}`}>
       <span className="hud-label">{def.label}</span>
       <span className="hud-value">
         {value}
+        {/* Dropped in a narrow cell (hud.css), where it would wrap and make the cell taller; the bar stays. */}
+        {of && <span className="hud-unit hud-quota-of">{of}</span>}
         {unit && <span className="hud-unit">{unit}</span>}
       </span>
       {spark && <Sparkline data={spark} className="hud-spark" />}
@@ -49,6 +53,7 @@ export function StatCell({ id, snapshot }: { id: HudWidget; snapshot: AppSnapsho
           {detail ?? BLANK}
         </span>
       )}
+      {quota && <QuotaBar quota={quota} className="hud-quota" />}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import type { AppSnapshot, HudWidget } from "../../ipc";
+import { QuotaBar } from "../../widgets/QuotaBar";
 import { STAT_WIDGETS, statTitle } from "../../widgets/registry";
 import { cx, TONE_TEXT } from "../util";
 
@@ -19,14 +20,18 @@ export function WalkReadout({ s }: { s: AppSnapshot }) {
       className={cx("flex flex-wrap items-baseline gap-x-3 font-mono text-[11px]", !s.connection.connected && "opacity-45")}
     >
       {READOUT.map((w) => {
-        const { value, unit } = w.read(s);
+        const { value, of, unit } = w.read(s);
         const detail = w.detail?.(s);
+        const quota = w.quota?.(s);
         return (
-          <span key={w.id} className="whitespace-nowrap" title={statTitle(w)}>
+          <span key={w.id} className={cx("whitespace-nowrap", quota && "relative")} title={statTitle(w)}>
             <span className="text-white/60">{w.label}</span>{" "}
             <span className={cx("font-digital tracking-wider", TONE_TEXT[w.accent])}>{value}</span>
+            {of && <span className="text-white/60"> {of}</span>}
             {unit && <span className="text-white/60"> {unit}</span>}
             {detail && <span className="text-white/60"> · {detail}</span>}
+            {/* Under the reading, out of the flow, so the header keeps its height. */}
+            {quota && <QuotaBar quota={quota} className={cx("absolute inset-x-0 -bottom-0.5 h-px overflow-hidden", TONE_TEXT[w.accent])} />}
           </span>
         );
       })}

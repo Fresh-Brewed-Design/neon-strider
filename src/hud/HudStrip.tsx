@@ -3,6 +3,7 @@ import type { AppSnapshot, Command, HudWidget } from "../ipc";
 import { describeActive } from "../dashboard/programs/format";
 import { formatClock } from "../format";
 import { statTitle, statWidget } from "../widgets/registry";
+import { QuotaBar } from "../widgets/QuotaBar";
 import { Sparkline } from "../widgets/Sparkline";
 import { NotePop, type PanelNote } from "./HudNote";
 import { EngageButton, STASIS_CLOCK_TITLE, StasisClock } from "./HudPanel";
@@ -42,6 +43,7 @@ export function StripRow({ snapshot, send, note }: { snapshot: AppSnapshot; send
   const daily = statWidget("DAILY");
   const total = daily?.read(snapshot);
   const time = daily?.detail?.(snapshot);
+  const quota = daily?.quota?.(snapshot);
   const a = snapshot.active_program;
   const rest = a?.phase === "resting" && a.seconds_remaining !== null ? { name: a.name, left: a.seconds_remaining } : null;
   const clock = stasisClockOf(snapshot);
@@ -69,8 +71,10 @@ export function StripRow({ snapshot, send, note }: { snapshot: AppSnapshot; send
                 </span>
                 <span className="hud-value hud-value-sm">
                   {total.value}
+                  {total.of && <span className="hud-unit hud-quota-of">{total.of}</span>}
                   {total.unit && <span className="hud-unit">{total.unit}</span>}
                 </span>
+                {quota && <QuotaBar quota={quota} className="hud-quota" />}
               </div>
             )
           )}

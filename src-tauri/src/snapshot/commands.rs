@@ -553,6 +553,9 @@ pub(super) async fn run(app: AppHandle, command: Command) -> Result<(), String> 
             crate::platform::open_permission_settings(permission)
         }
 
+        // ---- DAILY_QUOTA ----
+        Command::DailyQuotaSet { km } => blocking(move || crate::daily_quota::set(&app, km)).await,
+
         // ---- DESK_SYNC ----
         Command::DeskSyncLightShown => {
             super::desk_sync::light_shown();

@@ -34,6 +34,7 @@ import { platform } from "./platform";
 import { presenting } from "./presenting";
 import { programs } from "./programs";
 import { programTones } from "./programtones";
+import { quota } from "./quota";
 import { seated } from "./seated";
 import { shortcuts } from "./shortcuts";
 import { speedDrift } from "./speeddrift";
@@ -91,6 +92,8 @@ export const SCENARIOS: Scenario[] = [
   easyStop,
   fitToTime,
   programTones,
+  // After belt: it reads today's km that ?daily sets.
+  quota,
   // After the scenarios that set the belt's speed: VELOCITY reads the trace's last point.
   speedSpark,
   // After every scenario that pauses the belt at load.

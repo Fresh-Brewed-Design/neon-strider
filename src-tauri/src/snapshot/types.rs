@@ -84,6 +84,9 @@ pub struct AppSnapshot {
     pub wall_clock: WallClock,
     /// Distance and belt hours over every saved session plus the live one.
     pub odometer: OdometerSnapshot,
+    /// DAILY_QUOTA (#439): today's km against the optional daily target,
+    /// for the bar under DAILY_TOTAL. Default (no target) while off.
+    pub daily_quota: crate::daily_quota::DailyQuotaSnapshot,
 
     // ---- Desk: idle nudge, eye breaks, calls, walk-away, LIGHTS_OUT ----
     /// The idle nudge: its settings and whether the HUD card shows.
@@ -1044,6 +1047,13 @@ pub enum Command {
     /// Privacy & Security pane for it).
     OpenPermissionSettings {
         permission: crate::platform::PermissionKind,
+    },
+
+    // ---- DAILY_QUOTA ----
+    /// The daily km target (`daily_quota::MIN_KM` to `MAX_KM`), or none to
+    /// switch DAILY_QUOTA off. Display only; never moves the belt.
+    DailyQuotaSet {
+        km: Option<f32>,
     },
 
     // ---- DESK_SYNC ----
