@@ -194,3 +194,18 @@ export function quietHold(snapshot: AppSnapshot): { by: "press" | "call"; back: 
   if (c.quiet_active && c.call_back_kmh !== null) return { by: "call", back: c.call_back_kmh };
   return null;
 }
+
+/**
+ * The widest words the link chip takes, laid unseen in the chip's cell so the
+ * cell is one width whatever it reads (#420): a header that wrapped by the
+ * status word moved every control under it. Deck words (RUNNING, SPIN-DOWN)
+ * at their own spacing; link words as the relink button, at the link-down
+ * spacing. The countdown's widest is RELINK 120S (`link.rs` RETRY_MAX).
+ */
+export const CHIP_SIZERS: readonly { text: string; kind: "deck" | "link" }[] = [
+  { text: "SPIN-DOWN", kind: "deck" },
+  { text: "NO_CARRIER", kind: "link" },
+  { text: "RELINK 120S", kind: "link" },
+  { text: "LINKING 3/3", kind: "link" },
+  { text: "STATE ?255", kind: "link" },
+];

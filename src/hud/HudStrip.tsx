@@ -112,7 +112,9 @@ export function SeatedReadout({ snapshot }: { snapshot: AppSnapshot }) {
       <span className="hud-label">ATROPHY_WARNING</span>
       <span className="hud-value hud-value-sm">
         {s.seated_minutes}
-        <span className="hud-unit">MIN IDLE</span>
+        {/* Two words, so a narrow slot drops IDLE first and keeps 63 MIN. */}
+        <span className="hud-unit">MIN</span>{" "}
+        <span className="hud-unit">IDLE</span>
       </span>
     </div>
   );

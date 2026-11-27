@@ -27,6 +27,7 @@ export interface PanelNote {
  */
 export function NotePop({ note }: { note: PanelNote | null }) {
   const ref = useRef<HTMLSpanElement>(null);
+  const box = useRef<HTMLDivElement>(null);
   const [fits, setFits] = useState(true);
   const detail = note?.detail ?? null;
   useLayoutEffect(() => {
@@ -40,10 +41,30 @@ export function NotePop({ note }: { note: PanelNote | null }) {
     ro.observe(el);
     return () => ro.disconnect();
   }, [detail, note?.text]);
+  // How many lines of the themed text fit the note's box, as --note-lines:
+  // the strip's note has a fixed box and ends its text with an ellipsis
+  // there (hud.css), so no line is cut in half.
+  useLayoutEffect(() => {
+    const el = box.current;
+    const text = el?.querySelector<HTMLElement>(".hud-note-text");
+    if (!el || !text) return;
+    const fit = () => {
+      const cs = getComputedStyle(el);
+      const room = el.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+      const line = parseFloat(getComputedStyle(text).lineHeight);
+      if (!(room > 0) || !(line > 0)) return;
+      el.style.setProperty("--note-lines", String(Math.max(1, Math.floor((room + 0.5) / line))));
+    };
+    fit();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [note?.text]);
   if (!note) return null;
   const oneLine = detail !== null && fits;
   return (
-    <div className={`hud-note hud-note-pop${oneLine ? " is-one-line" : ""}`} role="alert" data-testid="hud-note">
+    <div ref={box} className={`hud-note hud-note-pop${oneLine ? " is-one-line" : ""}`} role="alert" data-testid="hud-note">
       <span className="hud-note-text">{note.text}</span>
       {detail && <span className="hud-note-detail">{detail}</span>}
       {/* The themed line laid out on one line, unseen, to see if it fits. */}
