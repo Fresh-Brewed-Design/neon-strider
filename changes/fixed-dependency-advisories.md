@@ -1,0 +1,2 @@
+- Updated two libraries the app uses for cookies and web addresses to close published security advisories.
+- Updated the development tooling that checks the code to a version without a known vulnerability.
