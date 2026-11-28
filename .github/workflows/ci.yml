@@ -139,3 +139,53 @@ jobs:
       - name: Clippy (all targets, warnings are errors)
         working-directory: src-tauri
         run: cargo clippy --all-targets -- -D warnings
+
+  macos-bundle:
+    # The release's Mac build without its signing key: a universal app and disk
+    # image, as release.yml's `macos` job makes them. Too slow for every PR (two
+    # release builds); run it by hand (Actions -> CI -> Run workflow) after a
+    # change to the bundle config, Info.plist or the release job.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: 1.100.0
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: src-tauri
+          shared-key: ci-macos-bundle
+          save-if: false
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Build the universal app and disk image
+        run: npx tauri build --target universal-apple-darwin
+
+      - name: The app is universal, ad-hoc signed and carries the Bluetooth text
+        run: |
+          app="src-tauri/target/universal-apple-darwin/release/bundle/macos/Neon Strider.app"
+          exe="$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$app/Contents/Info.plist")"
+          lipo -archs "$exe"
+          lipo -archs "$exe" | grep -q x86_64
+          lipo -archs "$exe" | grep -q arm64
+          codesign --verify --verbose "$app"
+          /usr/libexec/PlistBuddy -c "Print :NSBluetoothAlwaysUsageDescription" "$app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :LSUIElement" "$app/Contents/Info.plist"
+          ls -l src-tauri/target/universal-apple-darwin/release/bundle/dmg/
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: neon-strider-mac
+          path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          retention-days: 7

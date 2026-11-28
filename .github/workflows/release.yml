@@ -1,19 +1,27 @@
 name: Release
 
-# Builds the Windows installer for a version tag and publishes it as a GitHub
-# release. Called by auto-release.yml after a merged PR (a tag pushed by the
-# workflow token does not trigger other workflows), or run by pushing a v* tag.
+# Builds the Windows installer and the Mac disk image for a version tag and
+# publishes them as one GitHub release. Called by auto-release.yml after a merged
+# PR (a tag pushed by the workflow token does not trigger other workflows), or run
+# by pushing a v* tag.
 #
 # The release body is that version's CHANGELOG section (passed in by
-# auto-release.yml, or read from CHANGELOG.md at the tag), then the SmartScreen
-# note. The app shows the text above the `<!-- installer-note -->` marker as
-# its update notes.
+# auto-release.yml, or read from CHANGELOG.md at the tag), then the download
+# notes for Windows (SmartScreen) and the Mac (Gatekeeper). The app shows the
+# text above the `<!-- installer-note -->` marker as its update notes.
 #
 # Updater: the installer and its `.sig` are signed with the updater key (the
 # TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD secrets of the
 # `release` environment, which only main and v* tags may use), and tauri-action uploads
 # `latest.json`, which the app checks. Local builds skip this:
 # createUpdaterArtifacts is only turned on here.
+#
+# The Mac job runs after the Windows one and adds to its release: tauri-action
+# reads the `latest.json` already there and adds the darwin entries (a universal
+# build fills both darwin-aarch64 and darwin-x86_64), so running the two at once
+# could lose one platform's entry. It passes the same body on, since
+# `latest.json`'s notes are the body. A failed Mac build leaves the Windows
+# release as it is.
 on:
   push:
     tags: ["v*"]
@@ -37,6 +45,8 @@ jobs:
     # The signing key lives in this environment, so a workflow run from any other
     # branch (a PR, an agent branch) can never read it.
     environment: release
+    outputs:
+      body: ${{ steps.body.outputs.body }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -79,9 +89,16 @@ jobs:
             echo "<!-- installer-note -->"
             echo "---"
             echo
-            echo "Windows installer below (per-user, no admin). It isn't code-signed yet, so"
-            echo "SmartScreen will warn: choose More info, then Run anyway. Installed copies"
-            echo "update themselves."
+            echo "**Windows:** the installer below (\`_x64-setup.exe\`, per-user, no admin). It"
+            echo "isn't code-signed yet, so SmartScreen will warn: choose More info, then Run"
+            echo "anyway."
+            echo
+            echo "**Mac** (macOS 13 or later, Apple Silicon or Intel): the disk image below"
+            echo "(\`_universal.dmg\`); drag Neon Strider to Applications. It isn't notarized"
+            echo "yet, so macOS won't open it the first time: open System Settings, Privacy &"
+            echo "Security, and choose Open Anyway."
+            echo
+            echo "Installed copies update themselves."
             echo "$delim"
           } >> "$GITHUB_OUTPUT"
 
@@ -99,4 +116,49 @@ jobs:
           prerelease: false
           # Signed updater artifacts (.sig) and latest.json, for release builds only.
           args: --config src-tauri/tauri.release.conf.json
+          includeUpdaterJson: true
+
+  macos:
+    # After the Windows job, onto its release (see the top of this file).
+    needs: release
+    runs-on: macos-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Both Mac architectures, for one universal app.
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: 1.100.0
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      # The app (ad-hoc signed, tauri.macos.conf.json), its disk image, and the
+      # signed updater bundle (.app.tar.gz and .sig) added to latest.json.
+      - name: Build the Mac app and add it to the release
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ inputs.tag || github.ref_name }}
+          releaseName: Neon Strider ${{ inputs.tag || github.ref_name }}
+          releaseBody: ${{ needs.release.outputs.body }}
+          releaseDraft: false
+          prerelease: false
+          args: --target universal-apple-darwin --config src-tauri/tauri.release.conf.json
           includeUpdaterJson: true
