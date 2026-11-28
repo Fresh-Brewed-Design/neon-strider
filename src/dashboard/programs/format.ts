@@ -19,6 +19,23 @@ const NBSP = "\u00a0";
 
 const kindCode = (k: StepKind) => STEP_KINDS.find((x) => x.value === k)?.code ?? k;
 
+/**
+ * Kilometres one pass of the program walks (one cycle, when it repeats), from the saved
+ * speeds, which are already calibrated. Null with no steps or any step with no length.
+ */
+export function passDistanceKm(p: Program): number | null {
+  if (p.steps.length === 0 || p.steps.some((s) => s.duration_minutes == null)) return null;
+  return p.steps.reduce((sum, s) => sum + (s.speed_kmh * (s.duration_minutes ?? 0)) / 60, 0);
+}
+
+/** The distance as one decimal with a no-break space before km, or null when it rounds to 0.0. */
+function distanceLabel(p: Program): string | null {
+  const km = passDistanceKm(p);
+  if (km == null) return null;
+  const text = km.toFixed(1);
+  return text === "0.0" ? null : `≈${text}${NBSP}km`;
+}
+
 /** One-line description, e.g. "5 min every 30 min · 3.0 km/h · 5%". */
 export function describeProgram(p: Program): string {
   if (p.steps.length === 0) return "No steps";
@@ -34,7 +51,9 @@ export function describeProgram(p: Program): string {
   const repeat = p.repeat_every_minutes != null ? ` every ${num(p.repeat_every_minutes)} min` : "";
   const zone = p.steps.some((s) => s.zone) ? " · heart zone" : "";
   const pulse = p.steps.some((s) => s.pulse_end) ? " · pulse end" : "";
-  return `${length}${repeat} · ${pace}${zone}${pulse}`;
+  const km = distanceLabel(p);
+  const distance = km ? ` · ${km}${p.repeat_every_minutes != null ? " a cycle" : ""}` : "";
+  return `${length}${repeat} · ${pace}${distance}${zone}${pulse}`;
 }
 
 /** A walking step follows one that holds the belt still (0 km/h). */
@@ -64,6 +83,10 @@ export function describePlan(p: Program): string {
     lines.push("After each rest, the belt waits for GO before it moves.");
   } else if (p.steps.every((st) => st.duration_minutes != null)) {
     lines.push("Then back to what the treadmill was doing before.");
+  }
+  const km = distanceLabel(p);
+  if (km) {
+    lines.push(`About ${km.slice(1)} ${p.repeat_every_minutes != null ? "each cycle" : "a pass"} at the set speeds.`);
   }
   return lines.join("\n");
 }

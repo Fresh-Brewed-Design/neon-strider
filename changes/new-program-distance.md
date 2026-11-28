@@ -1,0 +1,1 @@
+- Each program on the Programs page shows about how far one pass walks (a cycle, for repeating programs).

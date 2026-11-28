@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ActiveProgram, Program } from "../../ipc";
-import { describeActive, describePlan, describeTimeLeft, finishClock, waitHeadline, waitReason } from "./format";
+import { describeActive, describePlan, describeProgram, passDistanceKm, describeTimeLeft, finishClock, waitHeadline, waitReason } from "./format";
 
 const workday: Program = {
   id: 2,
@@ -151,5 +151,40 @@ describe("T-MINUS wrapping", () => {
     const line = describeTimeLeft(a, new Date(2026, 10, 24, 15, 17, 0), "en-US")!;
     expect(line.split(" ")).toHaveLength(3);
     expect(line.split(" ")[2]).toMatch(/^ENDS.3:40.PM$/);
+  });
+});
+
+describe("program distance", () => {
+  const step = (speed_kmh: number, duration_minutes: number | null) => ({ duration_minutes, speed_kmh, incline_pct: 0 });
+  const prog = (steps: Program["steps"], repeat_every_minutes: number | null = null): Program => ({ id: 9, name: "T", steps, repeat_every_minutes });
+
+  it("sums speed times minutes over every step", () => {
+    const p = prog([step(4, 15), step(6, 30)]);
+    expect(passDistanceKm(p)).toBeCloseTo(4, 6);
+    expect(describeProgram(p)).toBe("45 min · 2 steps · ≈4.0 km");
+    expect(describePlan(p).split("\n").at(-1)).toBe("About 4.0 km a pass at the set speeds.");
+  });
+
+  it("counts one cycle of a repeating program", () => {
+    expect(describeProgram(workday)).toBe("5 min every 30 min · 3.0 km/h · 5% · ≈0.3 km a cycle");
+    expect(describePlan(workday).split("\n").at(-1)).toBe("About 0.3 km each cycle at the set speeds.");
+  });
+
+  it("shows nothing for an open-ended program", () => {
+    const p = prog([step(3, 10), step(3, null)]);
+    expect(passDistanceKm(p)).toBeNull();
+    expect(describeProgram(p)).not.toContain("≈");
+    expect(describePlan(p)).not.toContain("About");
+  });
+
+  it("adds nothing for a 0 km/h step", () => {
+    expect(passDistanceKm(prog([step(0, 10), step(3, 20)]))).toBeCloseTo(1, 6);
+  });
+
+  it("skips a distance that rounds to 0.0", () => {
+    const p = prog([step(1, 2)]);
+    expect(passDistanceKm(p)).toBeCloseTo(0.0333, 3);
+    expect(describeProgram(p)).not.toContain("≈");
+    expect(passDistanceKm(prog([]))).toBeNull();
   });
 });
