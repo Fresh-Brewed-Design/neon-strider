@@ -162,12 +162,12 @@ describe("program distance", () => {
     const p = prog([step(4, 15), step(6, 30)]);
     expect(passDistanceKm(p)).toBeCloseTo(4, 6);
     expect(describeProgram(p)).toBe("45 min · 2 steps · ≈4.0 km");
-    expect(describePlan(p).split("\n").pop()).toBe("About 4.0 km a pass at the set speeds.");
+    expect(describePlan(p).split("\n").pop()).toBe("About 4.0 km a pass at the program's speeds.");
   });
 
   it("counts one cycle of a repeating program", () => {
     expect(describeProgram(workday)).toBe("5 min every 30 min · 3.0 km/h · 5% · ≈0.3 km a cycle");
-    expect(describePlan(workday).split("\n").pop()).toBe("About 0.3 km each cycle at the set speeds.");
+    expect(describePlan(workday).split("\n").pop()).toBe("About 0.3 km each cycle at the program's speeds.");
   });
 
   it("shows nothing for an open-ended program", () => {

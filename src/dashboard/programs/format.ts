@@ -86,7 +86,7 @@ export function describePlan(p: Program): string {
   }
   const km = distanceLabel(p);
   if (km) {
-    lines.push(`About ${km.slice(1)} ${p.repeat_every_minutes != null ? "each cycle" : "a pass"} at the set speeds.`);
+    lines.push(`About ${km.slice(1)} ${p.repeat_every_minutes != null ? "each cycle" : "a pass"} at the program's speeds.`);
   }
   return lines.join("\n");
 }
