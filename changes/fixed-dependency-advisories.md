@@ -1,0 +1,1 @@
+- Updated a library the app uses for cookies to close a published security advisory.
